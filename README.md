@@ -233,7 +233,6 @@ by their documentation, linked here:
 
 - [FLTK](https://www.fltk.org/doc-1.4/index.html)
 - [GTKMM](https://www.gtkmm.org/en/documentation.html)
-- [QT](https://doc.qt.io/)
 
 The following dependencies can be downloaded automatically by CMake and Conan.
 All you need to do to install them is to turn on a CMake flag during
