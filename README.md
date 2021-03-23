@@ -230,7 +230,6 @@ configuration. If you run into difficulty using them, please refer to their
 documentation, linked here:
 
 - [NANA](http://nanapro.org/en-us/documentation/)
-- [SDL](http://wiki.libsdl.org/FrontPage)
 
 ## Build Instructions
 
