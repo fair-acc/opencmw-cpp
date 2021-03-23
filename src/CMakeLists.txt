@@ -1,11 +1,3 @@
-option(CPP_STARTER_USE_NANA "Enable compilation of Nana GUI sample" OFF)
-
-# Nana
-if(CPP_STARTER_USE_NANA)
-  message("Using Nana")
-  add_subdirectory(nana)
-endif()
-
 # Generic test that uses conan libs
 add_executable(intro main.cpp)
 target_link_libraries(
