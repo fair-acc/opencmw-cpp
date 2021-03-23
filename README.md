@@ -25,7 +25,7 @@ clone the project locally and get to work!
 ### Remove frameworks you're not going to use
 
 If you know you're not going to use one or more of the optional gui/graphics
-frameworks (gtkmm, etc.), you can remove them with `git rm`:
+frameworks, you can remove them with `git rm`:
 
     $ git rm -r src/<unnecessary_framework>
 
@@ -223,15 +223,6 @@ Note about install commands:
   Follow instructions here:
   https://github.com/include-what-you-use/include-what-you-use#how-to-install
   </details>
-
-#### GUI libraries
-
-This project can be made to work with several optional GUI frameworks.
-
-If desired, you should install the following optional dependencies as directed
-by their documentation, linked here:
-
-- [GTKMM](https://www.gtkmm.org/en/documentation.html)
 
 The following dependencies can be downloaded automatically by CMake and Conan.
 All you need to do to install them is to turn on a CMake flag during
