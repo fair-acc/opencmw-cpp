@@ -1,11 +1,4 @@
 option(CPP_STARTER_USE_NANA "Enable compilation of Nana GUI sample" OFF)
-option(CPP_STARTER_USE_SDL "Enable compilation of SDL sample" OFF)
-
-# sdl
-if(CPP_STARTER_USE_SDL)
-  message("Using SDL2")
-  add_subdirectory(sdl)
-endif()
 
 # Nana
 if(CPP_STARTER_USE_NANA)
