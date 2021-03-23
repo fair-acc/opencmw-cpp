@@ -25,7 +25,7 @@ clone the project locally and get to work!
 ### Remove frameworks you're not going to use
 
 If you know you're not going to use one or more of the optional gui/graphics
-frameworks (fltk, gtkmm, etc.), you can remove them with `git rm`:
+frameworks (gtkmm, etc.), you can remove them with `git rm`:
 
     $ git rm -r src/<unnecessary_framework>
 
@@ -231,7 +231,6 @@ This project can be made to work with several optional GUI frameworks.
 If desired, you should install the following optional dependencies as directed
 by their documentation, linked here:
 
-- [FLTK](https://www.fltk.org/doc-1.4/index.html)
 - [GTKMM](https://www.gtkmm.org/en/documentation.html)
 
 The following dependencies can be downloaded automatically by CMake and Conan.
