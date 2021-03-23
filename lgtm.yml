@@ -1,0 +1,15 @@
+extraction:
+  cpp:
+    prepare:
+      packages:
+        - conan
+    configure:
+      command:
+        - python3 -m pip install --upgrade pip setuptools
+        - python3 -m pip install conan
+        - source ~/.profile
+        - mkdir build
+        - cd ./build
+        - cmake -D ENABLE_COVERAGE:BOOL=TRUE ../
+        - cmake --build . -- -j2
+        - ctest -j2
