@@ -23,7 +23,7 @@ Now you can clone the project locally and get to work!
 
 ### Remove frameworks you're not going to use
 If you know you're not going to use one or more of the optional gui/graphics
-frameworks (fltk, gtkmm, imgui, etc.), you can remove them with `git rm`:
+frameworks (fltk, gtkmm, etc.), you can remove them with `git rm`:
 
     $ git rm -r src/<unnecessary_framework>
 
@@ -233,11 +233,6 @@ linked here:
 
 - [NANA](http://nanapro.org/en-us/documentation/)
 - [SDL](http://wiki.libsdl.org/FrontPage)
-- [IMGUI](https://github.com/ocornut/imgui/tree/master/docs):
-  This framework depends on SFML, and if you are using Linux, you may need
-  to install several of SFML's dependencies using your package manager. See
-  [the SFML build tutorial](https://www.sfml-dev.org/tutorials/2.5/compile-with-cmake.php)
-  for specifics.
 
 ## Build Instructions
 
