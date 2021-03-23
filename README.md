@@ -1,4 +1,4 @@
-# cpp_starter_project
+# opencmw-cpp
 
 ![CMake](https://github.com/fair-acc/opencmw-cpp/workflows/CMake/badge.svg)
 
