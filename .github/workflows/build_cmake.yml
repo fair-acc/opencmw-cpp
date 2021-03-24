@@ -49,11 +49,9 @@ jobs:
         python3 -m pip install --upgrade pip setuptools
         python3 -m pip install conan
 
-    - name: Add conan to path
-      if: startsWith(${{ matrix.configurations.os }}, 'ubuntu')
-      shell: bash
-      # We need to source the profile file to make sure conan is in PATH
-      run: source ~/.profile
+    - name: Fix Path on Ubuntu
+      if: matrix.configurations.os == 'ubuntu-latest'
+      run: echo "/home/runner/.local/bin" >> $GITHUB_PATH
 
     - name: Configure CMake
       # Use a bash shell so we can use the same syntax for environment variable
