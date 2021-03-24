@@ -50,7 +50,7 @@ jobs:
         python3 -m pip install conan
 
     - name: Add conan to path
-      if: startsWith(matrix.config.os, 'ubuntu')
+      if: startsWith(matrix.configurations.os, 'ubuntu')
       shell: bash
       # We need to source the profile file to make sure conan is in PATH
       run: source ~/.profile
