@@ -75,10 +75,7 @@ jobs:
       # access regardless of the host operating system
       shell: bash
       working-directory: ${{runner.workspace}}/build
-      # Note the current convention is to use the -S and -B options here to specify source
-      # and build directories, but this is only available with CMake 3.13 and higher.
-      # The CMake binaries on the Github Actions machines are (as of this writing) 3.12
-      run: cmake $GITHUB_WORKSPACE -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DENABLE_COVERAGE:BOOL=TRUE
+      run: cmake -S $GITHUB_WORKSPACE -B . -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DENABLE_COVERAGE:BOOL=TRUE
 
     - name: Build
       working-directory: ${{runner.workspace}}/build
@@ -99,8 +96,6 @@ jobs:
       shell: bash
       run: |
         bash <(curl -s https://codecov.io/bash) -x /usr/bin/gcov
-#        for debugging purposes
-        find . -name "*cov"
 
     - name: coverage report - send to Codacy
       if: matrix.configurations.os == env.REFERENCE_OS
@@ -108,7 +103,5 @@ jobs:
       shell: bash
       run: | # convert to Cobertura's xml format to be palatable by Codacy
         gcovr -g -k --xml cobertura.xml
-        echo "REPORT:"
-        cat cobertura.xml
 #        commented since there aren't any meaningful tests of classes in /src
 #        bash <(curl -Ls https://coverage.codacy.com/get.sh) report -r cobertura.xml --skip --project-token ${{ secrets.CODACY_PROJECT_TOKEN }}
