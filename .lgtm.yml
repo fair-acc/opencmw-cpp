@@ -1,0 +1,25 @@
+# for full syntax documentation see:  https://lgtm.com/help/lgtm/lgtm.yml-configuration-file
+path_classifiers:
+  test:
+    - "*/fuzz_test/**/*"
+    - "*/test/**/*"
+extraction:
+  cpp:
+    prepare:
+      packages:
+        - g++-10
+        - ccache
+      script:
+        - python3 -m pip install --upgrade pip setuptools
+        - python3 -m pip install conan
+        - python3 -m pip install cmake
+        - source ~/.profile
+        - conan remote add -f conan-center https://api.bintray.com/conan/conan/conan-center False # https://github.com/conan-io/conan/issues/4911
+    configure:
+      command:
+        - mkdir build
+        - cd ./build
+        - cmake -D ENABLE_COVERAGE:BOOL=TRUE ../
+    index: # Customizable step used by all languages.
+      build_command:
+        - cmake --build . -- -j2
