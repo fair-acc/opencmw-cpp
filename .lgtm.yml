@@ -16,10 +16,9 @@ extraction:
         - python3 -m pip install conan
         - python3 -m pip install cmake
         - source ~/.profile
-        - conan remote add -f conan-center https://api.bintray.com/conan/conan/conan-center False # https://github.com/conan-io/conan/issues/4911
     configure:
       command:
         - mkdir build
         - cmake -D ENABLE_COVERAGE:BOOL=TRUE -S . -B build
-      index:
-        build_command: cmake --build ./build -- -j2
+    index:
+      build_command: cmake --build ./build -- -j2
