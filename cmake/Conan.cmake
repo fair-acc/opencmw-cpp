@@ -11,7 +11,8 @@ macro(run_conan)
     NAME
     conan-center
     URL
-    https://api.bintray.com/conan/conan/conan-center)
+    https://api.bintray.com/conan/conan/conan-center
+    VERIFY_SSL False)
 
   conan_add_remote(
     NAME
