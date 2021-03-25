@@ -6,9 +6,13 @@ path_classifiers:
 extraction:
   cpp:
     prepare:
-      command:
+      packages:
+        - g++-10
+        - ccache
+      script:
         - python3 -m pip install --upgrade pip setuptools
         - python3 -m pip install conan
+        - python3 -m pip install cmake
         - source ~/.profile
     configure:
       command:
@@ -18,4 +22,3 @@ extraction:
     index: # Customizable step used by all languages.
       build_command:
         - cmake --build . -- -j2
-        - ctest -j2
