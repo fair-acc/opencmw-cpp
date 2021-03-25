@@ -10,6 +10,8 @@ extraction:
         - g++-10
         - ccache
       script:
+        - mkdir ~/.conan
+        - cat /usr/local/share/ca-certificates/semmle-cache-ca/semmle-cache-ca.crt >> ~/.conan/cacert.pem
         - python3 -m pip install --upgrade pip setuptools
         - python3 -m pip install conan
         - python3 -m pip install cmake
@@ -18,8 +20,6 @@ extraction:
     configure:
       command:
         - mkdir build
-        - cd ./build
-        - cmake -D ENABLE_COVERAGE:BOOL=TRUE ../
-    index: # Customizable step used by all languages.
-      build_command:
-        - cmake --build . -- -j2
+        - cmake -D ENABLE_COVERAGE:BOOL=TRUE -S . -B build
+      index:
+        build_command: cmake --build ./build -- -j2
