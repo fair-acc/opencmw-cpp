@@ -18,6 +18,9 @@ extraction:
       command:
         - mkdir build
         - cd ./build
+        - echo "edit conan-center"
+        - conan remote add -f conan-center https://api.bintray.com/conan/conan/conan-center False # https://github.com/conan-io/conan/issues/4911
+        - echo "edit conan-center - done"
         - cmake -D ENABLE_COVERAGE:BOOL=TRUE ../
     index: # Customizable step used by all languages.
       build_command:
