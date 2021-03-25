@@ -1,13 +1,21 @@
+# for full syntax documentation see:  https://lgtm.com/help/lgtm/lgtm.yml-configuration-file
+path_classifiers:
+  test:
+    - "*/fuzz_test/**/*"
+    - "*/test/**/*"
 extraction:
   cpp:
     prepare:
-    configure:
       command:
         - python3 -m pip install --upgrade pip setuptools
         - python3 -m pip install conan
         - source ~/.profile
+    configure:
+      command:
         - mkdir build
         - cd ./build
         - cmake -D ENABLE_COVERAGE:BOOL=TRUE ../
+    index: # Customizable step used by all languages.
+      build_command:
         - cmake --build . -- -j2
         - ctest -j2
