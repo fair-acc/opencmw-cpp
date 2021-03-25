@@ -1,8 +1,6 @@
 extraction:
   cpp:
     prepare:
-      packages:
-        - conan
     configure:
       command:
         - python3 -m pip install --upgrade pip setuptools
