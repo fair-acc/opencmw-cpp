@@ -1222,7 +1222,7 @@ template<typename T, ptrdiff_t N, typename... Ts>
 constexpr ptrdiff_t index_of() noexcept {
     if constexpr (sizeof...(Ts) <= N)
         return -1;
-    else if constexpr (std::is_same_v<T, trait::get_t<N, type_list<Ts...>>>)
+    else if constexpr (std::is_same_v<T, trait::get_t<N, type_list<Ts...> > >)
         return N;
     else
         return index_of<T, N + 1, Ts...>();
@@ -1232,7 +1232,7 @@ template<typename T, ptrdiff_t N, typename... Ts>
 constexpr ptrdiff_t index_of_base() noexcept {
     if constexpr (sizeof...(Ts) <= N)
         return -1;
-    else if constexpr (std::is_base_of_v<T, trait::get_t<N, type_list<Ts...>>>)
+    else if constexpr (std::is_base_of_v<T, trait::get_t<N, type_list<Ts...> > >)
         return N;
     else
         return index_of_base<T, N + 1, Ts...>();
@@ -1242,7 +1242,7 @@ template<template<typename...> typename T, ptrdiff_t N, typename... Ts>
 constexpr ptrdiff_t index_of_instance() noexcept {
     if constexpr (sizeof...(Ts) <= N)
         return -1;
-    else if constexpr (is_instance_of_v<T, trait::get_t<N, type_list<Ts...>>>)
+    else if constexpr (is_instance_of_v<T, trait::get_t<N, type_list<Ts...> > >)
         return N;
     else
         return index_of_instance<T, N + 1, Ts...>();
