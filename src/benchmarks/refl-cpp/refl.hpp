@@ -3835,34 +3835,34 @@ struct member<__COUNTER__ - member_index_offset, Unused__>
     REFL_END
 
 // Char types.
-REFL_DETAIL_PRIMITIVE(char);
-REFL_DETAIL_PRIMITIVE(wchar_t);
-REFL_DETAIL_PRIMITIVE(char16_t);
-REFL_DETAIL_PRIMITIVE(char32_t);
+REFL_DETAIL_PRIMITIVE(char)
+REFL_DETAIL_PRIMITIVE(wchar_t)
+REFL_DETAIL_PRIMITIVE(char16_t)
+REFL_DETAIL_PRIMITIVE(char32_t)
 #ifdef __cpp_lib_char8_t
 REFL_DETAIL_PRIMITIVE(char8_t);
 #endif
 
 // Integral types.
-REFL_DETAIL_PRIMITIVE(bool);
-REFL_DETAIL_PRIMITIVE(signed char);
-REFL_DETAIL_PRIMITIVE(unsigned char);
-REFL_DETAIL_PRIMITIVE(signed short);
-REFL_DETAIL_PRIMITIVE(unsigned short);
-REFL_DETAIL_PRIMITIVE(signed int);
-REFL_DETAIL_PRIMITIVE(unsigned int);
-REFL_DETAIL_PRIMITIVE(signed long);
-REFL_DETAIL_PRIMITIVE(unsigned long);
-REFL_DETAIL_PRIMITIVE(signed long long);
-REFL_DETAIL_PRIMITIVE(unsigned long long);
+REFL_DETAIL_PRIMITIVE(bool)
+REFL_DETAIL_PRIMITIVE(signed char)
+REFL_DETAIL_PRIMITIVE(unsigned char)
+REFL_DETAIL_PRIMITIVE(signed short)
+REFL_DETAIL_PRIMITIVE(unsigned short)
+REFL_DETAIL_PRIMITIVE(signed int)
+REFL_DETAIL_PRIMITIVE(unsigned int)
+REFL_DETAIL_PRIMITIVE(signed long)
+REFL_DETAIL_PRIMITIVE(unsigned long)
+REFL_DETAIL_PRIMITIVE(signed long long)
+REFL_DETAIL_PRIMITIVE(unsigned long long)
 
 // Floating point types.
-REFL_DETAIL_PRIMITIVE(float);
-REFL_DETAIL_PRIMITIVE(double);
-REFL_DETAIL_PRIMITIVE(long double);
+REFL_DETAIL_PRIMITIVE(float)
+REFL_DETAIL_PRIMITIVE(double)
+REFL_DETAIL_PRIMITIVE(long double)
 
 // Other types.
-REFL_DETAIL_PRIMITIVE(decltype(nullptr));
+REFL_DETAIL_PRIMITIVE(decltype(nullptr))
 
 // Void type.
 REFL_TYPE(void)
