@@ -7,3 +7,5 @@ target_link_libraries(
           CONAN_PKG::docopt.cpp
           CONAN_PKG::fmt
           CONAN_PKG::spdlog)
+
+add_subdirectory(benchmarks)
