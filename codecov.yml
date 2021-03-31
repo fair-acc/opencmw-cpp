@@ -1,3 +1,4 @@
 ignore:
   - "*/fuzz_test/**/*"
   - "*/test/**/*"
+  - "*/_deps/**/*"
