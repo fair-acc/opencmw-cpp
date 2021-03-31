@@ -40,6 +40,7 @@ include(cmake/StaticAnalyzers.cmake)
 option(BUILD_SHARED_LIBS "Enable compilation of shared libraries" OFF)
 option(ENABLE_TESTING "Enable Test Builds" ON)
 option(ENABLE_FUZZING "Enable Fuzzing Builds" OFF)
+option(ENABLE_CONCEPTS "Enable Concepts Builds" ON)
 
 # Very basic PCH example
 option(ENABLE_PCH "Enable Precompiled Headers" OFF)
@@ -72,6 +73,11 @@ endif()
 if(ENABLE_FUZZING)
   message("Building Fuzz Tests, using fuzzing sanitizer https://www.llvm.org/docs/LibFuzzer.html")
   add_subdirectory(fuzz_test)
+endif()
+
+if(ENABLE_CONCEPTS)
+  message("Building Concepts")
+  add_subdirectory(concepts)
 endif()
 
 add_subdirectory(src)
