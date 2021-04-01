@@ -20,9 +20,7 @@ AlignAfterOpenBracket: DontAlign
 AlignConsecutiveAssignments: false
 AlignConsecutiveDeclarations: false
 AlignEscapedNewlines: DontAlign
-# Requires clang 11 in Restyler
-#AlignOperands: AlignAfterOperator
-AlignOperands: true
+AlignOperands: AlignAfterOperator
 AlignTrailingComments: false
 AllowAllParametersOfDeclarationOnNextLine: true
 AllowShortLambdasOnASingleLine: None
@@ -37,9 +35,7 @@ BinPackArguments: true
 BinPackParameters: true
 BraceWrapping:
   AfterClass: false
-  # Requires clang 11 in Restyler
-  #AfterControlStatement: Never
-  AfterControlStatement: false
+  AfterControlStatement: Never
   AfterEnum: false
   AfterFunction: false
   AfterNamespace: false
@@ -127,9 +123,7 @@ AlignAfterOpenBracket: DontAlign
 AlignConsecutiveAssignments: false
 AlignConsecutiveDeclarations: false
 AlignEscapedNewlines: DontAlign
-# Requires clang 11 in Restyler
-#AlignOperands: AlignAfterOperator
-AlignOperands: true
+AlignOperands: AlignAfterOperator
 AlignTrailingComments: false
 AllowAllParametersOfDeclarationOnNextLine: true
 AllowShortLambdasOnASingleLine: None
@@ -144,9 +138,7 @@ BinPackArguments: true
 BinPackParameters: true
 BraceWrapping:
   AfterClass: false
-  # Requires clang 11 in Restyler
-  #AfterControlStatement: Never
-  AfterControlStatement: false
+  AfterControlStatement: Never
   AfterEnum: false
   AfterFunction: false
   AfterNamespace: false
