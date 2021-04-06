@@ -28,7 +28,7 @@ function(set_project_warnings project_name)
       /w14905 # wide string literal cast to 'LPSTR'
       /w14906 # string literal cast to 'LPWSTR'
       /w14928 # illegal copy-initialization; more than one user-defined conversion has been implicitly applied
-      /permissive- # standards conformance mode for MSVC compiler.
+#      /permissive- # standards conformance mode for MSVC compiler. (rttr doesn't work with permissive on ref issues #292 and #183 in the rttr repo)
   )
 
   set(CLANG_WARNINGS

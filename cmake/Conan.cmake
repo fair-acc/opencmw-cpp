@@ -21,6 +21,7 @@ macro(run_conan)
     catch2/2.13.3
     docopt.cpp/0.6.2
     fmt/6.2.1
+    rttr/0.9.6
     spdlog/1.5.0
     OPTIONS
     ${CONAN_EXTRA_OPTIONS}
