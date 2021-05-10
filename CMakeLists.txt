@@ -6,8 +6,8 @@ include(cmake/StandardProjectSettings.cmake)
 include(cmake/PreventInSourceBuilds.cmake)
 
 # Link this 'library' to set the c++ standard / compile-time options requested
-add_library(project_options INTERFACE)
-target_compile_features(project_options INTERFACE cxx_std_17)
+add_library(project_options INTERFACE include/opencmw.h include/IoBuffer.h include/Debug.h include/Utils.h include/IoSerialiser.h include/IoClassSerialiser.h)
+target_compile_features(project_options INTERFACE cxx_std_20)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
   option(ENABLE_BUILD_WITH_TIME_TRACE "Enable -ftime-trace to generate time tracing .json files on clang" OFF)
@@ -63,6 +63,8 @@ set(CONAN_EXTRA_OPTIONS "")
 
 include(cmake/Conan.cmake)
 run_conan()
+
+add_subdirectory(include)
 
 if(ENABLE_TESTING)
   enable_testing()
