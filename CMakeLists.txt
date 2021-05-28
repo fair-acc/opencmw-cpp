@@ -39,6 +39,7 @@ include(cmake/StaticAnalyzers.cmake)
 
 option(BUILD_SHARED_LIBS "Enable compilation of shared libraries" OFF)
 option(ENABLE_TESTING "Enable Test Builds" ON)
+option(ENABLE_COVERAGE "Enable Coverage for Test Builds" OFF)
 option(ENABLE_FUZZING "Enable Fuzzing Builds" OFF)
 option(ENABLE_CONCEPTS "Enable Concepts Builds" ON)
 
@@ -68,6 +69,27 @@ if(ENABLE_TESTING)
   enable_testing()
   message("Building Tests. Be sure to check out test/constexpr_tests for constexpr testing")
   add_subdirectory(test)
+  if (ENABLE_COVERAGE)
+    if(UNIX AND NOT APPLE) # Linux
+      message("Coverage reporting enabled")
+      include(cmake/CodeCoverage.cmake) # https://github.com/bilke/cmake-modules/blob/master/CodeCoverage.cmake (License: BSL-1.0)
+      append_coverage_compiler_flags()
+      setup_target_for_coverage_gcovr_xml(
+        NAME coverage
+        EXECUTABLE ctest
+        DEPENDENCIES tests constexpr_tests relaxed_constexpr_tests
+        EXCLUDE "$CMAKE_BUILD_DIR/*" "concepts/refl_cpp/refl_cpp_test.cpp"
+      )
+      setup_target_for_coverage_gcovr_html(
+        NAME coverage_html
+        EXECUTABLE ctest
+        DEPENDENCIES tests constexpr_tests relaxed_constexpr_tests
+        EXCLUDE "$CMAKE_BUILD_DIR/*" "concepts/refl_cpp/refl_cpp_test.cpp"
+      )
+    else()
+      message(WARNING "Coverage is only supported on linux")
+    endif()
+  endif()
 endif()
 
 if(ENABLE_FUZZING)

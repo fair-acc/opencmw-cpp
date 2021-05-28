@@ -48,6 +48,12 @@ jobs:
           ~/.cache/pip
         key: ${{ runner.os }}-${{ matrix.cmake-build-type }}-${{ hashFiles('CMakeLists.txt') }}-${{ hashFiles('cmake/Conan.cmake') }}
 
+    - name: Install gcc-11
+      if: matrix.configurations.os == env.REFERENCE_OS # only for linux
+      run: |
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 110 --slave /usr/bin/g++ g++ /usr/bin/g++-11 --slave /usr/bin/gcov gcov /usr/bin/gcov-11
+        sudo update-alternatives --set gcc /usr/bin/gcc-11
+
     - name: Create Build Environment # setup directory for out-of-tree building
       run: cmake -E make_directory ${{runner.workspace}}/build
 
@@ -58,21 +64,17 @@ jobs:
         python3 -m pip install conan
         echo "/home/runner/.local/bin" >> $GITHUB_PATH
 
-    - name: Install govr
+    - name: Install gcovr
       shell: bash
-      run: |
-        python3 -m pip install gcovr --user --no-warn-script-location
+      run: python3 -m pip install gcovr --user --no-warn-script-location
 
     - name: Check build prerequisites # Fail if we can't run conan or gcovr
       if: matrix.configurations.os == env.REFERENCE_OS
       shell: bash
-      run: |
-        conan --version
-        gcovr --version
+      run: conan --version && gcovr --version
 
     - name: Configure CMake
-      # Use a bash shell so we can use the same syntax for environment variable
-      # access regardless of the host operating system
+      # Use a bash shell so we can use the same syntax for environment variable access regardless of the host operating system
       shell: bash
       working-directory: ${{runner.workspace}}/build
       run: cmake -S $GITHUB_WORKSPACE -B . -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DENABLE_COVERAGE:BOOL=TRUE
@@ -83,25 +85,31 @@ jobs:
       # Execute the build.  You can specify a specific target with "--target <NAME>"
       run: cmake --build . --config ${{ matrix.cmake-build-type }}
 
-    - name: Test
+    - name: Run tests
+      if: matrix.configurations.os != env.REFERENCE_OS || matrix.cmake-build-type != 'Debug'
       working-directory: ${{runner.workspace}}/build
       shell: bash
-      # Execute tests defined by the CMake configuration.
+      # Execute tests defined by the CMake configuration. The coverage target runs the autodiscovered catch2 tests using
+      # ctest and records the coverage using gcov
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       run: ctest -C ${{ matrix.cmake-build-type }}
 
-    - name: coverage report - send to Codecov
-      if: matrix.configurations.os == env.REFERENCE_OS
+    - name: Run tests with coverage
+      if: matrix.configurations.os == env.REFERENCE_OS && matrix.cmake-build-type == 'Debug'
       working-directory: ${{runner.workspace}}/build
       shell: bash
-      run: |
-        bash <(curl -s https://codecov.io/bash) -x /usr/bin/gcov
+      # Execute tests defined by the CMake configuration. The coverage target runs the autodiscovered catch2 tests using
+      # ctest and records the coverage using gcov
+      # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
+      run: cmake --build . --config ${{ matrix.cmake-build-type }} --target coverage
+
+    - uses: codecov/codecov-action@v1
+      if: matrix.configurations.os == env.REFERENCE_OS && matrix.cmake-build-type == 'Debug'
+      with:
+        files: ${{runner.workspace}}/build/coverage.xml
 
     - name: coverage report - send to Codacy
-      if: matrix.configurations.os == env.REFERENCE_OS
+      if: matrix.configurations.os == env.REFERENCE_OS && matrix.cmake-build-type == 'Debug'
       working-directory: ${{ runner.workspace }}/build
       shell: bash
-      run: | # convert to Cobertura's xml format to be palatable by Codacy
-        gcovr -g -k --xml cobertura.xml
-#        commented since there aren't any meaningful tests of classes in /src
-#        bash <(curl -Ls https://coverage.codacy.com/get.sh) report -r cobertura.xml --skip --project-token ${{ secrets.CODACY_PROJECT_TOKEN }}
+      run: bash <(curl -Ls https://coverage.codacy.com/get.sh) report -r coverage.xml --skip --project-token ${{ secrets.CODACY_PROJECT_TOKEN }}
