@@ -5,6 +5,7 @@
 #include <fmt/format.h>
 #include <refl.hpp>
 #include <set>
+#include <MultiArray.hpp>
 
 #define REFL_CUSTOM(TypeName, ...) \
     REFL_TYPE(TypeName) \
@@ -65,6 +66,19 @@ struct StringLiteral {
 //}
 
 template<typename T>
+struct is_multi_array {
+    static const bool value = false;
+};
+
+template<typename T, uint32_t n_dims>
+struct is_multi_array<MultiArray<T, n_dims>> {
+    static const bool value = true;
+};
+
+template<typename T>
+concept MultiArrayType = is_multi_array<T>::value;
+
+template<typename T>
 struct is_array_or_vector {
     static const bool value = false;
 };
@@ -100,7 +114,7 @@ struct is_specialization<Ref<Args...>, Ref> : std::true_type {};
 /* just some helper function to return nicer human-readable type names */
 template<typename T>
 // N.B. extend this for custom classes using type-traits to query nicer class-type name
-requires(!std::is_array<T>::value && !is_array_or_vector<T>::value) constexpr const char *typeName() noexcept {
+requires(!std::is_array<T>::value && !is_array_or_vector<T>::value && !is_multi_array<T>::value) constexpr const char *typeName() noexcept {
     // clang-format off
         using namespace std::literals;
         if constexpr (std::is_same<T, std::byte>::value) { return "byte"; }
@@ -136,7 +150,7 @@ requires(!std::is_array<T>::value && !is_array_or_vector<T>::value) constexpr co
 }
 
 template<typename C, typename T = typename C::value_type, std::size_t size = 0>
-requires(!is_specialization<C, std::basic_string>::value && !is_specialization<C, std::basic_string_view>::value)
+requires(!is_specialization<C, std::basic_string>::value && !is_specialization<C, std::basic_string_view>::value && !is_multi_array<C>::value)
         std::string typeName()
 noexcept {
     using namespace std::literals;
@@ -164,6 +178,12 @@ std::string typeName() noexcept {
     using namespace std::literals;
     using Type = typename std::remove_all_extents<T>::type;
     return std::string(opencmw::typeName<Type>()) + "[?]";
+}
+
+template<MultiArrayType T>
+std::string typeName() noexcept {
+    using namespace std::literals;
+    return fmt::format("MultiArray<{}, {}>", typeName<typename T::value_type>, T::n_dims_);
 }
 
 template<typename Key, typename Value, std::size_t size>
