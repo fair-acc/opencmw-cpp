@@ -31,7 +31,7 @@ jobs:
           - name: Windows Latest
             os: windows-latest
         # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
-        cmake-build-type: [ Release, Debug, RelWithDebInfo ]
+        cmake-build-type: [ Debug ] # [ Release, Debug, RelWithDebInfo ] # todo: enable other builds but without coverage
 
     steps:
     - uses: actions/checkout@v2
@@ -58,21 +58,17 @@ jobs:
         python3 -m pip install conan
         echo "/home/runner/.local/bin" >> $GITHUB_PATH
 
-    - name: Install govr
+    - name: Install gcovr
       shell: bash
-      run: |
-        python3 -m pip install gcovr --user --no-warn-script-location
+      run: python3 -m pip install gcovr --user --no-warn-script-location
 
     - name: Check build prerequisites # Fail if we can't run conan or gcovr
       if: matrix.configurations.os == env.REFERENCE_OS
       shell: bash
-      run: |
-        conan --version
-        gcovr --version
+      run: conan --version && gcovr --version
 
     - name: Configure CMake
-      # Use a bash shell so we can use the same syntax for environment variable
-      # access regardless of the host operating system
+      # Use a bash shell so we can use the same syntax for environment variable access regardless of the host operating system
       shell: bash
       working-directory: ${{runner.workspace}}/build
       run: cmake -S $GITHUB_WORKSPACE -B . -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DENABLE_COVERAGE:BOOL=TRUE
@@ -83,25 +79,22 @@ jobs:
       # Execute the build.  You can specify a specific target with "--target <NAME>"
       run: cmake --build . --config ${{ matrix.cmake-build-type }}
 
-    - name: Test
+    - name: Run tests with coverage
       working-directory: ${{runner.workspace}}/build
       shell: bash
-      # Execute tests defined by the CMake configuration.
+      # Execute tests defined by the CMake configuration. The coverage target runs the autodiscovered catch2 tests using
+      # ctest and records the coverage using gcov
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
-      run: ctest -C ${{ matrix.cmake-build-type }}
+      run: cmake --build . --target coverage
 
     - name: coverage report - send to Codecov
       if: matrix.configurations.os == env.REFERENCE_OS
       working-directory: ${{runner.workspace}}/build
       shell: bash
-      run: |
-        bash <(curl -s https://codecov.io/bash) -x /usr/bin/gcov
+      run: bash <(curl -s https://codecov.io/bash) coverage.xml
 
     - name: coverage report - send to Codacy
       if: matrix.configurations.os == env.REFERENCE_OS
       working-directory: ${{ runner.workspace }}/build
       shell: bash
-      run: | # convert to Cobertura's xml format to be palatable by Codacy
-        gcovr -g -k --xml cobertura.xml
-#        commented since there aren't any meaningful tests of classes in /src
-#        bash <(curl -Ls https://coverage.codacy.com/get.sh) report -r cobertura.xml --skip --project-token ${{ secrets.CODACY_PROJECT_TOKEN }}
+      run: bash <(curl -Ls https://coverage.codacy.com/get.sh) report -r coverage.xml --skip --project-token ${{ secrets.CODACY_PROJECT_TOKEN }}

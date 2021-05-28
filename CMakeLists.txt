@@ -38,6 +38,7 @@ include(cmake/StaticAnalyzers.cmake)
 
 option(BUILD_SHARED_LIBS "Enable compilation of shared libraries" OFF)
 option(ENABLE_TESTING "Enable Test Builds" ON)
+option(ENABLE_COVERAGE "Enable Coverage for Test Builds" OFF)
 option(ENABLE_FUZZING "Enable Fuzzing Builds" OFF)
 option(ENABLE_CONCEPTS "Enable Concepts Builds" ON)
 
@@ -69,6 +70,19 @@ if(ENABLE_TESTING)
   enable_testing()
   message("Building Tests. Be sure to check out test/constexpr_tests for constexpr testing")
   add_subdirectory(test)
+  if (ENABLE_COVERAGE)
+    message("Coverage reporting enabled")
+    include(cmake/CodeCoverage.cmake) # https://github.com/bilke/cmake-modules/blob/master/CodeCoverage.cmake (License: BSL 1.0)
+    append_coverage_compiler_flags()
+    # set(CMAKE_CXX_FLAGS "-g -O0 -Wall -fprofile-arcs -ftest-coverage")
+    setup_target_for_coverage_gcovr_html(
+      NAME coverage
+      EXECUTABLE ctest
+      # DEPENDENCIES
+      # BASE_DIRECTORY "../"                           # Base directory for report (defaults to PROJECT_SOURCE_DIR)
+      EXCLUDE "build_coverage/*" "test/*" "concepts/*" # Patterns to exclude (can be relative to BASE_DIRECTORY, with CMake 3.4+)
+    )
+  endif()
 endif()
 
 if(ENABLE_FUZZING)
