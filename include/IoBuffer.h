@@ -12,11 +12,11 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <MultiArray.hpp>
 
 namespace opencmw {
 
-class IoBuffer
-{
+class IoBuffer {
 private:
     static const bool _alloc_optimisations = true;
     std::size_t       _position            = 0;
@@ -188,7 +188,7 @@ public:
     template<typename I>
     constexpr void put(std::vector<I> const &values) noexcept {
         const std::size_t byteToCopy = values.size() * sizeof(I);
-        ensure(byteToCopy);
+        ensure(byteToCopy + sizeof(int32_t));
         put(static_cast<int32_t>(values.size())); // size of vector
         std::memmove((_buffer + _size), values.data(), byteToCopy);
         _size += byteToCopy;
@@ -197,7 +197,7 @@ public:
     template<typename I, size_t size>
     constexpr void put(const std::array<I, size> &values) noexcept {
         const std::size_t byteToCopy = size * sizeof(I);
-        ensure(byteToCopy);
+        ensure(byteToCopy + sizeof(int32_t));
         put(static_cast<int32_t>(size)); // size of vector
         std::memmove((_buffer + _size), values.data(), byteToCopy);
         _size += byteToCopy;
@@ -237,8 +237,7 @@ public:
     }
 
     template<typename R>
-    constexpr std::vector<R> &
-    getArray(std::vector<R> &&input, const std::size_t &requestedSize = SIZE_MAX) noexcept {
+    constexpr std::vector<R> & getArray(std::vector<R> &&input, const std::size_t &requestedSize = SIZE_MAX) noexcept {
         const auto        arraySize    = static_cast<std::size_t>(get<int32_t>());
         const std::size_t minArraySize = std::min(arraySize, requestedSize); // different for std::array
         input.resize(minArraySize);                                          // different for std::array since we can resize std::vector
@@ -248,22 +247,18 @@ public:
     }
 
     template<typename R, size_t size>
-    constexpr std::array<R, size> &
-    getArray(std::array<R, size> &input, const std::size_t &requestedSize = SIZE_MAX) noexcept {
+    constexpr std::array<R, size> & getArray(std::array<R, size> &input, const std::size_t &requestedSize = SIZE_MAX) noexcept {
         const auto        arraySize    = static_cast<std::size_t>(get<int32_t>());
-        const std::size_t minArraySize = std::min(std::min(arraySize, size),
-                requestedSize); // different for std::vector since array size is constant
+        const std::size_t minArraySize = std::min(std::min(arraySize, size), requestedSize); // different for std::vector since array size is constant
         std::memmove(input.data(), (reinterpret_cast<const R *>(_buffer + _position)), minArraySize * sizeof(R));
         _position += arraySize * sizeof(R);
         return input;
     }
 
     template<typename R, size_t size>
-    constexpr std::array<R, size> &
-    getArray(std::array<R, size> &&input, const std::size_t &requestedSize = SIZE_MAX) noexcept {
+    constexpr std::array<R, size> & getArray(std::array<R, size> &&input, const std::size_t &requestedSize = SIZE_MAX) noexcept {
         const auto        arraySize    = static_cast<std::size_t>(get<int32_t>());
-        const std::size_t minArraySize = std::min(std::min(arraySize, size),
-                requestedSize); // different for std::vector since array size is constant
+        const std::size_t minArraySize = std::min(std::min(arraySize, size), requestedSize); // different for std::vector since array size is constant
         std::memmove(input.data(), (reinterpret_cast<const R *>(_buffer + _position)), minArraySize * sizeof(R));
         _position += arraySize * sizeof(R);
         return input;

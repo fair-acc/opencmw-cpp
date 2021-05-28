@@ -2,6 +2,7 @@
 #define OPENCMW_IOSERIALISER_H
 
 #include <IoBuffer.h>
+#include <MultiArray.hpp>
 #include <list>
 #include <queue>
 
@@ -157,10 +158,10 @@ static const std::string_view PROTOCOL_NAME        = "YaS"; // Yet another Seria
 static const uint8_t          VERSION_MAJOR        = 1;
 static const uint8_t          VERSION_MINOR        = 0;
 static const uint8_t          VERSION_MICRO        = 0;
+static const uint8_t          ARRAY_TYPE_OFFSET = 100U;
 
 // clang-format off
-template<typename T>
-static constexpr uint8_t getDataTypeId() { return 0xFF; } // default value
+template<typename T> static constexpr uint8_t getDataTypeId() { return 0xFF; } // default value
 template<> constexpr uint8_t getDataTypeId<START_MARKER>() { return 0; }
 template<> constexpr uint8_t getDataTypeId<bool>() { return 1; }
 template<> constexpr uint8_t getDataTypeId<int8_t>() { return 2; }
@@ -247,14 +248,43 @@ template<ArrayOrVector T>
 struct IoSerialiser<T, YaS> {
     static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); }
     constexpr static bool    serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
+        buffer.put(std::array<int32_t,1>{static_cast<int32_t>(value.size())});
         buffer.put(value);
         return std::is_constant_evaluated();
     }
     constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) noexcept {
+        buffer.getArray<std::array<int32_t, 1>>(); // todo: verify dimensions
         buffer.getArray(value);
         return std::is_constant_evaluated();
     }
 };
+
+template <MultiArrayType T>
+struct IoSerialiser<T, YaS> {
+    static constexpr uint8_t getDataTypeId() {
+        // std::cout << fmt::format("getDataTypeID<{}>() = {}\n", typeName<typename T::value_type>(), yas::getDataTypeId<typename T::value_type>());
+        return yas::ARRAY_TYPE_OFFSET + yas::getDataTypeId<typename T::value_type>(); }
+    constexpr static bool    serialise(IoBuffer &buffer, const ClassField & field, const T &value) noexcept {
+        std::cout << fmt::format("{} - serialise-MultiArray: {} {} == {} - constexpr?: {}, typeid = {}\n", YaS::protocolName(), typeName<T>(), field, value, std::is_constant_evaluated(), getDataTypeId());
+        buffer.put(value.dimensions());
+        buffer.put(value.elements()); // todo: account for strides and offsets (possibly use iterators?)
+        return std::is_constant_evaluated();
+    }
+    constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) noexcept {
+        value.dimensions() = buffer.getArray<typename T::size_t_, T::n_dims_>(); // todo: verify dimensions, use template for dimension
+        value.element_count() = 1;
+        value.stride(T::n_dims_ - 1) = 1;
+        value.offset(T::n_dims_ - 1) = 0;
+        for (auto i = T::n_dims_ - 1; i > 0; i--) {
+            value.element_count() *= value.dimensions()[i - 1];
+            value.stride(i - 1) = value.stride(i) * value.dimensions()[i];
+            value.offset(i - 1) = 0;
+        }
+        buffer.getArray(value.elements());
+        return std::is_constant_evaluated();
+    }
+};
+
 
 template<>
 struct IoSerialiser<START_MARKER, YaS> {

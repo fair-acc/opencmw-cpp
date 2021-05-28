@@ -42,13 +42,13 @@ struct Data {
     std::vector<float>       floatVector = { 0.1f, 1.1f, 2.1f, 3.1f, 4.1f, 5.1f, 6.1f, 8.1f, 9.1f, 9.1f };
     NestedData               nestedData;
     Annotated<double, "Ohm"> annotatedValue = 0.1;
+    opencmw::MultiArray<double, 2>    doubleMatrix{{1, 3, 7, 4, 2, 3}, {2,3}};
 
     Data()                                  = default;
-    auto operator<=>(const Data &) const    = default;
     bool operator==(const Data &) const     = default;
 };
 // following is the visitor-pattern-macro that allows the compile-time reflections via refl-cpp
-REFL_CUSTOM(Data, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, doubleArray, floatVector, nestedData, annotatedValue) //TODO: reenable nestedData
+REFL_CUSTOM(Data, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, doubleArray, floatVector, nestedData, annotatedValue, doubleMatrix) //TODO: reenable nestedData
 
 TEST_CASE("IoClassSerialiser basic syntax", "[IoClassSerialiser]") {
     std::cout << std::unitbuf;
@@ -76,6 +76,11 @@ TEST_CASE("IoClassSerialiser basic syntax", "[IoClassSerialiser]") {
         data2.nestedData.stringValue          = "different text";
         data2.nestedData.doubleArray.value[3] = 99;
         data2.nestedData.floatVector.value.clear();
+        data2.doubleMatrix.dimensions()[0] = 3;
+        data2.doubleMatrix.dimensions()[1] = 2;
+        data2.doubleMatrix.elements().assign({1,2,3,4,5,6});
+        data2.doubleMatrix(0U,0U) = 9;
+        data2.doubleMatrix(1U,2U) = 9;
         REQUIRE(data != data2);
 
         opencmw::serialise<opencmw::YaS>(buffer, data);
@@ -98,8 +103,11 @@ TEST_CASE("IoClassSerialiser basic syntax", "[IoClassSerialiser]") {
         }
         std::cout << "after: " << std::flush;
         diffView(std::cout, data, data2);
+        REQUIRE(data == data2);
+        REQUIRE(data.doubleMatrix(0U,0U) == data2.doubleMatrix(0U,0U));
+        REQUIRE(data.doubleMatrix(1U,2U) == data2.doubleMatrix(1U,2U));
     }
-    //REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
+    REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
     debug::resetStats();
     std::cout << "finished test\n";
 }
