@@ -12,8 +12,12 @@ macro(run_conan)
     URL https://api.bintray.com/conan/conan/conan-center)
 
   conan_add_remote(
+    NAME conan-mpusz
+    URL https://mpusz.jfrog.io/artifactory/api/conan/conan-oss)
+
+  conan_add_remote(
     NAME bincrafters
-    URL https://api.bintray.com/conan/bincrafters/public-conan)
+    URL https://bincrafters.jfrog.io/artifactory/api/conan/public-conan)
 
   conan_cmake_run(
     REQUIRES
@@ -22,6 +26,7 @@ macro(run_conan)
     docopt.cpp/0.6.2
     fmt/6.2.1
     spdlog/1.5.0
+    mp-units/0.6.0
     OPTIONS
     ${CONAN_EXTRA_OPTIONS}
     BASIC_SETUP
