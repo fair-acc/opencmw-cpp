@@ -2,10 +2,10 @@
 #pragma ide diagnostic   ignored "LoopDoesntUseConditionVariableInspection"
 #pragma ide diagnostic   ignored "cppcoreguidelines-avoid-magic-numbers"
 
-#include <Debug.h>
-#include <IoClassSerialiser.h>
-#include <IoSerialiser.h>
-#include <Utils.h>
+#include <Debug.hpp>
+#include <IoClassSerialiser.hpp>
+#include <IoSerialiser.hpp>
+#include <Utils.hpp>
 #include <catch2/catch.hpp>
 #include <iostream>
 #include <string_view>
@@ -31,24 +31,25 @@ struct NestedData {
 REFL_CUSTOM(NestedData, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, doubleArray, floatVector)
 
 struct Data {
-    int8_t                   byteValue   = 1;
-    int16_t                  shortValue  = 2;
-    int32_t                  intValue    = 3;
-    int64_t                  longValue   = 4;
-    float                    floatValue  = 5.0F;
-    double                   doubleValue = 6.0;
-    std::string              stringValue = "bare string";
-    std::array<double, 10>   doubleArray = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
-    std::vector<float>       floatVector = { 0.1f, 1.1f, 2.1f, 3.1f, 4.1f, 5.1f, 6.1f, 8.1f, 9.1f, 9.1f };
-    NestedData               nestedData;
-    Annotated<double, "Ohm"> annotatedValue = 0.1;
-    opencmw::MultiArray<double, 2>    doubleMatrix{{1, 3, 7, 4, 2, 3}, {2,3}};
+    int8_t                         byteValue        = 1;
+    int16_t                        shortValue       = 2;
+    int32_t                        intValue         = 3;
+    int64_t                        longValue        = 4;
+    float                          floatValue       = 5.0F;
+    double                         doubleValue      = 6.0;
+    std::string                    stringValue      = "bare string";
+    std::string const              constStringValue = "unmodifiable string";
+    std::array<double, 10>         doubleArray      = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+    std::vector<float>             floatVector      = { 0.1f, 1.1f, 2.1f, 3.1f, 4.1f, 5.1f, 6.1f, 8.1f, 9.1f, 9.1f };
+    opencmw::MultiArray<double, 2> doubleMatrix{ { 1, 3, 7, 4, 2, 3 }, { 2, 3 } };
+    NestedData                     nestedData;
+    Annotated<double, "Ohm">       annotatedValue = 0.1;
 
-    Data()                                  = default;
-    bool operator==(const Data &) const     = default;
+    Data()                                        = default;
+    bool operator==(const Data &) const           = default;
 };
 // following is the visitor-pattern-macro that allows the compile-time reflections via refl-cpp
-REFL_CUSTOM(Data, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, doubleArray, floatVector, nestedData, annotatedValue, doubleMatrix) //TODO: reenable nestedData
+REFL_CUSTOM(Data, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, constStringValue, doubleArray, floatVector, doubleMatrix, nestedData, annotatedValue) //TODO: reenable nestedData
 
 TEST_CASE("IoClassSerialiser basic syntax", "[IoClassSerialiser]") {
     std::cout << std::unitbuf;
@@ -71,16 +72,13 @@ TEST_CASE("IoClassSerialiser basic syntax", "[IoClassSerialiser]") {
         data2.annotatedValue = 0.2;
         data2.doubleArray[3] = 99;
         data2.floatVector.clear();
-        data2.nestedData.byteValue            = '\0';
-        data2.nestedData.floatValue           = 12.0F;
+        data2.nestedData.byteValue  = '\0';
+        data2.nestedData.floatValue = 12.0F;
+        data2.nestedData.floatValue *= 2.0f;
         data2.nestedData.stringValue          = "different text";
         data2.nestedData.doubleArray.value[3] = 99;
+        data2.doubleMatrix(0U, 0U)            = 42;
         data2.nestedData.floatVector.value.clear();
-        data2.doubleMatrix.dimensions()[0] = 3;
-        data2.doubleMatrix.dimensions()[1] = 2;
-        data2.doubleMatrix.elements().assign({1,2,3,4,5,6});
-        data2.doubleMatrix(0U,0U) = 9;
-        data2.doubleMatrix(1U,2U) = 9;
         REQUIRE(data != data2);
 
         opencmw::serialise<opencmw::YaS>(buffer, data);
@@ -104,8 +102,8 @@ TEST_CASE("IoClassSerialiser basic syntax", "[IoClassSerialiser]") {
         std::cout << "after: " << std::flush;
         diffView(std::cout, data, data2);
         REQUIRE(data == data2);
-        REQUIRE(data.doubleMatrix(0U,0U) == data2.doubleMatrix(0U,0U));
-        REQUIRE(data.doubleMatrix(1U,2U) == data2.doubleMatrix(1U,2U));
+        REQUIRE(data.doubleMatrix(0U, 0U) == data2.doubleMatrix(0U, 0U));
+        REQUIRE(data.doubleMatrix(1U, 2U) == data2.doubleMatrix(1U, 2U));
     }
     REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
     debug::resetStats();

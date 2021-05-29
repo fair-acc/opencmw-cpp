@@ -1,26 +1,28 @@
 #ifndef OPENCMW_CPP_MULTI_ARRAY_HPP
 #define OPENCMW_CPP_MULTI_ARRAY_HPP
 
-#include <fmt/color.h>
-#include <fmt/format.h>
 #include <array>
-#include <cstddef>  // std::size_t
-#include <iostream> // std::cout
 #include <vector>
 
 namespace opencmw {
+
+template<typename T>
+concept AnyNumber = std::is_arithmetic_v<T>;
 
 /// MultiArray implementation with a fixed number of dimensions but variable number of elements
 /// \tparam T type of the data entries
 /// \tparam n_dims number of dimensions >= 1 (1 -> vector, 2-> matrix, etc)
 template<typename T, uint32_t n_dims>
-requires(n_dims >= 1) class MultiArray {
+class MultiArray {
+    static_assert(n_dims >= 1, "n_dims must be larger than 0");
+
 public:
-    using size_t_ = uint32_t; // alternative: using size_t_ = size_t; // have to use signed int here?, because that's what is used in the serialised protocol (bc of java)
-    using value_type = T;
+    using size_t_                    = uint32_t; // alternative: using size_t_ = size_t; // have to use signed int here?, because that's what is used in the serialised protocol (bc of java)
+    using value_type                 = T;
     static constexpr size_t_ n_dims_ = n_dims;
+
 private:
-    std::vector<value_type>              elements_;  // data
+    std::vector<value_type>     elements_;  // data
     size_t_                     n_element_; // number of valid entries in data
     std::array<size_t_, n_dims> dims_;      // sizes for every dimension
     std::array<size_t_, n_dims> strides_;   // strides_ for every dimension
@@ -28,7 +30,7 @@ private:
 public:
     /// full control constructor, allowing to realise custom matrix layouts
     [[nodiscard]] constexpr MultiArray(
-            const std::vector<value_type>               elements,
+            const std::vector<value_type>      elements,
             const std::array<size_t_, n_dims> &dimensions,
             const std::array<size_t_, n_dims> &strides,
             const std::array<size_t_, n_dims>  offsets)
@@ -183,23 +185,22 @@ public:
     }
 
     // math operator overloads [+-*/[=]] arithmetic<value_type> MultiArray<value_type> vector<value_type> (both lvalue and rvalue version)
-    MultiArray &operator+=(const MultiArray<value_type , n_dims> operand) {
+    MultiArray &operator+=(const MultiArray<value_type, n_dims> operand) {
         // todo: verify dimension match. Allow broadcasting (adding a column vector to each row or similar)?
         for (size_t_ i = 0; i < n_element_; i++) { // todo: use iterator to only change valid fields
             this[i] += operand[i];
         }
         return *this;
     }
-    template<typename R>
-    requires std::is_arithmetic<value_type>::value
-            MultiArray &
-            operator+=(const R operand) {
+    template<AnyNumber R>
+    MultiArray &operator+=(const R operand) {
         for (size_t_ i = 0; i < n_element_; i++) { // todo: use iterator to only change valid fields
             this[i] += operand;
         }
         return *this;
     }
-    MultiArray<value_type , n_dims> operator+(const MultiArray<value_type, n_dims> operand) {
+
+    MultiArray<value_type, n_dims> operator+(const MultiArray<value_type, n_dims> operand) {
         // todo: verify dimension match. Allow broadcasting (adding a column vector to each row or similar)?
         MultiArray &result = MultiArray<value_type, n_dims>(this->dims_);
         for (size_t_ i = 0; i < n_element_; i++) { // todo: use iterator to only change valid fields
@@ -207,10 +208,8 @@ public:
         }
         return result;
     }
-    template<typename R>
-    requires std::is_arithmetic<value_type>::value
-            MultiArray &
-            operator+(const R operand) {
+    template<AnyNumber R>
+    MultiArray &operator+(const R operand) {
         MultiArray &result = MultiArray<value_type, n_dims>(this->dims_);
         for (size_t_ i = 0; i < n_element_; i++) { // todo: use iterator to only change valid fields
             this[i] += operand;
@@ -218,7 +217,7 @@ public:
         return result;
     }
 
-     bool operator==(const MultiArray<value_type,n_dims>& other) const noexcept {
+    bool operator==(const MultiArray<value_type, n_dims> &other) const noexcept {
         // check if array is the same size
         for (size_t_ i = 0; i < n_dims; i++) {
             if (dims_[i] != other.dims_[i]) {
@@ -267,16 +266,7 @@ public:
 
     /// simple print operator for debugging
     constexpr friend std::ostream &operator<<(std::ostream &output, const MultiArray &array) {
-        //return output << fmt::format("elements: {} dimensions: {} data: {}", array.element_count(), array.dimensions(), array.elements()); // does not work
-        output << "elements: " << array.element_count() << ", dimensions: ";
-        for (const auto &n : array.dimensions()) {
-            output << n << ", ";
-        }
-        output << " data: ";
-        for (const auto &e : array.elements()) {
-            output << e << ", ";
-        }
-        return output;
+        return output << fmt::format("{{dim[{}]:{}, data[{}]:{}}}", n_dims, array.dimensions(), array.element_count(), array.elements()); // does not work
     }
 };
 
@@ -291,6 +281,19 @@ public:
 // MultiArrayIterator -> returns iterator of T
 // MultiArrayDimIterator -> returns iterator of MultiArrayView<T, dim-1>
 // iterators should be aware if they represent congruent memory to allow using memmove type copying if applicable
+
+template<typename T>
+struct is_multi_array {
+    static const bool value = false;
+};
+
+template<typename T, uint32_t n_dims>
+struct is_multi_array<MultiArray<T, n_dims>> {
+    static const bool value = true;
+};
+
+template<typename T>
+concept MultiArrayType = is_multi_array<T>::value;
 
 } // namespace opencmw
 

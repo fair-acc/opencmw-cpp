@@ -1,4 +1,4 @@
-#include "MultiArray.hpp"
+#include <MultiArray.hpp>
 #include <catch2/catch.hpp>
 #include <iostream>
 

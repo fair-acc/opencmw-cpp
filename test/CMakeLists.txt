@@ -10,7 +10,7 @@ include(${PROJECT_SOURCE_DIR}/cmake/ReflCpp.cmake)
 include_directories(${PROJECT_SOURCE_DIR}/include)
 include_directories(../include/)
 
-add_library(catch_main STATIC catch_main.cpp IoBuffer_tests.cpp IoSerialiser_tests.cpp IoClassSerialiser_tests.cpp ../include/opencmw.h ../include/IoBuffer.h ../include/IoSerialiser.h ../include/IoClassSerialiser.h ../include/MultiArray.hpp)
+add_library(catch_main STATIC catch_main.cpp IoBuffer_tests.cpp IoSerialiser_tests.cpp IoClassSerialiser_tests.cpp ../include/opencmw.hpp ../include/IoBuffer.hpp ../include/IoSerialiser.hpp ../include/IoClassSerialiser.hpp ../include/MultiArray.hpp)
 target_link_libraries(catch_main PUBLIC CONAN_PKG::catch2 CONAN_PKG::fmt)
 target_link_libraries(catch_main PRIVATE project_options)
 target_include_directories(catch_main SYSTEM PUBLIC ${refl-cpp_SOURCE_DIR}/include)
@@ -24,7 +24,7 @@ set(
 )
 
 foreach(example IN LISTS OpenCMW)
-  add_executable("${example}_tests" "${example}_tests.cpp" ../include/opencmw.h ../include/IoBuffer.h ../include/IoSerialiser.h ../include/IoClassSerialiser.h ../include/MultiArray.hpp)
+  add_executable("${example}_tests" "${example}_tests.cpp" ../include/opencmw.hpp ../include/IoBuffer.hpp ../include/IoSerialiser.hpp ../include/IoClassSerialiser.hpp ../include/MultiArray.hpp)
   # target_link_libraries("${example}" PRIVATE refl-cpp::refl-cpp)
   target_link_libraries("${example}_tests" PRIVATE project_warnings project_options catch_main)
   target_compile_features("${example}_tests" PRIVATE cxx_std_20)

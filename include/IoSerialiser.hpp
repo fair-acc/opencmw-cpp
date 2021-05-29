@@ -1,7 +1,7 @@
 #ifndef OPENCMW_IOSERIALISER_H
 #define OPENCMW_IOSERIALISER_H
 
-#include <IoBuffer.h>
+#include <IoBuffer.hpp>
 #include <MultiArray.hpp>
 #include <list>
 #include <queue>
@@ -13,9 +13,9 @@
 namespace opencmw {
 
 /* unit-/description-type annotation variant #2 C++20 compatible (to note: cool non-type template arguments and of course the space-ship <=> operator */
+// clang-format off
 template<typename T, const StringLiteral unit = "", const StringLiteral description = "", const StringLiteral direction = "", const StringLiteral... groups>
 struct Annotated {
-    // clang-format off
     using String = std::string_view;
     T value;
     //constexpr Annotated() = delete;
@@ -64,8 +64,8 @@ struct Annotated {
     template<typename O> Annotated operator/(const O &rhs) { return this->value /= rhs.value; }
 
     //friend constexpr std::ostream &operator<<(std::ostream &os, const Annotated &m) { return os << m.value; }
-    // clang-format on
 };
+// clang-format on
 
 template<typename>
 struct isAnnotated : public std::false_type {};
@@ -81,12 +81,12 @@ constexpr bool isAnnotatedMember(T const &) { return isAnnotated<T>::value; }
 
 template<typename T>
 constexpr T getAnnotatedMember(const T &annotatedValue) {
-    return annotatedValue;
+    return annotatedValue; //TODO: sort out perfect forwarding/move
 }
 
 template<typename T, const StringLiteral unit, const StringLiteral description, const StringLiteral direction>
 constexpr T getAnnotatedMember(const Annotated<T, unit, description, direction> &annotatedValue) {
-    return annotatedValue.value;
+    return annotatedValue.value; //TODO: sort out perfect forwarding/move
 }
 
 template<StringLiteral protocol>
@@ -99,10 +99,7 @@ struct Protocol {
 template<typename T>
 concept SerialiserProtocol = requires { T::protocolName(); }; // TODO: find neater check via is_protocol
 
-//template<typename T>
-//static constexpr uint8_t getDataTypeId() { return 0xFF; } // default value
-
-using ClassField = std::string_view; // as a place-holder for the reflected type info
+using ClassField           = std::string_view; // as a place-holder for the reflected type info
 
 /// generic protocol definition -> should throw exception when used in production code
 template<typename T, SerialiserProtocol protocol>
@@ -116,7 +113,7 @@ struct IoSerialiser {
         return std::is_constant_evaluated();
     }
 
-    constexpr static bool deserialise(IoBuffer & /*buffer*/, const ClassField &field, const T &value) noexcept {
+    constexpr static bool deserialise(IoBuffer & /*buffer*/, const ClassField &field, T &value) noexcept {
         std::cout << fmt::format("{:<4} - deserialise-generic: {} {} value: {} - constexpr?: {}\n",
                 protocol::protocolName(), typeName<T>(), field, value,
                 std::is_constant_evaluated());
@@ -158,7 +155,7 @@ static const std::string_view PROTOCOL_NAME        = "YaS"; // Yet another Seria
 static const uint8_t          VERSION_MAJOR        = 1;
 static const uint8_t          VERSION_MINOR        = 0;
 static const uint8_t          VERSION_MICRO        = 0;
-static const uint8_t          ARRAY_TYPE_OFFSET = 100U;
+static const uint8_t          ARRAY_TYPE_OFFSET    = 100U;
 
 // clang-format off
 template<typename T> static constexpr uint8_t getDataTypeId() { return 0xFF; } // default value
@@ -248,7 +245,7 @@ template<ArrayOrVector T>
 struct IoSerialiser<T, YaS> {
     static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); }
     constexpr static bool    serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
-        buffer.put(std::array<int32_t,1>{static_cast<int32_t>(value.size())});
+        buffer.put(std::array<int32_t, 1>{ static_cast<int32_t>(value.size()) });
         buffer.put(value);
         return std::is_constant_evaluated();
     }
@@ -259,20 +256,21 @@ struct IoSerialiser<T, YaS> {
     }
 };
 
-template <MultiArrayType T>
+template<MultiArrayType T>
 struct IoSerialiser<T, YaS> {
     static constexpr uint8_t getDataTypeId() {
         // std::cout << fmt::format("getDataTypeID<{}>() = {}\n", typeName<typename T::value_type>(), yas::getDataTypeId<typename T::value_type>());
-        return yas::ARRAY_TYPE_OFFSET + yas::getDataTypeId<typename T::value_type>(); }
-    constexpr static bool    serialise(IoBuffer &buffer, const ClassField & field, const T &value) noexcept {
+        return yas::ARRAY_TYPE_OFFSET + yas::getDataTypeId<typename T::value_type>();
+    }
+    constexpr static bool serialise(IoBuffer &buffer, const ClassField &field, const T &value) noexcept {
         std::cout << fmt::format("{} - serialise-MultiArray: {} {} == {} - constexpr?: {}, typeid = {}\n", YaS::protocolName(), typeName<T>(), field, value, std::is_constant_evaluated(), getDataTypeId());
         buffer.put(value.dimensions());
         buffer.put(value.elements()); // todo: account for strides and offsets (possibly use iterators?)
         return std::is_constant_evaluated();
     }
     constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) noexcept {
-        value.dimensions() = buffer.getArray<typename T::size_t_, T::n_dims_>(); // todo: verify dimensions, use template for dimension
-        value.element_count() = 1;
+        value.dimensions()           = buffer.getArray<typename T::size_t_, T::n_dims_>(); // todo: verify dimensions, use template for dimension
+        value.element_count()        = 1;
         value.stride(T::n_dims_ - 1) = 1;
         value.offset(T::n_dims_ - 1) = 0;
         for (auto i = T::n_dims_ - 1; i > 0; i--) {
@@ -284,7 +282,6 @@ struct IoSerialiser<T, YaS> {
         return std::is_constant_evaluated();
     }
 };
-
 
 template<>
 struct IoSerialiser<START_MARKER, YaS> {
