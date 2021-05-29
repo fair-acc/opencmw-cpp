@@ -2,8 +2,8 @@
 #pragma ide diagnostic   ignored "LoopDoesntUseConditionVariableInspection"
 #pragma ide diagnostic   ignored "cppcoreguidelines-avoid-magic-numbers"
 
-#include <Debug.h>
-#include <IoSerialiser.h>
+#include <Debug.hpp>
+#include <IoSerialiser.hpp>
 #include <catch2/catch.hpp>
 #include <iostream>
 #include <string_view>
@@ -73,8 +73,8 @@ TEST_CASE("IoSerialiser primitive numbers YaS", "[IoSerialiser]") {
             }
             return sizeof(value);
         };
-        auto writeTest = [&buffer, &oldBufferPosition, &expectedSize]<typename T, opencmw::SerialiserProtocol protocol = opencmw::YaS>(const T &value) {
-            const auto &msg = fmt::format("writeTest(IoBuffer&, size_t&,({}){})", opencmw::typeName<T>(), value);
+        auto writeTest = [&buffer, &oldBufferPosition, &expectedSize]<typename T, opencmw::SerialiserProtocol protocol = opencmw::YaS>(T && value) {
+            const auto &msg = fmt::format("writeTest(IoBuffer&, size_t&,({}){})", opencmw::typeName<T>(), std::forward<T>(value));
             REQUIRE_MESSAGE(buffer.size() == oldBufferPosition, msg);
             opencmw::IoSerialiser<T, protocol>::serialise(buffer, std::string(opencmw::typeName<T>()) + "TestData", value);
             REQUIRE_MESSAGE((buffer.size() - oldBufferPosition) == expectedSize(value), msg);

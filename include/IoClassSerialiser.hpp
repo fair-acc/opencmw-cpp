@@ -1,15 +1,14 @@
 #ifndef OPENCMW_IOCLASSSERIALISER_H
 #define OPENCMW_IOCLASSSERIALISER_H
-#include <IoSerialiser.h>
+#include <IoSerialiser.hpp>
 
 namespace opencmw {
 
 template<SerialiserProtocol protocol, ReflectableClass T>
 constexpr void serialise(IoBuffer &buffer, const T &value, const bool writeMetaInfo = true, const uint8_t hierarchyDepth = 0) {
-    //static_assert(std::is_class<std::remove_reference_t<decltype(value)>>::value, "value should be ReflectableClass");
     for_each(refl::reflect(value).members, [&](const auto member, [[maybe_unused]] const auto index) {
         using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(member(value)))>;
-        if constexpr (is_field(member)) {
+        if constexpr (is_field(member) && !is_static(member)) {
             if constexpr (isReflectableClass<MemberType>()) {
                 std::size_t posSizePositionStart = opencmw::putFieldHeader<protocol>(buffer, member.name.str(), START_MARKER_INST);
                 std::size_t posStartDataStart    = buffer.size() - sizeof(uint8_t);                                // '-1 because we wrote one byte as marker payload
@@ -39,7 +38,7 @@ std::unordered_map<std::string_view, int32_t> createMemberMap() {
 
 template<typename T>
 int32_t findMemberIndex(const std::string_view fieldName) {
-    static const std::unordered_map<std::string_view, int32_t> m = createMemberMap<T>();
+    static const std::unordered_map<std::string_view, int32_t> m = createMemberMap<T>(); // TODO: consider replacing this by ConstExprMap (array list-based)
     return m.at(fieldName);
 }
 
@@ -67,12 +66,11 @@ constexpr void deserialise(IoBuffer &buffer, T &value, const bool readMetaInfo =
             // const String description = (buffer.position() == dataStartPosition) ? "" : buffer.get<String>();
             // const String direction   = (buffer.position() == dataStartPosition) ? "" : buffer.get<String>();
             //std::cout << fmt::format("parsed field {:<20} meta data: [{}] {} dir: {}\n", fieldName, unit, description, direction);
-            buffer.position() = dataStartPosition;
         } else {
             //std::cout << fmt::format("parsed field {:<20} - {}\n", fieldName, hashFieldName);
-            // skip to data start
-            buffer.position() = dataStartPosition;
         }
+        // skip to data start
+        buffer.position() = dataStartPosition;
 
         if (intDataType == IoSerialiser<END_MARKER, protocol>::getDataTypeId()) {
             // reached end of sub-structure
@@ -120,7 +118,7 @@ constexpr void deserialise(IoBuffer &buffer, T &value, const bool readMetaInfo =
 
         for_each(refl::reflect<T>().members, [&buffer, &value, &intDataType, &searchIndex, &fieldName](auto member, int32_t index) {
             using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(member(value)))>;
-            if constexpr (!isReflectableClass<MemberType>()) {
+            if constexpr (!isReflectableClass<MemberType>() && is_writable(member) && !is_static(member)) {
                 if (IoSerialiser<MemberType, protocol>::getDataTypeId() == intDataType && index == searchIndex) { //TODO: protocol exception for mismatching data-type?
                     if constexpr (requires { member(value).value; }) {
                         IoSerialiser<MemberType, protocol>::deserialise(buffer, fieldName, member(value).value);

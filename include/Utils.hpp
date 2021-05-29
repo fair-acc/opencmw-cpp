@@ -1,6 +1,6 @@
 #ifndef OPENCMW_UTILS_H
 #define OPENCMW_UTILS_H
-#include <IoClassSerialiser.h>
+#include <IoClassSerialiser.hpp>
 #include <array>
 #include <fmt/format.h>
 #include <fmt/ostream.h>

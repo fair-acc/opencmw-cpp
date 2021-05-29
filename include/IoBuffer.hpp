@@ -3,16 +3,16 @@
 #pragma clang diagnostic push
 #pragma ide diagnostic   ignored "cppcoreguidelines-owning-memory"
 
+#include <MultiArray.hpp>
 #include <algorithm>
 #include <array>
 #include <cassert>
 #include <numeric>
-#include <opencmw.h>
+#include <opencmw.hpp>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
-#include <MultiArray.hpp>
 
 namespace opencmw {
 
