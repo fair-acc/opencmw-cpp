@@ -33,8 +33,8 @@ concept ReflectableClass = isReflectableClass<T>();
 
 template<typename T>
 struct is_supported_number {
-    using Tp = std::decay<T>::type;
-    static const bool value = std::is_same<Tp, uint8_t>::value || std::is_same<Tp, int8_t>::value || std::is_same<Tp, int16_t>::value //
+    using Tp                = std::decay<T>::type;
+    static const bool value = std::is_same<Tp, bool>::value || std::is_same<Tp, char>::value || std::is_same<Tp, uint8_t>::value || std::is_same<Tp, int8_t>::value || std::is_same<Tp, int8_t>::value || std::is_same<Tp, int16_t>::value //
                            || std::is_same<Tp, int32_t>::value || std::is_same<Tp, int64_t>::value || std::is_same<Tp, float>::value || std::is_same<Tp, double>::value;
 };
 

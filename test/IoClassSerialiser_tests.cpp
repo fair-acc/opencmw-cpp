@@ -49,7 +49,7 @@ struct Data {
     bool operator==(const Data &) const           = default;
 };
 // following is the visitor-pattern-macro that allows the compile-time reflections via refl-cpp
-REFL_CUSTOM(Data, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, constStringValue, doubleArray, floatVector, doubleMatrix, nestedData, annotatedValue) //TODO: reenable nestedData
+REFL_CUSTOM(Data, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, constStringValue, doubleArray, floatVector, doubleMatrix, nestedData, annotatedValue)
 
 TEST_CASE("IoClassSerialiser basic syntax", "[IoClassSerialiser]") {
     std::cout << std::unitbuf;
