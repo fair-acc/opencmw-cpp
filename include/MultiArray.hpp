@@ -2,6 +2,9 @@
 #define OPENCMW_CPP_MULTI_ARRAY_HPP
 
 #include <array>
+#include <fmt/color.h>
+#include <fmt/format.h>
+#include <iostream>
 #include <vector>
 
 namespace opencmw {
@@ -62,7 +65,7 @@ public:
 
     /// constructor for an empty MultiArray of given size
     /// \param dimensions the size of the MultiArray in every dimension
-    [[nodiscard]] constexpr explicit MultiArray(const std::array<size_t_, n_dims> &dimensions)
+    [[nodiscard]] constexpr explicit MultiArray(const std::array<size_t_, n_dims> &dimensions = std::array<size_t_, n_dims>())
         : n_element_(dimensions[n_dims - 1]), dims_(dimensions), strides_(), offsets_() {
         strides_[n_dims - 1] = 1;
         for (auto i = n_dims - 1; i > 0; i--) {
@@ -70,6 +73,14 @@ public:
             strides_[i - 1] = strides_[i] * dimensions[i];
         }
         elements_ = std::vector<value_type>(n_element_);
+    }
+
+    void clear() {
+        // elements_.clear();
+        // n_element_ = 0;
+        // std::iota(dims_.begin(), dims_.end(),0);
+        // std::iota(strides_.begin(), strides_.end(),0);
+        // std::iota(offsets_.begin(), offsets_.end(),0);
     }
 
     /// \return the number of dimensions of the MultiArray

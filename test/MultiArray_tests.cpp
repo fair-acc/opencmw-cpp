@@ -1,8 +1,11 @@
+#include <opencmw.hpp>
+#include <Utils.hpp>
 #include <MultiArray.hpp>
 #include <catch2/catch.hpp>
 #include <iostream>
 
 using namespace opencmw;
+using namespace opencmw::utils;
 
 TEST_CASE("MultiArray.doubleSimple", "[MultiArray]") {
     MultiArray<double, 2> test({1,2,3,4,5,6}, {2,3});

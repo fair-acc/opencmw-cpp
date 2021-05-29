@@ -5,7 +5,7 @@ include(cmake/StandardProjectSettings.cmake)
 include(cmake/PreventInSourceBuilds.cmake)
 
 # Link this 'library' to set the c++ standard / compile-time options requested
-add_library(project_options INTERFACE include/opencmw.hpp include/IoBuffer.hpp include/Debug.hpp include/Utils.hpp include/IoSerialiser.hpp include/IoClassSerialiser.hpp include/MultiArray.hpp)
+add_library(project_options INTERFACE include/opencmw.hpp include/IoBuffer.hpp include/Debug.hpp include/Utils.hpp include/IoSerialiser.hpp include/IoClassSerialiser.hpp include/MultiArray.hpp concepts/serialiser/IoClassSerialiserBenchmark.cpp concepts/serialiser/IoClassSerialiserBenchmark.hpp)
 target_compile_features(project_options INTERFACE cxx_std_20)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
