@@ -76,7 +76,7 @@ if(ENABLE_TESTING)
       include(cmake/CodeCoverage.cmake) # https://github.com/bilke/cmake-modules/blob/master/CodeCoverage.cmake (License: BSL-1.0)
       append_coverage_compiler_flags()
       # set(CMAKE_CXX_FLAGS "-g -O0 -Wall -fprofile-arcs -ftest-coverage")
-      setup_target_for_coverage_gcovr_html(
+      setup_target_for_coverage_gcovr_xml(
         NAME coverage
         EXECUTABLE ctest
         # DEPENDENCIES

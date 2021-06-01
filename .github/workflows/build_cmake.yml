@@ -26,10 +26,10 @@ jobs:
         configurations:
           - name: Ubuntu Latest
             os: ubuntu-latest
-          - name: MacOS Latest
-            os: macos-latest
-          - name: Windows Latest
-            os: windows-latest
+          # - name: MacOS Latest # mpunits not supported -> fails
+          #   os: macos-latest
+          # - name: Windows Latest # not currently working
+          #   os: windows-latest
         # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
         cmake-build-type: [ Debug ] # [ Release, Debug, RelWithDebInfo ] # todo: enable other builds but without coverage
 
