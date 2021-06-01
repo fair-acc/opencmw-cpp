@@ -29,8 +29,7 @@ static void        resetStats() {
 
 #pragma clang diagnostic push
 #pragma ide diagnostic   ignored "UnusedLocalVariable"
-class Timer
-{
+class Timer {
 private:
     const char *      _message;
     const int         _alignMsg;
