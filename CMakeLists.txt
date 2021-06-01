@@ -71,17 +71,21 @@ if(ENABLE_TESTING)
   message("Building Tests. Be sure to check out test/constexpr_tests for constexpr testing")
   add_subdirectory(test)
   if (ENABLE_COVERAGE)
-    message("Coverage reporting enabled")
-    include(cmake/CodeCoverage.cmake) # https://github.com/bilke/cmake-modules/blob/master/CodeCoverage.cmake (License: BSL 1.0)
-    append_coverage_compiler_flags()
-    # set(CMAKE_CXX_FLAGS "-g -O0 -Wall -fprofile-arcs -ftest-coverage")
-    setup_target_for_coverage_gcovr_html(
-      NAME coverage
-      EXECUTABLE ctest
-      # DEPENDENCIES
-      # BASE_DIRECTORY "../"                           # Base directory for report (defaults to PROJECT_SOURCE_DIR)
-      EXCLUDE "build_coverage/*" "test/*" "concepts/*" # Patterns to exclude (can be relative to BASE_DIRECTORY, with CMake 3.4+)
-    )
+    if(UNIX AND NOT APPLE) # Linux
+      message("Coverage reporting enabled")
+      include(cmake/CodeCoverage.cmake) # https://github.com/bilke/cmake-modules/blob/master/CodeCoverage.cmake (License: BSL-1.0)
+      append_coverage_compiler_flags()
+      # set(CMAKE_CXX_FLAGS "-g -O0 -Wall -fprofile-arcs -ftest-coverage")
+      setup_target_for_coverage_gcovr_html(
+        NAME coverage
+        EXECUTABLE ctest
+        # DEPENDENCIES
+        # BASE_DIRECTORY "../"                           # Base directory for report (defaults to PROJECT_SOURCE_DIR)
+        EXCLUDE "build_coverage/*" "test/*" "concepts/*" # Patterns to exclude (can be relative to BASE_DIRECTORY, with CMake 3.4+)
+      )
+    else()
+        message(STATUS "Coverage is only supported on linux")
+    endif()
   endif()
 endif()
 
