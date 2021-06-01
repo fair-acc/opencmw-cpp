@@ -83,6 +83,13 @@ if(ENABLE_TESTING)
         # BASE_DIRECTORY "../"                           # Base directory for report (defaults to PROJECT_SOURCE_DIR)
         EXCLUDE "build_coverage/*" "test/*" "concepts/*" # Patterns to exclude (can be relative to BASE_DIRECTORY, with CMake 3.4+)
       )
+      setup_target_for_coverage_gcovr_html(
+              NAME coverage_html
+              EXECUTABLE ctest
+              # DEPENDENCIES
+              # BASE_DIRECTORY "../"                           # Base directory for report (defaults to PROJECT_SOURCE_DIR)
+              EXCLUDE "build_coverage/*" "test/*" "concepts/*" # Patterns to exclude (can be relative to BASE_DIRECTORY, with CMake 3.4+)
+      )
     else()
         message(STATUS "Coverage is only supported on linux")
     endif()

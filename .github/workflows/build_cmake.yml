@@ -96,11 +96,15 @@ jobs:
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       run: cmake --build . --target coverage
 
-    - name: coverage report - send to Codecov
-      if: matrix.configurations.os == env.REFERENCE_OS
-      working-directory: ${{runner.workspace}}/build
-      shell: bash
-      run: bash <(curl -s https://codecov.io/bash) coverage.xml
+    - uses: codecov/codecov-action@v1
+      with:
+        files: ${{runner.workspace}}/build/coverage.xml
+        verbose: true # optional (default = false)
+    # - name: coverage report - send to Codecov
+    #   if: matrix.configurations.os == env.REFERENCE_OS
+    #   working-directory: ${{runner.workspace}}/build
+    #   shell: bash
+    #   run: bash <(curl -s https://codecov.io/bash) coverage.xml
 
     - name: coverage report - send to Codacy
       if: matrix.configurations.os == env.REFERENCE_OS
