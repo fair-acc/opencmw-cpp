@@ -48,10 +48,10 @@ TEST_CASE("IoSerialiser basic syntax", "[IoSerialiser]") {
         Data                  data(42);
 
         std::cout << "YaS      constexpr: " << opencmw::serialisePartial<opencmw::YaS>(buffer, data) << '\n';
-        REQUIRE(opencmw::isAnnotatedMember(data.value) == true);
+        REQUIRE(opencmw::isAnnotated< decltype(data.value)>() == true);
         std::cout << fmt::format("buffer size (before): {} bytes\n", buffer.size());
 
-        opencmw::putFieldHeader<opencmw::YaS, double>(buffer, "fieldNameA", 43.0);
+        opencmw::putFieldHeader<opencmw::YaS, double>(buffer, "fieldNameA", std::move(43.0));
         opencmw::putFieldHeader<opencmw::YaS, double>(buffer, "fieldNameB", data.value);
         std::cout << fmt::format("buffer size (after): {} bytes\n", buffer.size());
     }

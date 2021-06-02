@@ -21,19 +21,17 @@ constexpr bool isStdType() {
 
 template<class T>
 constexpr bool isReflectableClass() {
-    using Type = std::decay<T>::type;
+    using Type = typename std::decay<T>::type;
     if constexpr (std::is_class<Type>::value && refl::is_reflectable<Type>() && !std::is_fundamental<Type>::value && !std::is_array<Type>::value) {
         return !isStdType<Type>(); // N.B. check this locally since this is not constexpr (yet)
     }
     return false;
 }
-
-template<class T>
-concept ReflectableClass = isReflectableClass<T>();
+template<class T> concept ReflectableClass = isReflectableClass<T>();
 
 template<typename T>
 struct is_supported_number {
-    using Tp = std::decay<T>::type;
+    using Tp = typename std::decay<T>::type;
 #ifndef OPENCMW_ENABLE_UNSIGNED_SUPPORT
     static const bool value = std::is_same<Tp, bool>::value || std::is_same<Tp, char>::value || std::is_same<Tp, uint8_t>::value || std::is_same<Tp, int8_t>::value || std::is_same<Tp, int8_t>::value || std::is_same<Tp, int16_t>::value //
                            || std::is_same<Tp, int32_t>::value || std::is_same<Tp, int64_t>::value || std::is_same<Tp, float>::value || std::is_same<Tp, double>::value;
