@@ -20,7 +20,7 @@ The advantage these `constexpr` structures is that the code is evaluated, largel
 which greatly boost the run-time performance. Still, since objects sent from clients to the service can (potentially) contain arbitrary field information 
 and/or field definitions that are unknown to the service side, there are some remaining run-time consistency checks. We are striving for that potentially 
 in-service communication could become fully resolved and optimised during compile-time to get the best possible performance. 
-Field names that are not listed are implicitly considered `private` and not taken into account for (de-)serialisation or other debugging feature such as automatically  
+Field names that are not listed are implicitly considered `private` and not taken into account for (de-)serialisation or other debugging feature.  
 
 The following types and (nested) class structures are supported:
 Beside common primitive and STL container types, 
