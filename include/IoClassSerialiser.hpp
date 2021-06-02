@@ -72,10 +72,10 @@ constexpr void deserialise(IoBuffer &buffer, T &value, const bool readMetaInfo =
         // skip to data start
         buffer.position() = dataStartPosition;
 
-        if (intDataType == IoSerialiser<END_MARKER, protocol>::getDataTypeId()) {
+        if (intDataType == IoSerialiser<protocol, END_MARKER>::getDataTypeId()) {
             // reached end of sub-structure
             try {
-                IoSerialiser<END_MARKER, protocol>::deserialise(buffer, fieldName, END_MARKER_INST);
+                IoSerialiser<protocol, END_MARKER>::deserialise(buffer, fieldName, END_MARKER_INST);
             } catch (...) { // protocol exception
                 buffer.position() = dataEndPosition;
                 continue;
@@ -94,10 +94,10 @@ constexpr void deserialise(IoBuffer &buffer, T &value, const bool readMetaInfo =
             continue;
         }
 
-        if (intDataType == IoSerialiser<START_MARKER, protocol>::getDataTypeId()) {
+        if (intDataType == IoSerialiser<protocol, START_MARKER>::getDataTypeId()) {
             // reached start of sub-structure -> dive in
             try {
-                IoSerialiser<START_MARKER, protocol>::deserialise(buffer, fieldName, START_MARKER_INST);
+                IoSerialiser<protocol, START_MARKER>::deserialise(buffer, fieldName, START_MARKER_INST);
             } catch (...) { // protocol exception
                 buffer.position() = dataEndPosition;
                 continue;
@@ -119,11 +119,11 @@ constexpr void deserialise(IoBuffer &buffer, T &value, const bool readMetaInfo =
         for_each(refl::reflect<T>().members, [&buffer, &value, &intDataType, &searchIndex, &fieldName](auto member, int32_t index) {
             using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(member(value)))>;
             if constexpr (!isReflectableClass<MemberType>() && is_writable(member) && !is_static(member)) {
-                if (IoSerialiser<MemberType, protocol>::getDataTypeId() == intDataType && index == searchIndex) { //TODO: protocol exception for mismatching data-type?
+                if (IoSerialiser<protocol, MemberType>::getDataTypeId() == intDataType && index == searchIndex) { //TODO: protocol exception for mismatching data-type?
                     if constexpr (requires { member(value).value; }) {
-                        IoSerialiser<MemberType, protocol>::deserialise(buffer, fieldName, member(value).value);
+                        IoSerialiser<protocol, MemberType>::deserialise(buffer, fieldName, member(value).value);
                     } else {
-                        IoSerialiser<MemberType, protocol>::deserialise(buffer, fieldName, member(value));
+                        IoSerialiser<protocol, MemberType>::deserialise(buffer, fieldName, member(value));
                     }
                 }
             }
