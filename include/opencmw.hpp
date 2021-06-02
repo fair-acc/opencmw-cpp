@@ -7,7 +7,7 @@
 #include <refl.hpp>
 #include <set>
 
-#define REFL_CUSTOM(TypeName, ...) \
+#define ENABLE_REFLECTION_FOR(TypeName, ...) \
     REFL_TYPE(TypeName) \
     REFL_DETAIL_FOR_EACH(REFL_DETAIL_EX_1_field, __VA_ARGS__) \
     REFL_END
@@ -33,9 +33,13 @@ concept ReflectableClass = isReflectableClass<T>();
 
 template<typename T>
 struct is_supported_number {
-    using Tp                = std::decay<T>::type;
+    using Tp = std::decay<T>::type;
+#ifndef OPENCMW_ENABLE_UNSIGNED_SUPPORT
     static const bool value = std::is_same<Tp, bool>::value || std::is_same<Tp, char>::value || std::is_same<Tp, uint8_t>::value || std::is_same<Tp, int8_t>::value || std::is_same<Tp, int8_t>::value || std::is_same<Tp, int16_t>::value //
                            || std::is_same<Tp, int32_t>::value || std::is_same<Tp, int64_t>::value || std::is_same<Tp, float>::value || std::is_same<Tp, double>::value;
+#else
+    static const bool value = std::is_arithmetic<Tp>::value;
+#endif
 };
 
 template<typename T>

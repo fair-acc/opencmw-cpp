@@ -28,7 +28,7 @@ struct NestedData {
     bool operator==(const NestedData &) const  = default;
 };
 // following is the visitor-pattern-macro that allows the compile-time reflections via refl-cpp
-REFL_CUSTOM(NestedData, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, doubleArray, floatVector)
+ENABLE_REFLECTION_FOR(NestedData, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, doubleArray, floatVector)
 
 struct Data {
     int8_t                         byteValue        = 1;
@@ -49,7 +49,7 @@ struct Data {
     bool operator==(const Data &) const           = default;
 };
 // following is the visitor-pattern-macro that allows the compile-time reflections via refl-cpp
-REFL_CUSTOM(Data, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, constStringValue, doubleArray, floatVector, doubleMatrix, nestedData, annotatedValue)
+ENABLE_REFLECTION_FOR(Data, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, constStringValue, doubleArray, floatVector, doubleMatrix, nestedData, annotatedValue)
 
 TEST_CASE("IoClassSerialiser basic syntax", "[IoClassSerialiser]") {
     std::cout << std::unitbuf;

@@ -63,6 +63,27 @@ the EventStore provides datastructures and setup methods to define processing pi
 ring-buffer with events from OpenCMW, REST services or other sources.
 While using disruptor ring-buffers is the preferred and most performing options, the client also supports classic patterns of registering call-back functions or returning `Future<reyly objects>` objects.
 
+### Compile-Time-Reflection
+The serialisers are based on a [compile-time-reflection](docs/CompileTimeSerialiser.md) that efficiently transform domain-objects to and from the given wire-format (binary, JSON, ...).
+Compile-time reflection will become part of [C++23](http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p0592r4.html) as described by [David Sankel et al. , “C++ Extensions for Reflection”, ISO/IEC CD TS 23619, N4856](http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2020/n4856.pdf). 
+Until then, the compile-time reflection is emulated by the [refl-cpp](https://github.com/veselink1/refl-cpp) (header-only) library through a `constexpr` visitor-pattern and -- for the use in opencmw -- 
+simplified/feature-reduced `ENABLE_REFLECTION_FOR(...)` macro:
+
+```cpp
+struct className {
+    int         field1;
+    // ...
+    float       field2;
+    std::string field3;
+};
+ENABLE_REFLECTION_FOR(className, field1, field2, field3) 
+```
+Beside common primitive and STL container types, it is possible to extend and to provide custom serialisation schemes for any other arbitrary type or struct/class constructs. Further, the interface
+provides also an optional light-weight `constexpr` annotation template wrapper `Annotated<type, unit, description> ...` that can be used to provide some extra meta-information (e.g. unit, descriptions, etc.)
+that in turn can be used to (re-)generate and document the class definition (e.g. for other programming languages or projects that do not have the primary domain-object definition at hand) 
+or to generate a generic [OpenAPI](https://swagger.io/specification/) definition. More details can be found [here](docs/CompileTimeSerialiser.md).
+
+
 ### Example
 The following provides some flavour of how a simple service can be implemented using OpenCMW with only a few lines of
 custom user-code ([full sample](https://github.com/fair-acc/opencmw-java/tree/createReadme/server-rest/src/test/java/io/opencmw/server/rest/samples/BasicSample.java)):
@@ -128,8 +149,8 @@ or RESTful (HTTP)-based high-level protocols, or through a simple RESTful web-in
 
 ### Performance
 The end-to-end transmission achieving roughly 10k messages per second for synchronous communications and
-about 140k messages per second for asynchronous and or publish-subscribe style data acquisition (TCP link via locahost)
-with the domain-object abstraction and serialiser taking typically only 5% of the overall performance w.r.t. bare-metal
+about 140k messages per second for asynchronous and or publish-subscribe style data acquisition (TCP link via locahost).
+The domain-object abstraction and serialiser taking typically only 5% of the overall performance w.r.t. bare-metal
 transmissions (i.e. raw byte buffer transmission performance via ZeroMQ):
 ```
 CPU:AMD Ryzen 9 5900X 12-Core Processor

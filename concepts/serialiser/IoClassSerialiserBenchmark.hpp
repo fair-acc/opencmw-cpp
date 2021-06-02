@@ -198,10 +198,10 @@ struct TestDataClass {
         }
     }
 };
-REFL_CUSTOM(TestDataClass, bool1, bool2, byte1, byte2, char1, char2, short1, short2, int1, int2, long1, long2, float1, float2, double1, double2, string1, string2, // basic variables
-        boolArray, byteArray, shortArray, intArray, longArray, floatArray, doubleArray, stringArray,                                                               // basic 1D-arrays
-        nDimensions, boolNdimArray, byteNdimArray, shortNdimArray, intNdimArray, longNdimArray, floatNdimArray, doubleNdimArray                                    // basic ND-arrays (proxy) TODO: replace with MultiArray
-                                                                                                                                                                   //, nestedData // nested class
+ENABLE_REFLECTION_FOR(TestDataClass, bool1, bool2, byte1, byte2, char1, char2, short1, short2, int1, int2, long1, long2, float1, float2, double1, double2, string1, string2, // basic variables
+        boolArray, byteArray, shortArray, intArray, longArray, floatArray, doubleArray, stringArray,                                                                         // basic 1D-arrays
+        nDimensions, boolNdimArray, byteNdimArray, shortNdimArray, intNdimArray, longNdimArray, floatNdimArray, doubleNdimArray                                              // basic ND-arrays (proxy) TODO: replace with MultiArray
+                                                                                                                                                                             //, nestedData // nested class
 )
 
 volatile bool TestDataClass::cmwCompatibilityMode = false;
