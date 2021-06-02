@@ -76,7 +76,7 @@ TEST_CASE("IoSerialiser primitive numbers YaS", "[IoSerialiser]") {
         auto writeTest = [&buffer, &oldBufferPosition, &expectedSize]<typename T, opencmw::SerialiserProtocol protocol = opencmw::YaS>(T && value) {
             const auto &msg = fmt::format("writeTest(IoBuffer&, size_t&,({}){})", opencmw::typeName<T>(), std::forward<T>(value));
             REQUIRE_MESSAGE(buffer.size() == oldBufferPosition, msg);
-            opencmw::IoSerialiser<T, protocol>::serialise(buffer, std::string(opencmw::typeName<T>()) + "TestDataClass", value);
+            opencmw::IoSerialiser<protocol, T>::serialise(buffer, std::string(opencmw::typeName<T>()) + "TestDataClass", value);
             REQUIRE_MESSAGE((buffer.size() - oldBufferPosition) == expectedSize(value), msg);
             oldBufferPosition += expectedSize(value);
         };
@@ -99,7 +99,7 @@ TEST_CASE("IoSerialiser primitive numbers YaS", "[IoSerialiser]") {
         auto readTest = [&buffer, &oldBufferPosition, &expectedSize]<typename T, opencmw::SerialiserProtocol protocol = opencmw::YaS>(T expected) {
             const auto &msg = fmt::format("ioserialiser_basicReadTests(basicReadTest&, size_t&,({}){})", opencmw::typeName<T>(), expected);
             T           actual;
-            opencmw::IoSerialiser<T, protocol>::deserialise(buffer, std::string(opencmw::typeName<T>()) + "TestDataClass", actual);
+            opencmw::IoSerialiser<protocol, T>::deserialise(buffer, std::string(opencmw::typeName<T>()) + "TestDataClass", actual);
             REQUIRE_MESSAGE(actual == expected, msg);
             REQUIRE_MESSAGE((buffer.position() - oldBufferPosition) == expectedSize(expected), msg);
             oldBufferPosition = buffer.position();

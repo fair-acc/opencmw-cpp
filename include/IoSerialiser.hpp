@@ -102,7 +102,7 @@ concept SerialiserProtocol = requires { T::protocolName(); }; // TODO: find neat
 using ClassField           = std::string_view; // as a place-holder for the reflected type info
 
 /// generic protocol definition -> should throw exception when used in production code
-template<typename T, SerialiserProtocol protocol>
+template<SerialiserProtocol protocol, typename T>
 struct IoSerialiser {
     constexpr static uint8_t getDataTypeId() { return 0xFF; } // default value
 
@@ -125,10 +125,10 @@ template<SerialiserProtocol protocol, typename T>
 bool serialisePartial(IoBuffer &buffer, const T & /*obj*/) noexcept {
     bool state = false;
     if (std::is_constant_evaluated() || true) {
-        state |= IoSerialiser<int, protocol>::serialise(buffer, "intField", 2);
-        state |= IoSerialiser<double, protocol>::serialise(buffer, "doubleField", 2.3);
-        state |= IoSerialiser<short, protocol>::serialise(buffer, "shortField", 3);
-        state |= IoSerialiser<std::string_view, protocol>::serialise(buffer, "stringField", "Hello World!");
+        state |= IoSerialiser<protocol, int>::serialise(buffer, "intField", 2);
+        state |= IoSerialiser<protocol, double>::serialise(buffer, "doubleField", 2.3);
+        state |= IoSerialiser<protocol, short>::serialise(buffer, "shortField", 3);
+        state |= IoSerialiser<protocol, std::string_view>::serialise(buffer, "stringField", "Hello World!");
     }
     return state;
 }
@@ -207,12 +207,12 @@ constexpr uint8_t getDataTypeId<END_MARKER>() { return 0xFE; }
 } // namespace yas
 
 template<typename T>
-struct IoSerialiser<T, YaS> {
+struct IoSerialiser<YaS, T> {
     static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); } // default value
 };
 
 template<Number T> // catches all numbers
-struct IoSerialiser<T, YaS> {
+struct IoSerialiser<YaS, T> {
     static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); }
     constexpr static bool    serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
         buffer.put(getAnnotatedMember(value));
@@ -225,7 +225,7 @@ struct IoSerialiser<T, YaS> {
 };
 
 template<StringLike T>
-struct IoSerialiser<T, YaS> {
+struct IoSerialiser<YaS, T> {
     static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); }
     constexpr static bool    serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
         //        std::cout << fmt::format("{} - serialise-String_like: {} {} == {} - constexpr?: {}\n",
@@ -242,7 +242,7 @@ struct IoSerialiser<T, YaS> {
 };
 
 template<ArrayOrVector T>
-struct IoSerialiser<T, YaS> {
+struct IoSerialiser<YaS, T> {
     static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); }
     constexpr static bool    serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
         buffer.put(std::array<int32_t, 1>{ static_cast<int32_t>(value.size()) });
@@ -257,7 +257,7 @@ struct IoSerialiser<T, YaS> {
 };
 
 template<MultiArrayType T>
-struct IoSerialiser<T, YaS> {
+struct IoSerialiser<YaS, T> {
     static constexpr uint8_t getDataTypeId() {
         // std::cout << fmt::format("getDataTypeID<{}>() = {}\n", typeName<typename T::value_type>(), yas::getDataTypeId<typename T::value_type>());
         return yas::ARRAY_TYPE_OFFSET + yas::getDataTypeId<typename T::value_type>();
@@ -284,7 +284,7 @@ struct IoSerialiser<T, YaS> {
 };
 
 template<>
-struct IoSerialiser<START_MARKER, YaS> {
+struct IoSerialiser<YaS, START_MARKER> {
     static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<START_MARKER>(); }
 
     constexpr static bool    serialise(IoBuffer &buffer, const ClassField & /*field*/, const START_MARKER & /*value*/) noexcept {
@@ -304,7 +304,7 @@ struct IoSerialiser<START_MARKER, YaS> {
 };
 
 template<>
-struct IoSerialiser<END_MARKER, YaS> {
+struct IoSerialiser<YaS, END_MARKER> {
     static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<END_MARKER>(); }
     static bool              serialise(IoBuffer &buffer, const ClassField & /*field*/, const END_MARKER & /*value*/) noexcept {
         buffer.put<uint8_t>(getDataTypeId()); // N.B. ensure that the wrapped value and not the annotation itself is serialised
@@ -329,7 +329,7 @@ std::size_t putFieldHeader(IoBuffer &buffer, const std::string_view &fieldName, 
 
     // -- offset 0 vs. field start
     const std::size_t headerStart = buffer.size();
-    buffer.put(static_cast<uint8_t>(IoSerialiser<StrippedDataType, protocol>::getDataTypeId())); // data type ID
+    buffer.put(static_cast<uint8_t>(IoSerialiser<protocol, StrippedDataType>::getDataTypeId())); // data type ID
     buffer.put(static_cast<int32_t>(std::hash<std::string_view>{}(fieldName)));                  // unique hashCode identifier -- TODO: unify across C++/Java & optimise performance
     const std::size_t dataStartOffsetPosition = buffer.size();
     buffer.put(-1); // dataStart offset
@@ -355,7 +355,7 @@ std::size_t putFieldHeader(IoBuffer &buffer, const std::string_view &fieldName, 
     buffer.at<int32_t>(dataStartOffsetPosition) = static_cast<int32_t>(dataStartOffset); // write offset to dataStart
 
     // from hereon there are data specific structures that are written to the IoBuffer
-    IoSerialiser<decltype(getAnnotatedMember(data)), protocol>::serialise(buffer, fieldName, getAnnotatedMember(data));
+    IoSerialiser<protocol, decltype(getAnnotatedMember(data))>::serialise(buffer, fieldName, getAnnotatedMember(data));
 
     // add just data-end position
     buffer.at<int32_t>(dataSizePosition) = static_cast<int32_t>(buffer.size() - dataStartPosition); // write data size
