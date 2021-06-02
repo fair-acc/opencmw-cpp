@@ -81,7 +81,7 @@ std::ostream &operator<<(std::ostream &os, const T &annotatedValue) {
         if constexpr (!is_array_or_vector<decltype(annotatedValue.value)>::value) {
             os << fmt::format("{:<5}  // [{}] - {}", annotatedValue.value, annotatedValue.getUnit(), annotatedValue.getDescription()); // print as number
         } else {
-            os << fmt::format("{}  // [{}] - {}", annotatedValue.value, annotatedValue.getUnit(), annotatedValue.getDescription()); // print as number
+            os << fmt::format("{}  // [{}] - {}", annotatedValue.value, annotatedValue.getUnit(), annotatedValue.getDescription()); // print as array
         }
         return os;
     }
@@ -125,7 +125,7 @@ std::ostream &operator<<(std::ostream &os, const T &value) {
     if constexpr (isReflectableClass<ValueType>()) {
         for_each(
                 refl::reflect(value).members, [&](const auto member, const auto index) constexpr {
-                    using MemberType          = decltype(getAnnotatedMember(member(value)));
+                    using MemberType          = std::remove_reference_t<decltype(getAnnotatedMember(member(value)))>;
                     const auto &typeNameShort = typeName<MemberType>();
                     //const auto& typeNameShort = refl::reflect(getAnnotatedMember(member(value))).name.data; // alt type-definition:
                     if (verbose) {
@@ -149,13 +149,13 @@ constexpr void diffView(std::ostream &os, const T &lhs, const T &rhs) {
     const bool    verbose    = os.iword(getClassInfoVerbose());
     const int64_t indent     = os.iword(getClassInfoIndent());
     const int64_t indentStep = os.iword(getClassInfoIndentStep()) == 0 ? (os.iword(getClassInfoIndentStep()) = 2) : os.iword(getClassInfoIndentStep());
-    using ValueType          = decltype(getAnnotatedMember(lhs));
-    if constexpr (std::is_class<std::remove_reference_t<ValueType>>::value && isReflectableClass<ValueType>()) {
+    using ValueType          = std::remove_reference_t<decltype(getAnnotatedMember(lhs))>;
+    if constexpr (isReflectableClass<ValueType>()) {
         os << fmt::format("{}{}({}", (indent == 0) ? "diffView: " : "", (indent == 0) ? refl::reflect(lhs).name.data : "", verbose ? "\n" : "");
         for_each(
                 refl::reflect(lhs).members, [&](const auto member, const auto index) constexpr {
                     if constexpr (is_field(member)) {
-                        using MemberType = decltype(getAnnotatedMember(member(lhs)));
+                        using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(member(lhs)))>;
                         if (verbose) {
                             const std::string fieldName(member.declarator.name + "::" + member.name);
                             os << fmt::format("{:{}} {}: {:<20} {:<30}= ", "", indent * indentStep + 1, index, typeName<MemberType>(), fieldName);
@@ -180,13 +180,13 @@ constexpr void diffView(std::ostream &os, const T &lhs, const T &rhs) {
         os << fmt::format("{:{}})", "", verbose ? (indent * indentStep + 1) : 0);
     } else {
         // primitive type
-        T lhsValue = getAnnotatedMember(lhs);
-        T rhsValue = getAnnotatedMember(rhs);
+        auto lhsValue = getAnnotatedMember(lhs);
+        auto rhsValue = getAnnotatedMember(rhs);
         if (lhsValue == rhsValue) {
             os << lhsValue;
         } else {
-            //os << fmt::format("{} vs. ", getAnnotatedMember(lhsValue)) << rhsValue;
-            os << fmt::format(fg(fmt::color::red), "{} vs. {}", getAnnotatedMember(lhsValue), getAnnotatedMember(rhsValue)); // coloured terminal output
+            //os << fmt::format("{} vs. ", lhsValue) << rhs;
+            os << fmt::format(fg(fmt::color::red), "{} vs. {}", lhsValue, rhsValue); // coloured terminal output
         }
     }
     if (indent == 0) {
@@ -211,5 +211,7 @@ struct fmt::formatter<T> {
         return fmt::format_to(ctx.out(), "{}", ss.str());
     }
 };
+
+
 
 #endif //OPENCMW_UTILS_H

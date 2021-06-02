@@ -16,22 +16,26 @@ namespace opencmw {
 // clang-format off
 template<typename T, const StringLiteral unit = "", const StringLiteral description = "", const StringLiteral direction = "", const StringLiteral... groups>
 struct Annotated {
+    constexpr static void isAnnotated() noexcept {} // needed to check Annotated signature
+    using ValueType = T;
     using String = std::string_view;
-    T value;
+    constexpr static String _unit = unit;
+    constexpr static String _description = description;
+    constexpr static String _direction = direction;
+    mutable T value;
     //constexpr Annotated() = delete;
     constexpr Annotated() = default;
     constexpr Annotated(const T &initValue) noexcept : value(initValue) {}
     constexpr Annotated(T &&t) : value(std::move(t)) {}
     constexpr ~Annotated()       = default;
     constexpr Annotated &operator=(const T &newValue) { value = newValue; return *this; }
-    //    constexpr Annotated &operator=(const Annotated &other) {
-    //        if (this == &other) {
-    //            return *this;
-    //        }
-    //        value = other.value;
-    //        return *this;
-    //    }
-    constexpr void                 isAnnotated() const noexcept {}
+//    constexpr Annotated &operator=(const Annotated &other) {
+//        if (this == &other) {
+//            return *this;
+//        }
+//    value = other.value;
+//    return *this;
+//    }
     [[nodiscard]] constexpr String getUnit() const noexcept { return String(unit.value); }
     [[nodiscard]] constexpr String getDescription() const noexcept { return String(description.value); }
     [[nodiscard]] constexpr String getDirection() const noexcept { return String(direction.value, direction.size); }
@@ -67,26 +71,33 @@ struct Annotated {
 };
 // clang-format on
 
-template<typename>
-struct isAnnotated : public std::false_type {};
-
-template<typename T, const StringLiteral unit, const StringLiteral description, const StringLiteral direction>
-struct isAnnotated<Annotated<T, unit, description, direction>> : public std::true_type {};
-
-template<class T>
-concept AnnotatedType = isAnnotated<T>::value;
-
 template<typename T>
-constexpr bool isAnnotatedMember(T const &) { return isAnnotated<T>::value; }
+constexpr bool isAnnotated() {
+    using Type = typename std::decay<T>::type;
+    // return is_specialization<Type, A>::value; // TODO: does not work with Annotated containing NTTPs
+    if constexpr ( requires {Type::isAnnotated();} ) {
+        return true;
+    }
+    return false;
+}
+template<class T> concept AnnotatedType = isAnnotated<T>();
+template<class T> concept NotAnnotatedType = !isAnnotated<T>();
 
-template<typename T>
+template<NotAnnotatedType T>
 constexpr T getAnnotatedMember(const T &annotatedValue) {
-    return annotatedValue; //TODO: sort out perfect forwarding/move
+    // N.B. still needed in 'putFieldHeader(IoBuffer&, const std::string_view &, const DataType&data, bool)'
+    return annotatedValue; //TODO: sort-out/simplify perfect forwarding/move, see https://compiler-explorer.com/z/zTTjff7Tn
 }
 
-template<typename T, const StringLiteral unit, const StringLiteral description, const StringLiteral direction>
-constexpr T getAnnotatedMember(const Annotated<T, unit, description, direction> &annotatedValue) {
-    return annotatedValue.value; //TODO: sort out perfect forwarding/move
+template<NotAnnotatedType T>
+constexpr T &getAnnotatedMember(T &&annotatedValue) {
+    return std::forward<T&>(annotatedValue);
+}
+
+template<AnnotatedType T>
+constexpr typename T::ValueType &getAnnotatedMember(T &annotatedValue) {
+    using Type = typename T::ValueType;
+    return std::forward<Type&>(annotatedValue.value); // perfect forwarding/move
 }
 
 template<StringLiteral protocol>
@@ -215,7 +226,7 @@ template<Number T> // catches all numbers
 struct IoSerialiser<YaS, T> {
     static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); }
     constexpr static bool    serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
-        buffer.put(getAnnotatedMember(value));
+        buffer.put(value);
         return std::is_constant_evaluated();
     }
     constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) noexcept {
@@ -230,7 +241,7 @@ struct IoSerialiser<YaS, T> {
     constexpr static bool    serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
         //        std::cout << fmt::format("{} - serialise-String_like: {} {} == {} - constexpr?: {}\n",
         //            YaS::protocolName(), typeName<T>(), field, value, std::is_constant_evaluated());
-        buffer.put<T>(getAnnotatedMember(value)); // N.B. ensure that the wrapped value and not the annotation itself is serialised
+        buffer.put<T>(value); // N.B. ensure that the wrapped value and not the annotation itself is serialised
         return std::is_constant_evaluated();
     }
     constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) noexcept {
@@ -323,7 +334,7 @@ struct IoSerialiser<YaS, END_MARKER> {
 
 template<SerialiserProtocol protocol, typename DataType>
 std::size_t putFieldHeader(IoBuffer &buffer, const std::string_view &fieldName, const DataType &data, const bool writeMetaInfo = false) {
-    using StrippedDataType         = decltype(getAnnotatedMember(data));
+    using StrippedDataType         = std::remove_reference_t<decltype(getAnnotatedMember(data))>;
     constexpr int32_t dataTypeSize = static_cast<int32_t>(sizeof(StrippedDataType));
     buffer.ensure(((fieldName.length() + 18) * sizeof(uint8_t)) + dataTypeSize);
 
@@ -338,7 +349,7 @@ std::size_t putFieldHeader(IoBuffer &buffer, const std::string_view &fieldName, 
     buffer.put(dataSize);  // dataSize (N.B. 'headerStart' + 'dataStart + dataSize' == start of next field header
     buffer.put(fieldName); // full field name
 
-    if constexpr (requires { data.isAnnotated(); data.getUnit(); }) {
+    if constexpr (isAnnotated<DataType>()) {
         if (writeMetaInfo) {
             buffer.put(std::string_view(data.getUnit()));
             buffer.put(std::string_view(data.getDescription()));
@@ -355,7 +366,7 @@ std::size_t putFieldHeader(IoBuffer &buffer, const std::string_view &fieldName, 
     buffer.at<int32_t>(dataStartOffsetPosition) = static_cast<int32_t>(dataStartOffset); // write offset to dataStart
 
     // from hereon there are data specific structures that are written to the IoBuffer
-    IoSerialiser<protocol, decltype(getAnnotatedMember(data))>::serialise(buffer, fieldName, getAnnotatedMember(data));
+    IoSerialiser<protocol, StrippedDataType>::serialise(buffer, fieldName, getAnnotatedMember(data));
 
     // add just data-end position
     buffer.at<int32_t>(dataSizePosition) = static_cast<int32_t>(buffer.size() - dataStartPosition); // write data size

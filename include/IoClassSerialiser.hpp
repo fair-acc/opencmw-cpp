@@ -17,11 +17,7 @@ constexpr void serialise(IoBuffer &buffer, const T &value, const bool writeMetaI
                 opencmw::putFieldHeader<protocol>(buffer, member.name.str(), END_MARKER_INST);
                 buffer.at<int32_t>(posSizePositionStart) = static_cast<int32_t>(buffer.size() - posStartDataStart); // write data size
             } else {
-                if constexpr (requires { member(value).value; }) {
-                    opencmw::putFieldHeader<protocol>(buffer, member.name.str(), member(value).value);
-                } else {
-                    opencmw::putFieldHeader<protocol>(buffer, member.name.str(), member(value));
-                }
+                opencmw::putFieldHeader<protocol>(buffer, member.name.str(), member(value));
             }
         }
     });
@@ -120,11 +116,7 @@ constexpr void deserialise(IoBuffer &buffer, T &value, const bool readMetaInfo =
             using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(member(value)))>;
             if constexpr (!isReflectableClass<MemberType>() && is_writable(member) && !is_static(member)) {
                 if (IoSerialiser<protocol, MemberType>::getDataTypeId() == intDataType && index == searchIndex) { //TODO: protocol exception for mismatching data-type?
-                    if constexpr (requires { member(value).value; }) {
-                        IoSerialiser<protocol, MemberType>::deserialise(buffer, fieldName, member(value).value);
-                    } else {
-                        IoSerialiser<protocol, MemberType>::deserialise(buffer, fieldName, member(value));
-                    }
+                    IoSerialiser<protocol, MemberType>::deserialise(buffer, fieldName, getAnnotatedMember(member(value)));
                 }
             }
         });
