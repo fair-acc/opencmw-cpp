@@ -176,7 +176,7 @@ struct ConstExprMap {
 
     [[nodiscard]] constexpr Value           at(const Key &key) const {
         const auto itr = std::find_if(begin(data), end(data), [&key](const auto &v) { return v.first == key; });
-        return (itr != end(data)) ? itr->second : throw std::range_error(fmt::format("key '{}' not found", key));
+        return (itr != end(data)) ? itr->second : throw std::out_of_range(fmt::format("key '{}' not found", key));
     }
 };
 

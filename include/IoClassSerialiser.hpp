@@ -33,8 +33,18 @@ std::unordered_map<std::string_view, int32_t> createMemberMap() {
 }
 
 template<typename T>
+constexpr auto createMemberMap2() noexcept {
+    constexpr size_t size = refl::reflect<T>().members.size;
+    constexpr ConstExprMap<std::string_view, int32_t, size> m = {refl::util::map_to_array<std::pair<std::string_view, int32_t>>(refl::reflect<T>().members, [](auto field, auto index) {
+        return std::pair<std::string_view, int32_t>(field.name.c_str(), index);
+    })};
+    return m;
+}
+
+template<typename T>
 int32_t findMemberIndex(const std::string_view fieldName) {
-    static const std::unordered_map<std::string_view, int32_t> m = createMemberMap<T>(); // TODO: consider replacing this by ConstExprMap (array list-based)
+    //static const std::unordered_map<std::string_view, int32_t> m = createMemberMap<T>(); // TODO: consider replacing this by ConstExprMap (array list-based)
+    static constexpr auto m = createMemberMap2<T>(); //alt: array-based implementation
     return m.at(fieldName);
 }
 
