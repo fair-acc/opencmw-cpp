@@ -36,9 +36,9 @@ struct Annotated {
 //    value = other.value;
 //    return *this;
 //    }
-    [[nodiscard]] constexpr String getUnit() const noexcept { return String(unit.value); }
-    [[nodiscard]] constexpr String getDescription() const noexcept { return String(description.value); }
-    [[nodiscard]] constexpr String getDirection() const noexcept { return String(direction.value, direction.size); }
+    [[nodiscard]] constexpr String getUnit() const noexcept { return String(unit.data); }
+    [[nodiscard]] constexpr String getDescription() const noexcept { return String(description.data); }
+    [[nodiscard]] constexpr String getDirection() const noexcept { return String(direction.data, direction.size); }
     [[nodiscard]] constexpr String typeName() const noexcept { return opencmw::typeName<T>(); }
     constexpr                      operator T &() { return value; }
     auto                           operator<=>(const Annotated &) const noexcept = default;
@@ -75,13 +75,15 @@ template<typename T>
 constexpr bool isAnnotated() {
     using Type = typename std::decay<T>::type;
     // return is_specialization<Type, A>::value; // TODO: does not work with Annotated containing NTTPs
-    if constexpr ( requires {Type::isAnnotated();} ) {
+    if constexpr (requires { Type::isAnnotated(); }) {
         return true;
     }
     return false;
 }
-template<class T> concept AnnotatedType = isAnnotated<T>();
-template<class T> concept NotAnnotatedType = !isAnnotated<T>();
+template<class T>
+concept AnnotatedType = isAnnotated<T>();
+template<class T>
+concept NotAnnotatedType = !isAnnotated<T>();
 
 template<NotAnnotatedType T>
 constexpr T getAnnotatedMember(const T &annotatedValue) {
@@ -91,20 +93,18 @@ constexpr T getAnnotatedMember(const T &annotatedValue) {
 
 template<NotAnnotatedType T>
 constexpr T &getAnnotatedMember(T &&annotatedValue) {
-    return std::forward<T&>(annotatedValue);
+    return std::forward<T &>(annotatedValue);
 }
 
 template<AnnotatedType T>
 constexpr typename T::ValueType &getAnnotatedMember(T &annotatedValue) {
     using Type = typename T::ValueType;
-    return std::forward<Type&>(annotatedValue.value); // perfect forwarding/move
+    return std::forward<Type &>(annotatedValue.value); // perfect forwarding/move
 }
 
 template<StringLiteral protocol>
 struct Protocol {
-    constexpr static const char *protocolName() {
-        return protocol.value;
-    }
+    constexpr static const char *protocolName() { return protocol.data; }
 };
 
 template<typename T>
@@ -157,8 +157,7 @@ constexpr static START_MARKER START_MARKER_INST;
 constexpr static END_MARKER   END_MARKER_INST;
 
 namespace opencmw {
-struct YaS : Protocol<"YaS"> {
-};
+struct YaS : Protocol<"YaS"> {};
 
 namespace yas {
 static const int              VERSION_MAGIC_NUMBER = -1;    // '-1' since CmwLight cannot have a negative number of entries
