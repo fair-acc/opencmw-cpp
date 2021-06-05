@@ -15,7 +15,7 @@
 namespace opencmw {
 template<typename T>
 constexpr bool isStdType() {
-    using Type = std::decay<T>::type;
+    using Type = typename std::decay<T>::type;
     return get_name(refl::reflect<Type>()).template substr<0, 5>() == "std::";
 }
 
@@ -27,7 +27,8 @@ constexpr bool isReflectableClass() {
     }
     return false;
 }
-template<class T> concept ReflectableClass = isReflectableClass<T>();
+template<class T>
+concept ReflectableClass = isReflectableClass<T>();
 
 template<typename T>
 struct is_supported_number {
@@ -45,7 +46,7 @@ concept Number = is_supported_number<T>::value;
 
 template<typename T>
 constexpr bool isStringLike() {
-    using Tp = std::decay<T>::type;
+    using Tp = typename std::decay<T>::type;
     return std::is_same<Tp, std::string>::value || std::is_same<Tp, std::string_view>::value;
 }
 
@@ -53,15 +54,20 @@ template<typename T>
 concept StringLike = isStringLike<T>();
 
 template<size_t N>
-struct StringLiteral {
-    char         value[N + 1]{};
-    const size_t size;
-
-    constexpr StringLiteral(const char (&str)[N])
-        : size(N) {
-        std::copy_n(str, N, value);
-        value[N] = '\0';
+struct StringLiteral : refl::util::const_string<N> {
+#pragma clang diagnostic push
+#pragma ide diagnostic   ignored "cppcoreguidelines-avoid-c-arrays"
+#pragma ide diagnostic   ignored "hicpp-explicit-conversions"
+    /**
+     * compile-time string construction from string literal
+     * N.B. ensures that last character is always 'null terminated'
+     * @param str string literal
+     */
+    constexpr StringLiteral(const char (&str)[N]) noexcept {
+        std::copy_n(str, N, refl::util::const_string<N>::data);
+        refl::util::const_string<N>::data[N] = '\0';
     }
+#pragma clang diagnostic pop
 };
 
 template<typename Test, template<typename...> class Ref>
@@ -103,7 +109,7 @@ concept NumberArray = std::is_bounded_array<T>::value; // && is_supported_number
 
 /* just some helper function to return nicer human-readable type names */
 // clang-format off
-template<typename T, typename Tp = std::remove_const<T>::type>
+template<typename T, typename Tp = typename std::remove_const<T>::type>
 // N.B. extend this for custom classes using type-traits to query nicer class-type name
 requires(!std::is_array<Tp>::value && !is_array_or_vector<Tp>::value && !is_multi_array<Tp>::value && !isStringLike<T>())
 constexpr const char *typeName() noexcept {
@@ -138,11 +144,11 @@ constexpr const char *typeName() noexcept {
 // clang-format off
 template<typename C, typename T = typename C::value_type, std::size_t size = 0>
 std::string typeName() noexcept {
-    using Cp = std::remove_const<C>::type;
+    using Cp = typename std::remove_const<C>::type;
     constexpr std::string_view isConst = std::is_const_v<C> ? " const" : "";
 
     if constexpr (is_specialization<Cp, std::vector>::value) { return fmt::format("vector<{}>{}", opencmw::typeName<T>(), isConst); }
-    if constexpr (is_array<Cp>::value) { return fmt::format("array<{},{}>{}", opencmw::typeName<T>(), size, isConst); } // TODO: improve template to get proper size
+    if constexpr (is_array<Cp>::value) { return fmt::format("array<{},{}>{}", opencmw::typeName<T>(), sizeof(Cp)/sizeof(T), isConst); }
     if constexpr (is_specialization<Cp, std::set>::value) { return fmt::format("set<{}>{}", opencmw::typeName<T>(), isConst); }
     if constexpr (is_multi_array<Cp>::value) { return fmt::format("MultiArray<{},{}>{}", opencmw::typeName<T>(), C::n_dims_, isConst); }
     if constexpr (is_specialization<Cp, std::basic_string>::value) { return fmt::format("string{}", isConst); }
