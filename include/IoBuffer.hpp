@@ -19,13 +19,13 @@ namespace opencmw {
 
 class IoBuffer {
 private:
-    static const bool _alloc_optimisations = true;
-    std::size_t       _position            = 0;
-    std::size_t       _size                = 0;
-    std::size_t       _capacity            = 0;
-    uint8_t *         _buffer              = nullptr;
+    static const bool   _alloc_optimisations = true;
+    mutable std::size_t _position            = 0;
+    std::size_t         _size                = 0;
+    std::size_t         _capacity            = 0;
+    uint8_t *           _buffer              = nullptr;
 
-    constexpr void    reallocate(const std::size_t &size) noexcept {
+    constexpr void      reallocate(const std::size_t &size) noexcept {
         if (_capacity == size && _buffer != nullptr) {
             return;
         }
@@ -65,6 +65,15 @@ private:
             //throw std::runtime_error("double free"); //TODO: reenable
         }
         _buffer = nullptr;
+    }
+
+    template<Number I>
+    constexpr void put(const I *values, const std::size_t size) noexcept { // int* a; --> need N
+        const std::size_t byteToCopy = size * sizeof(I);
+        ensure(byteToCopy + sizeof(int32_t) + sizeof(I));
+        put(static_cast<int32_t>(size)); // size of vector
+        std::memmove((_buffer + _size), values, byteToCopy);
+        _size += byteToCopy;
     }
 
 public:
@@ -160,7 +169,6 @@ public:
     }
 
     template<Number I>
-    //requires(!std::is_array<I>::value) //
     constexpr void put(const I &value) noexcept {
         const std::size_t byteToCopy = sizeof(I);
         ensure(byteToCopy);
@@ -168,147 +176,116 @@ public:
         _size += byteToCopy;
     }
 
-    template<Number I>
-    constexpr void put(const I *values, const std::size_t size) noexcept { // int* a; --> need N
-        const std::size_t byteToCopy = size * sizeof(I);
-        ensure(byteToCopy + sizeof(int32_t));
-        put(static_cast<int32_t>(size)); // size of vector
-        std::memmove((_buffer + _size), values, byteToCopy);
-        _size += byteToCopy;
-    }
-
-    template<Number I, size_t size>
-    constexpr void put(I const (&values)[size]) noexcept { //NOLINT int a[30]; OK <-> std::array<int, 30>
-        const std::size_t byteToCopy = size * sizeof(I);
-        ensure(byteToCopy + sizeof(int32_t));
-        put(static_cast<int32_t>(size)); // size of vector
-        std::memmove((_buffer + _size), values, byteToCopy);
-        _size += byteToCopy;
-    }
-
-    template<typename I>
-    constexpr void put(std::vector<I> const &values) noexcept {
-        const std::size_t byteToCopy = values.size() * sizeof(I);
-        ensure(byteToCopy + sizeof(int32_t));
-        put(static_cast<int32_t>(values.size())); // size of vector
-        std::memmove((_buffer + _size), values.data(), byteToCopy);
-        _size += byteToCopy;
-    }
-
-    template<typename I, size_t size>
-    constexpr void put(const std::array<I, size> &values) noexcept {
-        const std::size_t byteToCopy = size * sizeof(I);
-        ensure(byteToCopy + sizeof(int32_t));
-        put(static_cast<int32_t>(size)); // size of vector
-        std::memmove((_buffer + _size), values.data(), byteToCopy);
-        _size += byteToCopy;
-    }
-
     template<StringLike I>
     void put(const I &value) noexcept {
         const std::size_t bytesToCopy = value.size() * sizeof(char);
-        ensure(bytesToCopy);
+        ensure(bytesToCopy + sizeof(int32_t) + sizeof(char));
         put(static_cast<int32_t>(value.size())); // size of vector
         std::memmove((_buffer + _size), value.data(), bytesToCopy);
         _size += bytesToCopy;
         put(static_cast<uint8_t>('\0')); // zero terminating byte
     }
 
-    template<typename R>
+    template<StringLike I>
+    constexpr void put(const I *values, const std::size_t size) noexcept {
+        ensure(size * 25);               // educated guess
+        put(static_cast<int32_t>(size)); // size of vector
+        for (std::size_t i = 0U; i < size; i++) {
+            put(values[i]);
+        }
+    }
+
+    template<SupportedType I, size_t size>
+    constexpr void put(I const (&values)[size]) noexcept { put(values, size); } //NOLINT int a[30]; OK <-> std::array<int, 30>
+    template<SupportedType I>
+    constexpr void put(std::vector<I> const &values) noexcept { put(values.data(), values.size()); }
+    template<SupportedType I, size_t size>
+    constexpr void put(std::array<I, size> const &values) noexcept { put(values.data(), size); }
+
+    template<Number R>
     constexpr R get() noexcept {
-        const uint8_t *localBufferStart = _buffer + _position;
+        const std::size_t localPosition = _position;
         _position += sizeof(R);
-        return *(reinterpret_cast<const R *>(localBufferStart));
+        return get<R>(localPosition);
     }
 
-    template<typename R>
-    constexpr R get(const size_t &index) noexcept {
-        return *(reinterpret_cast<R *>(_buffer + index * sizeof(R)));
+    template<SupportedType R>
+    constexpr R get(const std::size_t &index) noexcept {
+        return *(reinterpret_cast<R *>(_buffer + index));
     }
 
-    //TODO: see whether these std::vector and std::array (+ lvalue/rvalue for vector) can be merged to one template description
-    template<typename R>
+    template<StringLike R>
+    R get() noexcept {
+        const std::size_t bytesToCopy = static_cast<std::size_t>(get<int32_t>()) * sizeof(char);
+        const std::size_t oldPosition = _position;
+#ifdef NDEBUG
+        _position += bytesToCopy + 1;
+#else
+        _position += bytesToCopy;
+        const int8_t terminatingChar = get<int8_t>();
+        assert(terminatingChar == '\0'); // check for terminating character
+#endif
+        return R((reinterpret_cast<const char *>(_buffer + oldPosition)), bytesToCopy);
+    }
+
+    template<StringLike R>
+    R get(const std::size_t &index) noexcept {
+        const std::size_t bytesToCopy = static_cast<std::size_t>(get<int32_t>()) * sizeof(char);
+#ifndef NDEBUG
+        _position += bytesToCopy;
+        const int8_t terminatingChar = get<int8_t>();
+        assert(terminatingChar == '\0'); // check for terminating character
+#endif
+        return R((reinterpret_cast<const char *>(_buffer + index + sizeof(int32_t))), bytesToCopy);
+    }
+
+    template<SupportedType R>
     constexpr std::vector<R> &getArray(std::vector<R> &input, const std::size_t &requestedSize = SIZE_MAX) noexcept {
         const auto        arraySize    = static_cast<std::size_t>(get<int32_t>());
-        const std::size_t minArraySize = std::min(arraySize, requestedSize); // different for std::array
-        input.resize(minArraySize);                                          // different for std::array since we can resize std::vector
-        std::memmove(input.data(), (reinterpret_cast<const R *>(_buffer + _position)), minArraySize * sizeof(R));
-        _position += arraySize * sizeof(R);
+        const std::size_t minArraySize = std::min(arraySize, requestedSize);
+        input.resize(minArraySize);
+        if constexpr (isStringLike<R>()) {
+            for (auto i = 0U; i < minArraySize; i++) {
+                input[i] = get<R>();
+            }
+        } else {
+            std::memmove(input.data(), (reinterpret_cast<const R *>(_buffer + _position)), minArraySize * sizeof(R));
+            _position += arraySize * sizeof(R);
+        }
         return input;
     }
 
-    template<typename R>
-    constexpr std::vector<R> &getArray(std::vector<R> &&input, const std::size_t &requestedSize = SIZE_MAX) noexcept {
-        const auto        arraySize    = static_cast<std::size_t>(get<int32_t>());
-        const std::size_t minArraySize = std::min(arraySize, requestedSize); // different for std::array
-        input.resize(minArraySize);                                          // different for std::array since we can resize std::vector
-        std::memmove(input.data(), (reinterpret_cast<const R *>(_buffer + _position)), minArraySize * sizeof(R));
-        _position += arraySize * sizeof(R);
-        return input;
-    }
+    template<SupportedType R>
+    constexpr std::vector<R> &getArray(std::vector<R> &&input = std::vector<R>(), const std::size_t &requestedSize = SIZE_MAX) noexcept { return getArray<R>(input, requestedSize); }
 
-    template<typename R, size_t size>
+    template<SupportedType R, std::size_t size>
     constexpr std::array<R, size> &getArray(std::array<R, size> &input, const std::size_t &requestedSize = SIZE_MAX) noexcept {
         const auto        arraySize    = static_cast<std::size_t>(get<int32_t>());
-        const std::size_t minArraySize = std::min(std::min(arraySize, size), requestedSize); // different for std::vector since array size is constant
-        std::memmove(input.data(), (reinterpret_cast<const R *>(_buffer + _position)), minArraySize * sizeof(R));
-        _position += arraySize * sizeof(R);
+        const std::size_t minArraySize = std::min(arraySize, requestedSize);
+        assert(size >= minArraySize && "std::array<SupportedType, size> wire-format size does not match design");
+        if constexpr (isStringLike<R>()) {
+            for (auto i = 0U; i < minArraySize; i++) {
+                input[i] = get<R>();
+            }
+        } else {
+            std::memmove(input.data(), (reinterpret_cast<const R *>(_buffer + _position)), minArraySize * sizeof(R));
+            _position += arraySize * sizeof(R);
+        }
         return input;
     }
 
-    template<typename R, size_t size>
-    constexpr std::array<R, size> &getArray(std::array<R, size> &&input, const std::size_t &requestedSize = SIZE_MAX) noexcept {
-        const auto        arraySize    = static_cast<std::size_t>(get<int32_t>());
-        const std::size_t minArraySize = std::min(std::min(arraySize, size), requestedSize); // different for std::vector since array size is constant
-        std::memmove(input.data(), (reinterpret_cast<const R *>(_buffer + _position)), minArraySize * sizeof(R));
-        _position += arraySize * sizeof(R);
-        return input;
-    }
+    template<SupportedType R, std::size_t size>
+    constexpr std::array<R, size> &getArray(std::array<R, size> &&input = std::array<R, size>(), const std::size_t &requestedSize = size) noexcept { return getArray<R, size>(input, requestedSize); }
 
-    template<typename R>
-    constexpr std::vector<R> getArray(const std::size_t &size = SIZE_MAX) noexcept {
-        std::vector<R> vector;
-        return getArray<R>(vector, size);
-    }
-
-    template<typename R, size_t size>
-    constexpr std::array<R, size> getArray(const std::size_t &requestedSize = size) noexcept {
-        std::array<R, size> array;
-        const auto          arraySize    = static_cast<std::size_t>(get<int32_t>());
-        const std::size_t   minArraySize = std::min(std::min(arraySize, requestedSize), size);
-        std::memmove(array.data(), (reinterpret_cast<const R *>(_buffer + _position)), minArraySize * sizeof(R));
-        _position += arraySize * sizeof(R);
-        return array;
-    }
+    template<StringArray R, typename T = typename R::value_type>
+    constexpr R &get(R &input, const std::size_t &requestedSize = SIZE_MAX) noexcept { return getArray<T>(input, requestedSize); }
+    template<StringArray R, typename T = typename R::value_type>
+    constexpr R &get(R &&input = R(), const std::size_t &requestedSize = SIZE_MAX) noexcept { return getArray<T>(input, requestedSize); }
+    template<StringArray R, typename T = typename R::value_type, std::size_t size>
+    constexpr R &get(R &input, const std::size_t &requestedSize = size) noexcept { return getArray<T, size>(input, requestedSize); }
+    template<StringArray R, typename T = typename R::value_type, std::size_t size>
+    constexpr R &get(R &&input = R(), const std::size_t &requestedSize = size) noexcept { return getArray<T, size>(input, requestedSize); }
 };
-
-template<>
-std::string IoBuffer::get<std::string>() noexcept {
-    const size_t bytesToCopy = static_cast<std::size_t>(get<int32_t>()) * sizeof(char);
-    const size_t position    = _position;
-#ifdef NDEBUG
-    _position += bytesToCopy + 1;
-#else
-    _position += bytesToCopy;
-    const int8_t terminatingChar = get<int8_t>();
-    assert(terminatingChar == '\0'); // check for terminating character
-#endif
-    return std::string((reinterpret_cast<const char *>(_buffer + position)), bytesToCopy);
-}
-
-template<>
-std::string_view IoBuffer::get<std::string_view>() noexcept {
-    const size_t bytesToCopy = static_cast<std::size_t>(get<int32_t>()) * sizeof(char);
-    const size_t position    = _position;
-#ifdef NDEBUG
-    _position += bytesToCopy + 1;
-#else
-    _position += bytesToCopy;
-    const int8_t terminatingChar = get<int8_t>();
-    assert(terminatingChar == '\0'); // check for terminating character
-#endif
-    return std::string_view((reinterpret_cast<const char *>(_buffer + position)), bytesToCopy);
-}
 
 } // namespace opencmw
 

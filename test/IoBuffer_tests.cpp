@@ -131,18 +131,6 @@ TEST_CASE("IoBuffer syntax - primitives", "[IoBuffer]") {
     opencmw::debug::resetStats();
 }
 
-TEST_CASE("IoBuffer bulk access", "[IoBuffer]") {
-    opencmw::debug::Timer timer("IoBuffer access -bulk", 30);
-    opencmw::IoBuffer     a;
-    a.reserve(N_SAMPLES * sizeof(int));
-    std::vector<int32_t> b(N_SAMPLES);
-    std::iota(std::begin(b), std::end(b), a.size() / sizeof(int) + 1);
-
-    a.put(b.data(), b.size());
-
-    REQUIRE(std::accumulate(reinterpret_cast<int *>(a.data() + sizeof(int32_t)), reinterpret_cast<int *>(a.data() + a.size()), 0) == arraySum(static_cast<long>(N_SAMPLES))); // NOLINT - valid use of reinterpret_cast
-}
-
 TEST_CASE("IoBuffer by-element access", "[IoBuffer]") {
     opencmw::debug::Timer timer("IoBuffer access -element", 30);
     opencmw::IoBuffer     a;
@@ -195,6 +183,65 @@ TEST_CASE("IoBuffer syntax - string", "[IoBuffer]") {
         REQUIRE(helloWorldUtf8 == a.get<std::string_view>());
         REQUIRE("Hello World!" == a.get<std::string_view>());
         REQUIRE("Γειά σου Κόσμε!" == a.get<std::string_view>());
+    }
+    REQUIRE(opencmw::debug::alloc == opencmw::debug::dealloc); // a memory leak occurred
+    opencmw::debug::resetStats();
+}
+
+TEST_CASE("IoBuffer syntax - string arrays", "[IoBuffer]") {
+    opencmw::debug::resetStats();
+    {
+        using namespace std::literals;
+        opencmw::debug::Timer           timer("IoBuffer syntax -string arrays", 30);
+        opencmw::IoBuffer               buffer;
+        std::vector<std::string>        stringVectorRef     = { "Hello World!", "Hello World!", "Hello World!" };
+        std::vector<std::string_view>   stringViewVectorRef = { "Hello World!"sv, "Hello World!"sv, "Hello World!"sv };
+        std::array<std::string, 3>      stringArrayRef      = { "Hello World!", "Hello World!", "Hello World!" };
+        std::array<std::string_view, 3> stringViewArrayRef  = { "Hello World!"sv, "Hello World!"sv, "Hello World!"sv };
+
+        buffer.put(stringVectorRef);
+        buffer.put(stringViewVectorRef);
+        buffer.put(stringArrayRef);
+        buffer.put(stringViewArrayRef);
+
+        // reset read position and read values -- read in-place
+        {
+            buffer.reset();
+            std::vector<std::string>        stringVector;
+            std::vector<std::string_view>   stringViewVector;
+            std::array<std::string, 3>      stringArray;
+            std::array<std::string_view, 3> stringViewArray;
+            REQUIRE(stringVectorRef == buffer.getArray(stringVector));
+            REQUIRE(stringViewVectorRef == buffer.getArray(stringViewVector));
+            REQUIRE(stringArrayRef == buffer.getArray(stringArray));
+            REQUIRE(stringViewArrayRef == buffer.getArray(stringViewArray));
+        }
+
+        // reset read position and read values -- read in-place
+        {
+            buffer.reset();
+            std::vector<std::string>        stringVector;
+            std::vector<std::string_view>   stringViewVector;
+            std::array<std::string, 3>      stringArray;
+            std::array<std::string_view, 3> stringViewArray;
+            REQUIRE(stringVectorRef == buffer.get(stringVector));
+            REQUIRE(stringViewVectorRef == buffer.get(stringViewVector));
+            REQUIRE(stringArrayRef == buffer.get(stringArray));
+            REQUIRE(stringViewArrayRef == buffer.get(stringViewArray));
+        }
+
+        // reset read position and read values -- generate new class (via default rvalue parameter)
+        {
+            buffer.reset();
+            std::vector<std::string>        stringVector;
+            std::vector<std::string_view>   stringViewVector;
+            std::array<std::string, 3>      stringArray;
+            std::array<std::string_view, 3> stringViewArray;
+            REQUIRE(stringVectorRef == buffer.get<std::vector<std::string>>());
+            REQUIRE(stringViewVectorRef == buffer.get<std::vector<std::string_view>>());
+            REQUIRE(stringArrayRef == buffer.get<std::array<std::string, 3>>());
+            REQUIRE(stringViewArrayRef == buffer.get<std::array<std::string_view, 3>>());
+        }
     }
     REQUIRE(opencmw::debug::alloc == opencmw::debug::dealloc); // a memory leak occurred
     opencmw::debug::resetStats();
