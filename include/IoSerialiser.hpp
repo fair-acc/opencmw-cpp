@@ -260,7 +260,7 @@ struct IoSerialiser<YaS, T> {
         return std::is_constant_evaluated();
     }
     constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) noexcept {
-        buffer.getArray<std::array<int32_t, 1>>(); // todo: verify dimensions
+        buffer.getArray<int32_t, 1>();
         buffer.getArray(value);
         return std::is_constant_evaluated();
     }
@@ -272,14 +272,20 @@ struct IoSerialiser<YaS, T> {
         // std::cout << fmt::format("getDataTypeID<{}>() = {}\n", typeName<typename T::value_type>(), yas::getDataTypeId<typename T::value_type>());
         return yas::ARRAY_TYPE_OFFSET + yas::getDataTypeId<typename T::value_type>();
     }
-    constexpr static bool serialise(IoBuffer &buffer, const ClassField &field, const T &value) noexcept {
-        std::cout << fmt::format("{} - serialise-MultiArray: {} {} == {} - constexpr?: {}, typeid = {}\n", YaS::protocolName(), typeName<T>(), field, value, std::is_constant_evaluated(), getDataTypeId());
-        buffer.put(value.dimensions());
+    constexpr static bool serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
+        std::array<int32_t, T::n_dims_> dims;
+        for (uint32_t i = 0U; i < T::n_dims_; i++) {
+            dims[i] = static_cast<int32_t>(value.dimensions()[i]);
+        }
+        buffer.put(dims);
         buffer.put(value.elements()); // todo: account for strides and offsets (possibly use iterators?)
         return std::is_constant_evaluated();
     }
     constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) noexcept {
-        value.dimensions()           = buffer.getArray<typename T::size_t_, T::n_dims_>(); // todo: verify dimensions, use template for dimension
+        const std::array<int32_t, T::n_dims_> dimWire = buffer.getArray<int32_t, T::n_dims_>();
+        for (auto i = 0U; i < T::n_dims_; i++) {
+            value.dimensions()[i] = static_cast<typename T::size_t_>(dimWire[i]);
+        }
         value.element_count()        = 1;
         value.stride(T::n_dims_ - 1) = 1;
         value.offset(T::n_dims_ - 1) = 0;

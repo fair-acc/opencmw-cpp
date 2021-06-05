@@ -42,9 +42,6 @@ struct is_supported_number {
 };
 
 template<typename T>
-concept Number = is_supported_number<T>::value;
-
-template<typename T>
 constexpr bool isStringLike() {
     using Tp = typename std::decay<T>::type;
     return std::is_same<Tp, std::string>::value || std::is_same<Tp, std::string_view>::value;
@@ -52,6 +49,12 @@ constexpr bool isStringLike() {
 
 template<typename T>
 concept StringLike = isStringLike<T>();
+
+template<typename T>
+concept Number = is_supported_number<T>::value;
+
+template<typename T>
+concept SupportedType = is_supported_number<T>::value || isStringLike<T>();
 
 template<size_t N>
 struct StringLiteral : refl::util::const_string<N> {
@@ -103,6 +106,9 @@ struct is_array_or_vector<std::array<T, N>> {
 
 template<typename T>
 concept ArrayOrVector = is_array_or_vector<T>::value;
+
+template<typename C, typename T = typename C::value_type, std::size_t size = 0>
+concept StringArray = is_array_or_vector<C>::value && isStringLike<T>();
 
 template<typename T>
 concept NumberArray = std::is_bounded_array<T>::value; // && is_supported_number<T[]>::value;
