@@ -286,6 +286,12 @@ TEST_CASE("IoBuffer syntax - arrays", "[IoBuffer]") {
         std::array<int, 5> array = { 1, 2, 3, 4, 5 };
         writeTest("array", array);
 
+        // bool vector & bool array
+        std::vector<bool> boolVector = { false, true, false, true, false };
+        writeTest("boolVector", boolVector);
+        std::array<bool, 5> boolArray = { true, false, true, false, true };
+        writeTest("boolArray", boolArray);
+
         // unnamed array
         buffer.put({ 1, 2, 3, 4, 5 });
 
@@ -307,10 +313,16 @@ TEST_CASE("IoBuffer syntax - arrays", "[IoBuffer]") {
         std::array<int, 5> array2 = buffer.getArray<int, 5>();
         //PRINT_VECTOR(array2);
         REQUIRE(array == array2);
+
+        // bool vector & bool array
+        REQUIRE(std::vector<bool>{false, true, false, true, false } == buffer.getArray<bool>(std::vector<bool>(), 5));
+        REQUIRE(std::array<bool, 5>{ true, false, true, false, true } == buffer.getArray<bool, 5>(std::array<bool, 5>(), 5));
+
         const auto         origPosition = buffer.position();
         std::array<int, 5> array3{ 0, 0, 0, 0, 0 };
         REQUIRE(array == buffer.getArray<int, 5>(array3, 5));
         //PRINT_VECTOR(array3);
+        // read unnamed array
         buffer.position() = origPosition; // skip back
         REQUIRE(std::array<int, 5>{ 1, 2, 3, 0, 0 } == buffer.getArray<int, 5>(std::array<int, 5>{ 0, 0, 0, 0, 0 }, 3));
     }

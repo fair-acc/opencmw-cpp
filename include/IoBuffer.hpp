@@ -72,8 +72,23 @@ private:
         const std::size_t byteToCopy = size * sizeof(I);
         ensure(byteToCopy + sizeof(int32_t) + sizeof(I));
         put(static_cast<int32_t>(size)); // size of vector
-        std::memmove((_buffer + _size), values, byteToCopy);
-        _size += byteToCopy;
+        if constexpr (std::is_same<I, bool>::value) {
+            for (std::size_t i = 0U; i < size; i++) {
+                put<bool>(values[i]);
+            }
+        } else {
+            std::memmove((_buffer + _size), values, byteToCopy);
+            _size += byteToCopy;
+        }
+    }
+
+    template<StringLike I>
+    constexpr void put(const I *values, const std::size_t size) noexcept {
+        ensure(size * 25 + sizeof(int32_t) + sizeof(char)); // educated guess
+        put(static_cast<int32_t>(size));                    // size of vector
+        for (std::size_t i = 0U; i < size; i++) {
+            put(values[i]);
+        }
     }
 
 public:
@@ -179,20 +194,11 @@ public:
     template<StringLike I>
     void put(const I &value) noexcept {
         const std::size_t bytesToCopy = value.size() * sizeof(char);
-        ensure(bytesToCopy + sizeof(int32_t) + sizeof(char));
-        put(static_cast<int32_t>(value.size())); // size of vector
+        ensure(bytesToCopy + sizeof(int32_t) + sizeof(char)); // educated guess
+        put(static_cast<int32_t>(value.size()));              // size of vector
         std::memmove((_buffer + _size), value.data(), bytesToCopy);
         _size += bytesToCopy;
         put(static_cast<uint8_t>('\0')); // zero terminating byte
-    }
-
-    template<StringLike I>
-    constexpr void put(const I *values, const std::size_t size) noexcept {
-        ensure(size * 25);               // educated guess
-        put(static_cast<int32_t>(size)); // size of vector
-        for (std::size_t i = 0U; i < size; i++) {
-            put(values[i]);
-        }
     }
 
     template<SupportedType I, size_t size>
@@ -201,6 +207,26 @@ public:
     constexpr void put(std::vector<I> const &values) noexcept { put(values.data(), values.size()); }
     template<SupportedType I, size_t size>
     constexpr void put(std::array<I, size> const &values) noexcept { put(values.data(), size); }
+
+    void put(std::vector<bool> const &values) noexcept { //TODO: re-enable constexpr (N.B. should be since C++20)
+        const std::size_t size       = values.size();
+        const std::size_t byteToCopy = size * sizeof(bool);
+        ensure(byteToCopy + sizeof(int32_t) + sizeof(bool));
+        put(static_cast<int32_t>(size)); // size of vector
+        for (std::size_t i = 0U; i < size; i++) {
+            put<bool>(values[i]);
+        }
+    }
+
+    template<size_t size>
+    constexpr void put(std::array<bool, size> const &values) noexcept {
+        const std::size_t byteToCopy = size * sizeof(bool);
+        ensure(byteToCopy + sizeof(int32_t) + sizeof(bool));
+        put(static_cast<int32_t>(size)); // size of vector
+        for (std::size_t i = 0U; i < size; i++) {
+            put<bool>(values[i]);
+        }
+    }
 
     template<Number R>
     constexpr R get() noexcept {
@@ -244,7 +270,7 @@ public:
         const auto        arraySize    = static_cast<std::size_t>(get<int32_t>());
         const std::size_t minArraySize = std::min(arraySize, requestedSize);
         input.resize(minArraySize);
-        if constexpr (isStringLike<R>()) {
+        if constexpr (isStringLike<R>() || std::is_same<R, bool>::value) {
             for (auto i = 0U; i < minArraySize; i++) {
                 input[i] = get<R>();
             }
@@ -263,7 +289,7 @@ public:
         const auto        arraySize    = static_cast<std::size_t>(get<int32_t>());
         const std::size_t minArraySize = std::min(arraySize, requestedSize);
         assert(size >= minArraySize && "std::array<SupportedType, size> wire-format size does not match design");
-        if constexpr (isStringLike<R>()) {
+        if constexpr (isStringLike<R>() || std::is_same<R, bool>::value) {
             for (auto i = 0U; i < minArraySize; i++) {
                 input[i] = get<R>();
             }
