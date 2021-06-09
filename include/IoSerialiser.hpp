@@ -19,34 +19,23 @@ struct Annotated {
     constexpr static void isAnnotated() noexcept {} // needed to check Annotated signature
     using ValueType = T;
     using String = std::string_view;
-    constexpr static String _unit = unit;
-    constexpr static String _description = description;
-    constexpr static String _direction = direction;
     mutable T value;
-    //constexpr Annotated() = delete;
     constexpr Annotated() = default;
     constexpr Annotated(const T &initValue) noexcept : value(initValue) {}
     constexpr Annotated(T &&t) : value(std::move(t)) {}
-    constexpr ~Annotated()       = default;
     constexpr Annotated &operator=(const T &newValue) { value = newValue; return *this; }
-//    constexpr Annotated &operator=(const Annotated &other) {
-//        if (this == &other) {
-//            return *this;
-//        }
-//    value = other.value;
-//    return *this;
-//    }
     [[nodiscard]] constexpr String getUnit() const noexcept { return String(unit.data); }
     [[nodiscard]] constexpr String getDescription() const noexcept { return String(description.data); }
     [[nodiscard]] constexpr String getDirection() const noexcept { return String(direction.data, direction.size); }
     [[nodiscard]] constexpr String typeName() const noexcept { return opencmw::typeName<T>(); }
     constexpr                      operator T &() { return value; }
-    auto                           operator<=>(const Annotated &) const noexcept = default;
-    //constexpr auto                      operator<=>(const Annotated &) const noexcept = default;
+
+    auto           operator<=>(const Annotated &) const noexcept = default;
+    // constexpr auto operator<=>(const Annotated &) const noexcept = default; TODO: conditionally enable if type T allows it (i.e. is 'constexpr')
 
     template<typename T2, const StringLiteral ounit = "", const StringLiteral odescription = "", const StringLiteral odirection = "", const StringLiteral... ogroups>
     constexpr bool operator==(const T2 &rhs) const noexcept {
-        if (value != rhs.value) return false;
+        if (value != rhs.value) { return false; }
         return getUnit() == rhs.getUnit();
     }
 
