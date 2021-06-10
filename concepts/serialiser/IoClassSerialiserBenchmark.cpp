@@ -8,6 +8,7 @@ using namespace opencmw::utils; // for operator<< and fmt::format overloading
 
 template<ReflectableClass T>
 std::size_t checkSerialiserIdentity(IoBuffer &buffer, const T &inputObject, T &outputObject) {
+    assert(inputObject == inputObject); // tests that equal operator works correctly
     using namespace opencmw;
     buffer.clear();
     //    if constexpr (requires { outputObject.clear();}) {
@@ -40,7 +41,7 @@ std::string humanReadableByteCount(long bytes, const bool si) {
         return fmt::format("{} B", bytes);
     }
 
-    const int         exp = static_cast<int>((log(static_cast<double>(bytes)) / log(unit)));
+    const int  exp = static_cast<int>((log(static_cast<double>(bytes)) / log(unit)));
     const char pre = (si ? "kMGTPE" : "KMGTPE")[exp - 1];
     return fmt::format("{:.1f} {}{}B", static_cast<double>(bytes) / pow(unit, exp), pre, (si ? "" : "i"));
 }
@@ -76,14 +77,13 @@ void testPerformancePojo(IoBuffer &buffer, const T &inputObject, T &outputObject
         // JMH use-case
         return;
     }
-    const clock_t stopTime   = clock();
-    const double  diffSeconds = static_cast<double>(stopTime - startTime) / CLOCKS_PER_SEC;
-    const double  bytesPerSecond  = ((static_cast<double>(iterations * buffer.size()) / diffSeconds));
+    const clock_t stopTime       = clock();
+    const double  diffSeconds    = static_cast<double>(stopTime - startTime) / CLOCKS_PER_SEC;
+    const double  bytesPerSecond = ((static_cast<double>(iterations * buffer.size()) / diffSeconds));
     std::cout << fmt::format("IO Serializer (POCO) throughput = {}/s for {} per test run (took {:0.1f} ms)\n",
             humanReadableByteCount(static_cast<long>(bytesPerSecond), true),
             humanReadableByteCount(static_cast<long>(buffer.size()), true), 1e3 * diffSeconds);
 }
-
 
 /*
  * for comparison (C++/POCO variant ~ 90% feature-complete: YaS header missing, ...):
@@ -98,14 +98,14 @@ void testPerformancePojo(IoBuffer &buffer, const T &inputObject, T &outputObject
 int main() {
     using namespace opencmw;
     IoBuffer      buffer;
-    TestDataClass data(10, 10);
+    TestDataClass data(10, 10, 0);
     TestDataClass data2;
     data2.byte1 = 30;
 
     std::cout << fmt::format("IoClassSerialiserBenchmark - check identity - nBytes = {}\n", checkSerialiserIdentity(buffer, data, data2));
 
-    TestDataClass testData(1000, 0); // numeric heavy data <-> equivalent to Java benchmark
-    const int nIterations = 100000; // 100000
+    TestDataClass testData(1000, 0);    // numeric heavy data <-> equivalent to Java benchmark
+    const int     nIterations = 100000; // 100000
     for (int i = 0; i < 10; i++) {
         testPerformancePojo(buffer, testData, data2, nIterations);
     }

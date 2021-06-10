@@ -7,16 +7,30 @@ namespace opencmw {
 template<SerialiserProtocol protocol, ReflectableClass T>
 constexpr void serialise(IoBuffer &buffer, const T &value, const bool writeMetaInfo = true, const uint8_t hierarchyDepth = 0) {
     for_each(refl::reflect(value).members, [&](const auto member, [[maybe_unused]] const auto index) {
-        using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(member(value)))>;
         if constexpr (is_field(member) && !is_static(member)) {
+            using UnwrappedMemberType = std::remove_reference_t<decltype(member(value))>;
+            using MemberType          = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
             if constexpr (isReflectableClass<MemberType>()) {
+                if constexpr (is_smart_pointer<std::remove_reference_t<UnwrappedMemberType>>::value) {
+                    if (!member(value)) {
+                        return;
+                    } // return from lambda
+                }
                 std::size_t posSizePositionStart = opencmw::putFieldHeader<protocol>(buffer, member.name.str(), START_MARKER_INST);
-                std::size_t posStartDataStart    = buffer.size() - sizeof(uint8_t);                                // '-1 because we wrote one byte as marker payload
-                serialise<protocol>(buffer, getAnnotatedMember(member(value)), writeMetaInfo, hierarchyDepth + 1); // do not inspect annotation itself
+                std::size_t posStartDataStart    = buffer.size() - sizeof(uint8_t);                                               // '-1 because we wrote one byte as marker payload
+                serialise<protocol>(buffer, getAnnotatedMember(unwrapPointer(member(value))), writeMetaInfo, hierarchyDepth + 1); // do not inspect annotation itself
 
                 opencmw::putFieldHeader<protocol>(buffer, member.name.str(), END_MARKER_INST);
                 buffer.at<int32_t>(posSizePositionStart) = static_cast<int32_t>(buffer.size() - posStartDataStart); // write data size
             } else {
+                if constexpr (is_smart_pointer<std::remove_reference_t<UnwrappedMemberType>>::value) {
+                    if (member(value)) {
+                        opencmw::putFieldHeader<protocol>(buffer, member.name.str(), member(value));
+                        return;
+                    }
+                    // else -- skip empty smart pointer
+                    return;
+                }
                 opencmw::putFieldHeader<protocol>(buffer, member.name.str(), member(value));
             }
         }
@@ -34,10 +48,10 @@ std::unordered_map<std::string_view, int32_t> createMemberMap() {
 
 template<typename T>
 constexpr auto createMemberMap2() noexcept {
-    constexpr size_t size = refl::reflect<T>().members.size;
-    constexpr ConstExprMap<std::string_view, int32_t, size> m = {refl::util::map_to_array<std::pair<std::string_view, int32_t>>(refl::reflect<T>().members, [](auto field, auto index) {
+    constexpr size_t                                        size = refl::reflect<T>().members.size;
+    constexpr ConstExprMap<std::string_view, int32_t, size> m    = { refl::util::map_to_array<std::pair<std::string_view, int32_t>>(refl::reflect<T>().members, [](auto field, auto index) {
         return std::pair<std::string_view, int32_t>(field.name.c_str(), index);
-    })};
+    }) };
     return m;
 }
 
@@ -110,10 +124,10 @@ constexpr void deserialise(IoBuffer &buffer, T &value, const bool readMetaInfo =
             }
 
             for_each(refl::reflect<T>().members, [searchIndex, &buffer, &value, &hierarchyDepth, &readMetaInfo](auto member, int32_t index) {
-                using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(member(value)))>;
+                using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
                 if constexpr (isReflectableClass<MemberType>()) {
                     if (index == searchIndex) {
-                        deserialise<protocol>(buffer, member(value), readMetaInfo, hierarchyDepth + 1);
+                        deserialise<protocol>(buffer, unwrapPointerCreateIfAbsent(member(value)), readMetaInfo, hierarchyDepth + 1);
                     }
                 }
             });
@@ -123,10 +137,10 @@ constexpr void deserialise(IoBuffer &buffer, T &value, const bool readMetaInfo =
         }
 
         for_each(refl::reflect<T>().members, [&buffer, &value, &intDataType, &searchIndex, &fieldName](auto member, int32_t index) {
-            using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(member(value)))>;
+            using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
             if constexpr (!isReflectableClass<MemberType>() && is_writable(member) && !is_static(member)) {
                 if (IoSerialiser<protocol, MemberType>::getDataTypeId() == intDataType && index == searchIndex) { //TODO: protocol exception for mismatching data-type?
-                    IoSerialiser<protocol, MemberType>::deserialise(buffer, fieldName, getAnnotatedMember(member(value)));
+                    IoSerialiser<protocol, MemberType>::deserialise(buffer, fieldName, getAnnotatedMember(unwrapPointerCreateIfAbsent(member(value))));
                 }
             }
         });

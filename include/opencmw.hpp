@@ -53,6 +53,9 @@ concept StringLike = isStringLike<T>();
 template<typename T>
 concept Number = is_supported_number<T>::value;
 
+template<typename T, typename Tp = typename std::remove_const<T>::type>
+concept ArithmeticType = std::is_arithmetic_v<Tp>;
+
 template<typename T>
 concept SupportedType = is_supported_number<T>::value || isStringLike<T>();
 
@@ -75,35 +78,20 @@ struct StringLiteral : refl::util::const_string<N> {
 
 template<typename Test, template<typename...> class Ref>
 struct is_specialization : std::false_type {};
-
 template<template<typename...> class Ref, typename... Args>
 struct is_specialization<Ref<Args...>, Ref> : std::true_type {};
 
 template<typename T>
-struct is_array {
-    static const bool value = false;
-};
-
+struct is_array : std::false_type {};
 template<typename T, std::size_t N>
-struct is_array<std::array<T, N>> {
-    static const bool value = true;
-};
+struct is_array<std::array<T, N>> : std::true_type {};
 
 template<typename T>
-struct is_array_or_vector {
-    static const bool value = false;
-};
-
+struct is_array_or_vector : std::false_type {};
 template<typename T, typename A>
-struct is_array_or_vector<std::vector<T, A>> {
-    static const bool value = true;
-};
-
+struct is_array_or_vector<std::vector<T, A>> : std::true_type {};
 template<typename T, std::size_t N>
-struct is_array_or_vector<std::array<T, N>> {
-    static const bool value = true;
-};
-
+struct is_array_or_vector<std::array<T, N>> : std::true_type {};
 template<typename T>
 concept ArrayOrVector = is_array_or_vector<T>::value;
 
@@ -113,11 +101,154 @@ concept StringArray = is_array_or_vector<C>::value && isStringLike<T>();
 template<typename T>
 concept NumberArray = std::is_bounded_array<T>::value; // && is_supported_number<T[]>::value;
 
-/* just some helper function to return nicer human-readable type names */
+template<typename T, class Deleter = std::default_delete<T>>
+struct is_smart_pointer : std::false_type {};
+template<typename T, typename Deleter>
+struct is_smart_pointer<std::unique_ptr<T, Deleter>> : std::true_type {};
+template<typename T, typename Deleter>
+struct is_smart_pointer<const std::unique_ptr<T, Deleter>> : std::true_type {};
+template<typename T>
+struct is_smart_pointer<std::unique_ptr<T>> : std::true_type {};
+template<typename T>
+struct is_smart_pointer<const std::unique_ptr<T>> : std::true_type {};
+template<typename T>
+struct is_smart_pointer<std::shared_ptr<T>> : std::true_type {};
+template<typename T>
+struct is_smart_pointer<const std::shared_ptr<T>> : std::true_type {};
+
+template<class T>
+concept SmartPointerType = is_smart_pointer<std::remove_reference_t<T>>::value;
+template<class T>
+concept NotSmartPointerType = !is_smart_pointer<std::remove_reference_t<T>>::value;
+
+template<NotSmartPointerType T>
+constexpr T unwrapPointer(const T &not_smart_pointer) { return not_smart_pointer; }
+template<NotSmartPointerType T>
+constexpr T &unwrapPointer(T &&not_smart_pointer) { return std::forward<T &>(not_smart_pointer); }
+template<NotSmartPointerType T>
+constexpr T &unwrapPointerCreateIfAbsent(T &&not_smart_pointer) { return std::forward<T &>(not_smart_pointer); }
+template<SmartPointerType T>
+constexpr typename T::element_type &unwrapPointer(T &smart_pointer) { return std::forward<typename T::element_type &>(*smart_pointer.get()); }
+template<SmartPointerType T>
+constexpr typename T::element_type &unwrapPointer(const T &smart_pointer) { return std::forward<typename T::element_type &>(*smart_pointer.get()); }
+
+template<SmartPointerType T>
+constexpr typename T::element_type &unwrapPointerCreateIfAbsent(T &smart_pointer) {
+    using Type = typename T::element_type;
+    // check if we need to create type -- if cascade because '!smart_pointer' is not necessarily constexpr
+    if constexpr (is_specialization<T, std::unique_ptr>::value) {
+        if (!smart_pointer) {
+            smart_pointer = std::make_unique<Type>();
+        }
+    } else if constexpr (is_specialization<T, std::shared_ptr>::value) {
+        if (!smart_pointer) {
+            smart_pointer = std::make_shared<Type>();
+        }
+    }
+    return std::forward<Type &>(*smart_pointer.get());
+}
+
 // clang-format off
+/*
+ * unit-/description-type annotation
+ */
+template<typename T, const StringLiteral unit = "", const StringLiteral description = "", const StringLiteral direction = "", const StringLiteral... groups>
+struct Annotated {
+    constexpr static void isAnnotated() noexcept {} // needed to check Annotated signature
+    using ValueType = T;
+    using String = std::string_view;
+    mutable T value;
+    constexpr Annotated() = default;
+    constexpr Annotated(const T &initValue) noexcept : value(initValue) {}
+    constexpr Annotated(T &&t) : value(std::move(t)) {}
+    constexpr Annotated &operator=(const T &newValue) { value = newValue; return *this; }
+    [[nodiscard]] constexpr String getUnit() const noexcept { return String(unit.data); }
+    [[nodiscard]] constexpr String getDescription() const noexcept { return String(description.data); }
+    [[nodiscard]] constexpr String getDirection() const noexcept { return String(direction.data, direction.size); }
+    [[nodiscard]] constexpr String typeName() const noexcept;
+    constexpr                      operator T &() { return value; }
+
+    auto           operator<=>(const Annotated &) const noexcept = default;
+    // constexpr auto operator<=>(const Annotated &) const noexcept = default; TODO: conditionally enable if type T allows it (i.e. is 'constexpr')
+
+    template<typename T2, const StringLiteral ounit = "", const StringLiteral odescription = "", const StringLiteral odirection = "", const StringLiteral... ogroups>
+    constexpr bool operator==(const T2 &rhs) const noexcept {
+        if (value != rhs.value) { return false; }
+        return getUnit() == rhs.getUnit();
+    }
+
+    T &            operator()() noexcept { return value; }
+    constexpr void operator+=(const T &a) noexcept { value += a; }
+    constexpr void operator-=(const T &a) noexcept { value -= a; }
+    constexpr void operator*=(const T &a) noexcept { value *= a; }
+    constexpr void operator/=(const T &a) { value /= a; }
+    constexpr void operator*=(const Annotated &a) noexcept {
+        value *= a.value; // N.B. actually also changes 'unit' -- implement? Nice semantic but performance....?
+    }
+    Annotated operator+(const Annotated &rhs) { return this->value += rhs.value; } //TODO: complete along the line of the units-library
+    Annotated operator-(const Annotated &rhs) { return this->value -= rhs.value; }
+    Annotated operator*(const Annotated &rhs) { return this->value *= rhs.value; }
+    Annotated operator/(const Annotated &rhs) { return this->value /= rhs.value; }
+    Annotated operator+(const ValueType &rhs) { return this->value += rhs; } //TODO: complete along the line of the units-library
+    Annotated operator-(const ValueType &rhs) { return this->value -= rhs; }
+    Annotated operator*(const ValueType &rhs) { return this->value *= rhs; }
+    Annotated operator/(const ValueType &rhs) { return this->value /= rhs; }
+    template<typename O> Annotated operator+(const O &rhs) { return this->value += rhs.value; }
+    template<typename O> Annotated operator-(const O &rhs) { return this->value -= rhs.value; }
+    template<typename O> Annotated operator*(const O &rhs) { return this->value *= rhs.value; }
+    template<typename O> Annotated operator/(const O &rhs) { return this->value /= rhs.value; }
+
+    //friend constexpr std::ostream &operator<<(std::ostream &os, const Annotated &m) { return os << m.value; }
+};
+// clang-format on
+
+template<typename T>
+constexpr bool isAnnotated() {
+    using Type = typename std::decay<T>::type;
+    // return is_specialization<Type, A>::value; // TODO: does not work with Annotated containing NTTPs
+    if constexpr (requires { Type::isAnnotated(); }) {
+        return true;
+    }
+    return false;
+}
+template<class T>
+concept AnnotatedType = isAnnotated<T>();
+template<class T>
+concept NotAnnotatedType = !isAnnotated<T>();
+
+template<NotAnnotatedType T>
+constexpr T getAnnotatedMember(const T &annotatedValue) {
+    // N.B. still needed in 'putFieldHeader(IoBuffer&, const std::string_view &, const DataType&data, bool)'
+    return annotatedValue; //TODO: sort-out/simplify perfect forwarding/move, see https://compiler-explorer.com/z/zTTjff7Tn
+}
+
+template<NotAnnotatedType T>
+constexpr T &getAnnotatedMember(const T &annotatedValue) {
+    return annotatedValue;
+}
+
+template<NotAnnotatedType T>
+constexpr T &getAnnotatedMember(T &&annotatedValue) {
+    return std::forward<T &>(annotatedValue); // perfect forwarding
+}
+
+template<AnnotatedType T>
+constexpr typename T::ValueType &getAnnotatedMember(T &annotatedValue) {
+    using Type = typename T::ValueType;
+    return std::forward<Type &>(annotatedValue.value); // perfect forwarding
+}
+template<AnnotatedType T>
+constexpr typename T::ValueType &getAnnotatedMember(const T &annotatedValue) {
+    using Type = typename T::ValueType;
+    return std::forward<Type &>(annotatedValue.value); // perfect forwarding
+}
+
+/* just some helper function to return nicer human-readable type names */
+
+// clang-format off
+//template<ArithmeticType T> //TODO: rationalise/simplify this and extend this for custom classes using type-traits to query nicer class-type name
 template<typename T, typename Tp = typename std::remove_const<T>::type>
-// N.B. extend this for custom classes using type-traits to query nicer class-type name
-requires(!std::is_array<Tp>::value && !is_array_or_vector<Tp>::value && !is_multi_array<Tp>::value && !isStringLike<T>())
+requires(!std::is_array<Tp>::value && !is_array_or_vector<Tp>::value && !is_multi_array<Tp>::value && !isStringLike<T>() && !is_smart_pointer<T>::value && !isAnnotated<Tp>())
 constexpr const char *typeName() noexcept {
         using namespace std::literals;
         if constexpr (std::is_same<T, std::byte>::value) { return "byte"; }
@@ -138,7 +269,7 @@ constexpr const char *typeName() noexcept {
         if constexpr (std::is_same<T, const long>::value) { return "long const"; }
         if constexpr (std::is_same<T, const float>::value) { return "float const"; }
         if constexpr (std::is_same<T, const double>::value) { return "double const"; }
-//        if constexpr (std::is_same<T, const char *>::value) { return "char* const"; }
+        if constexpr (std::is_same<T, const char *>::value) { return "char* const"; }
 
     if constexpr (refl::is_reflectable<T>()) {
         return refl::reflect<T>().name.data;
@@ -175,6 +306,31 @@ std::string typeName() noexcept {
     using Type = typename std::remove_all_extents<T>::type;
     return fmt::format("{}[?]", opencmw::typeName<Type>());
 }
+
+template<AnnotatedType T>
+std::string typeName() noexcept {
+    using Type = typename T::ValueType;
+    return fmt::format("Annotated<{}>", opencmw::typeName<Type>());
+}
+
+// clang-format off
+template<SmartPointerType T, typename Tp = typename std::remove_const<T>::type>
+std::string typeName() noexcept {
+    using Type = typename std::remove_reference_t<T>;
+    using ConstType = typename std::remove_reference_t<Tp>;
+    using ValueType = typename T::element_type;
+
+    if constexpr (is_specialization<Type, std::unique_ptr>::value)      { return fmt::format("unique_ptr<{}>", opencmw::typeName<ValueType>()); }
+    if constexpr (is_specialization<Type, std::shared_ptr>::value)      { return fmt::format("shared_ptr<{}>", opencmw::typeName<ValueType>()); }
+    if constexpr (is_specialization<ConstType, std::unique_ptr>::value) { return fmt::format("unique_ptr<{}> const", opencmw::typeName<ValueType>()); }
+    if constexpr (is_specialization<ConstType, std::shared_ptr>::value) { return fmt::format("shared_ptr<{}> const", opencmw::typeName<ValueType>()); }
+
+    return fmt::format("smart_pointer<{}>", opencmw::typeName<ValueType>());
+}
+// clang-format on
+
+template<typename T, const StringLiteral unit, const StringLiteral description, const StringLiteral direction, const StringLiteral... groups>
+[[nodiscard]] constexpr std::string_view Annotated<T, unit, description, direction, groups...>::typeName() const noexcept { return opencmw::typeName<T>(); }
 
 template<typename Key, typename Value, std::size_t size>
 struct ConstExprMap {
