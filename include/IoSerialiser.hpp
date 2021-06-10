@@ -12,84 +12,10 @@
 
 namespace opencmw {
 
-/* unit-/description-type annotation variant #2 C++20 compatible (to note: cool non-type template arguments and of course the space-ship <=> operator */
-// clang-format off
-template<typename T, const StringLiteral unit = "", const StringLiteral description = "", const StringLiteral direction = "", const StringLiteral... groups>
-struct Annotated {
-    constexpr static void isAnnotated() noexcept {} // needed to check Annotated signature
-    using ValueType = T;
-    using String = std::string_view;
-    mutable T value;
-    constexpr Annotated() = default;
-    constexpr Annotated(const T &initValue) noexcept : value(initValue) {}
-    constexpr Annotated(T &&t) : value(std::move(t)) {}
-    constexpr Annotated &operator=(const T &newValue) { value = newValue; return *this; }
-    [[nodiscard]] constexpr String getUnit() const noexcept { return String(unit.data); }
-    [[nodiscard]] constexpr String getDescription() const noexcept { return String(description.data); }
-    [[nodiscard]] constexpr String getDirection() const noexcept { return String(direction.data, direction.size); }
-    [[nodiscard]] constexpr String typeName() const noexcept { return opencmw::typeName<T>(); }
-    constexpr                      operator T &() { return value; }
-
-    auto           operator<=>(const Annotated &) const noexcept = default;
-    // constexpr auto operator<=>(const Annotated &) const noexcept = default; TODO: conditionally enable if type T allows it (i.e. is 'constexpr')
-
-    template<typename T2, const StringLiteral ounit = "", const StringLiteral odescription = "", const StringLiteral odirection = "", const StringLiteral... ogroups>
-    constexpr bool operator==(const T2 &rhs) const noexcept {
-        if (value != rhs.value) { return false; }
-        return getUnit() == rhs.getUnit();
-    }
-
-    T &            operator()() noexcept { return value; }
-    constexpr void operator+=(const T &a) noexcept { value += a; }
-    constexpr void operator-=(const T &a) noexcept { value -= a; }
-    constexpr void operator*=(const T &a) noexcept { value *= a; }
-    constexpr void operator/=(const T &a) { value /= a; }
-    constexpr void operator*=(const Annotated &a) noexcept {
-        value *= a.value; // N.B. actually also changes 'unit' -- implement? Nice semantic but performance....?
-    }
-    Annotated operator+(const Annotated &rhs) { return this->value += rhs.value; } //TODO: complete along the line of the units-library
-    Annotated operator-(const Annotated &rhs) { return this->value -= rhs.value; }
-    Annotated operator*(const Annotated &rhs) { return this->value *= rhs.value; }
-    Annotated operator/(const Annotated &rhs) { return this->value /= rhs.value; }
-    template<typename O> Annotated operator+(const O &rhs) { return this->value += rhs.value; }
-    template<typename O> Annotated operator-(const O &rhs) { return this->value -= rhs.value; }
-    template<typename O> Annotated operator*(const O &rhs) { return this->value *= rhs.value; }
-    template<typename O> Annotated operator/(const O &rhs) { return this->value /= rhs.value; }
-
-    //friend constexpr std::ostream &operator<<(std::ostream &os, const Annotated &m) { return os << m.value; }
+template<StringLiteral ErrorMessage>
+struct ProtocolException {
+    constexpr static const char *errorMessage() { return ErrorMessage.data; }
 };
-// clang-format on
-
-template<typename T>
-constexpr bool isAnnotated() {
-    using Type = typename std::decay<T>::type;
-    // return is_specialization<Type, A>::value; // TODO: does not work with Annotated containing NTTPs
-    if constexpr (requires { Type::isAnnotated(); }) {
-        return true;
-    }
-    return false;
-}
-template<class T>
-concept AnnotatedType = isAnnotated<T>();
-template<class T>
-concept NotAnnotatedType = !isAnnotated<T>();
-
-template<NotAnnotatedType T>
-constexpr T getAnnotatedMember(const T &annotatedValue) {
-    // N.B. still needed in 'putFieldHeader(IoBuffer&, const std::string_view &, const DataType&data, bool)'
-    return annotatedValue; //TODO: sort-out/simplify perfect forwarding/move, see https://compiler-explorer.com/z/zTTjff7Tn
-}
-
-template<NotAnnotatedType T>
-constexpr T &getAnnotatedMember(T &&annotatedValue) {
-    return std::forward<T &>(annotatedValue);
-}
-
-template<AnnotatedType T>
-constexpr typename T::ValueType &getAnnotatedMember(T &annotatedValue) {
-    using Type = typename T::ValueType;
-    return std::forward<Type &>(annotatedValue.value); // perfect forwarding/move
-}
 
 template<StringLiteral protocol>
 struct Protocol {
@@ -328,7 +254,7 @@ struct IoSerialiser<YaS, END_MARKER> {
 
 template<SerialiserProtocol protocol, typename DataType>
 std::size_t putFieldHeader(IoBuffer &buffer, const std::string_view &fieldName, const DataType &data, const bool writeMetaInfo = false) {
-    using StrippedDataType         = std::remove_reference_t<decltype(getAnnotatedMember(data))>;
+    using StrippedDataType         = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(data)))>;
     constexpr int32_t dataTypeSize = static_cast<int32_t>(sizeof(StrippedDataType));
     buffer.ensure(((fieldName.length() + 18) * sizeof(uint8_t)) + dataTypeSize);
 
@@ -360,7 +286,7 @@ std::size_t putFieldHeader(IoBuffer &buffer, const std::string_view &fieldName, 
     buffer.at<int32_t>(dataStartOffsetPosition) = static_cast<int32_t>(dataStartOffset); // write offset to dataStart
 
     // from hereon there are data specific structures that are written to the IoBuffer
-    IoSerialiser<protocol, StrippedDataType>::serialise(buffer, fieldName, getAnnotatedMember(data));
+    IoSerialiser<protocol, StrippedDataType>::serialise(buffer, fieldName, getAnnotatedMember(unwrapPointer(data)));
 
     // add just data-end position
     buffer.at<int32_t>(dataSizePosition) = static_cast<int32_t>(buffer.size() - dataStartPosition); // write data size
