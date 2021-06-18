@@ -27,18 +27,26 @@ constexpr bool isReflectableClass() {
 template<class T>
 concept ReflectableClass = isReflectableClass<T>();
 
+//using namespace units;
+template<class T, class U> // TODO: from mp-units - remove once lib is integrated
+inline constexpr bool is_same_v = false;
+template<class T>
+inline constexpr bool is_same_v<T, T> = true;
+template<class T, class U>
+using is_same = std::bool_constant<is_same_v<T, U>>;
+
 #ifndef OPENCMW_ENABLE_UNSIGNED_SUPPORT
 template<typename T, typename Tp = typename std::decay<T>::type>
-inline constexpr bool is_supported_number = std::is_same<Tp, bool>::value || std::is_same<Tp, char>::value || std::is_same<Tp, uint8_t>::value || std::is_same<Tp, int8_t>::value || std::is_same<Tp, int8_t>::value || std::is_same<Tp, int16_t>::value //
-                                         || std::is_same<Tp, int32_t>::value || std::is_same<Tp, int64_t>::value || std::is_same<Tp, float>::value || std::is_same<Tp, double>::value;
+inline constexpr bool is_supported_number = is_same_v<Tp, bool> || is_same_v<Tp, char> || is_same_v<Tp, uint8_t> || is_same_v<Tp, int8_t> || is_same_v<Tp, int8_t> || is_same_v<Tp, int16_t> //
+                                         || is_same_v<Tp, int32_t> || is_same_v<Tp, int64_t> || is_same_v<Tp, float> || is_same_v<Tp, double>;
 #else
-inline constexpr bool is_supported_number = std::is_arithmetic<Tp>::value;
+inline constexpr bool is_supported_number = std::is_arithmetic<Tp>;
 #endif
 
 template<typename T>
 constexpr bool isStringLike() {
     using Tp = typename std::decay<T>::type;
-    return std::is_same<Tp, std::string>::value || std::is_same<Tp, std::string_view>::value;
+    return is_same_v<Tp, std::string> || is_same_v<Tp, std::string_view>;
 }
 
 template<typename T>
@@ -245,25 +253,25 @@ template<typename T, typename Tp = typename std::remove_const<T>::type>
 requires(!std::is_array<Tp>::value && !is_array_or_vector<Tp> && !is_multi_array<Tp> && !isStringLike<T>() && !is_smart_pointer<T> && !isAnnotated<Tp>())
 constexpr const char *typeName() noexcept {
         using namespace std::literals;
-        if constexpr (std::is_same<T, std::byte>::value) { return "byte"; }
-        if constexpr (std::is_same<T, int8_t>::value) { return "byte"; }
-        if constexpr (std::is_same<T, uint8_t>::value) { return "byte"; }
-        if constexpr (std::is_same<T, char>::value) { return "char"; }
-        if constexpr (std::is_same<T, short>::value) { return "short"; }
-        if constexpr (std::is_same<T, int>::value) { return "int"; }
-        if constexpr (std::is_same<T, long>::value) { return "long"; }
-        if constexpr (std::is_same<T, float>::value) { return "float"; }
-        if constexpr (std::is_same<T, double>::value) { return "double"; }
-        if constexpr (std::is_same<T, char *>::value) { return "char*"; }
+        if constexpr (is_same_v<T, std::byte>) { return "byte"; }
+        if constexpr (is_same_v<T, int8_t>) { return "byte"; }
+        if constexpr (is_same_v<T, uint8_t>) { return "byte"; }
+        if constexpr (is_same_v<T, char>) { return "char"; }
+        if constexpr (is_same_v<T, short>) { return "short"; }
+        if constexpr (is_same_v<T, int>) { return "int"; }
+        if constexpr (is_same_v<T, long>) { return "long"; }
+        if constexpr (is_same_v<T, float>) { return "float"; }
+        if constexpr (is_same_v<T, double>) { return "double"; }
+        if constexpr (is_same_v<T, char *>) { return "char*"; }
 
-        if constexpr (std::is_same<T, const std::byte>::value) { return "byte const"; }
-        if constexpr (std::is_same<T, const char>::value) { return "char const"; }
-        if constexpr (std::is_same<T, const short>::value) { return "short const"; }
-        if constexpr (std::is_same<T, const int>::value) { return "int const"; }
-        if constexpr (std::is_same<T, const long>::value) { return "long const"; }
-        if constexpr (std::is_same<T, const float>::value) { return "float const"; }
-        if constexpr (std::is_same<T, const double>::value) { return "double const"; }
-        if constexpr (std::is_same<T, const char *>::value) { return "char* const"; }
+        if constexpr (is_same_v<T, const std::byte>) { return "byte const"; }
+        if constexpr (is_same_v<T, const char>) { return "char const"; }
+        if constexpr (is_same_v<T, const short>) { return "short const"; }
+        if constexpr (is_same_v<T, const int>) { return "int const"; }
+        if constexpr (is_same_v<T, const long>) { return "long const"; }
+        if constexpr (is_same_v<T, const float>) { return "float const"; }
+        if constexpr (is_same_v<T, const double>) { return "double const"; }
+        if constexpr (is_same_v<T, const char *>) { return "char* const"; }
 
     if constexpr (refl::is_reflectable<T>()) {
         return refl::reflect<T>().name.data;
