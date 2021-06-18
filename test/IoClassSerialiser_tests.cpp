@@ -171,13 +171,13 @@ TEST_CASE("IoClassSerialiser smart pointer", "[IoClassSerialiser]") {
 
         SmartPointerClass data2;
         // check for smart pointer function
-        REQUIRE(!is_smart_pointer<decltype(data.e0)>());
-        REQUIRE(!is_smart_pointer<decltype(data.e1)>());
-        REQUIRE(is_smart_pointer<decltype(data.e2)>());
-        REQUIRE(is_smart_pointer<decltype(data.e3)>());
-        REQUIRE(is_smart_pointer<decltype(data.e4)>());
-        REQUIRE(is_smart_pointer<decltype(data.e5)>());
-        REQUIRE(is_smart_pointer<decltype(data.e6)>());
+        REQUIRE(!is_smart_pointer<decltype(data.e0)>);
+        REQUIRE(!is_smart_pointer<decltype(data.e1)>);
+        REQUIRE(is_smart_pointer<decltype(data.e2)>);
+        REQUIRE(is_smart_pointer<decltype(data.e3)>);
+        REQUIRE(is_smart_pointer<decltype(data.e4)>);
+        REQUIRE(is_smart_pointer<decltype(data.e5)>);
+        REQUIRE(is_smart_pointer<decltype(data.e6)>);
 
         // check for smart pointer concept
 

@@ -13,33 +13,27 @@
     REFL_END
 
 namespace opencmw {
-template<typename T>
-constexpr bool isStdType() {
-    using Type = typename std::decay<T>::type;
-    return get_name(refl::reflect<Type>()).template substr<0, 5>() == "std::";
-}
+template<typename T, typename Type = typename std::decay<T>::type>
+inline constexpr bool isStdType = get_name(refl::reflect<Type>()).template substr<0, 5>() == "std::";
 
 template<class T>
 constexpr bool isReflectableClass() {
     using Type = typename std::decay<T>::type;
     if constexpr (std::is_class<Type>::value && refl::is_reflectable<Type>() && !std::is_fundamental<Type>::value && !std::is_array<Type>::value) {
-        return !isStdType<Type>(); // N.B. check this locally since this is not constexpr (yet)
+        return !isStdType<Type>; // N.B. check this locally since this is not constexpr (yet)
     }
     return false;
 }
 template<class T>
 concept ReflectableClass = isReflectableClass<T>();
 
-template<typename T>
-struct is_supported_number {
-    using Tp = typename std::decay<T>::type;
 #ifndef OPENCMW_ENABLE_UNSIGNED_SUPPORT
-    static const bool value = std::is_same<Tp, bool>::value || std::is_same<Tp, char>::value || std::is_same<Tp, uint8_t>::value || std::is_same<Tp, int8_t>::value || std::is_same<Tp, int8_t>::value || std::is_same<Tp, int16_t>::value //
-                           || std::is_same<Tp, int32_t>::value || std::is_same<Tp, int64_t>::value || std::is_same<Tp, float>::value || std::is_same<Tp, double>::value;
+template<typename T, typename Tp = typename std::decay<T>::type>
+inline constexpr bool is_supported_number = std::is_same<Tp, bool>::value || std::is_same<Tp, char>::value || std::is_same<Tp, uint8_t>::value || std::is_same<Tp, int8_t>::value || std::is_same<Tp, int8_t>::value || std::is_same<Tp, int16_t>::value //
+                                         || std::is_same<Tp, int32_t>::value || std::is_same<Tp, int64_t>::value || std::is_same<Tp, float>::value || std::is_same<Tp, double>::value;
 #else
-    static const bool value = std::is_arithmetic<Tp>::value;
+inline constexpr bool is_supported_number = std::is_arithmetic<Tp>::value;
 #endif
-};
 
 template<typename T>
 constexpr bool isStringLike() {
@@ -51,13 +45,13 @@ template<typename T>
 concept StringLike = isStringLike<T>();
 
 template<typename T>
-concept Number = is_supported_number<T>::value;
+concept Number = is_supported_number<T>;
 
 template<typename T, typename Tp = typename std::remove_const<T>::type>
 concept ArithmeticType = std::is_arithmetic_v<Tp>;
 
 template<typename T>
-concept SupportedType = is_supported_number<T>::value || isStringLike<T>();
+concept SupportedType = is_supported_number<T> || isStringLike<T>();
 
 template<size_t N>
 struct StringLiteral : refl::util::const_string<N> {
@@ -77,49 +71,49 @@ struct StringLiteral : refl::util::const_string<N> {
 };
 
 template<typename Test, template<typename...> class Ref>
-struct is_specialization : std::false_type {};
+inline constexpr bool is_specialization = false;
 template<template<typename...> class Ref, typename... Args>
-struct is_specialization<Ref<Args...>, Ref> : std::true_type {};
+inline constexpr bool is_specialization<Ref<Args...>, Ref> = true;
 
 template<typename T>
-struct is_array : std::false_type {};
+inline constexpr bool is_array = false;
 template<typename T, std::size_t N>
-struct is_array<std::array<T, N>> : std::true_type {};
+inline constexpr bool is_array<std::array<T, N>> = true;
 
 template<typename T>
-struct is_array_or_vector : std::false_type {};
+inline constexpr bool is_array_or_vector = false;
 template<typename T, typename A>
-struct is_array_or_vector<std::vector<T, A>> : std::true_type {};
+inline constexpr bool is_array_or_vector<std::vector<T, A>> = true;
 template<typename T, std::size_t N>
-struct is_array_or_vector<std::array<T, N>> : std::true_type {};
+inline constexpr bool is_array_or_vector<std::array<T, N>> = true;
 template<typename T>
-concept ArrayOrVector = is_array_or_vector<T>::value;
+concept ArrayOrVector = is_array_or_vector<T>;
 
 template<typename C, typename T = typename C::value_type, std::size_t size = 0>
-concept StringArray = is_array_or_vector<C>::value && isStringLike<T>();
+concept StringArray = is_array_or_vector<C> && isStringLike<T>();
 
 template<typename T>
 concept NumberArray = std::is_bounded_array<T>::value; // && is_supported_number<T[]>::value;
 
 template<typename T, class Deleter = std::default_delete<T>>
-struct is_smart_pointer : std::false_type {};
+inline constexpr bool is_smart_pointer  = false;
 template<typename T, typename Deleter>
-struct is_smart_pointer<std::unique_ptr<T, Deleter>> : std::true_type {};
+inline constexpr bool is_smart_pointer<std::unique_ptr<T, Deleter>>  = true;
 template<typename T, typename Deleter>
-struct is_smart_pointer<const std::unique_ptr<T, Deleter>> : std::true_type {};
+inline constexpr bool is_smart_pointer<const std::unique_ptr<T, Deleter>>  = true;
 template<typename T>
-struct is_smart_pointer<std::unique_ptr<T>> : std::true_type {};
+inline constexpr bool is_smart_pointer<std::unique_ptr<T>>  = true;
 template<typename T>
-struct is_smart_pointer<const std::unique_ptr<T>> : std::true_type {};
+inline constexpr bool is_smart_pointer<const std::unique_ptr<T>> = true;
 template<typename T>
-struct is_smart_pointer<std::shared_ptr<T>> : std::true_type {};
+inline constexpr bool is_smart_pointer<std::shared_ptr<T>> = true;
 template<typename T>
-struct is_smart_pointer<const std::shared_ptr<T>> : std::true_type {};
+inline constexpr bool is_smart_pointer<const std::shared_ptr<T>> = true;
 
 template<class T>
-concept SmartPointerType = is_smart_pointer<std::remove_reference_t<T>>::value;
+concept SmartPointerType = is_smart_pointer<std::remove_reference_t<T>>;
 template<class T>
-concept NotSmartPointerType = !is_smart_pointer<std::remove_reference_t<T>>::value;
+concept NotSmartPointerType = !is_smart_pointer<std::remove_reference_t<T>>;
 
 template<NotSmartPointerType T>
 constexpr T unwrapPointer(const T &not_smart_pointer) { return not_smart_pointer; }
@@ -136,11 +130,11 @@ template<SmartPointerType T>
 constexpr typename T::element_type &unwrapPointerCreateIfAbsent(T &smart_pointer) {
     using Type = typename T::element_type;
     // check if we need to create type -- if cascade because '!smart_pointer' is not necessarily constexpr
-    if constexpr (is_specialization<T, std::unique_ptr>::value) {
+    if constexpr (is_specialization<T, std::unique_ptr>) {
         if (!smart_pointer) {
             smart_pointer = std::make_unique<Type>();
         }
-    } else if constexpr (is_specialization<T, std::shared_ptr>::value) {
+    } else if constexpr (is_specialization<T, std::shared_ptr>) {
         if (!smart_pointer) {
             smart_pointer = std::make_shared<Type>();
         }
@@ -203,7 +197,7 @@ struct Annotated {
 // clang-format on
 
 template<typename T>
-constexpr bool isAnnotated() {
+inline constexpr bool isAnnotated() {
     using Type = typename std::decay<T>::type;
     // return is_specialization<Type, A>::value; // TODO: does not work with Annotated containing NTTPs
     if constexpr (requires { Type::isAnnotated(); }) {
@@ -248,7 +242,7 @@ constexpr typename T::ValueType &getAnnotatedMember(const T &annotatedValue) {
 // clang-format off
 //template<ArithmeticType T> //TODO: rationalise/simplify this and extend this for custom classes using type-traits to query nicer class-type name
 template<typename T, typename Tp = typename std::remove_const<T>::type>
-requires(!std::is_array<Tp>::value && !is_array_or_vector<Tp>::value && !is_multi_array<Tp>::value && !isStringLike<T>() && !is_smart_pointer<T>::value && !isAnnotated<Tp>())
+requires(!std::is_array<Tp>::value && !is_array_or_vector<Tp> && !is_multi_array<Tp> && !isStringLike<T>() && !is_smart_pointer<T> && !isAnnotated<Tp>())
 constexpr const char *typeName() noexcept {
         using namespace std::literals;
         if constexpr (std::is_same<T, std::byte>::value) { return "byte"; }
@@ -284,12 +278,12 @@ std::string typeName() noexcept {
     using Cp = typename std::remove_const<C>::type;
     constexpr std::string_view isConst = std::is_const_v<C> ? " const" : "";
 
-    if constexpr (is_specialization<Cp, std::vector>::value) { return fmt::format("vector<{}>{}", opencmw::typeName<T>(), isConst); }
-    if constexpr (is_array<Cp>::value) { return fmt::format("array<{},{}>{}", opencmw::typeName<T>(), sizeof(Cp)/sizeof(T), isConst); }
-    if constexpr (is_specialization<Cp, std::set>::value) { return fmt::format("set<{}>{}", opencmw::typeName<T>(), isConst); }
-    if constexpr (is_multi_array<Cp>::value) { return fmt::format("MultiArray<{},{}>{}", opencmw::typeName<T>(), C::n_dims_, isConst); }
-    if constexpr (is_specialization<Cp, std::basic_string>::value) { return fmt::format("string{}", isConst); }
-    if constexpr (is_specialization<Cp, std::basic_string_view>::value) { return fmt::format("string_view{}", isConst); }
+    if constexpr (is_specialization<Cp, std::vector>) { return fmt::format("vector<{}>{}", opencmw::typeName<T>(), isConst); }
+    if constexpr (is_array<Cp>) { return fmt::format("array<{},{}>{}", opencmw::typeName<T>(), sizeof(Cp)/sizeof(T), isConst); }
+    if constexpr (is_specialization<Cp, std::set>) { return fmt::format("set<{}>{}", opencmw::typeName<T>(), isConst); }
+    if constexpr (is_multi_array<Cp>) { return fmt::format("MultiArray<{},{}>{}", opencmw::typeName<T>(), C::n_dims_, isConst); }
+    if constexpr (is_specialization<Cp, std::basic_string>) { return fmt::format("string{}", isConst); }
+    if constexpr (is_specialization<Cp, std::basic_string_view>) { return fmt::format("string_view{}", isConst); }
 
     return fmt::format("CONTAINER<{}>{}", opencmw::typeName<T>(), isConst);
 }
@@ -320,10 +314,10 @@ std::string typeName() noexcept {
     using ConstType = typename std::remove_reference_t<Tp>;
     using ValueType = typename T::element_type;
 
-    if constexpr (is_specialization<Type, std::unique_ptr>::value)      { return fmt::format("unique_ptr<{}>", opencmw::typeName<ValueType>()); }
-    if constexpr (is_specialization<Type, std::shared_ptr>::value)      { return fmt::format("shared_ptr<{}>", opencmw::typeName<ValueType>()); }
-    if constexpr (is_specialization<ConstType, std::unique_ptr>::value) { return fmt::format("unique_ptr<{}> const", opencmw::typeName<ValueType>()); }
-    if constexpr (is_specialization<ConstType, std::shared_ptr>::value) { return fmt::format("shared_ptr<{}> const", opencmw::typeName<ValueType>()); }
+    if constexpr (is_specialization<Type, std::unique_ptr>)      { return fmt::format("unique_ptr<{}>", opencmw::typeName<ValueType>()); }
+    if constexpr (is_specialization<Type, std::shared_ptr>)      { return fmt::format("shared_ptr<{}>", opencmw::typeName<ValueType>()); }
+    if constexpr (is_specialization<ConstType, std::unique_ptr>) { return fmt::format("unique_ptr<{}> const", opencmw::typeName<ValueType>()); }
+    if constexpr (is_specialization<ConstType, std::shared_ptr>) { return fmt::format("shared_ptr<{}> const", opencmw::typeName<ValueType>()); }
 
     return fmt::format("smart_pointer<{}>", opencmw::typeName<ValueType>());
 }

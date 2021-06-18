@@ -78,7 +78,7 @@ std::ostream &ClassInfoIndentDec(std::ostream &os) {
 template<AnnotatedType T>
 std::ostream &operator<<(std::ostream &os, const T &annotatedValue) {
     if (os.iword(getClassInfoVerbose())) {
-        if constexpr (!is_array_or_vector<decltype(annotatedValue.value)>::value) {
+        if constexpr (!is_array_or_vector<decltype(annotatedValue.value)>) {
             os << fmt::format("{:<5}  // [{}] - {}", annotatedValue.value, annotatedValue.getUnit(), annotatedValue.getDescription()); // print as number
         } else {
             os << fmt::format("{}  // [{}] - {}", annotatedValue.value, annotatedValue.getUnit(), annotatedValue.getDescription()); // print as array
@@ -184,7 +184,7 @@ constexpr void diffView(std::ostream &os, const T &lhs, const T &rhs) {
                         ClassInfoIndentInc(os);
                         if constexpr (isReflectableClass<MemberType>()) {
                             using UnwrappedMemberType = std::remove_reference_t<decltype(member(lhs))>;
-                            if constexpr (is_smart_pointer<std::remove_reference_t<UnwrappedMemberType>>::value) {
+                            if constexpr (is_smart_pointer<std::remove_reference_t<UnwrappedMemberType>>) {
                                 // check for empty smart pointer
                                 if (!member(lhs) || !member(rhs)) {
                                     // clang-format off

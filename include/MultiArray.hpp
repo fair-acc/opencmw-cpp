@@ -294,17 +294,13 @@ public:
 // iterators should be aware if they represent congruent memory to allow using memmove type copying if applicable
 
 template<typename T>
-struct is_multi_array {
-    static const bool value = false;
-};
+inline constexpr bool is_multi_array = false;
 
 template<typename T, uint32_t n_dims>
-struct is_multi_array<MultiArray<T, n_dims>> {
-    static const bool value = true;
-};
+inline constexpr bool is_multi_array<MultiArray<T, n_dims>> = true;
 
 template<typename T>
-concept MultiArrayType = is_multi_array<T>::value;
+concept MultiArrayType = is_multi_array<T>;
 
 } // namespace opencmw
 
