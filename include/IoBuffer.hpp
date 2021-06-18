@@ -72,7 +72,7 @@ private:
         const std::size_t byteToCopy = size * sizeof(I);
         ensure(byteToCopy + sizeof(int32_t) + sizeof(I));
         put(static_cast<int32_t>(size)); // size of vector
-        if constexpr (std::is_same<I, bool>::value) {
+        if constexpr (is_same_v<I, bool>) {
             for (std::size_t i = 0U; i < size; i++) {
                 put<bool>(values[i]);
             }
@@ -270,7 +270,7 @@ public:
         const auto        arraySize    = static_cast<std::size_t>(get<int32_t>());
         const std::size_t minArraySize = std::min(arraySize, requestedSize);
         input.resize(minArraySize);
-        if constexpr (isStringLike<R>() || std::is_same<R, bool>::value) {
+        if constexpr (isStringLike<R>() || is_same_v<R, bool>) {
             for (auto i = 0U; i < minArraySize; i++) {
                 input[i] = get<R>();
             }
@@ -289,7 +289,7 @@ public:
         const auto        arraySize    = static_cast<std::size_t>(get<int32_t>());
         const std::size_t minArraySize = std::min(arraySize, requestedSize);
         assert(size >= minArraySize && "std::array<SupportedType, size> wire-format size does not match design");
-        if constexpr (isStringLike<R>() || std::is_same<R, bool>::value) {
+        if constexpr (isStringLike<R>() || is_same_v<R, bool>) {
             for (auto i = 0U; i < minArraySize; i++) {
                 input[i] = get<R>();
             }
