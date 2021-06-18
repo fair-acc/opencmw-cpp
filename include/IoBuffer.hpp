@@ -92,20 +92,20 @@ private:
     }
 
 public:
-    constexpr explicit IoBuffer(const std::size_t &initialCapacity = 0) noexcept {
+    [[nodiscard]] constexpr explicit IoBuffer(const std::size_t &initialCapacity = 0) noexcept {
         if (initialCapacity > 0) {
             reallocate(initialCapacity);
         }
     }
 
-    constexpr IoBuffer(const IoBuffer &other) noexcept
+    [[nodiscard]] constexpr IoBuffer(const IoBuffer &other) noexcept
         : IoBuffer(other._capacity) {
         resize(other._size);
         _position = other._position;
         std::memmove(_buffer, other._buffer, _size * sizeof(uint8_t));
     }
 
-    constexpr IoBuffer(IoBuffer &&other) noexcept
+    [[nodiscard]] constexpr IoBuffer(IoBuffer &&other) noexcept
         : IoBuffer(other._capacity) {
         resize(other._size);
         _position     = other._position;
@@ -117,7 +117,7 @@ public:
         freeInternalBuffer();
     }
 
-    constexpr IoBuffer &operator=(const IoBuffer &other) {
+    [[nodiscard]] constexpr IoBuffer &operator=(const IoBuffer &other) {
         if (this == &other) {
             return *this;
         }
@@ -128,7 +128,7 @@ public:
         return *this;
     }
 
-    constexpr IoBuffer &operator=(IoBuffer &&other) noexcept {
+    [[nodiscard]] constexpr IoBuffer &operator=(IoBuffer &&other) noexcept {
         if (this == &other) {
             return *this;
         }
@@ -141,11 +141,11 @@ public:
     constexpr uint8_t &                        operator[](const std::size_t i) { return _buffer[i]; }
     constexpr const uint8_t &                  operator[](const std::size_t i) const { return _buffer[i]; }
     constexpr void                             reset() { _position = 0; }
-    constexpr std::size_t &                    position() { return _position; }
+    [[nodiscard]] constexpr std::size_t       &position() { return _position; }
     [[nodiscard]] constexpr const std::size_t &position() const { return _position; }
     [[nodiscard]] constexpr const std::size_t &capacity() const { return _capacity; }
     [[nodiscard]] constexpr const std::size_t &size() const { return _size; }
-    constexpr uint8_t *                        data() noexcept { return _buffer; }
+    [[nodiscard]] constexpr uint8_t *          data() noexcept { return _buffer; }
     [[nodiscard]] constexpr const uint8_t *    data() const noexcept { return _buffer; }
     constexpr void                             clear() noexcept { _position = _size = 0; }
 
@@ -241,7 +241,7 @@ public:
     }
 
     template<StringLike R>
-    R get() noexcept {
+    [[nodiscard]] R get() noexcept {
         const std::size_t bytesToCopy = static_cast<std::size_t>(get<int32_t>()) * sizeof(char);
         const std::size_t oldPosition = _position;
 #ifdef NDEBUG
@@ -255,7 +255,7 @@ public:
     }
 
     template<StringLike R>
-    R get(const std::size_t &index) noexcept {
+    [[nodiscard]] R get(const std::size_t &index) noexcept {
         const std::size_t bytesToCopy = static_cast<std::size_t>(get<int32_t>()) * sizeof(char);
 #ifndef NDEBUG
         _position += bytesToCopy;
@@ -266,7 +266,7 @@ public:
     }
 
     template<SupportedType R>
-    constexpr std::vector<R> &getArray(std::vector<R> &input, const std::size_t &requestedSize = SIZE_MAX) noexcept {
+    [[nodiscard]] constexpr std::vector<R> &getArray(std::vector<R> &input, const std::size_t &requestedSize = SIZE_MAX) noexcept {
         const auto        arraySize    = static_cast<std::size_t>(get<int32_t>());
         const std::size_t minArraySize = std::min(arraySize, requestedSize);
         input.resize(minArraySize);
@@ -282,10 +282,10 @@ public:
     }
 
     template<SupportedType R>
-    constexpr std::vector<R> &getArray(std::vector<R> &&input = std::vector<R>(), const std::size_t &requestedSize = SIZE_MAX) noexcept { return getArray<R>(input, requestedSize); }
+    [[nodiscard]] constexpr std::vector<R> &getArray(std::vector<R> &&input = std::vector<R>(), const std::size_t &requestedSize = SIZE_MAX) noexcept { return getArray<R>(input, requestedSize); }
 
     template<SupportedType R, std::size_t size>
-    constexpr std::array<R, size> &getArray(std::array<R, size> &input, const std::size_t &requestedSize = SIZE_MAX) noexcept {
+    [[nodiscard]] constexpr std::array<R, size> &getArray(std::array<R, size> &input, const std::size_t &requestedSize = SIZE_MAX) noexcept {
         const auto        arraySize    = static_cast<std::size_t>(get<int32_t>());
         const std::size_t minArraySize = std::min(arraySize, requestedSize);
         assert(size >= minArraySize && "std::array<SupportedType, size> wire-format size does not match design");
@@ -301,16 +301,16 @@ public:
     }
 
     template<SupportedType R, std::size_t size>
-    constexpr std::array<R, size> &getArray(std::array<R, size> &&input = std::array<R, size>(), const std::size_t &requestedSize = size) noexcept { return getArray<R, size>(input, requestedSize); }
+    [[nodiscard]] constexpr std::array<R, size> &getArray(std::array<R, size> &&input = std::array<R, size>(), const std::size_t &requestedSize = size) noexcept { return getArray<R, size>(input, requestedSize); }
 
     template<StringArray R, typename T = typename R::value_type>
-    constexpr R &get(R &input, const std::size_t &requestedSize = SIZE_MAX) noexcept { return getArray<T>(input, requestedSize); }
+    [[nodiscard]] constexpr R &get(R &input, const std::size_t &requestedSize = SIZE_MAX) noexcept { return getArray<T>(input, requestedSize); }
     template<StringArray R, typename T = typename R::value_type>
-    constexpr R &get(R &&input = R(), const std::size_t &requestedSize = SIZE_MAX) noexcept { return getArray<T>(input, requestedSize); }
+    [[nodiscard]] constexpr R &get(R &&input = R(), const std::size_t &requestedSize = SIZE_MAX) noexcept { return getArray<T>(input, requestedSize); }
     template<StringArray R, typename T = typename R::value_type, std::size_t size>
-    constexpr R &get(R &input, const std::size_t &requestedSize = size) noexcept { return getArray<T, size>(input, requestedSize); }
+    [[nodiscard]] constexpr R &get(R &input, const std::size_t &requestedSize = size) noexcept { return getArray<T, size>(input, requestedSize); }
     template<StringArray R, typename T = typename R::value_type, std::size_t size>
-    constexpr R &get(R &&input = R(), const std::size_t &requestedSize = size) noexcept { return getArray<T, size>(input, requestedSize); }
+    [[nodiscard]] constexpr R &get(R &&input = R(), const std::size_t &requestedSize = size) noexcept { return getArray<T, size>(input, requestedSize); }
 };
 
 } // namespace opencmw
