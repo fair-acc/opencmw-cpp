@@ -266,7 +266,7 @@ public:
     }
 
     template<SupportedType R>
-    [[nodiscard]] constexpr std::vector<R> &getArray(std::vector<R> &input, const std::size_t &requestedSize = SIZE_MAX) noexcept {
+    constexpr std::vector<R> &getArray(std::vector<R> &input, const std::size_t &requestedSize = SIZE_MAX) noexcept {
         const auto        arraySize    = static_cast<std::size_t>(get<int32_t>());
         const std::size_t minArraySize = std::min(arraySize, requestedSize);
         input.resize(minArraySize);
@@ -282,10 +282,10 @@ public:
     }
 
     template<SupportedType R>
-    [[nodiscard]] constexpr std::vector<R> &getArray(std::vector<R> &&input = std::vector<R>(), const std::size_t &requestedSize = SIZE_MAX) noexcept { return getArray<R>(input, requestedSize); }
+    constexpr std::vector<R> &getArray(std::vector<R> &&input = std::vector<R>(), const std::size_t &requestedSize = SIZE_MAX) noexcept { return getArray<R>(input, requestedSize); }
 
     template<SupportedType R, std::size_t size>
-    [[nodiscard]] constexpr std::array<R, size> &getArray(std::array<R, size> &input, const std::size_t &requestedSize = SIZE_MAX) noexcept {
+    constexpr std::array<R, size> &getArray(std::array<R, size> &input, const std::size_t &requestedSize = SIZE_MAX) noexcept {
         const auto        arraySize    = static_cast<std::size_t>(get<int32_t>());
         const std::size_t minArraySize = std::min(arraySize, requestedSize);
         assert(size >= minArraySize && "std::array<SupportedType, size> wire-format size does not match design");
@@ -301,7 +301,7 @@ public:
     }
 
     template<SupportedType R, std::size_t size>
-    [[nodiscard]] constexpr std::array<R, size> &getArray(std::array<R, size> &&input = std::array<R, size>(), const std::size_t &requestedSize = size) noexcept { return getArray<R, size>(input, requestedSize); }
+    constexpr std::array<R, size> &getArray(std::array<R, size> &&input = std::array<R, size>(), const std::size_t &requestedSize = size) noexcept { return getArray<R, size>(input, requestedSize); }
 
     template<StringArray R, typename T = typename R::value_type>
     [[nodiscard]] constexpr R &get(R &input, const std::size_t &requestedSize = SIZE_MAX) noexcept { return getArray<T>(input, requestedSize); }

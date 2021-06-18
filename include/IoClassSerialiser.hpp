@@ -11,7 +11,7 @@ constexpr void serialise(IoBuffer &buffer, const T &value, const bool writeMetaI
             using UnwrappedMemberType = std::remove_reference_t<decltype(member(value))>;
             using MemberType          = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
             if constexpr (isReflectableClass<MemberType>()) {
-                if constexpr (is_smart_pointer<std::remove_reference_t<UnwrappedMemberType>>::value) {
+                if constexpr (is_smart_pointer<std::remove_reference_t<UnwrappedMemberType>>) {
                     if (!member(value)) {
                         return;
                     } // return from lambda
@@ -23,7 +23,7 @@ constexpr void serialise(IoBuffer &buffer, const T &value, const bool writeMetaI
                 opencmw::putFieldHeader<protocol>(buffer, member.name.str(), END_MARKER_INST);
                 buffer.at<int32_t>(posSizePositionStart) = static_cast<int32_t>(buffer.size() - posStartDataStart); // write data size
             } else {
-                if constexpr (is_smart_pointer<std::remove_reference_t<UnwrappedMemberType>>::value) {
+                if constexpr (is_smart_pointer<std::remove_reference_t<UnwrappedMemberType>>) {
                     if (member(value)) {
                         opencmw::putFieldHeader<protocol>(buffer, member.name.str(), member(value));
                         return;
