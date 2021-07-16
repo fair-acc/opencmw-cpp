@@ -12,7 +12,7 @@
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/b3f9b8c8730a411a90475dce6fb259d6)](https://www.codacy.com/gh/fair-acc/opencmw-cpp/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=fair-acc/opencmw-cpp&amp;utm_campaign=Badge_Grade)
 [![Codacy Badge](https://app.codacy.com/project/badge/Coverage/b3f9b8c8730a411a90475dce6fb259d6)](https://www.codacy.com/gh/fair-acc/opencmw-cpp/dashboard?utm_source=github.com&utm_medium=referral&utm_content=fair-acc/opencmw-cpp&utm_campaign=Badge_Coverage)
 [![codecov](https://codecov.io/gh/fair-acc/opencmw-cpp/branch/main/graph/badge.svg?token=CKXPO2UQIL)](https://codecov.io/gh/fair-acc/opencmw-cpp)
-
+[![Coverity Build Status](https://scan.coverity.com/projects/fair-acc-opencmw-cpp/badge.svg)](https://scan.coverity.com/projects/fair-acc-opencmw-cpp)
 # Open Common Middle-Ware
 ... is a modular event-driven [micro-](https://en.wikipedia.org/wiki/Microservices) and [middle-ware](https://en.wikipedia.org/wiki/Middleware#:~:text=Middleware%20is%20a%20computer%20software,described%20as%20%22software%20glue%22.)
 library for equipment- and beam-based monitoring as well as feedback control systems for the [FAIR](https://fair-center.eu/) Accelerator Facility ([video](https://www.youtube.com/watch?v=gCHzDR7hdoM))
