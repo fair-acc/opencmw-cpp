@@ -1,6 +1,9 @@
 #ifndef OPENCMW_H
 #define OPENCMW_H
 //#include "../cmake-build-debug/_deps/refl-cpp-src/refl.hpp"
+//#include <units/concepts.h>
+//#include <units/quantity.h>
+//#include <units/quantity_io.h>
 #include <MultiArray.hpp> // TODO: resolve dangerous circular dependency
 #include <fmt/color.h>
 #include <fmt/format.h>
