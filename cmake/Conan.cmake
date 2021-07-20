@@ -19,14 +19,10 @@ macro(run_conan)
     fmt/7.1.3
     mp-units/0.7.0
     # refl-cpp/0.12.1 # could be used once there is a new release
-    GENERATORS
-    CMakeDeps # generate <pkg>-config.cmake files for find_package()
     OPTIONS
     ${CONAN_EXTRA_OPTIONS}
     BASIC_SETUP
     CMAKE_TARGETS # individual targets to link to
     BUILD
     missing)
-
-  set(CMAKE_PREFIX_PATH ${CMAKE_BINARY_DIR}) # CMakeDeps puts the *-config.cmake files into the output directory
 endmacro()
