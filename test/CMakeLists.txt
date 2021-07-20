@@ -5,13 +5,15 @@ else()
   include(${CONAN_CATCH2_ROOT}/lib/cmake/Catch2/Catch.cmake)
 endif()
 
+find_package(mp-units CONFIG REQUIRED)
+
 include(${PROJECT_SOURCE_DIR}/cmake/ReflCpp.cmake)
 #find_package(refl-cpp REQUIRED)
 include_directories(${PROJECT_SOURCE_DIR}/include)
 include_directories(../include/)
 
 add_library(catch_main STATIC catch_main.cpp IoBuffer_tests.cpp IoSerialiser_tests.cpp IoClassSerialiser_tests.cpp ../include/opencmw.hpp ../include/IoBuffer.hpp ../include/IoSerialiser.hpp ../include/IoClassSerialiser.hpp ../include/MultiArray.hpp)
-target_link_libraries(catch_main PUBLIC CONAN_PKG::catch2 CONAN_PKG::fmt)
+target_link_libraries(catch_main PUBLIC CONAN_PKG::catch2 CONAN_PKG::fmt mp-units::mp-units)
 target_link_libraries(catch_main PRIVATE project_options)
 target_include_directories(catch_main SYSTEM PUBLIC ${refl-cpp_SOURCE_DIR}/include)
 

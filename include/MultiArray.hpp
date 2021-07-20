@@ -277,7 +277,8 @@ public:
 
     /// simple print operator for debugging
     constexpr friend std::ostream &operator<<(std::ostream &output, const MultiArray &array) {
-        return output << fmt::format("{{dim[{}]:{}, data[{}]:{}}}", n_dims, array.dimensions(), array.element_count(), array.elements()); // does not work
+        //return output << fmt::format("{{dim[{}]:{}, data[{}]:{}}}", n_dims, array.dimensions(), array.element_count(), array.elements()); // does not work
+        return output << fmt::format("{{dim[{}]:{}, data[{}]:data display not implemented}}", n_dims, array.dimensions(), array.element_count()); // does not work
     }
 };
 

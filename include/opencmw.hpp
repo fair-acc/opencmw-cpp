@@ -1,9 +1,9 @@
 #ifndef OPENCMW_H
 #define OPENCMW_H
 //#include "../cmake-build-debug/_deps/refl-cpp-src/refl.hpp"
-//#include <units/concepts.h>
-//#include <units/quantity.h>
-//#include <units/quantity_io.h>
+#include <units/concepts.h>
+#include <units/quantity.h>
+#include <units/quantity_io.h>
 #include <MultiArray.hpp> // TODO: resolve dangerous circular dependency
 #include <fmt/color.h>
 #include <fmt/format.h>
@@ -30,7 +30,7 @@ constexpr bool isReflectableClass() {
 template<class T>
 concept ReflectableClass = isReflectableClass<T>();
 
-//using namespace units;
+using namespace units;
 template<class T, class U> // TODO: from mp-units - remove once lib is integrated
 inline constexpr bool is_same_v = false;
 template<class T>
