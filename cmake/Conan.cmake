@@ -5,15 +5,8 @@ macro(run_conan)
     file(DOWNLOAD "https://github.com/conan-io/cmake-conan/raw/v0.16.1/conan.cmake" "${CMAKE_BINARY_DIR}/conan.cmake")
   endif()
 
+  set(ENV{CONAN_REVISIONS_ENABLED} 1) # required for new bincrafters repository
   include(${CMAKE_BINARY_DIR}/conan.cmake)
-
-  conan_add_remote(
-    NAME conan-center
-    URL https://api.bintray.com/conan/conan/conan-center)
-
-  conan_add_remote(
-    NAME conan-mpusz
-    URL https://mpusz.jfrog.io/artifactory/api/conan/conan-oss)
 
   conan_add_remote(
     NAME bincrafters
@@ -23,8 +16,9 @@ macro(run_conan)
     REQUIRES
     ${CONAN_EXTRA_REQUIRES}
     catch2/2.13.3
-    fmt/6.2.1
+    fmt/7.1.3
     mp-units/0.7.0
+    # refl-cpp/0.12.1 # could be used once there is a new release
     OPTIONS
     ${CONAN_EXTRA_OPTIONS}
     BASIC_SETUP

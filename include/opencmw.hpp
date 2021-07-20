@@ -1,14 +1,14 @@
 #ifndef OPENCMW_H
 #define OPENCMW_H
 //#include "../cmake-build-debug/_deps/refl-cpp-src/refl.hpp"
-//#include <units/concepts.h>
-//#include <units/quantity.h>
-//#include <units/quantity_io.h>
 #include <MultiArray.hpp> // TODO: resolve dangerous circular dependency
 #include <fmt/color.h>
 #include <fmt/format.h>
 #include <refl.hpp>
 #include <set>
+#include <units/concepts.h>
+#include <units/quantity.h>
+#include <units/quantity_io.h>
 
 #define ENABLE_REFLECTION_FOR(TypeName, ...) \
     REFL_TYPE(TypeName) \
@@ -30,7 +30,7 @@ constexpr bool isReflectableClass() {
 template<class T>
 concept ReflectableClass = isReflectableClass<T>();
 
-//using namespace units;
+using namespace units;
 template<class T, class U> // TODO: from mp-units - remove once lib is integrated
 inline constexpr bool is_same_v = false;
 template<class T>
@@ -107,13 +107,13 @@ template<typename T>
 concept NumberArray = std::is_bounded_array<T>::value; // && is_supported_number<T[]>::value;
 
 template<typename T, class Deleter = std::default_delete<T>>
-inline constexpr bool is_smart_pointer  = false;
+inline constexpr bool is_smart_pointer = false;
 template<typename T, typename Deleter>
-inline constexpr bool is_smart_pointer<std::unique_ptr<T, Deleter>>  = true;
+inline constexpr bool is_smart_pointer<std::unique_ptr<T, Deleter>> = true;
 template<typename T, typename Deleter>
-inline constexpr bool is_smart_pointer<const std::unique_ptr<T, Deleter>>  = true;
+inline constexpr bool is_smart_pointer<const std::unique_ptr<T, Deleter>> = true;
 template<typename T>
-inline constexpr bool is_smart_pointer<std::unique_ptr<T>>  = true;
+inline constexpr bool is_smart_pointer<std::unique_ptr<T>> = true;
 template<typename T>
 inline constexpr bool is_smart_pointer<const std::unique_ptr<T>> = true;
 template<typename T>
