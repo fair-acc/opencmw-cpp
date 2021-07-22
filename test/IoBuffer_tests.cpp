@@ -262,7 +262,7 @@ TEST_CASE("IoBuffer syntax - arrays", "[IoBuffer]") {
             return sizeof(value) + sizeof(int32_t); // native array definition
         };
         const auto writeTest = [&buffer, &oldBufferSize, &expectedSize]<typename T, size_t size = 0>(const std::string field, T &&value) {
-            const auto &msg = fmt::format("writeTest(IoBuffer&, '{}', ({})[{}])", field, opencmw::typeName<T>(), fmt::join(value, ", "));
+            const auto &msg = fmt::format("writeTest(IoBuffer&, '{}', ({})[{}])", field, opencmw::typeName<T>, fmt::join(value, ", "));
             REQUIRE_MESSAGE(buffer.size() == oldBufferSize, msg);
             buffer.put(value);
             REQUIRE_MESSAGE((buffer.size() - oldBufferSize) == expectedSize(value), msg);
@@ -315,7 +315,7 @@ TEST_CASE("IoBuffer syntax - arrays", "[IoBuffer]") {
         REQUIRE(array == array2);
 
         // bool vector & bool array
-        REQUIRE(std::vector<bool>{false, true, false, true, false } == buffer.getArray<bool>(std::vector<bool>(), 5));
+        REQUIRE(std::vector<bool>{ false, true, false, true, false } == buffer.getArray<bool>(std::vector<bool>(), 5));
         REQUIRE(std::array<bool, 5>{ true, false, true, false, true } == buffer.getArray<bool, 5>(std::array<bool, 5>(), 5));
 
         const auto         origPosition = buffer.position();

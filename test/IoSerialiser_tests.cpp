@@ -8,8 +8,16 @@
 #include <iostream>
 #include <string_view>
 
+#include <units/isq/si/length.h>
+#include <units/isq/si/speed.h>
+
+using namespace units::isq;
+using namespace units::isq::si;
+using NoUnit = units::dimensionless<units::one>;
+using namespace std::literals;
+
 struct Data {
-    opencmw::Annotated<double, "unit", "custom description", "IN/OUT"> value;
+    opencmw::Annotated<double, si::speed<metre_per_second>, "custom description", "IN/OUT"> value;
     // bla blaa
 
     Data(double val = 0)
@@ -21,13 +29,15 @@ TEST_CASE("IoSerialiser syntax", "[IoSerialiser]") {
     {
         opencmw::debug::Timer timer("IoSerialiser syntax", 30);
         std::cout << "run IoSerialiser test\n";
-        std::cout << "type name: " << opencmw::typeName<std::byte>() << '\n';
-        std::cout << "type name: " << opencmw::typeName<char>() << '\n';
-        std::cout << "type name: " << opencmw::typeName<const char>() << '\n';
-        std::cout << "type name: " << opencmw::typeName<int[2]>() << '\n'; //NOLINT
+        std::cout << "type name: " << opencmw::typeName<std::byte> << '\n';
+        std::cout << "type name: " << opencmw::typeName<char> << '\n';
+        std::cout << "type name: " << opencmw::typeName<const char> << '\n';
+        std::cout << "type name: " << opencmw::typeName<int[2]> << '\n'; //NOLINT
         const int a[2] = { 1, 2 };
-        std::cout << "type name: " << opencmw::typeName<decltype(a)>() << '\n';
-        std::cout << "type name: " << opencmw::typeName<short *>() << '\n';
+        std::cout << "type name: " << opencmw::typeName<decltype(a)> << '\n';
+        std::cout << "type name: " << opencmw::typeName<short *> << '\n';
+        std::cout << "type name: " << opencmw::typeName<const short *> << '\n';
+        std::cout << "type name: " << opencmw::typeName<short *const> << '\n';
 
         opencmw::IoBuffer buffer;
         Data              data;
@@ -48,11 +58,11 @@ TEST_CASE("IoSerialiser basic syntax", "[IoSerialiser]") {
         Data                  data(42);
 
         std::cout << "YaS      constexpr: " << opencmw::serialisePartial<opencmw::YaS>(buffer, data) << '\n';
-        REQUIRE(opencmw::isAnnotated< decltype(data.value)>() == true);
+        REQUIRE(opencmw::is_annotated<decltype(data.value)> == true);
         std::cout << fmt::format("buffer size (before): {} bytes\n", buffer.size());
 
         opencmw::putFieldHeader<opencmw::YaS, double>(buffer, "fieldNameA", std::move(43.0));
-        opencmw::putFieldHeader<opencmw::YaS, double>(buffer, "fieldNameB", data.value);
+        opencmw::putFieldHeader<opencmw::YaS, double>(buffer, "fieldNameB", data.value.value());
         std::cout << fmt::format("buffer size (after): {} bytes\n", buffer.size());
     }
     REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
@@ -68,15 +78,15 @@ TEST_CASE("IoSerialiser primitive numbers YaS", "[IoSerialiser]") {
         opencmw::IoBuffer     buffer;
         auto                  oldBufferPosition = buffer.position();
         constexpr auto        expectedSize      = []<typename T>(const T &value) {
-            if constexpr (opencmw::isStringLike<T>() && requires { value.size(); }) {
+            if constexpr (opencmw::is_stringlike<T> && requires { value.size(); }) {
                 return (value.size() + 1) * sizeof(char) + sizeof(int32_t); // '+1' for '\0' terminating character, 4 for storing the string length
             }
             return sizeof(value);
         };
         auto writeTest = [&buffer, &oldBufferPosition, &expectedSize]<typename T, opencmw::SerialiserProtocol protocol = opencmw::YaS>(T && value) {
-            const auto &msg = fmt::format("writeTest(IoBuffer&, size_t&,({}){})", opencmw::typeName<T>(), std::forward<T>(value));
+            const auto &msg = fmt::format("writeTest(IoBuffer&, size_t&,({}){})", opencmw::typeName<T>, std::forward<T>(value));
             REQUIRE_MESSAGE(buffer.size() == oldBufferPosition, msg);
-            opencmw::IoSerialiser<protocol, T>::serialise(buffer, std::string(opencmw::typeName<T>()) + "TestDataClass", value);
+            opencmw::IoSerialiser<protocol, T>::serialise(buffer, std::string(opencmw::typeName<T>) + "TestDataClass", value);
             REQUIRE_MESSAGE((buffer.size() - oldBufferPosition) == expectedSize(value), msg);
             oldBufferPosition += expectedSize(value);
         };
@@ -97,9 +107,9 @@ TEST_CASE("IoSerialiser primitive numbers YaS", "[IoSerialiser]") {
         oldBufferPosition = buffer.position();
         REQUIRE(oldBufferPosition == 0);
         auto readTest = [&buffer, &oldBufferPosition, &expectedSize]<typename T, opencmw::SerialiserProtocol protocol = opencmw::YaS>(T expected) {
-            const auto &msg = fmt::format("ioserialiser_basicReadTests(basicReadTest&, size_t&,({}){})", opencmw::typeName<T>(), expected);
+            const auto &msg = fmt::format("ioserialiser_basicReadTests(basicReadTest&, size_t&,({}){})", opencmw::typeName<T>, expected);
             T           actual;
-            opencmw::IoSerialiser<protocol, T>::deserialise(buffer, std::string(opencmw::typeName<T>()) + "TestDataClass", actual);
+            opencmw::IoSerialiser<protocol, T>::deserialise(buffer, std::string(opencmw::typeName<T>) + "TestDataClass", actual);
             REQUIRE_MESSAGE(actual == expected, msg);
             REQUIRE_MESSAGE((buffer.position() - oldBufferPosition) == expectedSize(expected), msg);
             oldBufferPosition = buffer.position();

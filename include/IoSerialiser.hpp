@@ -12,14 +12,14 @@
 
 namespace opencmw {
 
-template<StringLiteral ErrorMessage>
+template<basic_fixed_string ErrorMessage>
 struct ProtocolException {
-    constexpr static const char *errorMessage() { return ErrorMessage.data; }
+    constexpr static const char *errorMessage() { return ErrorMessage.data_; }
 };
 
-template<StringLiteral protocol>
+template<basic_fixed_string protocol>
 struct Protocol {
-    constexpr static const char *protocolName() { return protocol.data; }
+    constexpr static const char *protocolName() { return protocol.data_; }
 };
 
 template<typename T>
@@ -34,14 +34,14 @@ struct IoSerialiser {
 
     constexpr static bool    serialise(IoBuffer & /*buffer*/, const ClassField &field, const T &value) noexcept {
         std::cout << fmt::format("{:<4} - serialise-generic: {} {} value: {} - constexpr?: {}\n",
-                protocol::protocolName(), typeName<T>(), field, value,
+                protocol::protocolName(), typeName<T>, field, value,
                 std::is_constant_evaluated());
         return std::is_constant_evaluated();
     }
 
     constexpr static bool deserialise(IoBuffer & /*buffer*/, const ClassField &field, T &value) noexcept {
         std::cout << fmt::format("{:<4} - deserialise-generic: {} {} value: {} - constexpr?: {}\n",
-                protocol::protocolName(), typeName<T>(), field, value,
+                protocol::protocolName(), typeName<T>, field, value,
                 std::is_constant_evaluated());
         return std::is_constant_evaluated();
     }
@@ -139,7 +139,7 @@ struct IoSerialiser<YaS, T> {
 template<Number T> // catches all numbers
 struct IoSerialiser<YaS, T> {
     inline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); }
-    constexpr static bool    serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
+    constexpr static bool           serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
         buffer.put(value);
         return std::is_constant_evaluated();
     }
@@ -152,9 +152,9 @@ struct IoSerialiser<YaS, T> {
 template<StringLike T>
 struct IoSerialiser<YaS, T> {
     inline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); }
-    constexpr static bool    serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
-        //        std::cout << fmt::format("{} - serialise-String_like: {} {} == {} - constexpr?: {}\n",
-        //            YaS::protocolName(), typeName<T>(), field, value, std::is_constant_evaluated());
+    constexpr static bool           serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
+        //        std::cout << fmt::format("{} - serialise-String_like: {} {} == {} - constexpr?: {} - const {}\n",
+        //                YaS::protocolName(), typeName<T>(), field, value, std::is_constant_evaluated(), std::is_const_v<T>);
         buffer.put<T>(value); // N.B. ensure that the wrapped value and not the annotation itself is serialised
         return std::is_constant_evaluated();
     }
@@ -169,7 +169,7 @@ struct IoSerialiser<YaS, T> {
 template<ArrayOrVector T>
 struct IoSerialiser<YaS, T> {
     inline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); }
-    constexpr static bool    serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
+    constexpr static bool           serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
         buffer.put(std::array<int32_t, 1>{ static_cast<int32_t>(value.size()) });
         buffer.put(value);
         return std::is_constant_evaluated();
@@ -218,7 +218,7 @@ template<>
 struct IoSerialiser<YaS, START_MARKER> {
     inline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<START_MARKER>(); }
 
-    constexpr static bool    serialise(IoBuffer &buffer, const ClassField & /*field*/, const START_MARKER & /*value*/) noexcept {
+    constexpr static bool           serialise(IoBuffer &buffer, const ClassField & /*field*/, const START_MARKER & /*value*/) noexcept {
         buffer.put<uint8_t>(getDataTypeId());
         return std::is_constant_evaluated();
     }
@@ -237,7 +237,7 @@ struct IoSerialiser<YaS, START_MARKER> {
 template<>
 struct IoSerialiser<YaS, END_MARKER> {
     inline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<END_MARKER>(); }
-    static bool              serialise(IoBuffer &buffer, const ClassField & /*field*/, const END_MARKER & /*value*/) noexcept {
+    static bool                     serialise(IoBuffer &buffer, const ClassField & /*field*/, const END_MARKER & /*value*/) noexcept {
         buffer.put<uint8_t>(getDataTypeId()); // N.B. ensure that the wrapped value and not the annotation itself is serialised
         return std::is_constant_evaluated();
     }
@@ -269,7 +269,7 @@ std::size_t putFieldHeader(IoBuffer &buffer, const std::string_view &fieldName, 
     buffer.put(dataSize);  // dataSize (N.B. 'headerStart' + 'dataStart + dataSize' == start of next field header
     buffer.put(fieldName); // full field name
 
-    if constexpr (isAnnotated<DataType>()) {
+    if constexpr (is_annotated<DataType>) {
         if (writeMetaInfo) {
             buffer.put(std::string_view(data.getUnit()));
             buffer.put(std::string_view(data.getDescription()));
@@ -318,7 +318,7 @@ struct IoSerialiser<T, CmwLight> { // catch all template
             return true;
         }
         std::cout << fmt::format("{} - serialise-catch-all: {} {} value: {} - constexpr?: {}\n",
-                CmwLight::protocolName(), typeName<T>(), field, value,
+                CmwLight::protocolName(), typeName<T>, field, value,
                 std::is_constant_evaluated());
         return false;
     }

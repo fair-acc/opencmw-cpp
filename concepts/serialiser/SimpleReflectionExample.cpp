@@ -2,6 +2,12 @@
 #include <Utils.hpp>
 #include <iostream>
 
+// SI units -- include what you need
+#include <units/isq/si/electric_current.h>
+#include <units/isq/si/energy.h>
+#include <units/isq/si/thermodynamic_temperature.h>
+using namespace units::isq::si; // for short-hand notation
+
 struct className {
     int         field1;
     float       field2;
@@ -14,9 +20,9 @@ ENABLE_REFLECTION_FOR(className, field1, field2, field3)
 
 using opencmw::Annotated;
 struct otherClass {
-    Annotated<float, "°C", "device specific temperature">                        temperature     = 23.2F;
-    Annotated<float, "A", "this is the current from ...">                        current         = 42.F;
-    Annotated<float, "MeV/u", "SIS18 energy at injection before being captured"> injectionEnergy = 8.44F;
+    Annotated<float, thermodynamic_temperature<kelvin>, "device specific temperature">        temperature     = 23.2F;
+    Annotated<float, electric_current<ampere>, "this is the current from ...">                current         = 42.F;
+    Annotated<float, energy<electronvolt>, "SIS18 energy at injection before being captured"> injectionEnergy = 8.44e6F;
     // [..]
 
     // just good common practise to define some operators

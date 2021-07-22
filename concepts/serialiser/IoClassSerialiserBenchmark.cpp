@@ -24,7 +24,7 @@ std::size_t checkSerialiserIdentity(IoBuffer &buffer, const T &inputObject, T &o
     try {
         opencmw::deserialise<YaS>(buffer, outputObject);
     } catch (std::exception &e) {
-        std::cout << "caught exception " << typeName<std::remove_reference_t<decltype(e)>>() << std::endl;
+        std::cout << "caught exception " << typeName<std::remove_reference_t<decltype(e)>> << std::endl;
     } catch (...) {
         std::cout << "caught unknown exception " << std::endl;
     }
@@ -63,7 +63,7 @@ void testPerformancePojo(IoBuffer &buffer, const T &inputObject, T &outputObject
         try {
             opencmw::deserialise<YaS>(buffer, outputObject);
         } catch (std::exception &e) {
-            std::cout << "caught exception " << typeName<std::remove_reference_t<decltype(e)>>() << std::endl;
+            std::cout << "caught exception " << typeName<std::remove_reference_t<decltype(e)>> << std::endl;
         } catch (...) {
             std::cout << "caught unknown exception " << std::endl;
         }
