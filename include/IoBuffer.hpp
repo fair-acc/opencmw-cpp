@@ -141,7 +141,7 @@ public:
     constexpr uint8_t &                        operator[](const std::size_t i) { return _buffer[i]; }
     constexpr const uint8_t &                  operator[](const std::size_t i) const { return _buffer[i]; }
     constexpr void                             reset() { _position = 0; }
-    [[nodiscard]] constexpr std::size_t       &position() { return _position; }
+    [[nodiscard]] constexpr std::size_t &      position() { return _position; }
     [[nodiscard]] constexpr const std::size_t &position() const { return _position; }
     [[nodiscard]] constexpr const std::size_t &capacity() const { return _capacity; }
     [[nodiscard]] constexpr const std::size_t &size() const { return _size; }
@@ -208,7 +208,7 @@ public:
     template<SupportedType I, size_t size>
     constexpr void put(std::array<I, size> const &values) noexcept { put(values.data(), size); }
 
-    void put(std::vector<bool> const &values) noexcept { //TODO: re-enable constexpr (N.B. should be since C++20)
+    void           put(std::vector<bool> const &values) noexcept { //TODO: re-enable constexpr (N.B. should be since C++20)
         const std::size_t size       = values.size();
         const std::size_t byteToCopy = size * sizeof(bool);
         ensure(byteToCopy + sizeof(int32_t) + sizeof(bool));
@@ -270,7 +270,7 @@ public:
         const auto        arraySize    = static_cast<std::size_t>(get<int32_t>());
         const std::size_t minArraySize = std::min(arraySize, requestedSize);
         input.resize(minArraySize);
-        if constexpr (isStringLike<R>() || is_same_v<R, bool>) {
+        if constexpr (is_stringlike<R> || is_same_v<R, bool>) {
             for (auto i = 0U; i < minArraySize; i++) {
                 input[i] = get<R>();
             }
@@ -289,7 +289,7 @@ public:
         const auto        arraySize    = static_cast<std::size_t>(get<int32_t>());
         const std::size_t minArraySize = std::min(arraySize, requestedSize);
         assert(size >= minArraySize && "std::array<SupportedType, size> wire-format size does not match design");
-        if constexpr (isStringLike<R>() || is_same_v<R, bool>) {
+        if constexpr (is_stringlike<R> || is_same_v<R, bool>) {
             for (auto i = 0U; i < minArraySize; i++) {
                 input[i] = get<R>();
             }

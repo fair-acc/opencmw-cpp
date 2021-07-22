@@ -10,43 +10,58 @@
 #include <iostream>
 #include <string_view>
 
-using opencmw::Annotated;
+#include <units/isq/si/electric_current.h>
+#include <units/isq/si/energy.h>
+#include <units/isq/si/length.h>
+#include <units/isq/si/mass.h>
+#include <units/isq/si/resistance.h>
+#include <units/isq/si/speed.h>
+#include <units/isq/si/time.h>
+
+using namespace units::isq;
+using namespace units::isq::si;
 using namespace std::literals;
+
+using opencmw::Annotated;
+using opencmw::NoUnit;
+using namespace std::literals;
+
 struct NestedData {
-    Annotated<int8_t, "unit1", "nested int8_t", "IN/OUT">                      byteValue   = 11;
-    Annotated<int16_t, "unit2", "custom description for int16_t", "IN/OUT">    shortValue  = 12;
-    Annotated<int32_t, "unit3", "custom description for int32_t", "IN/OUT">    intValue    = 13;
-    Annotated<int64_t, "unit4", "custom description for int64_t", "IN/OUT">    longValue   = 14;
-    Annotated<float, "unit5", "custom description for float", "IN/OUT">        floatValue  = 15.0F;
-    Annotated<double, "unit6", "custom description for double", "IN/OUT">      doubleValue = 16.0;
-    Annotated<std::string, "unit7", "custom description for string", "IN/OUT"> stringValue = std::string("nested string");
-    Annotated<std::array<double, 10>, "unit8">                                 doubleArray = std::array<double, 10>{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
-    Annotated<std::vector<float>, "unit9">                                     floatVector = std::vector{ 0.1f, 1.1f, 2.1f, 3.1f, 4.1f, 5.1f, 6.1f, 8.1f, 9.1f, 9.1f };
+    Annotated<int8_t, length<metre>, "nested int8_t", "IN/OUT">                          annByteValue   = 11;
+    Annotated<int16_t, si::time<second>, "custom description for int16_t", "IN/OUT">     annShortValue  = 12;
+    Annotated<int32_t, NoUnit, "custom description for int32_t", "IN/OUT">               annIntValue    = 13;
+    Annotated<int64_t, NoUnit, "custom description for int64_t", "IN/OUT">               annLongValue   = 14;
+    Annotated<float, energy<gigaelectronvolt>, "custom description for float", "IN/OUT"> annFloatValue  = 15.0F;
+    Annotated<double, mass<kilogram>, "custom description for double", "IN/OUT">         annDoubleValue = 16.0;
+    Annotated<std::string, NoUnit, "custom description for string", "IN/OUT">            annStringValue = std::string("nested string");
+    Annotated<std::array<double, 10>, NoUnit>                                            annDoubleArray = std::array<double, 10>{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+    Annotated<std::vector<float>, NoUnit>                                                annFloatVector = std::vector{ 0.1f, 1.1f, 2.1f, 3.1f, 4.1f, 5.1f, 6.1f, 8.1f, 9.1f, 9.1f };
 
     // some default operator
     auto operator<=>(const NestedData &) const = default;
     bool operator==(const NestedData &) const  = default;
 };
 // following is the visitor-pattern-macro that allows the compile-time reflections via refl-cpp
-ENABLE_REFLECTION_FOR(NestedData, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, doubleArray, floatVector)
+ENABLE_REFLECTION_FOR(NestedData, annByteValue, annShortValue, annIntValue, annLongValue, annFloatValue, annDoubleValue, annStringValue, annDoubleArray, annFloatVector)
 
 struct Data {
-    int8_t                         byteValue        = 1;
-    int16_t                        shortValue       = 2;
-    int32_t                        intValue         = 3;
-    int64_t                        longValue        = 4;
-    float                          floatValue       = 5.0F;
-    double                         doubleValue      = 6.0;
-    std::string                    stringValue      = "bare string";
-    std::string const              constStringValue = "unmodifiable string";
-    std::array<double, 10>         doubleArray      = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
-    std::vector<float>             floatVector      = { 0.1f, 1.1f, 2.1f, 3.1f, 4.1f, 5.1f, 6.1f, 8.1f, 9.1f, 9.1f };
-    opencmw::MultiArray<double, 2> doubleMatrix{ { 1, 3, 7, 4, 2, 3 }, { 2, 3 } };
-    NestedData                     nestedData;
-    Annotated<double, "Ohm">       annotatedValue = 0.1;
+    int8_t                             byteValue        = 1;
+    int16_t                            shortValue       = 2;
+    int32_t                            intValue         = 3;
+    int64_t                            longValue        = 4;
+    float                              floatValue       = 5.0F;
+    double                             doubleValue      = 6.0;
+    std::string                        stringValue      = "bare string";
+    std::string const                  constStringValue = "unmodifiable string";
+    std::array<double, 10>             doubleArray      = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+    std::array<double, 10> const       constDoubleArray = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+    std::vector<float>                 floatVector      = { 0.1F, 1.1F, 2.1F, 3.1F, 4.1F, 5.1F, 6.1F, 8.1F, 9.1F, 9.1F };
+    opencmw::MultiArray<double, 2>     doubleMatrix{ { 1, 3, 7, 4, 2, 3 }, { 2, 3 } };
+    NestedData                         nestedData;
+    Annotated<double, resistance<ohm>> annotatedValue = 0.1;
 
-    Data()                                        = default;
-    bool operator==(const Data &) const           = default;
+    Data()                                            = default;
+    bool operator==(const Data &) const               = default;
 };
 // following is the visitor-pattern-macro that allows the compile-time reflections via refl-cpp
 ENABLE_REFLECTION_FOR(Data, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, constStringValue, doubleArray, floatVector, doubleMatrix, nestedData, annotatedValue)
@@ -60,7 +75,7 @@ void checkSerialiserIdentity(opencmw::IoBuffer &buffer, const T &a, T &b) {
         buffer.reset();
         opencmw::deserialise<opencmw::YaS>(buffer, b);
     } catch (std::exception &e) {
-        std::cout << "caught exception " << opencmw::typeName<std::remove_reference_t<decltype(e)>>() << std::endl;
+        std::cout << "caught exception " << opencmw::typeName<std::remove_reference_t<decltype(e)>> << std::endl;
         REQUIRE(false);
     } catch (...) {
         std::cout << "caught unknown exception " << std::endl;
@@ -89,22 +104,21 @@ TEST_CASE("IoClassSerialiser basic syntax", "[IoClassSerialiser]") {
         data2.annotatedValue = 0.2;
         data2.doubleArray[3] = 99;
         data2.floatVector.clear();
-        data2.nestedData.byteValue  = '\0';
-        data2.nestedData.floatValue = 12.0F;
-        data2.nestedData.floatValue *= 2.0F;
-        data2.nestedData.stringValue          = "different text";
-        data2.nestedData.doubleArray.value[3] = 99;
-        data2.doubleMatrix(0U, 0U)            = 42;
-        data2.nestedData.floatVector.value.clear();
+        data2.nestedData.annByteValue  = '\0';
+        data2.nestedData.annFloatValue = 12.0F;
+        data2.nestedData.annFloatValue *= 2.0F;
+        data2.nestedData.annStringValue    = "different text";
+        data2.nestedData.annDoubleArray[3] = 99;
+        data2.doubleMatrix(0U, 0U)         = 42;
+        data2.nestedData.annFloatVector.clear();
         REQUIRE(data != data2);
 
         opencmw::serialise<opencmw::YaS>(buffer, data);
-
         std::cout << "object (short): " << ClassInfoShort << data << '\n';
         std::cout << fmt::format("object (fmt): {}\n", data);
         std::cout << "object (long):  " << ClassInfoVerbose << data << '\n';
 
-        // check (de-(serialisation identity
+        // check (de-)serialisation identity
         std::cout << ClassInfoVerbose << "before: ";
         diffView(std::cout, data, data2);
         checkSerialiserIdentity<opencmw::YaS>(buffer, data, data2);
@@ -120,15 +134,66 @@ TEST_CASE("IoClassSerialiser basic syntax", "[IoClassSerialiser]") {
     debug::resetStats();
 }
 
+TEST_CASE("IoClassSerialiser basic typeName tests", "[IoClassSerialiser]") {
+    std::cout << std::unitbuf;
+    std::cerr << std::unitbuf;
+    using namespace opencmw;
+    using namespace opencmw::utils; // for operator<< and fmt::format overloading
+    debug::resetStats();
+    {
+        // signed integer values
+        REQUIRE(typeName<std::byte> == "int8_t");
+        REQUIRE(typeName<std::byte const> == "int8_t const");
+        REQUIRE(typeName<const std::byte> == "int8_t const");
+        REQUIRE(typeName<int8_t> == "int8_t");
+        REQUIRE(typeName<int8_t const> == "int8_t const");
+        REQUIRE(typeName<char> == "byte");
+        REQUIRE(typeName<char const> == "byte const");
+        REQUIRE(typeName<int16_t> == "int16_t");
+        REQUIRE(typeName<int16_t const> == "int16_t const");
+        REQUIRE(typeName<int32_t> == "int32_t");
+        REQUIRE(typeName<int32_t const> == "int32_t const");
+        REQUIRE(typeName<int64_t> == "int64_t");
+        REQUIRE(typeName<int64_t const> == "int64_t const");
+        REQUIRE(typeName<long long> == "int128_t");
+        REQUIRE(typeName<long long const> == "int128_t const");
+        // unsigned integer values
+        REQUIRE(typeName<uint8_t> == "uint8_t");
+        REQUIRE(typeName<uint8_t const> == "uint8_t const");
+        REQUIRE(typeName<unsigned char> == "uint8_t");
+        REQUIRE(typeName<unsigned char const> == "uint8_t const");
+        REQUIRE(typeName<uint16_t> == "uint16_t");
+        REQUIRE(typeName<uint16_t const> == "uint16_t const");
+        REQUIRE(typeName<uint32_t> == "uint32_t");
+        REQUIRE(typeName<uint32_t const> == "uint32_t const");
+        REQUIRE(typeName<uint64_t> == "uint64_t");
+        REQUIRE(typeName<uint64_t const> == "uint64_t const");
+        REQUIRE(typeName<unsigned long long> == "uint128_t");
+        REQUIRE(typeName<unsigned long long const> == "uint128_t const");
+
+        // floating point
+        REQUIRE(typeName<float_t> == "float_t");
+        REQUIRE(typeName<float_t const> == "float_t const");
+
+        REQUIRE(typeName<std::string> == "string");
+        REQUIRE(typeName<std::string_view> == "string");
+        REQUIRE(typeName<std::string const> == "string const");
+        REQUIRE(typeName<std::string_view const> == "string const");
+    }
+    REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
+    debug::resetStats();
+}
+
 struct SmartPointerClass {
-    int                                        e0 = 0;
-    Annotated<int, "A">                        e1 = 1;
-    std::unique_ptr<int>                       e2 = std::make_unique<int>(2);
-    std::unique_ptr<Annotated<int, "unit e3">> e3 = std::make_unique<Annotated<int, "unit e3">>(3);
-    std::shared_ptr<Annotated<int, "unit e3">> e4 = std::make_shared<Annotated<int, "unit e3">>(4);
-    std::shared_ptr<int>                       e5;
-    std::unique_ptr<int>                       e6;
-    std::unique_ptr<SmartPointerClass>         nested;
+    int                                          e0 = 0;
+    length<metre>                         ea = 0_q_m;
+    Annotated<int, si::electric_current<ampere>> e1 = 1;
+    std::unique_ptr<int>                         e2 = std::make_unique<int>(2);
+    std::unique_ptr<Annotated<int, NoUnit>>      e3 = std::make_unique<Annotated<int, NoUnit>>(3);
+    std::shared_ptr<Annotated<int, NoUnit>>      e4 = std::make_shared<Annotated<int, NoUnit>>(4);
+    std::shared_ptr<int>                         e5;
+    std::unique_ptr<int>                         e6;
+    std::unique_ptr<SmartPointerClass>           nested;
 
     template<opencmw::SmartPointerType A, opencmw::SmartPointerType B>
     constexpr bool equalValues(const A &a, const B &b) const noexcept {
@@ -184,7 +249,19 @@ TEST_CASE("IoClassSerialiser smart pointer", "[IoClassSerialiser]") {
         std::cout << "object (short): " << ClassInfoShort << data << '\n';
         REQUIRE(data == data2);
         data.e0        = data.e0 + 10;
-        data.e1        = data.e1 + 10;
+        data.ea        = 10_q_m + data.ea;
+        data.e1        += 10_q_A;
+//        data.e1        = 10_q_A + data.e1;
+        data.e1        = 2*data.e1;
+        std::cout << "annotated field " << data.e1.getUnit() << std::endl;
+//        using TypeA = decltype(data.e1);
+//        using TypeB = decltype(10_q_A);
+//        using Rep = std::common_type_t<typename TypeA::rep, typename TypeB::rep>;
+//        std::cout << "type A" << typeName<TypeA> << std::endl;
+//        std::cout << "type B" << typeName<TypeB> << std::endl;
+//        std::cout << "Rep   " << typeName<Rep> << std::endl;
+//        std::cout << "quantity " << typeName<units::detail::common_quantity_impl<TypeA, TypeB, Rep>::type> << std::endl;
+        //data.e1        = data.e1 + data.e1;
         *data.e2.get() = *data.e2.get() + 10;
         *data.e3.get() = *data.e3.get() + 10;
         *data.e4.get() = *data.e4.get() + 10;
@@ -204,10 +281,7 @@ TEST_CASE("IoClassSerialiser smart pointer", "[IoClassSerialiser]") {
         data.nested = std::make_unique<SmartPointerClass>();
         REQUIRE(data != data2);
         data.nested.get()->e0 = 10;
-        std::cout << '\n';
-        std::cout << "differ " << (data != data2) << "\n\n";
         diffView(std::cout, data, data2);
-        std::cout << '\n';
 
         REQUIRE(data != data2);
         checkSerialiserIdentity<opencmw::YaS>(buffer, data, data2);

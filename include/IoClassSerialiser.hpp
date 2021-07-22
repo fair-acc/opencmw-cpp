@@ -101,7 +101,7 @@ constexpr void deserialise(IoBuffer &buffer, T &value, const bool readMetaInfo =
                 continue;
             }
             buffer.position() = dataEndPosition;
-            continue;
+            return;
         }
 
         int32_t searchIndex = -1;
@@ -109,7 +109,7 @@ constexpr void deserialise(IoBuffer &buffer, T &value, const bool readMetaInfo =
             searchIndex = static_cast<int32_t>(findMemberIndex<T>(fieldName));
         } catch (std::out_of_range &e) {
             //TODO: convert to a an appropriate protocol exception
-            std::cout << "caught std::out_of_range for field: " << fieldName << " index = " << searchIndex << " msg " << e.what() << std::endl;
+            std::cout << "caught std::out_of_range for field: " << typeName<T> << " " << fieldName << " index = " << searchIndex << " msg " << e.what() << std::endl;
             buffer.position() = dataEndPosition;
             continue;
         }
@@ -150,8 +150,8 @@ constexpr void deserialise(IoBuffer &buffer, T &value, const bool readMetaInfo =
     }
     if (hierarchyDepth == 0 && buffer.position() != buffer.size()) {
         // TODO: convert into protocol exception - reached end of buffer with unparsed data and/or read beyond buffer end
-        std::cerr << "serialise class type " << typeName<T>() << " hierarchyDepth = " << static_cast<int>(hierarchyDepth) << '\n';
-        std::cout << fmt::format("protocol exception for class type {}: position {} vs. size {}\n", typeName<T>(), buffer.position(), buffer.size());
+        std::cerr << "serialise class type " << typeName<T> << " hierarchyDepth = " << static_cast<int>(hierarchyDepth) << '\n';
+        std::cout << fmt::format("protocol exception for class type {}: position {} vs. size {}\n", typeName<T>, buffer.position(), buffer.size());
     }
 }
 

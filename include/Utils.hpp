@@ -75,22 +75,9 @@ std::ostream &ClassInfoIndentDec(std::ostream &os) {
     return os;
 }
 
-template<AnnotatedType T>
-std::ostream &operator<<(std::ostream &os, const T &annotatedValue) {
-    if (os.iword(getClassInfoVerbose())) {
-        if constexpr (!is_array_or_vector<decltype(annotatedValue.value)>) {
-            os << fmt::format("{:<5}  // [{}] - {}", annotatedValue.value, annotatedValue.getUnit(), annotatedValue.getDescription()); // print as number
-        } else {
-            os << fmt::format("{}  // [{}] - {}", annotatedValue.value, annotatedValue.getUnit(), annotatedValue.getDescription()); // print as array
-        }
-        return os;
-    }
-    os << fmt::format("{}", annotatedValue.value); // print as number
-    return os;
-}
-
-template<typename T>
-std::ostream &operator<<(std::ostream &os, const std::vector<T> &v) {
+template<ArrayOrVector T>
+//requires (!isAnnotated<T>())
+std::ostream &operator<<(std::ostream &os, const T &v) {
     os << '{';
     for (std::size_t i = 0; i < v.size(); ++i) {
         os << v[i];
@@ -102,23 +89,24 @@ std::ostream &operator<<(std::ostream &os, const std::vector<T> &v) {
     return os;
 }
 
-template<typename T, size_t size>
-std::ostream &operator<<(std::ostream &os, const std::array<T, size> &v) {
-    os << '{';
-    for (std::size_t i = 0; i < size; ++i) {
-        os << v[i];
-        if (i != size - 1) {
-            os << ", ";
+template<typename Rep, units::Quantity Q, const basic_fixed_string description, const basic_fixed_string direction, const basic_fixed_string... groups>
+std::ostream &operator<<(std::ostream &os, const Annotated<Rep, Q, description, direction, groups...> &annotatedValue) {
+    if (os.iword(getClassInfoVerbose())) {
+        if constexpr (!is_array<Rep> && !is_vector<Rep>) {
+            os << fmt::format("{:<5}  // [{}] - {}", annotatedValue.value(), annotatedValue.getUnit(), annotatedValue.getDescription()); // print as number
+        } else {
+            os << fmt::format("{}  // [{}] - {}", annotatedValue.value(), annotatedValue.getUnit(), annotatedValue.getDescription()); // print as array
         }
+        return os;
     }
-    os << "}";
+    os << fmt::format("{}", annotatedValue.value()); // print as number
     return os;
 }
 
 template<typename T>
 std::ostream &operator<<(std::ostream &os, const std::unique_ptr<T> &v) {
     if (v) {
-        return os << "unique_ptr{" << *v.get() << '}';
+        return os << "unique_ptr{" << (*v.get()) << '}';
     } else {
         return os << "unique_ptr{nullptr}";
     }
@@ -127,7 +115,7 @@ std::ostream &operator<<(std::ostream &os, const std::unique_ptr<T> &v) {
 template<typename T>
 std::ostream &operator<<(std::ostream &os, const std::shared_ptr<T> &v) {
     if (v) {
-        return os << "shared_ptr{" << *v.get() << '}';
+        return os << "shared_ptr{" << (*v.get()) << '}';
     } else {
         return os << "shared_ptr{nullptr}";
     }
@@ -143,11 +131,11 @@ std::ostream &operator<<(std::ostream &os, const T &value) {
     if constexpr (isReflectableClass<ValueType>()) {
         for_each(
                 refl::reflect(value).members, [&](const auto member, const auto index) constexpr {
-                    using MemberType          = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
-                    const auto &typeNameShort = typeName<MemberType>();
+                    using MemberType          = std::remove_reference_t<decltype(unwrapPointer(member(value)))>;
+                    const auto &typeNameShort = typeName<MemberType>;
                     //const auto& typeNameShort = refl::reflect(getAnnotatedMember(member(value))).name.data; // alt type-definition:
                     if (verbose) {
-                        os << fmt::format("{:{}} {}: {:<20} {:<30}= ", "", indent * indentStep + 1, index, typeNameShort, get_debug_name(member));
+                        os << fmt::format("{:{}} {}: {:<25} {:<35}= ", "", indent * indentStep + 1, index, typeNameShort, get_debug_name(member));
                     } else {
                         os << fmt::format("{}{}=", (index > 0) ? ", " : "", get_display_name(member));
                     }
@@ -159,7 +147,6 @@ std::ostream &operator<<(std::ostream &os, const T &value) {
         os << fmt::format("{:{}})", "", verbose ? (indent * indentStep + 1) : 0);
     }
     return os;
-    //TODO:: add fmt::formatter specialisation see: https://fmt.dev/latest/api.html#formatting-user-defined-types
 }
 
 template<typename T>
@@ -175,11 +162,9 @@ constexpr void diffView(std::ostream &os, const T &lhs, const T &rhs) {
                     if constexpr (is_field(member)) {
                         using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(lhs))))>;
                         if (verbose) {
-                            const std::string fieldName(member.declarator.name + "::" + member.name);
-                            os << fmt::format("{:{}} {}: {:<20} {:<30}= ", "", indent * indentStep + 1, index, typeName<MemberType>(), fieldName);
+                            os << fmt::format("{:{}} {}: {:<20} {:<30}= ", "", indent * indentStep + 1, index, typeName<MemberType>, fmt::format("{}::{}", member.declarator.name, member.name));
                         } else {
-                            const std::string fieldName(member.name);
-                            os << fmt::format("{}{}=", (index > 0) ? ", " : "", fieldName);
+                            os << fmt::format("{}{}=", (index > 0) ? ", " : "", member.name);
                         }
                         ClassInfoIndentInc(os);
                         if constexpr (isReflectableClass<MemberType>()) {
