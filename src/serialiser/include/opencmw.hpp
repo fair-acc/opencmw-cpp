@@ -1,7 +1,6 @@
 #ifndef OPENCMW_H
 #define OPENCMW_H
-//#include "../cmake-build-debug/_deps/refl-cpp-src/refl.hpp"
-#include <MultiArray.hpp> // TODO: resolve dangerous circular dependency
+#include "MultiArray.hpp" // TODO: resolve dangerous circular dependency
 #include <fmt/color.h>
 #include <fmt/format.h>
 #include <refl.hpp>
@@ -46,7 +45,7 @@ concept ReflectableClass = isReflectableClass<T>();
 #ifndef OPENCMW_ENABLE_UNSIGNED_SUPPORT
 template<typename T, typename Tp = typename std::decay<T>::type>
 inline constexpr const bool is_supported_number = is_same_v<Tp, bool> || is_same_v<Tp, char> || is_same_v<Tp, uint8_t> || is_same_v<Tp, int8_t> || is_same_v<Tp, int8_t> || is_same_v<Tp, int16_t> //
-                                         || is_same_v<Tp, int32_t> || is_same_v<Tp, int64_t> || is_same_v<Tp, float> || is_same_v<Tp, double>;
+                                               || is_same_v<Tp, int32_t> || is_same_v<Tp, int64_t> || is_same_v<Tp, float> || is_same_v<Tp, double>;
 #else
 inline constexpr bool is_supported_number = std::is_arithmetic<Tp>;
 #endif
@@ -84,7 +83,7 @@ template<typename T>
 concept ArrayOrVector = is_vector<T> || is_array<T>;
 
 template<typename C, typename T = typename C::value_type, std::size_t size = 0>
-concept StringArray = (is_array<C> || is_vector<C>) && is_stringlike<T>;
+concept StringArray = (is_array<C> || is_vector<C>) &&is_stringlike<T>;
 
 template<typename T>
 concept NumberArray = std::is_bounded_array<T>::value; // && is_supported_number<T[]>::value;

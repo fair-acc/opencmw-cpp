@@ -1,0 +1,8 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+# TODO: code for checking dependencies, independent of used via conan or addSubdir/fetchContent etc
+
+include("${CMAKE_CURRENT_LIST_DIR}/opencmwTargets.cmake")
+
+check_required_components("@PROJECT_NAME@")
