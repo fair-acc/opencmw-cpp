@@ -4,12 +4,12 @@
 #pragma ide diagnostic   ignored "cppcoreguidelines-owning-memory"
 #pragma ide diagnostic   ignored "UnreachableCode" // -- allow for alternate non-c-style memory management
 
-#include <MultiArray.hpp>
+#include "MultiArray.hpp"
+#include "opencmw.hpp"
 #include <algorithm>
 #include <array>
 #include <cassert>
 #include <numeric>
-#include <opencmw.hpp>
 #include <stdexcept>
 #include <string>
 #include <string_view>

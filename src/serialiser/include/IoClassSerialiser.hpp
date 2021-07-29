@@ -1,6 +1,6 @@
 #ifndef OPENCMW_IOCLASSSERIALISER_H
 #define OPENCMW_IOCLASSSERIALISER_H
-#include <IoSerialiser.hpp>
+#include "IoSerialiser.hpp"
 
 namespace opencmw {
 

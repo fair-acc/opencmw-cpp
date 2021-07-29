@@ -186,7 +186,7 @@ TEST_CASE("IoClassSerialiser basic typeName tests", "[IoClassSerialiser]") {
 
 struct SmartPointerClass {
     int                                          e0 = 0;
-    length<metre>                         ea = 0_q_m;
+    length<metre>                                ea = 0_q_m;
     Annotated<int, si::electric_current<ampere>> e1 = 1;
     std::unique_ptr<int>                         e2 = std::make_unique<int>(2);
     std::unique_ptr<Annotated<int, NoUnit>>      e3 = std::make_unique<Annotated<int, NoUnit>>(3);
@@ -248,19 +248,19 @@ TEST_CASE("IoClassSerialiser smart pointer", "[IoClassSerialiser]") {
 
         std::cout << "object (short): " << ClassInfoShort << data << '\n';
         REQUIRE(data == data2);
-        data.e0        = data.e0 + 10;
-        data.ea        = 10_q_m + data.ea;
-        data.e1        += 10_q_A;
-//        data.e1        = 10_q_A + data.e1;
-        data.e1        = 2*data.e1;
+        data.e0 = data.e0 + 10;
+        data.ea = 10_q_m + data.ea;
+        data.e1 += 10_q_A;
+        //        data.e1        = 10_q_A + data.e1;
+        data.e1 = 2 * data.e1;
         std::cout << "annotated field " << data.e1.getUnit() << std::endl;
-//        using TypeA = decltype(data.e1);
-//        using TypeB = decltype(10_q_A);
-//        using Rep = std::common_type_t<typename TypeA::rep, typename TypeB::rep>;
-//        std::cout << "type A" << typeName<TypeA> << std::endl;
-//        std::cout << "type B" << typeName<TypeB> << std::endl;
-//        std::cout << "Rep   " << typeName<Rep> << std::endl;
-//        std::cout << "quantity " << typeName<units::detail::common_quantity_impl<TypeA, TypeB, Rep>::type> << std::endl;
+        //        using TypeA = decltype(data.e1);
+        //        using TypeB = decltype(10_q_A);
+        //        using Rep = std::common_type_t<typename TypeA::rep, typename TypeB::rep>;
+        //        std::cout << "type A" << typeName<TypeA> << std::endl;
+        //        std::cout << "type B" << typeName<TypeB> << std::endl;
+        //        std::cout << "Rep   " << typeName<Rep> << std::endl;
+        //        std::cout << "quantity " << typeName<units::detail::common_quantity_impl<TypeA, TypeB, Rep>::type> << std::endl;
         //data.e1        = data.e1 + data.e1;
         *data.e2.get() = *data.e2.get() + 10;
         *data.e3.get() = *data.e3.get() + 10;
