@@ -45,13 +45,6 @@ class OpencmwConan(ConanFile):
         cmake = self.configure_cmake()
         cmake.build()
 
-    def package(self):
-        """Copy Flatbuffers' artifacts to package folder
-        """
-        cmake = self.configure_cmake()
-        cmake.install()
-        #self.copy(pattern="LICENSE", dst="licenses")
-
     def package_info(self):
         """Collect built libraries names and solve flatc path.
         """
