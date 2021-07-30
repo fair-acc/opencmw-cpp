@@ -4,8 +4,14 @@
 
 namespace opencmw {
 
-template<SerialiserProtocol protocol, ReflectableClass T>
-constexpr void serialise(IoBuffer &buffer, const T &value, const bool writeMetaInfo = true, const uint8_t hierarchyDepth = 0) {
+enum ProtocolCheck {
+    IGNORE,  // null return type
+    LENIENT, // via return type
+    ALWAYS   // via ProtocolException
+};
+
+template<SerialiserProtocol protocol, const bool writeMetaInfo = true, ReflectableClass T>
+constexpr void serialise(IoBuffer &buffer, const T &value, const uint8_t hierarchyDepth = 0) {
     for_each(refl::reflect(value).members, [&](const auto member, [[maybe_unused]] const auto index) {
         if constexpr (is_field(member) && !is_static(member)) {
             using UnwrappedMemberType = std::remove_reference_t<decltype(member(value))>;
@@ -16,22 +22,22 @@ constexpr void serialise(IoBuffer &buffer, const T &value, const bool writeMetaI
                         return;
                     } // return from lambda
                 }
-                std::size_t posSizePositionStart = opencmw::putFieldHeader<protocol>(buffer, member.name.str(), START_MARKER_INST);
+                std::size_t posSizePositionStart = opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, member.name.str(), START_MARKER_INST);
                 std::size_t posStartDataStart    = buffer.size() - sizeof(uint8_t);                                               // '-1 because we wrote one byte as marker payload
-                serialise<protocol>(buffer, getAnnotatedMember(unwrapPointer(member(value))), writeMetaInfo, hierarchyDepth + 1); // do not inspect annotation itself
+                serialise<protocol, writeMetaInfo>(buffer, getAnnotatedMember(unwrapPointer(member(value))), hierarchyDepth + 1); // do not inspect annotation itself
 
-                opencmw::putFieldHeader<protocol>(buffer, member.name.str(), END_MARKER_INST);
+                opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, member.name.str(), END_MARKER_INST);
                 buffer.at<int32_t>(posSizePositionStart) = static_cast<int32_t>(buffer.size() - posStartDataStart); // write data size
             } else {
                 if constexpr (is_smart_pointer<std::remove_reference_t<UnwrappedMemberType>>) {
                     if (member(value)) {
-                        opencmw::putFieldHeader<protocol>(buffer, member.name.str(), member(value));
+                        opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, member.name.str(), member(value));
                         return;
                     }
                     // else -- skip empty smart pointer
                     return;
                 }
-                opencmw::putFieldHeader<protocol>(buffer, member.name.str(), member(value));
+                opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, member.name.str(), member(value));
             }
         }
     });
@@ -62,8 +68,13 @@ int32_t findMemberIndex(const std::string_view fieldName) {
     return m.at(fieldName);
 }
 
-template<SerialiserProtocol protocol, ReflectableClass T>
-constexpr void deserialise(IoBuffer &buffer, T &value, const bool readMetaInfo = true, const uint8_t hierarchyDepth = 0) {
+template<SerialiserProtocol protocol, const ProtocolCheck protocolCheckVariant, ReflectableClass T>
+constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserInfo info = DeserialiserInfo(), const uint8_t hierarchyDepth = 0) {
+    const std::string structName = protocolCheckVariant == IGNORE ? "" : fmt::format("{}({})", typeName<T>, static_cast<int>(hierarchyDepth));
+    if constexpr (protocolCheckVariant != IGNORE) {
+        info.setFields[structName] = std::vector<bool>(refl::reflect<T>().members.size);
+    }
+
     while (buffer.position() < buffer.size()) {
         using String                  = std::string_view;
         const std::size_t headerStart = buffer.position();
@@ -80,15 +91,13 @@ constexpr void deserialise(IoBuffer &buffer, T &value, const bool readMetaInfo =
         // e.g. could skip to 'headerStart + dataStartOffset' and start reading the data, or
         // e.g. could skip to 'headerStart + dataStartOffset + dataSize' and start reading the next field header
 
-        if (readMetaInfo && buffer.position() != dataStartPosition) {
-            // TODO: see what to do with this info
-            // const String unit        = (buffer.position() == dataStartPosition) ? "" : buffer.get<String>();
-            // const String description = (buffer.position() == dataStartPosition) ? "" : buffer.get<String>();
-            // const String direction   = (buffer.position() == dataStartPosition) ? "" : buffer.get<String>();
-            //std::cout << fmt::format("parsed field {:<20} meta data: [{}] {} dir: {}\n", fieldName, unit, description, direction);
-        } else {
-            //std::cout << fmt::format("parsed field {:<20} - {}\n", fieldName, hashFieldName);
-        }
+        constexpr bool ignoreChecks = protocolCheckVariant == IGNORE;
+        const String   unit         = ignoreChecks || (buffer.position() == dataStartPosition) ? "" : buffer.get<String>();
+        const String   description  = ignoreChecks || (buffer.position() == dataStartPosition) ? "" : buffer.get<String>();
+        //ignoreChecks || (buffer.position() == dataStartPosition) ? "" : buffer.get<String>();
+        const ExternalModifier modifier = ignoreChecks || (buffer.position() == dataStartPosition) ? RW : get_ext_modifier(buffer.get<uint8_t>());
+        // std::cout << fmt::format("parsed field {:<20} meta data: [{}] {} dir: {}\n", fieldName, unit, description, modifier);
+
         // skip to data start
         buffer.position() = dataStartPosition;
 
@@ -96,20 +105,46 @@ constexpr void deserialise(IoBuffer &buffer, T &value, const bool readMetaInfo =
             // reached end of sub-structure
             try {
                 IoSerialiser<protocol, END_MARKER>::deserialise(buffer, fieldName, END_MARKER_INST);
-            } catch (...) { // protocol exception
+            } catch (ProtocolException &exception) { // protocol exception
+                if constexpr (protocolCheckVariant == IGNORE) {
+                    buffer.position() = dataEndPosition;
+                    continue;
+                }
+                const auto text = fmt::format("IoSerialiser<{}, END_MARKER>::deserialise(buffer, fieldName, END_MARKER_INST) exception for class {}: position {} vs. size {} -- exception thrown: {}",
+                        protocol::protocolName(), structName, buffer.position(), buffer.size(), exception.what());
+                if constexpr (protocolCheckVariant == ALWAYS) {
+                    throw ProtocolException(text);
+                }
+                info.exceptions.emplace_back(ProtocolException(text));
+                std::cout << "caught IoSerialiser<protocol, END_MARKER>::getDataTypeId()): " << text << std::endl; //TODO: consider using logger
                 buffer.position() = dataEndPosition;
                 continue;
+            } catch (...) {
+                if constexpr (protocolCheckVariant == IGNORE) {
+                    buffer.position() = dataEndPosition;
+                    continue;
+                }
+                throw ProtocolException(fmt::format("unknown exception in IoSerialiser<{}, START_MARKER>::deserialise(buffer, fieldName, START_MARKER_INST) for class {}: position {} vs. size {}",
+                        protocol::protocolName(), structName, buffer.position(), buffer.size()));
             }
-            buffer.position() = dataEndPosition;
-            return;
         }
 
         int32_t searchIndex = -1;
         try {
             searchIndex = static_cast<int32_t>(findMemberIndex<T>(fieldName));
         } catch (std::out_of_range &e) {
-            //TODO: convert to a an appropriate protocol exception
-            std::cout << "caught std::out_of_range for field: " << typeName<T> << " " << fieldName << " index = " << searchIndex << " msg " << e.what() << std::endl;
+            if constexpr (protocolCheckVariant == IGNORE) {
+                buffer.position() = dataEndPosition;
+                continue;
+            }
+            const auto exception = fmt::format("missing field (type:{}) {}::{} at buffer[{}, size:{}]",
+                    intDataType, structName, fieldName, buffer.position(), buffer.size());
+            if constexpr (protocolCheckVariant == ALWAYS) {
+                throw ProtocolException(exception);
+            }
+            info.exceptions.emplace_back(ProtocolException(exception));
+            info.additionalFields.emplace_back(std::make_tuple(fmt::format("{}::{}", structName, fieldName), intDataType));
+            std::cout << "caught std::out_of_range: " << exception << std::endl; //TODO: consider using logger
             buffer.position() = dataEndPosition;
             continue;
         }
@@ -118,16 +153,37 @@ constexpr void deserialise(IoBuffer &buffer, T &value, const bool readMetaInfo =
             // reached start of sub-structure -> dive in
             try {
                 IoSerialiser<protocol, START_MARKER>::deserialise(buffer, fieldName, START_MARKER_INST);
-            } catch (...) { // protocol exception
+            } catch (ProtocolException &exception) { // protocol exception
+                if constexpr (protocolCheckVariant == IGNORE) {
+                    buffer.position() = dataEndPosition;
+                    continue;
+                }
+                const auto text = fmt::format("IoSerialiser<{}, START_MARKER>::deserialise(buffer, fieldName, START_MARKER_INST) exception for class {}: position {} vs. size {} -- exception thrown: {}",
+                        protocol::protocolName(), structName, buffer.position(), buffer.size(), exception.what());
+                if constexpr (protocolCheckVariant == ALWAYS) {
+                    throw ProtocolException(text);
+                }
+                info.exceptions.emplace_back(ProtocolException(text));
+                std::cout << "caught IoSerialiser<protocol, START_MARKER>::getDataTypeId()): " << text << std::endl; //TODO: consider using logger
                 buffer.position() = dataEndPosition;
                 continue;
+            } catch (...) {
+                if constexpr (protocolCheckVariant == IGNORE) {
+                    buffer.position() = dataEndPosition;
+                    continue;
+                }
+                throw ProtocolException(fmt::format("unknown exception in IoSerialiser<{}, START_MARKER>::deserialise(buffer, fieldName, START_MARKER_INST) for class {}: position {} vs. size {}",
+                        protocol::protocolName(), structName, buffer.position(), buffer.size()));
             }
 
-            for_each(refl::reflect<T>().members, [searchIndex, &buffer, &value, &hierarchyDepth, &readMetaInfo](auto member, int32_t index) {
+            for_each(refl::reflect<T>().members, [searchIndex, &buffer, &value, &hierarchyDepth, &info, &structName](auto member, int32_t index) {
                 using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
                 if constexpr (isReflectableClass<MemberType>()) {
                     if (index == searchIndex) {
-                        deserialise<protocol>(buffer, unwrapPointerCreateIfAbsent(member(value)), readMetaInfo, hierarchyDepth + 1);
+                        deserialise<protocol, protocolCheckVariant>(buffer, unwrapPointerCreateIfAbsent(member(value)), info, hierarchyDepth + 1);
+                        if constexpr (protocolCheckVariant != IGNORE) {
+                            info.setFields[structName][static_cast<uint64_t>(index)] = true;
+                        }
                     }
                 }
             });
@@ -136,23 +192,96 @@ constexpr void deserialise(IoBuffer &buffer, T &value, const bool readMetaInfo =
             continue;
         }
 
-        for_each(refl::reflect<T>().members, [&buffer, &value, &intDataType, &searchIndex, &fieldName](auto member, int32_t index) {
-            using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
+#pragma clang diagnostic push
+#pragma ide diagnostic   ignored "readability-function-cognitive-complexity"
+        for_each(refl::reflect<T>().members, [&buffer, &value, &info, &intDataType, &fieldName, &description, &modifier, &searchIndex, &unit, &structName](auto member, int32_t index) {
+            using MemberType             = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
+            constexpr int  requestedType = IoSerialiser<protocol, MemberType>::getDataTypeId();
+            constexpr bool isAnnotated   = is_annotated<std::remove_reference_t<decltype(unwrapPointer(member(value)))>>;
+
             if constexpr (!isReflectableClass<MemberType>() && is_writable(member) && !is_static(member)) {
-                if (IoSerialiser<protocol, MemberType>::getDataTypeId() == intDataType && index == searchIndex) { //TODO: protocol exception for mismatching data-type?
-                    IoSerialiser<protocol, MemberType>::deserialise(buffer, fieldName, getAnnotatedMember(unwrapPointerCreateIfAbsent(member(value))));
+                if (index != searchIndex) {
+                    return; // fieldName does not match -- skip to next field
+                }
+                if (requestedType != intDataType) {
+                    // mismatching data-type
+                    if constexpr (protocolCheckVariant == IGNORE) {
+                        return; // don't write -> skip to next
+                    }
+                    const auto error = fmt::format("mismatched field type for {}::{} - requested type: {} (typeID: {}) got: {}", member.declarator.name, member.name, typeName<MemberType>, requestedType, intDataType);
+                    if constexpr (protocolCheckVariant == ALWAYS) {
+                        throw ProtocolException(error);
+                    }
+                    info.exceptions.emplace_back(ProtocolException(error));
+                    return;
+                }
+
+                if constexpr (isAnnotated && protocolCheckVariant != IGNORE) {
+                    // check for Annotation mismatch
+                    if (is_deprecated(unwrapPointer(member(value)).getModifier())) {
+                        // should not set field via external reference
+                        const auto error = fmt::format("deprecated field access for {}::{} - description: {}", member.declarator.name, member.name, unwrapPointer(member(value)).getDescription());
+                        if constexpr (protocolCheckVariant == ALWAYS) {
+                            throw ProtocolException(error);
+                        }
+                        info.exceptions.emplace_back(ProtocolException(error));
+                    }
+
+                    if (is_private(unwrapPointer(member(value)).getModifier())) {
+                        // should not set field via external reference
+                        const auto error = fmt::format("private/internal field access for {}::{} - description: {}", member.declarator.name, member.name, unwrapPointer(member(value)).getDescription());
+                        if constexpr (protocolCheckVariant == ALWAYS) {
+                            throw ProtocolException(error);
+                        }
+                        info.exceptions.emplace_back(ProtocolException(error));
+                    }
+
+                    if (unwrapPointer(member(value)).getUnit().compare(unit)) {
+                        const auto error = fmt::format("mismatched field unit for {}::{} - requested unit '{}' received '{}'", member.declarator.name, member.name, unwrapPointer(member(value)).getUnit(), unit);
+                        if constexpr (protocolCheckVariant == ALWAYS) {
+                            throw ProtocolException(error);
+                        }
+                        info.exceptions.emplace_back(ProtocolException(error));
+                        return;
+                    }
+
+                    if (is_readonly((unwrapPointer(member(value)).getModifier()))) {
+                        // should not set field via external reference
+                        const auto error = fmt::format("mismatched field access modifier for {}::{} - requested '{}' received '{}'", member.declarator.name, member.name, (unwrapPointer(member(value)).getModifier()), modifier);
+                        if constexpr (protocolCheckVariant == ALWAYS) {
+                            throw ProtocolException(error);
+                        }
+                        info.exceptions.emplace_back(ProtocolException(error));
+                        return;
+                    }
+                }
+
+                IoSerialiser<protocol, MemberType>::deserialise(buffer, fieldName, getAnnotatedMember(unwrapPointerCreateIfAbsent(member(value))));
+                if constexpr (protocolCheckVariant != IGNORE) {
+                    info.setFields[structName][static_cast<uint64_t>(index)] = true;
                 }
             }
         });
-
+#pragma clang diagnostic pop
         // skip to data end
         buffer.position() = dataEndPosition;
     }
     if (hierarchyDepth == 0 && buffer.position() != buffer.size()) {
-        // TODO: convert into protocol exception - reached end of buffer with unparsed data and/or read beyond buffer end
+        if constexpr (protocolCheckVariant == IGNORE) {
+            return info;
+        }
         std::cerr << "serialise class type " << typeName<T> << " hierarchyDepth = " << static_cast<int>(hierarchyDepth) << '\n';
-        std::cout << fmt::format("protocol exception for class type {}: position {} vs. size {}\n", typeName<T>, buffer.position(), buffer.size());
+        const auto exception = fmt::format("protocol exception for class type {}({}): position {} vs. size {}",
+                typeName<T>, static_cast<int>(hierarchyDepth), buffer.position(), buffer.size());
+        if constexpr (protocolCheckVariant == ALWAYS) {
+            throw ProtocolException(exception);
+        }
+        std::cout << exception << std::endl; //TODO: replace std::cerr/cout by logger?
+        info.exceptions.emplace_back(ProtocolException(exception));
+        return info;
     }
+
+    return info;
 }
 
 } // namespace opencmw

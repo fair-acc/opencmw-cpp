@@ -4,6 +4,7 @@
 #include "IoBuffer.hpp"
 #include "MultiArray.hpp"
 #include <list>
+#include <map>
 #include <queue>
 
 #pragma clang diagnostic push
@@ -12,9 +13,26 @@
 
 namespace opencmw {
 
-template<basic_fixed_string ErrorMessage>
-struct ProtocolException {
-    constexpr static const char *errorMessage() { return ErrorMessage.data_; }
+class ProtocolException {
+    const std::string errorMsg;
+
+public:
+    explicit ProtocolException(const std::string errorMessage) noexcept
+        : errorMsg(errorMessage) {}
+    explicit ProtocolException(const char *errorMessage) noexcept
+        : errorMsg(errorMessage) {}
+
+    [[nodiscard]] std::string_view what() const noexcept { return errorMsg; }
+};
+
+std::ostream &operator<<(std::ostream &os, const ProtocolException &exception) {
+    return os << "ProtocolException(\"" << exception.what() << "\")";
+}
+
+struct DeserialiserInfo {
+    std::map<std::string, std::vector<bool>> setFields;
+    std::list<std::tuple<std::string, int>>  additionalFields;
+    std::list<ProtocolException>             exceptions;
 };
 
 template<basic_fixed_string protocol>
@@ -252,8 +270,8 @@ struct IoSerialiser<YaS, END_MARKER> {
     }
 };
 
-template<SerialiserProtocol protocol, typename DataType>
-std::size_t putFieldHeader(IoBuffer &buffer, const std::string_view &fieldName, const DataType &data, const bool writeMetaInfo = false) {
+template<SerialiserProtocol protocol, const bool writeMetaInfo, typename DataType>
+std::size_t putFieldHeader(IoBuffer &buffer, const std::string_view &fieldName, const DataType &data) {
     using StrippedDataType         = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(data)))>;
     constexpr int32_t dataTypeSize = static_cast<int32_t>(sizeof(StrippedDataType));
     buffer.ensure(((fieldName.length() + 18) * sizeof(uint8_t)) + dataTypeSize);
@@ -273,7 +291,7 @@ std::size_t putFieldHeader(IoBuffer &buffer, const std::string_view &fieldName, 
         if (writeMetaInfo) {
             buffer.put(std::string_view(data.getUnit()));
             buffer.put(std::string_view(data.getDescription()));
-            buffer.put(std::string_view(data.getDirection()));
+            buffer.put(static_cast<uint8_t>(data.getModifier()));
             // TODO: write group meta data
             //final String[] groups = fieldDescription.getFieldGroups().toArray(new String[0]);
             //buffer.putStringArray(groups, groups.length);
@@ -324,6 +342,9 @@ struct IoSerialiser<T, CmwLight> { // catch all template
     }
 };
 } // namespace opencmw
+
+// TODO: allow declaration of reflection within name-space
+ENABLE_REFLECTION_FOR(opencmw::DeserialiserInfo, setFields, additionalFields, exceptions)
 
 #pragma clang diagnostic pop
 #endif //OPENCMW_IOSERIALISER_H

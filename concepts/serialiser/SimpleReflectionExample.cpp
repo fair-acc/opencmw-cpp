@@ -54,7 +54,7 @@ int main() {
 
     // de-serialise the byte buffer into 'b'
     try {
-        opencmw::deserialise<opencmw::YaS>(buffer, b);
+        opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::LENIENT>(buffer, b);
     } catch (...) { // TODO: add protocol exception and field name/mismatch interface here
         std::cout << "caught unknown exception " << std::endl;
     }

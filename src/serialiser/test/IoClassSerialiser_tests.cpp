@@ -6,6 +6,7 @@
 #include <IoClassSerialiser.hpp>
 #include <IoSerialiser.hpp>
 #include <Utils.hpp>
+#include <algorithm>
 #include <catch2/catch.hpp>
 #include <iostream>
 #include <string_view>
@@ -24,18 +25,22 @@ using namespace std::literals;
 
 using opencmw::Annotated;
 using opencmw::NoUnit;
-using namespace std::literals;
+using opencmw::ProtocolCheck;
+using opencmw::ExternalModifier::RO;
+using opencmw::ExternalModifier::RW;
+using opencmw::ExternalModifier::RW_DEPRECATED;
+using opencmw::ExternalModifier::RW_PRIVATE;
 
 struct NestedData {
-    Annotated<int8_t, length<metre>, "nested int8_t", "IN/OUT">                          annByteValue   = 11;
-    Annotated<int16_t, si::time<second>, "custom description for int16_t", "IN/OUT">     annShortValue  = 12;
-    Annotated<int32_t, NoUnit, "custom description for int32_t", "IN/OUT">               annIntValue    = 13;
-    Annotated<int64_t, NoUnit, "custom description for int64_t", "IN/OUT">               annLongValue   = 14;
-    Annotated<float, energy<gigaelectronvolt>, "custom description for float", "IN/OUT"> annFloatValue  = 15.0F;
-    Annotated<double, mass<kilogram>, "custom description for double", "IN/OUT">         annDoubleValue = 16.0;
-    Annotated<std::string, NoUnit, "custom description for string", "IN/OUT">            annStringValue = std::string("nested string");
-    Annotated<std::array<double, 10>, NoUnit>                                            annDoubleArray = std::array<double, 10>{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
-    Annotated<std::vector<float>, NoUnit>                                                annFloatVector = std::vector{ 0.1f, 1.1f, 2.1f, 3.1f, 4.1f, 5.1f, 6.1f, 8.1f, 9.1f, 9.1f };
+    Annotated<int8_t, length<metre>, "nested int8_t">                          annByteValue   = 11;
+    Annotated<int16_t, si::time<second>, "custom description for int16_t">     annShortValue  = 12;
+    Annotated<int32_t, NoUnit, "custom description for int32_t">               annIntValue    = 13;
+    Annotated<int64_t, NoUnit, "custom description for int64_t">               annLongValue   = 14;
+    Annotated<float, energy<gigaelectronvolt>, "custom description for float"> annFloatValue  = 15.0F;
+    Annotated<double, mass<kilogram>, "custom description for double", RW>     annDoubleValue = 16.0;
+    Annotated<std::string, NoUnit, "custom description for string">            annStringValue = std::string("nested string");
+    Annotated<std::array<double, 10>, NoUnit>                                  annDoubleArray = std::array<double, 10>{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+    Annotated<std::vector<float>, NoUnit>                                      annFloatVector = std::vector{ 0.1f, 1.1f, 2.1f, 3.1f, 4.1f, 5.1f, 6.1f, 8.1f, 9.1f, 9.1f };
 
     // some default operator
     auto operator<=>(const NestedData &) const = default;
@@ -73,7 +78,7 @@ void checkSerialiserIdentity(opencmw::IoBuffer &buffer, const T &a, T &b) {
 
     try {
         buffer.reset();
-        opencmw::deserialise<opencmw::YaS>(buffer, b);
+        opencmw::deserialise<protocol, ProtocolCheck::IGNORE>(buffer, b);
     } catch (std::exception &e) {
         std::cout << "caught exception " << opencmw::typeName<std::remove_reference_t<decltype(e)>> << std::endl;
         REQUIRE(false);
@@ -132,6 +137,97 @@ TEST_CASE("IoClassSerialiser basic syntax", "[IoClassSerialiser]") {
     }
     REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
     debug::resetStats();
+}
+
+struct NestedDataWithDifferences {
+    Annotated<int8_t, length<metre>, "nested int8_t">                             annByteValue   = 11;
+    Annotated<int16_t, si::time<second>, "custom description for int16_t">        annShortValue  = 12;
+    Annotated<float, NoUnit, "type mismatch">                                     annIntValue    = 13; // <- type mismatch
+    Annotated<int64_t, length<metre>, "unit mismatch">                            annLongValue   = 14; // <- unit mismatch
+    Annotated<float, energy<gigaelectronvolt>, "custom description for float">    annFloatValue  = 15.0F;
+    Annotated<double, mass<kilogram>, "custom description for double", RO>        annDoubleValue = 16.0;                         // <- read-only specifier
+    Annotated<std::string, NoUnit, "deprecation notice", RW_DEPRECATED>           annStringValue = std::string("nested string"); // <- extra deprecation specifier
+    Annotated<std::array<double, 10>, NoUnit, "private field notice", RW_PRIVATE> annDoubleArray = std::array<double, 10>{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+    //Annotated<std::vector<float>, NoUnit>                                                annFloatVector; // <- missing field
+    Annotated<std::string, NoUnit, "custom description for string"> annExtraValue = std::string("nested string"); // <- extra value
+
+    // some default operator
+    auto operator<=>(const NestedDataWithDifferences &) const = default;
+    bool operator==(const NestedDataWithDifferences &) const  = default;
+};
+// following is the visitor-pattern-macro that allows the compile-time reflections via refl-cpp
+ENABLE_REFLECTION_FOR(NestedDataWithDifferences, annByteValue, annShortValue, annIntValue, annLongValue, annFloatValue, annDoubleValue, annStringValue, annDoubleArray, annExtraValue)
+
+TEST_CASE("IoClassSerialiser protocol mismatch", "[IoClassSerialiser]") {
+    std::cout << std::unitbuf;
+    std::cerr << std::unitbuf;
+    using namespace opencmw;
+    using namespace opencmw::utils; // for operator<< and fmt::format overloading
+    debug::resetStats();
+    {
+        debug::Timer              timer("IoClassSerialiser protocol mismatch", 30);
+        IoBuffer                  buffer;
+        NestedData                data;
+        NestedDataWithDifferences data2;
+        REQUIRE(typeid(decltype(data)) != typeid(decltype(data2)));
+
+        opencmw::serialise<opencmw::YaS, true>(buffer, data);
+
+        buffer.reset();
+        const auto infoNoExceptions = opencmw::deserialise<YaS, ProtocolCheck::IGNORE>(buffer, data2);
+        REQUIRE(0 == infoNoExceptions.exceptions.size());
+
+        buffer.reset();
+        bool caughtRequiredException = false;
+        try {
+            opencmw::deserialise<YaS, ProtocolCheck::ALWAYS>(buffer, data2);
+        } catch (ProtocolException &e) {
+            caughtRequiredException = true;
+        } catch (std::exception &e) {
+            std::cerr << "generic exception: " << e.what() << std::endl;
+        } catch (...) {
+            FAIL("unknown exception");
+        }
+        REQUIRE(caughtRequiredException); // did not catch exception
+
+        buffer.reset();
+        auto info = opencmw::deserialise<YaS, ProtocolCheck::LENIENT>(buffer, data2);
+        std::cout << " info: {}\n" << info;
+        REQUIRE(6 == info.exceptions.size());
+        REQUIRE(1 == info.additionalFields.size());
+        REQUIRE(1 == info.setFields.size());
+        REQUIRE(9 == (info.setFields["NestedDataWithDifferences(0)"].size()));
+        REQUIRE(5 == std::ranges::count_if(info.setFields["NestedDataWithDifferences(0)"], [](bool bit) { return bit == true; }));
+    }
+    REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
+    debug::resetStats();
+}
+
+TEST_CASE("IoClassSerialiser ExternalModifier tests", "[IoClassSerialiser]") {
+    using namespace opencmw;
+    STATIC_REQUIRE(is_readonly(ExternalModifier::RO));
+    STATIC_REQUIRE(!is_readonly(ExternalModifier::RW));
+    STATIC_REQUIRE(is_readonly(ExternalModifier::RO_DEPRECATED));
+    STATIC_REQUIRE(!is_readonly(ExternalModifier::RW_DEPRECATED));
+    STATIC_REQUIRE(is_readonly(ExternalModifier::RO_PRIVATE));
+    STATIC_REQUIRE(!is_readonly(ExternalModifier::RW_PRIVATE));
+    STATIC_REQUIRE(is_readonly(ExternalModifier::UNKNOWN));
+
+    STATIC_REQUIRE(!is_deprecated(ExternalModifier::RO));
+    STATIC_REQUIRE(!is_deprecated(ExternalModifier::RW));
+    STATIC_REQUIRE(is_deprecated(ExternalModifier::RO_DEPRECATED));
+    STATIC_REQUIRE(is_deprecated(ExternalModifier::RW_DEPRECATED));
+    STATIC_REQUIRE(!is_deprecated(ExternalModifier::RO_PRIVATE));
+    STATIC_REQUIRE(!is_deprecated(ExternalModifier::RW_PRIVATE));
+    STATIC_REQUIRE(is_deprecated(ExternalModifier::UNKNOWN));
+
+    STATIC_REQUIRE(!is_private(ExternalModifier::RO));
+    STATIC_REQUIRE(!is_private(ExternalModifier::RW));
+    STATIC_REQUIRE(!is_private(ExternalModifier::RO_DEPRECATED));
+    STATIC_REQUIRE(!is_private(ExternalModifier::RW_DEPRECATED));
+    STATIC_REQUIRE(is_private(ExternalModifier::RO_PRIVATE));
+    STATIC_REQUIRE(is_private(ExternalModifier::RW_PRIVATE));
+    STATIC_REQUIRE(is_private(ExternalModifier::UNKNOWN));
 }
 
 TEST_CASE("IoClassSerialiser basic typeName tests", "[IoClassSerialiser]") {

@@ -22,7 +22,7 @@ std::size_t checkSerialiserIdentity(IoBuffer &buffer, const T &inputObject, T &o
     buffer.reset();
 
     try {
-        opencmw::deserialise<YaS>(buffer, outputObject);
+        opencmw::deserialise<YaS, ProtocolCheck::IGNORE>(buffer, outputObject);
     } catch (std::exception &e) {
         std::cout << "caught exception " << typeName<std::remove_reference_t<decltype(e)>> << std::endl;
     } catch (...) {
@@ -46,8 +46,8 @@ std::string humanReadableByteCount(long bytes, const bool si) {
     return fmt::format("{:.1f} {}{}B", static_cast<double>(bytes) / pow(unit, exp), pre, (si ? "" : "i"));
 }
 
-template<ReflectableClass T>
-void testPerformancePojo(IoBuffer &buffer, const T &inputObject, T &outputObject, const std::size_t iterations) {
+template<ProtocolCheck protocolCheck, ReflectableClass T>
+void testPerformancePoco(IoBuffer &buffer, const T &inputObject, T &outputObject, const std::size_t iterations) {
     bool          putFieldMetaData = false;
 
     const clock_t startTime        = clock();
@@ -57,11 +57,11 @@ void testPerformancePojo(IoBuffer &buffer, const T &inputObject, T &outputObject
             putFieldMetaData = false;
         }
         buffer.clear();
-        opencmw::serialise<YaS>(buffer, inputObject, putFieldMetaData);
+        opencmw::serialise<YaS, protocolCheck != IGNORE>(buffer, inputObject, putFieldMetaData);
 
         buffer.reset();
         try {
-            opencmw::deserialise<YaS>(buffer, outputObject);
+            opencmw::deserialise<YaS, protocolCheck>(buffer, outputObject);
         } catch (std::exception &e) {
             std::cout << "caught exception " << typeName<std::remove_reference_t<decltype(e)>> << std::endl;
         } catch (...) {
@@ -102,11 +102,20 @@ int main() {
     TestDataClass data2;
     data2.byte1 = 30;
 
-    std::cout << fmt::format("IoClassSerialiserBenchmark - check identity - nBytes = {}\n", checkSerialiserIdentity(buffer, data, data2));
+    fmt::print("IoClassSerialiserBenchmark - check identity - nBytes = {}\n", checkSerialiserIdentity(buffer, data, data2));
 
     TestDataClass testData(1000, 0);    // numeric heavy data <-> equivalent to Java benchmark
     const int     nIterations = 100000; // 100000
+    fmt::print("performance with strong checks (exceptions if necessary):\n");
     for (int i = 0; i < 10; i++) {
-        testPerformancePojo(buffer, testData, data2, nIterations);
+        testPerformancePoco<ALWAYS>(buffer, testData, data2, nIterations);
+    }
+    fmt::print("performance with lenient checks (collect exceptions);\n");
+    for (int i = 0; i < 10; i++) {
+        testPerformancePoco<LENIENT>(buffer, testData, data2, nIterations);
+    }
+    fmt::print("performance without checks:\n");
+    for (int i = 0; i < 10; i++) {
+        testPerformancePoco<IGNORE>(buffer, testData, data2, nIterations);
     }
 }

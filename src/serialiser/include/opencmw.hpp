@@ -145,22 +145,71 @@ concept NotRepresentation = units::Quantity<T> || units::QuantityLike<T> || unit
 
 using NoUnit = units::dimensionless<units::one>;
 
-template<typename Rep, units::Quantity Q = NoUnit, const basic_fixed_string description = "" , const basic_fixed_string direction = "", const basic_fixed_string... groups>
+enum ExternalModifier {
+RW = 0, // read-write access
+RO = 1, // read-only access
+RW_DEPRECATED = 2, // read-write access -- deprecated
+RO_DEPRECATED = 3, // read-only access -- deprecated
+RW_PRIVATE = 4, // read-write access -- private/non-production API
+RO_PRIVATE = 5, // read-only access -- private/non-production API
+UNKNOWN = 255
+};
+
+constexpr bool is_readonly(const ExternalModifier mod) {
+    return mod % 2 == 1;
+}
+
+constexpr bool is_deprecated(const ExternalModifier mod) {
+    return (mod & 2) > 0;
+}
+
+constexpr bool is_private(const ExternalModifier mod) {
+    return (mod & 4) > 0;
+}
+
+constexpr ExternalModifier get_ext_modifier(const uint8_t byteValue) {
+    switch(byteValue) {
+    case RO: return RO;
+    case RW: return RW;
+    case RO_DEPRECATED: return RO_DEPRECATED;
+    case RW_DEPRECATED: return RW_DEPRECATED;
+    case RO_PRIVATE: return RO_PRIVATE;
+    case RW_PRIVATE: return RW_PRIVATE;
+    }
+    return UNKNOWN;
+}
+
+std::ostream &operator<<(std::ostream &os, const ExternalModifier &v) {
+    switch (v) {
+    case RO: return os << "RO";
+    case RW: return os << "RW";
+    case RO_DEPRECATED: return os << "RO_DEPRECATED";
+    case RW_DEPRECATED: return os << "RW_DEPRECATED";
+    case RO_PRIVATE: return os << "RO_PRIVATE";
+    case RW_PRIVATE: return os << "RW_PRIVATE";
+    case UNKNOWN:
+        [[fallthrough]];
+    default:
+        throw std::logic_error("unknown ExternalModifier state");
+    }
+}
+
+template<typename Rep, units::Quantity Q = NoUnit, const basic_fixed_string description = "" , const ExternalModifier modifier = RW, const basic_fixed_string... groups>
 struct Annotated; // prototype template -- N.B. there are two implementations since most non-numeric classes do not qualify as units::Representation
 
 template<typename T> inline constexpr const bool is_annotated = false;
-template<typename T, units::Quantity Q, const basic_fixed_string description, const basic_fixed_string direction, const basic_fixed_string... groups>
-inline constexpr const bool is_annotated<Annotated<T, Q, description, direction, groups...>> = true;
-template<typename T, units::Quantity Q, const basic_fixed_string description, const basic_fixed_string direction, const basic_fixed_string... groups>
-inline constexpr const bool is_annotated<const Annotated<T, Q, description, direction, groups...>> = true;
+template<typename T, units::Quantity Q, const basic_fixed_string description, const ExternalModifier modifier, const basic_fixed_string... groups>
+inline constexpr const bool is_annotated<Annotated<T, Q, description, modifier, groups...>> = true;
+template<typename T, units::Quantity Q, const basic_fixed_string description, const ExternalModifier modifier, const basic_fixed_string... groups>
+inline constexpr const bool is_annotated<const Annotated<T, Q, description, modifier, groups...>> = true;
 
 template<class T>
 concept AnnotatedType = is_annotated<T>;
 template<class T>
 concept NotAnnotatedType = !is_annotated<T>;
 
-template<units::Representation Rep, units::Quantity Q, const basic_fixed_string description, const basic_fixed_string direction, const basic_fixed_string... groups>
-struct Annotated<Rep, Q, description, direction, groups...> : public units::quantity<typename Q::dimension, typename Q::unit, Rep> {
+template<units::Representation Rep, units::Quantity Q, const basic_fixed_string description, const ExternalModifier modifier, const basic_fixed_string... groups>
+struct Annotated<Rep, Q, description, modifier, groups...> : public units::quantity<typename Q::dimension, typename Q::unit, Rep> {
     using dimension = typename Q::dimension;
     using unit = typename Q::unit;
     using rep = Rep;
@@ -175,9 +224,10 @@ struct Annotated<Rep, Q, description, direction, groups...> : public units::quan
     constexpr Annotated &operator=(const R& t) {  R::operator= (t); return *this; }
     constexpr Annotated &operator=(R&& t) { R::operator= (std::move(t)); return *this; }
 
-    [[nodiscard]] constexpr String getUnit() const noexcept { return String(units::detail::unit_text<dimension, unit>().ascii().data(), units::detail::unit_text<dimension, unit>().ascii().size()); }
+    //[[nodiscard]] constexpr String getUnit() const noexcept { return String(units::detail::unit_text<dimension, unit>().ascii().c_str()); }
+    [[nodiscard]] /*constexpr*/ const std::string getUnit() const noexcept { return std::string(units::detail::unit_text<dimension, unit>().ascii().c_str()); }
     [[nodiscard]] constexpr String getDescription() const noexcept { return String(description.data_); }
-    [[nodiscard]] constexpr String getDirection() const noexcept { return String(direction.data_, direction.size()); }
+    [[nodiscard]] constexpr ExternalModifier getModifier() const noexcept { return modifier; }
    // constexpr                      operator rep &() { return this->number(); } // TODO: check if this is safe and/or whether we want this (by-passes type safety)
 
     constexpr auto operator<=>(const Annotated &) const noexcept = default;
@@ -193,8 +243,8 @@ struct Annotated<Rep, Q, description, direction, groups...> : public units::quan
     constexpr operator const R&&() const &&{ return std::move(*this); }
 };
 
-template<NotRepresentation T, units::Quantity Q, const basic_fixed_string description, const basic_fixed_string direction, const basic_fixed_string... groups>
-struct Annotated<T, Q, description, direction, groups...> : public T { // inherit from T directly to inherit also all its potential operators & member functions
+template<NotRepresentation T, units::Quantity Q, const basic_fixed_string description, const ExternalModifier modifier, const basic_fixed_string... groups>
+struct Annotated<T, Q, description, modifier, groups...> : public T { // inherit from T directly to inherit also all its potential operators & member functions
     using dimension = typename Q::dimension;
     using unit = typename Q::unit;
     using rep = T;
@@ -217,9 +267,10 @@ struct Annotated<T, Q, description, direction, groups...> : public T { // inheri
     requires (std::is_assignable<T, U>::value)
     Annotated(U&& u) : T(std::move(u)) {}
 
-    [[nodiscard]] constexpr String getUnit() const noexcept { return String(units::detail::unit_text<dimension, unit>().ascii().c_str()); }
+    //[[nodiscard]] constexpr String getUnit() const noexcept { return String(units::detail::unit_text<dimension, unit>().ascii().c_str()); }
+    [[nodiscard]] /*constexpr*/ const std::string getUnit() const noexcept { return std::string(units::detail::unit_text<dimension, unit>().ascii().c_str()); }
     [[nodiscard]] constexpr String getDescription() const noexcept { return String(description.data_); }
-    [[nodiscard]] constexpr String getDirection() const noexcept { return String(direction.data_, direction.size()); }
+    [[nodiscard]] constexpr ExternalModifier getModifier() const noexcept { return modifier; }
 
     auto           operator<=>(const Annotated &) const noexcept = default;
 //    constexpr auto operator<=>(const Annotated &) const noexcept = default; //TODO: conditionally enable if type T allows it (i.e. is 'constexpr')
@@ -231,23 +282,23 @@ struct Annotated<T, Q, description, direction, groups...> : public T { // inheri
     [[nodiscard]] constexpr inline const Annotated::rep&& value() const && noexcept { return std::move(*this); }
 };
 
-template<typename T, std::size_t N, units::Quantity Q, const basic_fixed_string description, const basic_fixed_string direction, const basic_fixed_string... groups>
-inline constexpr const bool is_array<Annotated<std::array<T, N>, Q, description, direction, groups...>> = true;
-template<typename T, std::size_t N, units::Quantity Q, const basic_fixed_string description, const basic_fixed_string direction, const basic_fixed_string... groups>
-inline constexpr const bool is_array<Annotated<const std::array<T, N>, Q, description, direction, groups...>> = true;
-template<typename T, std::size_t N, units::Quantity Q, const basic_fixed_string description, const basic_fixed_string direction, const basic_fixed_string... groups>
-inline constexpr const bool is_array<const Annotated<std::array<T, N>, Q, description, direction, groups...>> = true;
-template<typename T, std::size_t N, units::Quantity Q, const basic_fixed_string description, const basic_fixed_string direction, const basic_fixed_string... groups>
-inline constexpr const bool is_array<const Annotated<const std::array<T, N>, Q, description, direction, groups...>> = true;
+template<typename T, std::size_t N, units::Quantity Q, const basic_fixed_string description, const ExternalModifier modifier, const basic_fixed_string... groups>
+inline constexpr const bool is_array<Annotated<std::array<T, N>, Q, description, modifier, groups...>> = true;
+template<typename T, std::size_t N, units::Quantity Q, const basic_fixed_string description, const ExternalModifier modifier, const basic_fixed_string... groups>
+inline constexpr const bool is_array<Annotated<const std::array<T, N>, Q, description, modifier, groups...>> = true;
+template<typename T, std::size_t N, units::Quantity Q, const basic_fixed_string description, const ExternalModifier modifier, const basic_fixed_string... groups>
+inline constexpr const bool is_array<const Annotated<std::array<T, N>, Q, description, modifier, groups...>> = true;
+template<typename T, std::size_t N, units::Quantity Q, const basic_fixed_string description, const ExternalModifier modifier, const basic_fixed_string... groups>
+inline constexpr const bool is_array<const Annotated<const std::array<T, N>, Q, description, modifier, groups...>> = true;
 
-template<typename T, typename A, units::Quantity Q, const basic_fixed_string description, const basic_fixed_string direction, const basic_fixed_string... groups>
-inline constexpr const bool is_vector<Annotated<std::vector<T,A>, Q, description, direction, groups...>> = true;
-template<typename T, typename A, units::Quantity Q, const basic_fixed_string description, const basic_fixed_string direction, const basic_fixed_string... groups>
-inline constexpr const bool is_vector<Annotated<const std::vector<T,A>, Q, description, direction, groups...>> = true;
-template<typename T, typename A, units::Quantity Q, const basic_fixed_string description, const basic_fixed_string direction, const basic_fixed_string... groups>
-inline constexpr const bool is_vector<const Annotated<std::vector<T,A>, Q, description, direction, groups...>> = true;
-template<typename T, typename A, units::Quantity Q, const basic_fixed_string description, const basic_fixed_string direction, const basic_fixed_string... groups>
-inline constexpr const bool is_vector<const Annotated<const std::vector<T,A>, Q, description, direction, groups...>> = true;
+template<typename T, typename A, units::Quantity Q, const basic_fixed_string description, const ExternalModifier modifier, const basic_fixed_string... groups>
+inline constexpr const bool is_vector<Annotated<std::vector<T,A>, Q, description, modifier, groups...>> = true;
+template<typename T, typename A, units::Quantity Q, const basic_fixed_string description, const ExternalModifier modifier, const basic_fixed_string... groups>
+inline constexpr const bool is_vector<Annotated<const std::vector<T,A>, Q, description, modifier, groups...>> = true;
+template<typename T, typename A, units::Quantity Q, const basic_fixed_string description, const ExternalModifier modifier, const basic_fixed_string... groups>
+inline constexpr const bool is_vector<const Annotated<std::vector<T,A>, Q, description, modifier, groups...>> = true;
+template<typename T, typename A, units::Quantity Q, const basic_fixed_string description, const ExternalModifier modifier, const basic_fixed_string... groups>
+inline constexpr const bool is_vector<const Annotated<const std::vector<T,A>, Q, description, modifier, groups...>> = true;
 
 // clang-format on
 
@@ -319,10 +370,10 @@ template<typename T, typename A> const std::string &typeName<std::vector<T,A> co
 template<typename T, uint32_t N> const std::string &typeName<MultiArray<T,N>> = fmt::format("MultiArray<{},{}>", opencmw::typeName<T>, N);
 template<typename T, uint32_t N> const std::string &typeName<MultiArray<T,N> const> =  fmt::format("MultiArray<{},{}> const", opencmw::typeName<T>, N);
 
-template<typename T, units::Quantity Q, const basic_fixed_string description, const basic_fixed_string direction, const basic_fixed_string... groups>
-const std::string &typeName<Annotated<T, Q, description, direction, groups...>> = fmt::format("Annotated<{}>", opencmw::typeName<T>);
-template<typename T, units::Quantity Q, const basic_fixed_string description, const basic_fixed_string direction, const basic_fixed_string... groups>
-const std::string &typeName<Annotated<T, Q, description, direction, groups...> const> =  fmt::format("Annotated<{}> const", opencmw::typeName<T>);
+template<typename T, units::Quantity Q, const basic_fixed_string description, const ExternalModifier modifier, const basic_fixed_string... groups>
+const std::string &typeName<Annotated<T, Q, description, modifier, groups...>> = fmt::format("Annotated<{}>", opencmw::typeName<T>);
+template<typename T, units::Quantity Q, const basic_fixed_string description, const ExternalModifier modifier, const basic_fixed_string... groups>
+const std::string &typeName<Annotated<T, Q, description, modifier, groups...> const> =  fmt::format("Annotated<{}> const", opencmw::typeName<T>);
 
 // legacy arrays
 template<ArithmeticType T, std::size_t size> const std::string &typeName<T[size]> = fmt::format("{}[{}]", opencmw::typeName<T>, size);

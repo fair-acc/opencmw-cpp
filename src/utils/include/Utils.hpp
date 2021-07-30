@@ -89,8 +89,8 @@ std::ostream &operator<<(std::ostream &os, const T &v) {
     return os;
 }
 
-template<typename Rep, units::Quantity Q, const basic_fixed_string description, const basic_fixed_string direction, const basic_fixed_string... groups>
-std::ostream &operator<<(std::ostream &os, const Annotated<Rep, Q, description, direction, groups...> &annotatedValue) {
+template<typename Rep, units::Quantity Q, const basic_fixed_string description, const ExternalModifier modifier, const basic_fixed_string... groups>
+std::ostream &operator<<(std::ostream &os, const Annotated<Rep, Q, description, modifier, groups...> &annotatedValue) {
     if (os.iword(getClassInfoVerbose())) {
         if constexpr (!is_array<Rep> && !is_vector<Rep>) {
             os << fmt::format("{:<5}  // [{}] - {}", annotatedValue.value(), annotatedValue.getUnit(), annotatedValue.getDescription()); // print as number
@@ -211,6 +211,29 @@ constexpr void diffView(std::ostream &os, const T &lhs, const T &rhs) {
     if (indent == 0) {
         os << std::endl;
     }
+}
+
+std::ostream &operator<<(std::ostream &os, const DeserialiserInfo &info) {
+    os << typeName<DeserialiserInfo> << "\nset fields:\n";
+    if (!info.setFields.empty()) {
+        for (auto fieldMask : info.setFields) {
+            os << "   class '" << fieldMask.first << "' bit field: " << fieldMask.second << '\n';
+        }
+    }
+    if (!info.additionalFields.empty()) {
+        os << "additional fields:\n";
+        for (auto e : info.additionalFields) {
+            os << "    field name: " << std::get<0>(e) << " typeID: " << std::get<1>(e) << '\n';
+        }
+    }
+    if (!info.exceptions.empty()) {
+        os << "thrown exceptions:\n";
+        int count = 0;
+        for (auto e : info.exceptions) {
+            os << "    " << (count++) << ": " << e << '\n';
+        }
+    }
+    return os;
 }
 
 } // namespace opencmw::utils
