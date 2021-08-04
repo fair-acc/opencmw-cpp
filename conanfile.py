@@ -44,6 +44,12 @@ class OpencmwConan(ConanFile):
         """
         cmake = self.configure_cmake()
         cmake.build()
+        # cmake.test()
+
+    def package(self):
+        cmake = self.configure_cmake()
+        cmake.install()
+        cmake.patch_config_paths()
 
     def package_info(self):
         """Collect built libraries names and solve flatc path.
