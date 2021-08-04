@@ -195,14 +195,13 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
 #pragma clang diagnostic push
 #pragma ide diagnostic   ignored "readability-function-cognitive-complexity"
         for_each(refl::reflect<T>().members, [&buffer, &value, &info, &intDataType, &fieldName, &description, &modifier, &searchIndex, &unit, &structName](auto member, int32_t index) {
-            using MemberType             = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
-            constexpr int  requestedType = IoSerialiser<protocol, MemberType>::getDataTypeId();
-            constexpr bool isAnnotated   = is_annotated<std::remove_reference_t<decltype(unwrapPointer(member(value)))>>;
+            using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
 
             if constexpr (!isReflectableClass<MemberType>() && is_writable(member) && !is_static(member)) {
                 if (index != searchIndex) {
                     return; // fieldName does not match -- skip to next field
                 }
+                constexpr int requestedType = IoSerialiser<protocol, MemberType>::getDataTypeId();
                 if (requestedType != intDataType) {
                     // mismatching data-type
                     if constexpr (protocolCheckVariant == IGNORE) {
@@ -216,6 +215,7 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
                     return;
                 }
 
+                constexpr bool isAnnotated = is_annotated<std::remove_reference_t<decltype(unwrapPointer(member(value)))>>;
                 if constexpr (isAnnotated && protocolCheckVariant != IGNORE) {
                     // check for Annotation mismatch
                     if (is_deprecated(unwrapPointer(member(value)).getModifier())) {

@@ -77,7 +77,7 @@ std::ostream &ClassInfoIndentDec(std::ostream &os) {
 
 template<ArrayOrVector T>
 //requires (!isAnnotated<T>())
-std::ostream &operator<<(std::ostream &os, const T &v) {
+inline std::ostream &operator<<(std::ostream &os, const T &v) {
     os << '{';
     for (std::size_t i = 0; i < v.size(); ++i) {
         os << v[i];
@@ -90,7 +90,7 @@ std::ostream &operator<<(std::ostream &os, const T &v) {
 }
 
 template<typename Rep, units::Quantity Q, const basic_fixed_string description, const ExternalModifier modifier, const basic_fixed_string... groups>
-std::ostream &operator<<(std::ostream &os, const Annotated<Rep, Q, description, modifier, groups...> &annotatedValue) {
+inline std::ostream &operator<<(std::ostream &os, const Annotated<Rep, Q, description, modifier, groups...> &annotatedValue) {
     if (os.iword(getClassInfoVerbose())) {
         if constexpr (!is_array<Rep> && !is_vector<Rep>) {
             os << fmt::format("{:<5}  // [{}] - {}", annotatedValue.value(), annotatedValue.getUnit(), annotatedValue.getDescription()); // print as number
@@ -104,7 +104,7 @@ std::ostream &operator<<(std::ostream &os, const Annotated<Rep, Q, description, 
 }
 
 template<typename T>
-std::ostream &operator<<(std::ostream &os, const std::unique_ptr<T> &v) {
+inline std::ostream &operator<<(std::ostream &os, const std::unique_ptr<T> &v) {
     if (v) {
         return os << "unique_ptr{" << (*v.get()) << '}';
     } else {
@@ -113,7 +113,7 @@ std::ostream &operator<<(std::ostream &os, const std::unique_ptr<T> &v) {
 }
 
 template<typename T>
-std::ostream &operator<<(std::ostream &os, const std::shared_ptr<T> &v) {
+inline std::ostream &operator<<(std::ostream &os, const std::shared_ptr<T> &v) {
     if (v) {
         return os << "shared_ptr{" << (*v.get()) << '}';
     } else {
@@ -122,7 +122,7 @@ std::ostream &operator<<(std::ostream &os, const std::shared_ptr<T> &v) {
 }
 
 template<ReflectableClass T>
-std::ostream &operator<<(std::ostream &os, const T &value) {
+inline std::ostream &operator<<(std::ostream &os, const T &value) {
     const bool    verbose    = os.iword(getClassInfoVerbose());
     const int64_t indent     = os.iword(getClassInfoIndent());
     const int64_t indentStep = os.iword(getClassInfoIndentStep()) == 0 ? (os.iword(getClassInfoIndentStep()) = 2) : os.iword(getClassInfoIndentStep());
@@ -150,7 +150,7 @@ std::ostream &operator<<(std::ostream &os, const T &value) {
 }
 
 template<typename T>
-constexpr void diffView(std::ostream &os, const T &lhs, const T &rhs) {
+inline constexpr void diffView(std::ostream &os, const T &lhs, const T &rhs) {
     const bool    verbose    = os.iword(getClassInfoVerbose());
     const int64_t indent     = os.iword(getClassInfoIndent());
     const int64_t indentStep = os.iword(getClassInfoIndentStep()) == 0 ? (os.iword(getClassInfoIndentStep()) = 2) : os.iword(getClassInfoIndentStep());
@@ -213,7 +213,7 @@ constexpr void diffView(std::ostream &os, const T &lhs, const T &rhs) {
     }
 }
 
-std::ostream &operator<<(std::ostream &os, const DeserialiserInfo &info) {
+inline std::ostream &operator<<(std::ostream &os, const DeserialiserInfo &info) {
     os << typeName<DeserialiserInfo> << "\nset fields:\n";
     if (!info.setFields.empty()) {
         for (auto fieldMask : info.setFields) {

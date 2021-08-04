@@ -179,7 +179,7 @@ constexpr ExternalModifier get_ext_modifier(const uint8_t byteValue) {
     return UNKNOWN;
 }
 
-std::ostream &operator<<(std::ostream &os, const ExternalModifier &v) {
+inline std::ostream &operator<<(std::ostream &os, const ExternalModifier &v) {
     switch (v) {
     case RO: return os << "RO";
     case RW: return os << "RW";
