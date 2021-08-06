@@ -69,10 +69,14 @@ int32_t findMemberIndex(const std::string_view fieldName) {
 }
 
 template<SerialiserProtocol protocol, const ProtocolCheck protocolCheckVariant, ReflectableClass T>
-constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserInfo info = DeserialiserInfo(), const uint8_t hierarchyDepth = 0) {
-    const std::string structName = protocolCheckVariant == IGNORE ? "" : fmt::format("{}({})", typeName<T>, static_cast<int>(hierarchyDepth));
+constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserInfo info = DeserialiserInfo(), const std::string& structName = "root", const uint8_t hierarchyDepth = 0) {
+    // todo: replace structName string by const_string
     if constexpr (protocolCheckVariant != IGNORE) {
-        info.setFields[structName] = std::vector<bool>(refl::reflect<T>().members.size);
+        if (info.setFields.contains(structName)) {
+            std::fill(info.setFields[structName].begin(),  info.setFields[structName].end(), false);
+        } else {
+            info.setFields[structName] = std::vector<bool>(refl::reflect<T>().members.size);
+        }
     }
 
     while (buffer.position() < buffer.size()) {
@@ -116,7 +120,6 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
                     throw ProtocolException(text);
                 }
                 info.exceptions.emplace_back(ProtocolException(text));
-                std::cout << "caught IoSerialiser<protocol, END_MARKER>::getDataTypeId()): " << text << std::endl; //TODO: consider using logger
                 buffer.position() = dataEndPosition;
                 continue;
             } catch (...) {
@@ -144,7 +147,6 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
             }
             info.exceptions.emplace_back(ProtocolException(exception));
             info.additionalFields.emplace_back(std::make_tuple(fmt::format("{}::{}", structName, fieldName), intDataType));
-            std::cout << "caught std::out_of_range: " << exception << std::endl; //TODO: consider using logger
             buffer.position() = dataEndPosition;
             continue;
         }
@@ -164,7 +166,6 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
                     throw ProtocolException(text);
                 }
                 info.exceptions.emplace_back(ProtocolException(text));
-                std::cout << "caught IoSerialiser<protocol, START_MARKER>::getDataTypeId()): " << text << std::endl; //TODO: consider using logger
                 buffer.position() = dataEndPosition;
                 continue;
             } catch (...) {
@@ -180,7 +181,7 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
                 using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
                 if constexpr (isReflectableClass<MemberType>()) {
                     if (index == searchIndex) {
-                        deserialise<protocol, protocolCheckVariant>(buffer, unwrapPointerCreateIfAbsent(member(value)), info, hierarchyDepth + 1);
+                        info = deserialise<protocol, protocolCheckVariant>(buffer, unwrapPointerCreateIfAbsent(member(value)), info, fmt::format("{}.{}",structName, get_display_name(member)), hierarchyDepth + 1);
                         if constexpr (protocolCheckVariant != IGNORE) {
                             info.setFields[structName][static_cast<uint64_t>(index)] = true;
                         }
