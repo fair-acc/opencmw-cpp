@@ -3,3 +3,9 @@ target_link_libraries(IoClassSerialiserBenchmark PRIVATE serialiser project_opti
 
 add_executable(SimpleReflectionExample SimpleReflectionExample.cpp)
 target_link_libraries(SimpleReflectionExample PRIVATE serialiser project_options project_warnings)
+
+add_executable(SerialisationExample SerialisationExample.cpp)
+target_link_libraries(SerialisationExample PRIVATE serialiser project_options project_warnings)
+
+add_executable(SerialiseToFile SerialiseToFile.cpp)
+target_link_libraries(SerialiseToFile PRIVATE serialiser project_options project_warnings)
