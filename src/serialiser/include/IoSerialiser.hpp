@@ -293,7 +293,7 @@ std::size_t putFieldHeader(IoBuffer &buffer, const std::string_view &fieldName, 
             buffer.put(std::string_view(data.getDescription()));
             buffer.put(static_cast<uint8_t>(data.getModifier()));
             // TODO: write group meta data
-            //final String[] groups = fieldDescription.getFieldGroups().toArray(new String[0]);
+            //final String[] groups = fieldDescription.getFieldGroups().toArray(new String[0]); // java uses non-array string
             //buffer.putStringArray(groups, groups.length);
             //buffer.put<std::string[]>({""});
         }

@@ -10,33 +10,79 @@ enum ProtocolCheck {
     ALWAYS   // via ProtocolException
 };
 
+template<SerialiserProtocol protocol>
+constexpr void putHeaderInfo(IoBuffer &buffer) {
+    buffer.ensure(2 * sizeof(int) + 7); // magic int + string length int + 4 byte 'YAS\0` string + 3 version bytes
+    buffer.put(yas::VERSION_MAGIC_NUMBER);
+    buffer.put(yas::PROTOCOL_NAME);
+    buffer.put(yas::VERSION_MAJOR);
+    buffer.put(yas::VERSION_MINOR);
+    buffer.put(yas::VERSION_MICRO);
+}
+
+template<SerialiserProtocol protocol, const ProtocolCheck protocolCheckVariant>
+DeserialiserInfo checkHeaderInfo(IoBuffer &buffer, DeserialiserInfo info) {
+    auto magic      = buffer.get<int>();
+    auto proto_name = buffer.get<std::string>();
+    auto ver_major  = buffer.get<int8_t>();
+    auto ver_minor  = buffer.get<int8_t>();
+    auto ver_micro  = buffer.get<int8_t>();
+    if (yas::VERSION_MAGIC_NUMBER != magic) {
+        if (protocolCheckVariant == LENIENT) {
+            info.exceptions.template emplace_back(ProtocolException(fmt::format("Wrong serialiser magic number: {} != -1", magic)));
+        }
+        if (protocolCheckVariant == ALWAYS) {
+            throw ProtocolException(fmt::format("Wrong serialiser magic number: {} != -1", magic));
+        }
+    }
+    if (yas::PROTOCOL_NAME != proto_name) {
+        if (protocolCheckVariant == LENIENT) {
+            info.exceptions.template emplace_back(ProtocolException(fmt::format("Wrong serialiser identification string: {} != YaS", proto_name)));
+        }
+        if (protocolCheckVariant == ALWAYS) {
+            throw ProtocolException(fmt::format("Wrong serialiser identification string: {} != YaS", proto_name));
+        }
+    }
+    if (yas::VERSION_MAJOR != ver_major) {
+        if (protocolCheckVariant == LENIENT) {
+            info.exceptions.template emplace_back(ProtocolException(fmt::format("Major versions do not match, received {}.{}.{}", ver_major, ver_minor, ver_micro)));
+        }
+        if (protocolCheckVariant == ALWAYS) {
+            throw ProtocolException(fmt::format("Major versions do not match, received {}.{}.{}", ver_major, ver_minor, ver_micro));
+        }
+    }
+    return info;
+}
+
 template<SerialiserProtocol protocol, const bool writeMetaInfo = true, ReflectableClass T>
-constexpr void serialise(IoBuffer &buffer, const T &value, const uint8_t hierarchyDepth = 0) {
+constexpr void serialise(IoBuffer &buffer, const T &value) {
+    putHeaderInfo<protocol>(buffer);
+    // const refl::type_descriptor<T> &reflectionData = refl::reflect(value);
+    // std::size_t posSizePositionStart = opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, reflectionData.name.str() , START_MARKER_INST);
+    // std::size_t posStartDataStart    = buffer.size();
+    serialise<protocol, writeMetaInfo>(buffer, value, 0);
+    // opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, reflectionData.name.str(), END_MARKER_INST);
+    // buffer.at<int32_t>(posSizePositionStart) = static_cast<int32_t>(buffer.size() - posStartDataStart); // write data size
+}
+
+template<SerialiserProtocol protocol, const bool writeMetaInfo = true, ReflectableClass T>
+constexpr void serialise(IoBuffer &buffer, const T &value, const uint8_t hierarchyDepth) {
     for_each(refl::reflect(value).members, [&](const auto member, [[maybe_unused]] const auto index) {
         if constexpr (is_field(member) && !is_static(member)) {
             using UnwrappedMemberType = std::remove_reference_t<decltype(member(value))>;
             using MemberType          = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
-            if constexpr (isReflectableClass<MemberType>()) {
-                if constexpr (is_smart_pointer<std::remove_reference_t<UnwrappedMemberType>>) {
-                    if (!member(value)) {
-                        return;
-                    } // return from lambda
+            if constexpr (is_smart_pointer<std::remove_reference_t<UnwrappedMemberType>>) {
+                if (!member(value)) {
+                    return; // skip empty smart pointer
                 }
+            }
+            if constexpr (isReflectableClass<MemberType>()) { // nested data-structure
                 std::size_t posSizePositionStart = opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, member.name.str(), START_MARKER_INST);
-                std::size_t posStartDataStart    = buffer.size() - sizeof(uint8_t);                                               // '-1 because we wrote one byte as marker payload
+                std::size_t posStartDataStart    = buffer.size() - sizeof(uint8_t);
                 serialise<protocol, writeMetaInfo>(buffer, getAnnotatedMember(unwrapPointer(member(value))), hierarchyDepth + 1); // do not inspect annotation itself
-
                 opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, member.name.str(), END_MARKER_INST);
                 buffer.at<int32_t>(posSizePositionStart) = static_cast<int32_t>(buffer.size() - posStartDataStart); // write data size
-            } else {
-                if constexpr (is_smart_pointer<std::remove_reference_t<UnwrappedMemberType>>) {
-                    if (member(value)) {
-                        opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, member.name.str(), member(value));
-                        return;
-                    }
-                    // else -- skip empty smart pointer
-                    return;
-                }
+            } else {                                                                                                // primitive type
                 opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, member.name.str(), member(value));
             }
         }
@@ -69,8 +115,19 @@ int32_t findMemberIndex(const std::string_view fieldName) {
 }
 
 template<SerialiserProtocol protocol, const ProtocolCheck protocolCheckVariant, ReflectableClass T>
-constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserInfo info = DeserialiserInfo(), const std::string &structName = "root", const uint8_t hierarchyDepth = 0) {
+constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserInfo info = DeserialiserInfo()) {
+    // check data header for protocol version match
+    info = checkHeaderInfo<protocol, protocolCheckVariant>(buffer, info);
+    if (protocolCheckVariant == LENIENT && !info.exceptions.empty()) {
+        return info; // do not attempt to deserialise data with wrong header
+    }
+    return deserialise<protocol, protocolCheckVariant>(buffer, value, info, "root", 0);
+}
+
+template<SerialiserProtocol protocol, const ProtocolCheck protocolCheckVariant, ReflectableClass T>
+constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserInfo info, const std::string &structName, const uint8_t hierarchyDepth) {
     // todo: replace structName string by const_string
+    // initialize bitfield indicating which fields have been set
     if constexpr (protocolCheckVariant != IGNORE) {
         if (info.setFields.contains(structName)) {
             std::fill(info.setFields[structName].begin(), info.setFields[structName].end(), false);
@@ -86,11 +143,11 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
 
         //const auto        hashFieldName     =
         buffer.get<int32_t>(); // hashed field name -> future: faster look-up/matching of fields
-        const auto        dataStartOffset   = static_cast<uint64_t>(buffer.get<int32_t>());
-        const auto        dataSize          = static_cast<uint64_t>(buffer.get<int32_t>());
-        const String      fieldName         = buffer.get<std::string_view>(); // full field name
-        const std::size_t dataStartPosition = headerStart + dataStartOffset;
-        const std::size_t dataEndPosition   = headerStart + dataStartOffset + dataSize;
+        const auto                     dataStartOffset   = static_cast<uint64_t>(buffer.get<int32_t>());
+        const auto                     dataSize          = static_cast<uint64_t>(buffer.get<int32_t>());
+        const opencmw::StringLike auto fieldName         = buffer.get<std::string_view>(); // full field name
+        const std::size_t              dataStartPosition = headerStart + dataStartOffset;
+        const std::size_t              dataEndPosition   = headerStart + dataStartOffset + dataSize;
         // the following information is optional
         // e.g. could skip to 'headerStart + dataStartOffset' and start reading the data, or
         // e.g. could skip to 'headerStart + dataStartOffset + dataSize' and start reading the next field header
