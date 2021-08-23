@@ -245,7 +245,7 @@ public:
         const std::size_t bytesToCopy = static_cast<std::size_t>(get<int32_t>()) * sizeof(char);
         const std::size_t oldPosition = _position;
 #ifdef NDEBUG
-        _position += bytesToCopy + 1;
+        _position += bytesToCopy;
 #else
         _position += bytesToCopy;
         const int8_t terminatingChar = get<int8_t>();
