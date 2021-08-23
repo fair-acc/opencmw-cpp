@@ -42,6 +42,7 @@ int main() {
         opencmw::serialise<opencmw::YaS, true>(buffer, c);
         std::ofstream outfile("out.bin", std::ios::binary);
         outfile.write(reinterpret_cast<char *>(buffer.data()), static_cast<long int>(buffer.size()));
+        outfile.close();
         auto result = opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::LENIENT>(buffer, d);
         std::cout << "serialiser result: " << result << std::endl;
     } catch (ProtocolException &e) { // TODO: add protocol exception and field name/mismatch interface here
