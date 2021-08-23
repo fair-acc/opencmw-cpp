@@ -189,7 +189,7 @@ public:
     void put(const I &value) noexcept {
         const std::size_t bytesToCopy = value.size() * sizeof(char);
         reserve_spare(bytesToCopy + sizeof(int32_t) + sizeof(char)); // educated guess
-        put(static_cast<int32_t>(value.size()));                     // size of vector
+        put(static_cast<int32_t>(value.size() + 1));          // size of vector plus string termination
         std::memmove((_buffer + _size), value.data(), bytesToCopy);
         _size += bytesToCopy;
         put(static_cast<uint8_t>('\0')); // zero terminating byte
@@ -241,18 +241,18 @@ public:
 #ifdef NDEBUG
         _position += bytesToCopy;
 #else
-        _position += bytesToCopy;
+        _position += bytesToCopy - 1;
         const int8_t terminatingChar = get<int8_t>();
         assert(terminatingChar == '\0'); // check for terminating character
 #endif
-        return R((reinterpret_cast<const char *>(_buffer + oldPosition)), bytesToCopy);
+        return R((reinterpret_cast<const char *>(_buffer + oldPosition)), bytesToCopy - 1);
     }
 
     template<StringLike R>
     [[nodiscard]] R get(const std::size_t &index) noexcept {
         const std::size_t bytesToCopy = static_cast<std::size_t>(get<int32_t>()) * sizeof(char);
 #ifndef NDEBUG
-        _position += bytesToCopy;
+        _position += bytesToCopy - 1;
         const int8_t terminatingChar = get<int8_t>();
         assert(terminatingChar == '\0'); // check for terminating character
 #endif
