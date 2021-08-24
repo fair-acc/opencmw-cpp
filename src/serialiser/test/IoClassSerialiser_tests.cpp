@@ -192,7 +192,8 @@ TEST_CASE("IoClassSerialiser protocol mismatch", "[IoClassSerialiser]") {
 
         buffer.reset();
         auto info = opencmw::deserialise<YaS, ProtocolCheck::LENIENT>(buffer, data2);
-        std::cout << " info: {}\n" << info;
+        std::cout << " info: {}\n"
+                  << info;
         REQUIRE(6 == info.exceptions.size());
         REQUIRE(1 == info.additionalFields.size());
         REQUIRE(1 == info.setFields.size());
