@@ -33,7 +33,7 @@ private:
 public:
     /// full control constructor, allowing to realise custom matrix layouts
     [[nodiscard]] constexpr MultiArray(
-            const std::vector<value_type>      elements,
+            const std::vector<value_type>     &elements,
             const std::array<size_t_, n_dims> &dimensions,
             const std::array<size_t_, n_dims> &strides,
             const std::array<size_t_, n_dims>  offsets)
@@ -42,7 +42,7 @@ public:
     /// copy constructor for wrapping a linear vector of elements
     /// \param elements the elements in row major format
     /// \param dimensions the size of the MultiArray in every dimension
-    [[nodiscard]] constexpr MultiArray(const std::vector<value_type> elements, const std::array<size_t_, n_dims> &dimensions)
+    [[nodiscard]] constexpr MultiArray(const std::vector<value_type> &elements, const std::array<size_t_, n_dims> &dimensions)
         : elements_(elements.data(), elements.size()), n_element_(dimensions[n_dims - 1]), dims_(dimensions), strides_(), offsets_() {
         strides_[n_dims - 1] = 1;
         for (auto i = n_dims - 1; i > 0; i--) {
@@ -140,7 +140,7 @@ public:
     /// \return a scalar index in the multi array
     [[nodiscard]] constexpr size_t_ index(const std::array<size_t_, n_dims> indices) const noexcept {
         size_t_ index = 0;
-        for (size_t_ i = 0; i < n_dims; i++) {
+        for (size_t_ i = 0; i < n_dims; ++i) {
             index += (offsets_[i] + indices[i]) * strides_[i];
         }
         return index;
@@ -196,33 +196,33 @@ public:
     }
 
     // math operator overloads [+-*/[=]] arithmetic<value_type> MultiArray<value_type> vector<value_type> (both lvalue and rvalue version)
-    MultiArray &operator+=(const MultiArray<value_type, n_dims> operand) {
+    MultiArray &operator+=(const MultiArray<value_type, n_dims> &operand) {
         // todo: verify dimension match. Allow broadcasting (adding a column vector to each row or similar)?
-        for (size_t_ i = 0; i < n_element_; i++) { // todo: use iterator to only change valid fields
+        for (size_t_ i = 0; i < n_element_; ++i) { // todo: use iterator to only change valid fields
             this[i] += operand[i];
         }
         return *this;
     }
     template<AnyNumber R>
-    MultiArray &operator+=(const R operand) {
-        for (size_t_ i = 0; i < n_element_; i++) { // todo: use iterator to only change valid fields
+    MultiArray &operator+=(const R &operand) {
+        for (size_t_ i = 0; i < n_element_; ++i) { // todo: use iterator to only change valid fields
             this[i] += operand;
         }
         return *this;
     }
 
-    MultiArray<value_type, n_dims> operator+(const MultiArray<value_type, n_dims> operand) {
+    MultiArray<value_type, n_dims> operator+(const MultiArray<value_type, n_dims> &operand) {
         // todo: verify dimension match. Allow broadcasting (adding a column vector to each row or similar)?
         MultiArray &result = MultiArray<value_type, n_dims>(this->dims_);
-        for (size_t_ i = 0; i < n_element_; i++) { // todo: use iterator to only change valid fields
+        for (size_t_ i = 0; i < n_element_; ++i) { // todo: use iterator to only change valid fields
             result[i] = this[i] + operand[i];
         }
         return result;
     }
     template<AnyNumber R>
-    MultiArray &operator+(const R operand) {
+    MultiArray &operator+(const R &operand) {
         MultiArray &result = MultiArray<value_type, n_dims>(this->dims_);
-        for (size_t_ i = 0; i < n_element_; i++) { // todo: use iterator to only change valid fields
+        for (size_t_ i = 0; i < n_element_; ++i) { // todo: use iterator to only change valid fields
             this[i] += operand;
         }
         return result;
@@ -230,13 +230,13 @@ public:
 
     bool operator==(const MultiArray<value_type, n_dims> &other) const noexcept {
         // check if array is the same size
-        for (size_t_ i = 0; i < n_dims; i++) {
+        for (size_t_ i = 0; i < n_dims; ++i) {
             if (dims_[i] != other.dims_[i]) {
                 return false;
             }
         }
         // check content of array todo: respect offsets/strides/etc
-        for (size_t_ i = 0; i < n_element_; i++) {
+        for (size_t_ i = 0; i < n_element_; ++i) {
             if (elements_[i] != other.elements_[i]) {
                 return false;
             }

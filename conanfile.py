@@ -3,7 +3,6 @@
 """Conan recipe package for opencmw-cpp
 """
 
-import os
 from conans import ConanFile, CMake, tools
 
 
