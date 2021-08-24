@@ -83,13 +83,13 @@ if(ENABLE_TESTING)
       setup_target_for_coverage_gcovr_xml(
         NAME coverage
         EXECUTABLE ctest
-        DEPENDENCIES OpenCMW_tests IoBuffer_tests IoSerialiser_tests IoClassSerialiser_tests MultiArray_tests
+        DEPENDENCIES IoBuffer_tests IoSerialiser_tests IoClassSerialiser_tests MultiArray_tests
         EXCLUDE "$CMAKE_BUILD_DIR/*" "concepts/*"
       )
       setup_target_for_coverage_gcovr_html(
         NAME coverage_html
         EXECUTABLE ctest
-        DEPENDENCIES OpenCMW_tests IoBuffer_tests IoSerialiser_tests IoClassSerialiser_tests MultiArray_tests
+        DEPENDENCIES IoBuffer_tests IoSerialiser_tests IoClassSerialiser_tests MultiArray_tests
         EXCLUDE "$CMAKE_BUILD_DIR/*" "concepts/*"
       )
     else()
