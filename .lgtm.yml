@@ -7,7 +7,7 @@ extraction:
   cpp:
     prepare:
       packages:
-        - g++-10
+        - g++-11
         - ccache
       script:
         - mkdir ~/.conan
@@ -16,9 +16,11 @@ extraction:
         - python3 -m pip install conan
         - python3 -m pip install cmake
         - source ~/.profile
+        - uname -a
+        - ls /usr/bin/g++*
     configure:
       command:
         - mkdir build
-        - cmake -D ENABLE_COVERAGE:BOOL=TRUE -S . -B build
+        - CC=/usr/bin/gcc-11 CXX=/usr/bin/g++-11 cmake -D ENABLE_COVERAGE:BOOL=TRUE -S . -B build
     index:
-      build_command: cmake --build ./build -- -j2
+      build_command: CC=/usr/bin/gcc-11 CXX=/usr/bin/g++-11 cmake --build ./build -- -j2
