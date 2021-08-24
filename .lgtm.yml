@@ -7,7 +7,7 @@ extraction:
   cpp:
     prepare:
       packages:
-        - g++-10
+        - g++-10 # should be 11 but this is not available
         - ccache
       script:
         - mkdir ~/.conan
@@ -19,6 +19,6 @@ extraction:
     configure:
       command:
         - mkdir build
-        - cmake -D ENABLE_COVERAGE:BOOL=TRUE -S . -B build
+        - CC=/usr/bin/gcc-10 CXX=/usr/bin/g++-10 cmake -D ENABLE_COVERAGE:BOOL=TRUE -S . -B build
     index:
-      build_command: cmake --build ./build -- -j2
+      build_command: CC=/usr/bin/gcc-10 CXX=/usr/bin/g++-10 cmake --build ./build -- -j2

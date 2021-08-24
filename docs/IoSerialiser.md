@@ -12,7 +12,7 @@ their performance is usually rather complex and highly non-trivial because the u
 being quite different between specific domains, boundary constraints, application goals and resulting (de-)serialisation strategies.
 Rather than claiming any superlative, or needlessly bashing solutions that are well suited for their design use-cases, we wanted
 to document the considerations, constraints and application goals of our specific use-case and that guided our
-[multi-protocol serialiser developments](../serialiser).
+[multi-protocol serialiser developments](../src/serialiser).
 This also in the hope that it might find interest, perhaps adoption, inspires new ideas, or any other form of improvements.
 Thus, if you find something missing, unclear, or things that could be improved, please feel encouraged to post a PR.
 
@@ -22,7 +22,7 @@ and new serialiser design ideas expressed in the references [below](#references)
 for our specific use-case.
 
 ### [Our](https://fair-center.eu/) [Use-Case](https://fair-wiki.gsi.de/FC2WG)
-We use [this](../serialiser) and [Chart-Fx](https://github.com/GSI-CS-CO/chart-fx) in order to aid the development
+We use [this](../src/serialiser) and [Chart-Fx](https://github.com/GSI-CS-CO/chart-fx) in order to aid the development
 of functional microservices that monitor and control a large variety of device- and beam-based parameters that are necessary
 for the operation of our [FAIR particle accelerators](https://www.youtube.com/watch?v=zy4b0ZQnsck).
 These microservices cover in particular those that require the aggregation of measurement data from different sub-systems,

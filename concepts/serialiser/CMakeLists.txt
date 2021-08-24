@@ -1,0 +1,5 @@
+add_executable(IoClassSerialiserBenchmark IoClassSerialiserBenchmark.cpp IoClassSerialiserBenchmark.hpp)
+target_link_libraries(IoClassSerialiserBenchmark PRIVATE serialiser project_options project_warnings)
+
+add_executable(SimpleReflectionExample SimpleReflectionExample.cpp)
+target_link_libraries(SimpleReflectionExample PRIVATE serialiser project_options project_warnings)
