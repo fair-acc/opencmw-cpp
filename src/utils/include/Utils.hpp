@@ -62,15 +62,15 @@ inline int getClassInfoIndentStep() {
     return i;
 }
 
-std::ostream &ClassInfoIndentStep(std::ostream &os, const uint32_t indentValue) {
+inline std::ostream &ClassInfoIndentStep(std::ostream &os, const uint32_t indentValue) {
     os.iword(getClassInfoIndentStep()) += indentValue;
     return os;
 }
-std::ostream &ClassInfoIndentInc(std::ostream &os) {
+inline std::ostream &ClassInfoIndentInc(std::ostream &os) {
     os.iword(getClassInfoIndent()) += 1;
     return os;
 }
-std::ostream &ClassInfoIndentDec(std::ostream &os) {
+inline std::ostream &ClassInfoIndentDec(std::ostream &os) {
     os.iword(getClassInfoIndent()) -= 1;
     return os;
 }

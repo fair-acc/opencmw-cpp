@@ -55,24 +55,13 @@ if(ENABLE_PCH)
     <utility>)
 endif()
 
-# Set up some extra Conan dependencies based on our needs before loading Conan
-set(CONAN_EXTRA_REQUIRES "")
-set(CONAN_EXTRA_OPTIONS "")
-
 include(cmake/Conan.cmake)
 run_conan()
 include(cmake/ReflCpp.cmake) # todo: switch to obtaining reflcpp from conan
 
-add_subdirectory(src)
-
-if(ENABLE_CONCEPTS)
-  message("Building Concepts")
-  add_subdirectory(concepts)
-endif()
-
 if(ENABLE_TESTING)
   enable_testing()
-  message("Building Tests. Be sure to check out test/constexpr_tests for constexpr testing")
+  message("Building Tests.")
   if (ENABLE_COVERAGE)
     if(UNIX AND NOT APPLE) # Linux
       message("Coverage reporting enabled")
@@ -81,16 +70,16 @@ if(ENABLE_TESTING)
       target_link_libraries(project_options INTERFACE --coverage)
       append_coverage_compiler_flags()
       setup_target_for_coverage_gcovr_xml(
-        NAME coverage
-        EXECUTABLE ctest
-        DEPENDENCIES IoBuffer_tests IoSerialiser_tests IoClassSerialiser_tests MultiArray_tests
-        EXCLUDE "$CMAKE_BUILD_DIR/*" "concepts/*"
+              NAME coverage
+              EXECUTABLE ctest
+              DEPENDENCIES serialiser_tests
+              EXCLUDE "$CMAKE_BUILD_DIR/*" "concepts/*"
       )
       setup_target_for_coverage_gcovr_html(
-        NAME coverage_html
-        EXECUTABLE ctest
-        DEPENDENCIES IoBuffer_tests IoSerialiser_tests IoClassSerialiser_tests MultiArray_tests
-        EXCLUDE "$CMAKE_BUILD_DIR/*" "concepts/*"
+              NAME coverage_html
+              EXECUTABLE ctest
+              DEPENDENCIES serialiser_tests
+              EXCLUDE "$CMAKE_BUILD_DIR/*" "concepts/*"
       )
     else()
       message(WARNING "Coverage is only supported on linux")
@@ -98,8 +87,9 @@ if(ENABLE_TESTING)
   endif()
 endif()
 
-option(ENABLE_UNITY "Enable Unity builds of projects" OFF)
-if(ENABLE_UNITY)
-  # Add for any project you want to apply unity builds for
-  set_target_properties(intro PROPERTIES UNITY_BUILD ON)
+add_subdirectory(src)
+
+if(ENABLE_CONCEPTS)
+  message("Building Concepts")
+  add_subdirectory(concepts)
 endif()

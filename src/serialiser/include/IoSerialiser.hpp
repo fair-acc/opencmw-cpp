@@ -25,7 +25,7 @@ public:
     [[nodiscard]] std::string_view what() const noexcept { return errorMsg; }
 };
 
-std::ostream &operator<<(std::ostream &os, const ProtocolException &exception) {
+inline std::ostream &operator<<(std::ostream &os, const ProtocolException &exception) {
     return os << "ProtocolException(\"" << exception.what() << "\")";
 }
 
