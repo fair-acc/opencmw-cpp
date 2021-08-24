@@ -33,7 +33,7 @@ private:
 public:
     /// full control constructor, allowing to realise custom matrix layouts
     [[nodiscard]] constexpr MultiArray(
-            const std::vector<value_type>     &elements,
+            const std::vector<value_type> &    elements,
             const std::array<size_t_, n_dims> &dimensions,
             const std::array<size_t_, n_dims> &strides,
             const std::array<size_t_, n_dims>  offsets)
