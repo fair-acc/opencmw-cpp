@@ -19,8 +19,8 @@ struct className {
 ENABLE_REFLECTION_FOR(className, field1, field2, field3)
 
 struct classNameMissing {
-    int         field1;
-    float       field2;
+    int   field1;
+    float field2;
 
     // just good common practise to define some operators
     bool operator==(const classNameMissing &) const = default;
@@ -32,7 +32,7 @@ struct otherClass {
     Annotated<float, thermodynamic_temperature<kelvin>, "device specific temperature">        temperature     = 23.2F;
     Annotated<float, electric_current<ampere>, "this is the current from ...">                current         = 42.F;
     Annotated<float, energy<electronvolt>, "SIS18 energy at injection before being captured"> injectionEnergy = 8.44e6F;
-    std::unique_ptr<classNameMissing> nested;
+    std::unique_ptr<classNameMissing>                                                         nested;
     // [..]
 
     // just good common practise to define some operators
@@ -45,7 +45,7 @@ struct otherClassV2 {
     Annotated<float, electric_current<ampere>, "this is the current from ...">                current         = 42.F;
     Annotated<float, energy<electronvolt>, "SIS18 energy at injection before being captured"> injectionEnergy = 8.44e6F;
     Annotated<double, length<millimetre>, "beam position in x direction">                     beamPositionX   = 2.1;
-    std::unique_ptr<className> nested;
+    std::unique_ptr<className>                                                                nested;
     // [..]
 
     // just good common practise to define some operators
@@ -63,9 +63,9 @@ using namespace opencmw::utils; // for operator<< and fmt::format overloading
  */
 int main() {
     // printout example for annotated class
-    otherClass c{1.2f,2.3f,3.4f,std::make_unique<classNameMissing>(1,0.42f)};
+    otherClass c{ 1.2f, 2.3f, 3.4f, std::make_unique<classNameMissing>(1, 0.42f) };
     c.injectionEnergy = 8.3e6;
-    otherClassV2 d{1.3f,2.4f,3.5f,3.0, nullptr};
+    otherClassV2 d{ 1.3f, 2.4f, 3.5f, 3.0, nullptr };
     std::cout << "class info for annotated class: " << c << '\n';
     std::cout << "class info for annotated class2: " << d << '\n';
 

@@ -69,11 +69,11 @@ int32_t findMemberIndex(const std::string_view fieldName) {
 }
 
 template<SerialiserProtocol protocol, const ProtocolCheck protocolCheckVariant, ReflectableClass T>
-constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserInfo info = DeserialiserInfo(), const std::string& structName = "root", const uint8_t hierarchyDepth = 0) {
+constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserInfo info = DeserialiserInfo(), const std::string &structName = "root", const uint8_t hierarchyDepth = 0) {
     // todo: replace structName string by const_string
     if constexpr (protocolCheckVariant != IGNORE) {
         if (info.setFields.contains(structName)) {
-            std::fill(info.setFields[structName].begin(),  info.setFields[structName].end(), false);
+            std::fill(info.setFields[structName].begin(), info.setFields[structName].end(), false);
         } else {
             info.setFields[structName] = std::vector<bool>(refl::reflect<T>().members.size);
         }
@@ -181,7 +181,7 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
                 using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
                 if constexpr (isReflectableClass<MemberType>()) {
                     if (index == searchIndex) {
-                        info = deserialise<protocol, protocolCheckVariant>(buffer, unwrapPointerCreateIfAbsent(member(value)), info, fmt::format("{}.{}",structName, get_display_name(member)), hierarchyDepth + 1);
+                        info = deserialise<protocol, protocolCheckVariant>(buffer, unwrapPointerCreateIfAbsent(member(value)), info, fmt::format("{}.{}", structName, get_display_name(member)), hierarchyDepth + 1);
                         if constexpr (protocolCheckVariant != IGNORE) {
                             info.setFields[structName][static_cast<uint64_t>(index)] = true;
                         }
