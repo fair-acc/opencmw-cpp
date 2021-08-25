@@ -23,7 +23,7 @@ constexpr void putHeaderInfo(IoBuffer &buffer) {
 template<SerialiserProtocol protocol, const ProtocolCheck protocolCheckVariant>
 DeserialiserInfo checkHeaderInfo(IoBuffer &buffer, DeserialiserInfo info) {
     auto magic      = buffer.get<int>();
-    auto proto_name = buffer.get<std::string>().substr(0,3);
+    auto proto_name = buffer.get<std::string>();
     auto ver_major = buffer.get<int8_t>();
     auto ver_minor = buffer.get<int8_t>();
     auto ver_micro = buffer.get<int8_t>();
@@ -115,12 +115,17 @@ int32_t findMemberIndex(const std::string_view fieldName) {
 }
 
 template<SerialiserProtocol protocol, const ProtocolCheck protocolCheckVariant, ReflectableClass T>
-constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserInfo info = DeserialiserInfo(), const std::string& structName = "root", const uint8_t hierarchyDepth = 0) {
+constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserInfo info = DeserialiserInfo()) {
     // check data header for protocol version match
     info = checkHeaderInfo<protocol, protocolCheckVariant>(buffer, info);
     if (protocolCheckVariant == LENIENT && !info.exceptions.empty()) {
         return info; // do not attempt to deserialise data with wrong header
     }
+    return deserialise<protocol, protocolCheckVariant>(buffer, value, info, "root", 0);
+}
+
+template<SerialiserProtocol protocol, const ProtocolCheck protocolCheckVariant, ReflectableClass T>
+constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserInfo info, const std::string& structName, const uint8_t hierarchyDepth) {
     // todo: replace structName string by const_string
     // initialize bitfield indicating which fields have been set
     if constexpr (protocolCheckVariant != IGNORE) {
@@ -138,11 +143,11 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
 
         //const auto        hashFieldName     =
         buffer.get<int32_t>(); // hashed field name -> future: faster look-up/matching of fields
-        const auto        dataStartOffset   = static_cast<uint64_t>(buffer.get<int32_t>());
-        const auto        dataSize          = static_cast<uint64_t>(buffer.get<int32_t>());
-        const String      fieldName         = buffer.get<std::string_view>(); // full field name
-        const std::size_t dataStartPosition = headerStart + dataStartOffset;
-        const std::size_t dataEndPosition   = headerStart + dataStartOffset + dataSize;
+        const auto                     dataStartOffset   = static_cast<uint64_t>(buffer.get<int32_t>());
+        const auto                     dataSize          = static_cast<uint64_t>(buffer.get<int32_t>());
+        const opencmw::StringLike auto fieldName         = buffer.get<std::string_view>(); // full field name
+        const std::size_t              dataStartPosition = headerStart + dataStartOffset;
+        const std::size_t              dataEndPosition   = headerStart + dataStartOffset + dataSize;
         // the following information is optional
         // e.g. could skip to 'headerStart + dataStartOffset' and start reading the data, or
         // e.g. could skip to 'headerStart + dataStartOffset + dataSize' and start reading the next field header
