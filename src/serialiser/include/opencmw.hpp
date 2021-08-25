@@ -395,5 +395,19 @@ struct ConstExprMap {
     }
 };
 
+/**
+ * A java compatible string hash function.
+ * Might be be replaced by a more efficient algorithm in the future.
+ * @param string the string to compute the hash for
+ * @return hash value of the string
+ */
+inline int hash(const std::string_view &string) {
+    int h = 0;
+    for (char i : string) {
+        h = h * 31 + static_cast<int>(i);
+    }
+    return h;
+}
+
 } // namespace opencmw
 #endif //OPENCMW_H

@@ -280,7 +280,7 @@ std::size_t putFieldHeader(IoBuffer &buffer, const std::string_view &fieldName, 
     // -- offset 0 vs. field start
     const std::size_t headerStart = buffer.size();
     buffer.put(static_cast<uint8_t>(IoSerialiser<protocol, StrippedDataType>::getDataTypeId())); // data type ID
-    buffer.put(static_cast<int32_t>(std::hash<std::string_view>{}(fieldName)));                  // unique hashCode identifier -- TODO: unify across C++/Java & optimise performance
+    buffer.put(opencmw::hash(fieldName));                                                        // unique hashCode identifier -- TODO: choose more performant implementation instead of java default
     const std::size_t dataStartOffsetPosition = buffer.size();
     buffer.put(-1); // dataStart offset
     const int32_t     dataSize         = is_supported_number<DataType> ? dataTypeSize : -1;
