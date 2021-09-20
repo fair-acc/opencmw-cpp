@@ -82,6 +82,9 @@ void checkSerialiserIdentity(opencmw::IoBuffer &buffer, const T &a, T &b) {
     } catch (std::exception &e) {
         std::cout << "caught exception " << opencmw::typeName<std::remove_reference_t<decltype(e)>> << std::endl;
         REQUIRE(false);
+    } catch (opencmw::ProtocolException &e) {
+        std::cout << "caught exception " << opencmw::typeName<std::remove_reference_t<decltype(e)>> << std::endl;
+        REQUIRE(false);
     } catch (...) {
         std::cout << "caught unknown exception " << std::endl;
         REQUIRE(false);
