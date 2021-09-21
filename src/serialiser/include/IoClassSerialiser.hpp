@@ -79,7 +79,7 @@ constexpr void serialise(IoBuffer &buffer, const T &value, const uint8_t hierarc
             }
             if constexpr (isReflectableClass<MemberType>()) { // nested data-structure
                 std::size_t posSizePositionStart = opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, member.name.str(), START_MARKER_INST);
-                std::size_t posStartDataStart    = buffer.size() - sizeof(uint8_t);
+                std::size_t posStartDataStart    = buffer.size();
                 serialise<protocol, writeMetaInfo>(buffer, getAnnotatedMember(unwrapPointer(member(value))), hierarchyDepth + 1); // do not inspect annotation itself
                 opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, member.name.str(), END_MARKER_INST);
                 buffer.at<int32_t>(posSizePositionStart) = static_cast<int32_t>(buffer.size() - posStartDataStart); // write data size
@@ -164,6 +164,7 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
         buffer.position() = dataStartPosition;
 
         if (intDataType == IoSerialiser<protocol, END_MARKER>::getDataTypeId()) {
+            // todo: assert name equals start marker
             // reached end of sub-structure
             try {
                 IoSerialiser<protocol, END_MARKER>::deserialise(buffer, fieldName, END_MARKER_INST);
@@ -191,22 +192,24 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
         }
 
         int32_t searchIndex = -1;
-        try {
-            searchIndex = static_cast<int32_t>(findMemberIndex<T>(fieldName));
-        } catch (std::out_of_range &e) {
-            if constexpr (protocolCheckVariant == IGNORE) {
+        if (hierarchyDepth != 0) {  // do not resolve field name (== type name) for root element
+            try {
+                searchIndex = static_cast<int32_t>(findMemberIndex<T>(fieldName));
+            } catch (std::out_of_range &e) {
+                if constexpr (protocolCheckVariant == IGNORE) {
+                    buffer.position() = dataEndPosition;
+                    continue;
+                }
+                const auto exception = fmt::format("missing field (type:{}) {}::{} at buffer[{}, size:{}]",
+                        intDataType, structName, fieldName, buffer.position(), buffer.size());
+                if constexpr (protocolCheckVariant == ALWAYS) {
+                    throw ProtocolException(exception);
+                }
+                info.exceptions.emplace_back(ProtocolException(exception));
+                info.additionalFields.emplace_back(std::make_tuple(fmt::format("{}::{}", structName, fieldName), intDataType));
                 buffer.position() = dataEndPosition;
                 continue;
             }
-            const auto exception = fmt::format("missing field (type:{}) {}::{} at buffer[{}, size:{}]",
-                    intDataType, structName, fieldName, buffer.position(), buffer.size());
-            if constexpr (protocolCheckVariant == ALWAYS) {
-                throw ProtocolException(exception);
-            }
-            info.exceptions.emplace_back(ProtocolException(exception));
-            info.additionalFields.emplace_back(std::make_tuple(fmt::format("{}::{}", structName, fieldName), intDataType));
-            buffer.position() = dataEndPosition;
-            continue;
         }
 
         if (intDataType == IoSerialiser<protocol, START_MARKER>::getDataTypeId()) {
@@ -235,17 +238,29 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
                         protocol::protocolName(), structName, buffer.position(), buffer.size()));
             }
 
-            for_each(refl::reflect<T>().members, [searchIndex, &buffer, &value, &hierarchyDepth, &info, &structName](auto member, int32_t index) {
-                using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
-                if constexpr (isReflectableClass<MemberType>()) {
-                    if (index == searchIndex) {
-                        info = deserialise<protocol, protocolCheckVariant>(buffer, unwrapPointerCreateIfAbsent(member(value)), info, fmt::format("{}.{}", structName, get_display_name(member)), hierarchyDepth + 1);
-                        if constexpr (protocolCheckVariant != IGNORE) {
-                            info.setFields[structName][static_cast<uint64_t>(index)] = true;
+            if (searchIndex == -1 && hierarchyDepth == 0) { // top level element
+                if (true) { // todo assert fieldName == typename T
+                    info = deserialise<protocol, protocolCheckVariant>(buffer, unwrapPointerCreateIfAbsent(value), info, structName, hierarchyDepth + 1);
+                    if constexpr (protocolCheckVariant != IGNORE) {
+                        info.setFields[structName][static_cast<uint64_t>(0)] = true;
+                    }
+                } else {
+                    // todo: error handling
+                    std::cerr << "error deserialising top level field\n";
+                }
+            } else {
+                for_each(refl::reflect<T>().members, [searchIndex, &buffer, &value, &hierarchyDepth, &info, &structName](auto member, int32_t index) {
+                    using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
+                    if constexpr (isReflectableClass<MemberType>()) {
+                        if (index == searchIndex) {
+                            info = deserialise<protocol, protocolCheckVariant>(buffer, unwrapPointerCreateIfAbsent(member(value)), info, fmt::format("{}.{}", structName, get_display_name(member)), hierarchyDepth + 1);
+                            if constexpr (protocolCheckVariant != IGNORE) {
+                                info.setFields[structName][static_cast<uint64_t>(index)] = true;
+                            }
                         }
                     }
-                }
-            });
+                });
+            }
 
             buffer.position() = dataEndPosition;
             continue;
