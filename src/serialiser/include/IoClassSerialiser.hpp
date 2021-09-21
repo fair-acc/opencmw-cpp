@@ -57,12 +57,13 @@ DeserialiserInfo checkHeaderInfo(IoBuffer &buffer, DeserialiserInfo info) {
 template<SerialiserProtocol protocol, const bool writeMetaInfo = true, ReflectableClass T>
 constexpr void serialise(IoBuffer &buffer, const T &value) {
     putHeaderInfo<protocol>(buffer);
-    // const refl::type_descriptor<T> &reflectionData = refl::reflect(value);
-    // std::size_t posSizePositionStart = opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, reflectionData.name.str() , START_MARKER_INST);
-    // std::size_t posStartDataStart    = buffer.size();
+    const refl::type_descriptor<T> &reflectionData = refl::reflect(value);
+    const auto type_name = reflectionData.name.str();
+    std::size_t posSizePositionStart = opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, type_name, START_MARKER_INST);
+    std::size_t posStartDataStart    = buffer.size();
     serialise<protocol, writeMetaInfo>(buffer, value, 0);
-    // opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, reflectionData.name.str(), END_MARKER_INST);
-    // buffer.at<int32_t>(posSizePositionStart) = static_cast<int32_t>(buffer.size() - posStartDataStart); // write data size
+    opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, type_name, END_MARKER_INST);
+    buffer.at<int32_t>(posSizePositionStart) = static_cast<int32_t>(buffer.size() - posStartDataStart); // write data size
 }
 
 template<SerialiserProtocol protocol, const bool writeMetaInfo = true, ReflectableClass T>
