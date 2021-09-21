@@ -73,7 +73,7 @@ ENABLE_REFLECTION_FOR(Data, byteValue, shortValue, intValue, longValue, floatVal
 
 template<opencmw::SerialiserProtocol protocol, opencmw::ReflectableClass T>
 void checkSerialiserIdentity(opencmw::IoBuffer &buffer, const T &a, T &b) {
-    buffer.reset();
+    buffer.clear();
     opencmw::serialise<protocol>(buffer, a);
 
     try {
@@ -197,7 +197,7 @@ TEST_CASE("IoClassSerialiser protocol mismatch", "[IoClassSerialiser]") {
         auto info = opencmw::deserialise<YaS, ProtocolCheck::LENIENT>(buffer, data2);
         std::cout << " info: {}\n"
                   << info;
-        REQUIRE(6 == info.exceptions.size());
+        REQUIRE(7 == info.exceptions.size());
         REQUIRE(1 == info.additionalFields.size());
         REQUIRE(1 == info.setFields.size());
         REQUIRE(9 == (info.setFields["root"].size()));
