@@ -57,12 +57,13 @@ DeserialiserInfo checkHeaderInfo(IoBuffer &buffer, DeserialiserInfo info) {
 template<SerialiserProtocol protocol, const bool writeMetaInfo = true, ReflectableClass T>
 constexpr void serialise(IoBuffer &buffer, const T &value) {
     putHeaderInfo<protocol>(buffer);
-    // const refl::type_descriptor<T> &reflectionData = refl::reflect(value);
-    // std::size_t posSizePositionStart = opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, reflectionData.name.str() , START_MARKER_INST);
-    // std::size_t posStartDataStart    = buffer.size();
+    const refl::type_descriptor<T> &reflectionData       = refl::reflect(value);
+    const auto                      type_name            = reflectionData.name.str();
+    std::size_t                     posSizePositionStart = opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, type_name, START_MARKER_INST);
+    std::size_t                     posStartDataStart    = buffer.size();
     serialise<protocol, writeMetaInfo>(buffer, value, 0);
-    // opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, reflectionData.name.str(), END_MARKER_INST);
-    // buffer.at<int32_t>(posSizePositionStart) = static_cast<int32_t>(buffer.size() - posStartDataStart); // write data size
+    opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, type_name, END_MARKER_INST);
+    buffer.at<int32_t>(posSizePositionStart) = static_cast<int32_t>(buffer.size() - posStartDataStart); // write data size
 }
 
 template<SerialiserProtocol protocol, const bool writeMetaInfo = true, ReflectableClass T>
@@ -78,7 +79,7 @@ constexpr void serialise(IoBuffer &buffer, const T &value, const uint8_t hierarc
             }
             if constexpr (isReflectableClass<MemberType>()) { // nested data-structure
                 std::size_t posSizePositionStart = opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, member.name.str(), START_MARKER_INST);
-                std::size_t posStartDataStart    = buffer.size() - sizeof(uint8_t);
+                std::size_t posStartDataStart    = buffer.size();
                 serialise<protocol, writeMetaInfo>(buffer, getAnnotatedMember(unwrapPointer(member(value))), hierarchyDepth + 1); // do not inspect annotation itself
                 opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, member.name.str(), END_MARKER_INST);
                 buffer.at<int32_t>(posSizePositionStart) = static_cast<int32_t>(buffer.size() - posStartDataStart); // write data size
@@ -163,6 +164,7 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
         buffer.position() = dataStartPosition;
 
         if (intDataType == IoSerialiser<protocol, END_MARKER>::getDataTypeId()) {
+            // todo: assert name equals start marker
             // reached end of sub-structure
             try {
                 IoSerialiser<protocol, END_MARKER>::deserialise(buffer, fieldName, END_MARKER_INST);
@@ -187,25 +189,28 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
                 throw ProtocolException(fmt::format("unknown exception in IoSerialiser<{}, START_MARKER>::deserialise(buffer, fieldName, START_MARKER_INST) for class {}: position {} vs. size {}",
                         protocol::protocolName(), structName, buffer.position(), buffer.size()));
             }
+            return info; // step down to previous hierarchy depth
         }
 
         int32_t searchIndex = -1;
-        try {
-            searchIndex = static_cast<int32_t>(findMemberIndex<T>(fieldName));
-        } catch (std::out_of_range &e) {
-            if constexpr (protocolCheckVariant == IGNORE) {
+        if (hierarchyDepth != 0) { // do not resolve field name (== type name) for root element
+            try {
+                searchIndex = static_cast<int32_t>(findMemberIndex<T>(fieldName));
+            } catch (std::out_of_range &e) {
+                if constexpr (protocolCheckVariant == IGNORE) {
+                    buffer.position() = dataEndPosition;
+                    continue;
+                }
+                const auto exception = fmt::format("missing field (type:{}) {}::{} at buffer[{}, size:{}]",
+                        intDataType, structName, fieldName, buffer.position(), buffer.size());
+                if constexpr (protocolCheckVariant == ALWAYS) {
+                    throw ProtocolException(exception);
+                }
+                info.exceptions.emplace_back(ProtocolException(exception));
+                info.additionalFields.emplace_back(std::make_tuple(fmt::format("{}::{}", structName, fieldName), intDataType));
                 buffer.position() = dataEndPosition;
                 continue;
             }
-            const auto exception = fmt::format("missing field (type:{}) {}::{} at buffer[{}, size:{}]",
-                    intDataType, structName, fieldName, buffer.position(), buffer.size());
-            if constexpr (protocolCheckVariant == ALWAYS) {
-                throw ProtocolException(exception);
-            }
-            info.exceptions.emplace_back(ProtocolException(exception));
-            info.additionalFields.emplace_back(std::make_tuple(fmt::format("{}::{}", structName, fieldName), intDataType));
-            buffer.position() = dataEndPosition;
-            continue;
         }
 
         if (intDataType == IoSerialiser<protocol, START_MARKER>::getDataTypeId()) {
@@ -234,17 +239,31 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
                         protocol::protocolName(), structName, buffer.position(), buffer.size()));
             }
 
-            for_each(refl::reflect<T>().members, [searchIndex, &buffer, &value, &hierarchyDepth, &info, &structName](auto member, int32_t index) {
-                using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
-                if constexpr (isReflectableClass<MemberType>()) {
-                    if (index == searchIndex) {
-                        info = deserialise<protocol, protocolCheckVariant>(buffer, unwrapPointerCreateIfAbsent(member(value)), info, fmt::format("{}.{}", structName, get_display_name(member)), hierarchyDepth + 1);
-                        if constexpr (protocolCheckVariant != IGNORE) {
-                            info.setFields[structName][static_cast<uint64_t>(index)] = true;
+            if (searchIndex == -1 && hierarchyDepth == 0) {                       // top level element
+                if (fieldName != typeName<T> && protocolCheckVariant != IGNORE) { // check if root type is matching
+                    const auto text = fmt::format("IoSerialiser<{}, {}>::deserialise: data is not of excepted type but of type {}", protocol::protocolName(), typeName<T>, fieldName);
+                    if constexpr (protocolCheckVariant == ALWAYS) {
+                        throw ProtocolException(text);
+                    }
+                    info.exceptions.emplace_back(ProtocolException(text));
+                }
+                info = deserialise<protocol, protocolCheckVariant>(buffer, unwrapPointerCreateIfAbsent(value), info, structName, hierarchyDepth + 1);
+                if constexpr (protocolCheckVariant != IGNORE) {
+                    info.setFields[structName][static_cast<uint64_t>(0)] = true;
+                }
+            } else {
+                for_each(refl::reflect<T>().members, [searchIndex, &buffer, &value, &hierarchyDepth, &info, &structName](auto member, int32_t index) {
+                    using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
+                    if constexpr (isReflectableClass<MemberType>()) {
+                        if (index == searchIndex) {
+                            info = deserialise<protocol, protocolCheckVariant>(buffer, unwrapPointerCreateIfAbsent(member(value)), info, fmt::format("{}.{}", structName, get_display_name(member)), hierarchyDepth + 1);
+                            if constexpr (protocolCheckVariant != IGNORE) {
+                                info.setFields[structName][static_cast<uint64_t>(index)] = true;
+                            }
                         }
                     }
-                }
-            });
+                });
+            }
 
             buffer.position() = dataEndPosition;
             continue;
