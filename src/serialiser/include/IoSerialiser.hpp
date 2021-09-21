@@ -236,12 +236,12 @@ template<>
 struct IoSerialiser<YaS, START_MARKER> {
     inline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<START_MARKER>(); }
 
-    constexpr static bool           serialise(IoBuffer &/*buffer*/, const ClassField & /*field*/, const START_MARKER & /*value*/) noexcept {
+    constexpr static bool           serialise(IoBuffer & /*buffer*/, const ClassField & /*field*/, const START_MARKER & /*value*/) noexcept {
         // do not do anything, as the start marker is of size zero and only the type byte is important
         return std::is_constant_evaluated();
     }
 
-    constexpr static bool deserialise(IoBuffer &/*buffer*/, const ClassField & /*field*/, const START_MARKER &) {
+    constexpr static bool deserialise(IoBuffer & /*buffer*/, const ClassField & /*field*/, const START_MARKER &) {
         // do not do anything, as the start marker is of size zero and only the type byte is important
         return std::is_constant_evaluated();
     }
@@ -255,7 +255,7 @@ struct IoSerialiser<YaS, END_MARKER> {
         return std::is_constant_evaluated();
     }
 
-    constexpr static bool deserialise(IoBuffer &/*buffer*/, const ClassField & /*field*/, const END_MARKER &) {
+    constexpr static bool deserialise(IoBuffer & /*buffer*/, const ClassField & /*field*/, const END_MARKER &) {
         // do not do anything, as the end marker is of size zero and only the type byte is important
         return std::is_constant_evaluated();
     }
@@ -270,12 +270,12 @@ std::size_t putFieldHeader(IoBuffer &buffer, const std::string_view &fieldName, 
     // -- offset 0 vs. field start
     const std::size_t headerStart = buffer.size();
     buffer.put(static_cast<uint8_t>(IoSerialiser<protocol, StrippedDataType>::getDataTypeId())); // data type ID
-    buffer.put(opencmw::hash(fieldName));                  // unique hashCode identifier -- TODO: choose more performant implementation instead of java default
+    buffer.put(opencmw::hash(fieldName));                                                        // unique hashCode identifier -- TODO: choose more performant implementation instead of java default
     const std::size_t dataStartOffsetPosition = buffer.size();
     buffer.put(-1); // dataStart offset
     const int32_t     dataSize         = is_supported_number<DataType> ? dataTypeSize : -1;
     const std::size_t dataSizePosition = buffer.size();
-    buffer.put(dataSize); // dataSize (N.B. 'headerStart' + 'dataStart + dataSize' == start of next field header
+    buffer.put(dataSize);  // dataSize (N.B. 'headerStart' + 'dataStart + dataSize' == start of next field header
     buffer.put(fieldName); // full field name
 
     if constexpr (is_annotated<DataType>) {

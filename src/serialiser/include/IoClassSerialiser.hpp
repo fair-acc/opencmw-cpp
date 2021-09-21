@@ -24,10 +24,10 @@ template<SerialiserProtocol protocol, const ProtocolCheck protocolCheckVariant>
 DeserialiserInfo checkHeaderInfo(IoBuffer &buffer, DeserialiserInfo info) {
     auto magic      = buffer.get<int>();
     auto proto_name = buffer.get<std::string>();
-    auto ver_major = buffer.get<int8_t>();
-    auto ver_minor = buffer.get<int8_t>();
-    auto ver_micro = buffer.get<int8_t>();
-    if ( yas::VERSION_MAGIC_NUMBER != magic) {
+    auto ver_major  = buffer.get<int8_t>();
+    auto ver_minor  = buffer.get<int8_t>();
+    auto ver_micro  = buffer.get<int8_t>();
+    if (yas::VERSION_MAGIC_NUMBER != magic) {
         if (protocolCheckVariant == LENIENT) {
             info.exceptions.template emplace_back(ProtocolException(fmt::format("Wrong serialiser magic number: {} != -1", magic)));
         }
@@ -57,10 +57,10 @@ DeserialiserInfo checkHeaderInfo(IoBuffer &buffer, DeserialiserInfo info) {
 template<SerialiserProtocol protocol, const bool writeMetaInfo = true, ReflectableClass T>
 constexpr void serialise(IoBuffer &buffer, const T &value) {
     putHeaderInfo<protocol>(buffer);
-    const refl::type_descriptor<T> &reflectionData = refl::reflect(value);
-    const auto type_name = reflectionData.name.str();
-    std::size_t posSizePositionStart = opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, type_name, START_MARKER_INST);
-    std::size_t posStartDataStart    = buffer.size();
+    const refl::type_descriptor<T> &reflectionData       = refl::reflect(value);
+    const auto                      type_name            = reflectionData.name.str();
+    std::size_t                     posSizePositionStart = opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, type_name, START_MARKER_INST);
+    std::size_t                     posStartDataStart    = buffer.size();
     serialise<protocol, writeMetaInfo>(buffer, value, 0);
     opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, type_name, END_MARKER_INST);
     buffer.at<int32_t>(posSizePositionStart) = static_cast<int32_t>(buffer.size() - posStartDataStart); // write data size
@@ -83,7 +83,7 @@ constexpr void serialise(IoBuffer &buffer, const T &value, const uint8_t hierarc
                 serialise<protocol, writeMetaInfo>(buffer, getAnnotatedMember(unwrapPointer(member(value))), hierarchyDepth + 1); // do not inspect annotation itself
                 opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, member.name.str(), END_MARKER_INST);
                 buffer.at<int32_t>(posSizePositionStart) = static_cast<int32_t>(buffer.size() - posStartDataStart); // write data size
-            } else { // primitive type
+            } else {                                                                                                // primitive type
                 opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, member.name.str(), member(value));
             }
         }
@@ -126,7 +126,7 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
 }
 
 template<SerialiserProtocol protocol, const ProtocolCheck protocolCheckVariant, ReflectableClass T>
-constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserInfo info, const std::string& structName, const uint8_t hierarchyDepth) {
+constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserInfo info, const std::string &structName, const uint8_t hierarchyDepth) {
     // todo: replace structName string by const_string
     // initialize bitfield indicating which fields have been set
     if constexpr (protocolCheckVariant != IGNORE) {
@@ -192,7 +192,7 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
         }
 
         int32_t searchIndex = -1;
-        if (hierarchyDepth != 0) {  // do not resolve field name (== type name) for root element
+        if (hierarchyDepth != 0) { // do not resolve field name (== type name) for root element
             try {
                 searchIndex = static_cast<int32_t>(findMemberIndex<T>(fieldName));
             } catch (std::out_of_range &e) {
@@ -239,7 +239,7 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
             }
 
             if (searchIndex == -1 && hierarchyDepth == 0) { // top level element
-                if (true) { // todo assert fieldName == typename T
+                if (true) {                                 // todo assert fieldName == typename T
                     info = deserialise<protocol, protocolCheckVariant>(buffer, unwrapPointerCreateIfAbsent(value), info, structName, hierarchyDepth + 1);
                     if constexpr (protocolCheckVariant != IGNORE) {
                         info.setFields[structName][static_cast<uint64_t>(0)] = true;

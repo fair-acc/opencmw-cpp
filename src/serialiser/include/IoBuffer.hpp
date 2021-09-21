@@ -195,7 +195,7 @@ public:
     void put(const I &value) noexcept {
         const std::size_t bytesToCopy = value.size() * sizeof(char);
         ensure(bytesToCopy + sizeof(int32_t) + sizeof(char)); // educated guess
-        put(static_cast<int32_t>(value.size() + 1));              // size of vector plus string termination
+        put(static_cast<int32_t>(value.size() + 1));          // size of vector plus string termination
         std::memmove((_buffer + _size), value.data(), bytesToCopy);
         _size += bytesToCopy;
         put(static_cast<uint8_t>('\0')); // zero terminating byte
@@ -251,7 +251,7 @@ public:
         const int8_t terminatingChar = get<int8_t>();
         assert(terminatingChar == '\0'); // check for terminating character
 #endif
-        return R((reinterpret_cast<const char *>(_buffer + oldPosition)), bytesToCopy -1);
+        return R((reinterpret_cast<const char *>(_buffer + oldPosition)), bytesToCopy - 1);
     }
 
     template<StringLike R>

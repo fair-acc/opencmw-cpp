@@ -1,7 +1,7 @@
 #include <IoClassSerialiser.hpp>
 #include <Utils.hpp>
-#include <iostream>
 #include <fstream>
+#include <iostream>
 
 // SI units -- include what you need
 #include <units/isq/si/electric_current.h>
@@ -14,8 +14,8 @@ struct otherClass {
     Annotated<float, thermodynamic_temperature<kelvin>, "device specific temperature">        temperature     = 23.2F;
     Annotated<float, electric_current<ampere>, "this is the current from ...">                current         = 42.F;
     Annotated<float, energy<electronvolt>, "SIS18 energy at injection before being captured"> injectionEnergy = 8.44e6F;
-    std::string name = "TestStruct";
-    std::unique_ptr<otherClass> nested;
+    std::string                                                                               name            = "TestStruct";
+    std::unique_ptr<otherClass>                                                               nested;
     // [..]
 
     // just good common practise to define some operators
@@ -32,16 +32,16 @@ using namespace opencmw::utils; // for operator<< and fmt::format overloading
  */
 int main() {
     // printout example for annotated class
-    otherClass c{1.2f,2.3f,3.4f,"fubar",std::make_unique<otherClass>()};
+    otherClass c{ 1.2f, 2.3f, 3.4f, "fubar", std::make_unique<otherClass>() };
     c.injectionEnergy = 8.3e6;
     std::cout << "class info for annotated class: " << c << std::endl;
     otherClass d{};
 
-    IoBuffer buffer;
+    IoBuffer   buffer;
     try {
         opencmw::serialise<opencmw::YaS, true>(buffer, c);
         std::ofstream outfile("out.bin", std::ios::binary);
-        outfile.write(reinterpret_cast<char*>(buffer.data()), static_cast<long int>(buffer.size()));
+        outfile.write(reinterpret_cast<char *>(buffer.data()), static_cast<long int>(buffer.size()));
         outfile.close();
         auto result = opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::LENIENT>(buffer, d);
         std::cout << "serialiser result: " << result << std::endl;
