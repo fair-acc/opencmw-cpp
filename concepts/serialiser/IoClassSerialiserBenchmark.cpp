@@ -48,28 +48,38 @@ std::string humanReadableByteCount(long bytes, const bool si) {
 
 template<ProtocolCheck protocolCheck, ReflectableClass T>
 void testPerformancePoco(IoBuffer &buffer, const T &inputObject, T &outputObject, const std::size_t iterations) {
-    bool          putFieldMetaData = false;
+    bool          putFieldMetaData = true;
 
     const clock_t startTime        = clock();
     for (std::size_t i = 0; i < iterations; i++) {
-        if (i == 1) {
+        if (i == 1 && protocolCheck != opencmw::ALWAYS) {
             // only stream meta-data the first iteration
             putFieldMetaData = false;
         }
         buffer.clear();
-        opencmw::serialise<YaS, protocolCheck != IGNORE>(buffer, inputObject, putFieldMetaData);
+        if (putFieldMetaData) {
+            opencmw::serialise<YaS, true>(buffer, inputObject);
+        } else {
+            opencmw::serialise<YaS, false>(buffer, inputObject);
+        }
 
         buffer.reset();
         try {
             opencmw::deserialise<YaS, protocolCheck>(buffer, outputObject);
         } catch (std::exception &e) {
-            std::cout << "caught exception " << typeName<std::remove_reference_t<decltype(e)>> << std::endl;
+            std::cout << "caught exception " << typeName<std::remove_reference_t<decltype(e)>> << ": " << e.what() << std::endl;
+            break;
+        } catch (opencmw::ProtocolException &e) {
+            std::cout << "caught ProtocolException " << typeName<std::remove_reference_t<decltype(e)>> << ": " << e.what() << std::endl;
+            break;
         } catch (...) {
             std::cout << "caught unknown exception " << std::endl;
+            break;
         }
 
         if (inputObject.string1 != outputObject.string1) {
             // quick check necessary so that the above is not optimised by the Java JIT compiler to NOP
+            std::cout << "deserialised object differs from input object" << std::endl;
             throw std::exception();
         }
     }
