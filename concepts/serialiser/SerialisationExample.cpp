@@ -71,7 +71,6 @@ int main() {
 
     // simple serialisation example:
     IoBuffer buffer;
-    assert(c != d && "a & b should be unequal here"); // just checking
     // serialise 'a' into the byte buffer
     opencmw::serialise<opencmw::YaS, true>(buffer, c);
 
