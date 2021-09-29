@@ -323,7 +323,7 @@ TEST_CASE("IoBuffer syntax - arrays", "[IoBuffer]") {
         REQUIRE(array == buffer.getArray<int, 5>(array3, 5));
         //PRINT_VECTOR(array3);
         // read unnamed array
-        buffer.position() = origPosition; // skip back
+        buffer.set_position(origPosition); // skip back
         REQUIRE(std::array<int, 5>{ 1, 2, 3, 0, 0 } == buffer.getArray<int, 5>(std::array<int, 5>{ 0, 0, 0, 0, 0 }, 3));
     }
     REQUIRE(opencmw::debug::alloc == opencmw::debug::dealloc); // a memory leak occurred
