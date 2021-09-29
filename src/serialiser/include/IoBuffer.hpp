@@ -135,7 +135,7 @@ public:
     constexpr uint8_t &                        operator[](const std::size_t i) { return _buffer[i]; }
     constexpr const uint8_t &                  operator[](const std::size_t i) const { return _buffer[i]; }
     constexpr void                             reset() { _position = 0; }
-    [[nodiscard]] constexpr std::size_t &      position() { return _position; }
+    constexpr void                             set_position(size_t position) { _position = position; }
     [[nodiscard]] constexpr const std::size_t &position() const { return _position; }
     [[nodiscard]] constexpr const std::size_t &capacity() const { return _capacity; }
     [[nodiscard]] constexpr const std::size_t &size() const { return _size; }
