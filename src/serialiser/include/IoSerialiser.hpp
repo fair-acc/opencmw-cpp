@@ -274,7 +274,7 @@ template<SerialiserProtocol protocol, const bool writeMetaInfo, typename DataTyp
 std::size_t putFieldHeader(IoBuffer &buffer, const std::string_view &fieldName, const DataType &data) {
     using StrippedDataType         = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(data)))>;
     constexpr int32_t dataTypeSize = static_cast<int32_t>(sizeof(StrippedDataType));
-    buffer.ensure(((fieldName.length() + 18) * sizeof(uint8_t)) + dataTypeSize);
+    buffer.reserve_spare(((fieldName.length() + 18) * sizeof(uint8_t)) + dataTypeSize);
 
     // -- offset 0 vs. field start
     const std::size_t headerStart = buffer.size();
