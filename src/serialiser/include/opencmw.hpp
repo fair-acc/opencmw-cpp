@@ -401,10 +401,10 @@ struct ConstExprMap {
  * @param string the string to compute the hash for
  * @return hash value of the string
  */
-inline int hash(const std::string_view &string) {
+inline constexpr int hash(const char *string, const int size) noexcept {
     int h = 0;
-    for (char i : string) {
-        h = h * 31 + static_cast<int>(i);
+    for (int i = 0; i < size; i++) {
+        h = h * 31 + static_cast<int>(string[i]);
     }
     return h;
 }
