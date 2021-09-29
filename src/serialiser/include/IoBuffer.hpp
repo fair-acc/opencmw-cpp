@@ -66,7 +66,7 @@ private:
     template<Number I>
     constexpr void put(const I *values, const std::size_t size) noexcept { // int* a; --> need N
         const std::size_t byteToCopy = size * sizeof(I);
-        ensure(byteToCopy + sizeof(int32_t) + sizeof(I));
+        reserve_spare(byteToCopy + sizeof(int32_t) + sizeof(I));
         put(static_cast<int32_t>(size)); // size of vector
         if constexpr (is_same_v<I, bool>) {
             for (std::size_t i = 0U; i < size; i++) {
@@ -80,8 +80,8 @@ private:
 
     template<StringLike I>
     constexpr void put(const I *values, const std::size_t size) noexcept {
-        ensure(size * 25 + sizeof(int32_t) + sizeof(char)); // educated guess
-        put(static_cast<int32_t>(size));                    // size of vector
+        reserve_spare(size * 25 + sizeof(int32_t) + sizeof(char)); // educated guess
+        put(static_cast<int32_t>(size));                           // size of vector
         for (std::size_t i = 0U; i < size; i++) {
             put(values[i]);
         }
@@ -160,7 +160,7 @@ public:
 
     constexpr void shrink_to_fit() { reallocate(_size); }
 
-    constexpr void ensure(const std::size_t &additionalCapacity) noexcept {
+    constexpr void reserve_spare(const std::size_t &additionalCapacity) noexcept {
         if (additionalCapacity >= (_capacity - _size)) {
             reserve((_size + additionalCapacity) << 2U); // TODO: experiment with auto-grow parameter
         }
@@ -180,7 +180,7 @@ public:
     template<Number I>
     constexpr void put(const I &value) noexcept {
         const std::size_t byteToCopy = sizeof(I);
-        ensure(byteToCopy);
+        reserve_spare(byteToCopy);
         *(reinterpret_cast<I *>(_buffer + _size)) = value;
         _size += byteToCopy;
     }
@@ -188,8 +188,8 @@ public:
     template<StringLike I>
     void put(const I &value) noexcept {
         const std::size_t bytesToCopy = value.size() * sizeof(char);
-        ensure(bytesToCopy + sizeof(int32_t) + sizeof(char)); // educated guess
-        put(static_cast<int32_t>(value.size()));              // size of vector
+        reserve_spare(bytesToCopy + sizeof(int32_t) + sizeof(char)); // educated guess
+        put(static_cast<int32_t>(value.size()));                     // size of vector
         std::memmove((_buffer + _size), value.data(), bytesToCopy);
         _size += bytesToCopy;
         put(static_cast<uint8_t>('\0')); // zero terminating byte
@@ -205,7 +205,7 @@ public:
     void           put(std::vector<bool> const &values) noexcept { //TODO: re-enable constexpr (N.B. should be since C++20)
         const std::size_t size       = values.size();
         const std::size_t byteToCopy = size * sizeof(bool);
-        ensure(byteToCopy + sizeof(int32_t) + sizeof(bool));
+        reserve_spare(byteToCopy + sizeof(int32_t) + sizeof(bool));
         put(static_cast<int32_t>(size)); // size of vector
         for (std::size_t i = 0U; i < size; i++) {
             put<bool>(values[i]);
@@ -215,7 +215,7 @@ public:
     template<size_t size>
     constexpr void put(std::array<bool, size> const &values) noexcept {
         const std::size_t byteToCopy = size * sizeof(bool);
-        ensure(byteToCopy + sizeof(int32_t) + sizeof(bool));
+        reserve_spare(byteToCopy + sizeof(int32_t) + sizeof(bool));
         put(static_cast<int32_t>(size)); // size of vector
         for (std::size_t i = 0U; i < size; i++) {
             put<bool>(values[i]);
