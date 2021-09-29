@@ -53,11 +53,7 @@ private:
     constexpr void freeInternalBuffer() {
         if (_buffer != nullptr) {
             if constexpr (_alloc_optimisations) {
-                try {
-                    free(_buffer);
-                } catch (...) {
-                    std::cerr << " thrown here";
-                }
+                free(_buffer);
             } else {
                 delete[] _buffer;
             }
