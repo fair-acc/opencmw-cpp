@@ -229,12 +229,10 @@ public:
     }
 
     bool operator==(const MultiArray<value_type, n_dims> &other) const noexcept {
-        return
-            dims_ == other.dims_
+        return dims_ == other.dims_
             && n_element_ == other.n_element_
             && std::equal(std::cbegin(elements_), std::cbegin(elements_) + n_element_,
-                          std::cbegin(other.elements_));
-
+                    std::cbegin(other.elements_));
     }
 
     // lambda function on a per cell operation

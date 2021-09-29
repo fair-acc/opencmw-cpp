@@ -81,7 +81,7 @@ private:
     template<StringLike I>
     constexpr void put(const I *values, const std::size_t size) noexcept {
         reserve_spare(size * 25 + sizeof(int32_t) + sizeof(char)); // educated guess
-        put(static_cast<int32_t>(size));                    // size of vector
+        put(static_cast<int32_t>(size));                           // size of vector
         for (std::size_t i = 0U; i < size; i++) {
             put(values[i]);
         }
@@ -113,11 +113,11 @@ public:
         freeInternalBuffer();
     }
 
-    constexpr void swap(IoBuffer& other) {
-        std::swap(_position            , other._position            );
-        std::swap(_size                , other._size                );
-        std::swap(_capacity            , other._capacity            );
-        std::swap(_buffer              , other._buffer              );
+    constexpr void swap(IoBuffer &other) {
+        std::swap(_position, other._position);
+        std::swap(_size, other._size);
+        std::swap(_capacity, other._capacity);
+        std::swap(_buffer, other._buffer);
     }
 
     [[nodiscard]] constexpr IoBuffer &operator=(const IoBuffer &other) {
@@ -189,7 +189,7 @@ public:
     void put(const I &value) noexcept {
         const std::size_t bytesToCopy = value.size() * sizeof(char);
         reserve_spare(bytesToCopy + sizeof(int32_t) + sizeof(char)); // educated guess
-        put(static_cast<int32_t>(value.size()));              // size of vector
+        put(static_cast<int32_t>(value.size()));                     // size of vector
         std::memmove((_buffer + _size), value.data(), bytesToCopy);
         _size += bytesToCopy;
         put(static_cast<uint8_t>('\0')); // zero terminating byte
