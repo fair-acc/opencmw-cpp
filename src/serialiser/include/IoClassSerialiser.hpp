@@ -80,7 +80,7 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
     }
 
     while (buffer.position() < buffer.size()) {
-        using String                  = std::string_view;
+        using str_view                = std::string_view;
         const std::size_t headerStart = buffer.position();
         const auto        intDataType = buffer.get<uint8_t>(); // data type ID
 
@@ -88,7 +88,7 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
         buffer.get<int32_t>(); // hashed field name -> future: faster look-up/matching of fields
         const auto        dataStartOffset   = static_cast<uint64_t>(buffer.get<int32_t>());
         const auto        dataSize          = static_cast<uint64_t>(buffer.get<int32_t>());
-        const String      fieldName         = buffer.get<std::string_view>(); // full field name
+        const str_view    fieldName         = buffer.get<std::string_view>(); // full field name
         const std::size_t dataStartPosition = headerStart + dataStartOffset;
         const std::size_t dataEndPosition   = headerStart + dataStartOffset + dataSize;
         // the following information is optional
@@ -96,9 +96,9 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
         // e.g. could skip to 'headerStart + dataStartOffset + dataSize' and start reading the next field header
 
         constexpr bool ignoreChecks = protocolCheckVariant == IGNORE;
-        const String   unit         = ignoreChecks || (buffer.position() == dataStartPosition) ? "" : buffer.get<String>();
-        const String   description  = ignoreChecks || (buffer.position() == dataStartPosition) ? "" : buffer.get<String>();
-        //ignoreChecks || (buffer.position() == dataStartPosition) ? "" : buffer.get<String>();
+        const str_view unit         = ignoreChecks || (buffer.position() == dataStartPosition) ? "" : buffer.get<str_view>();
+        const str_view description  = ignoreChecks || (buffer.position() == dataStartPosition) ? "" : buffer.get<str_view>();
+        //ignoreChecks || (buffer.position() == dataStartPosition) ? "" : buffer.get<str_view>();
         const ExternalModifier modifier = ignoreChecks || (buffer.position() == dataStartPosition) ? RW : get_ext_modifier(buffer.get<uint8_t>());
         // std::cout << fmt::format("parsed field {:<20} meta data: [{}] {} dir: {}\n", fieldName, unit, description, modifier);
 
@@ -134,7 +134,7 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
 
         int32_t searchIndex = -1;
         try {
-            searchIndex = static_cast<int32_t>(findMemberIndex<T>(fieldName));
+            searchIndex = findMemberIndex<T>(fieldName);
         } catch (std::out_of_range &e) {
             if constexpr (protocolCheckVariant == IGNORE) {
                 buffer.set_position(dataEndPosition);
