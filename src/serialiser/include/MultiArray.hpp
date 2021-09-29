@@ -229,19 +229,12 @@ public:
     }
 
     bool operator==(const MultiArray<value_type, n_dims> &other) const noexcept {
-        // check if array is the same size
-        for (size_t_ i = 0; i < n_dims; ++i) {
-            if (dims_[i] != other.dims_[i]) {
-                return false;
-            }
-        }
-        // check content of array todo: respect offsets/strides/etc
-        for (size_t_ i = 0; i < n_element_; ++i) {
-            if (elements_[i] != other.elements_[i]) {
-                return false;
-            }
-        }
-        return true;
+        return
+            dims_ == other.dims_
+            && n_element_ == other.n_element_
+            && std::equal(std::cbegin(elements_), std::cbegin(elements_) + n_element_,
+                          std::cbegin(other.elements_));
+
     }
 
     // lambda function on a per cell operation
