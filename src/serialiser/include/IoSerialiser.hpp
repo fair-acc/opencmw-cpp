@@ -17,8 +17,8 @@ class ProtocolException {
     const std::string errorMsg;
 
 public:
-    explicit ProtocolException(const std::string errorMessage) noexcept
-        : errorMsg(errorMessage) {}
+    explicit ProtocolException(std::string errorMessage) noexcept
+        : errorMsg(std::move(errorMessage)) {}
     explicit ProtocolException(const char *errorMessage) noexcept
         : errorMsg(errorMessage) {}
 
@@ -68,6 +68,7 @@ struct IoSerialiser {
 template<SerialiserProtocol protocol, typename T>
 bool serialisePartial(IoBuffer &buffer, const T & /*obj*/) noexcept {
     bool state = false;
+    // TODO: The check below is always true
     if (std::is_constant_evaluated() || true) {
         state |= IoSerialiser<protocol, int>::serialise(buffer, "intField", 2);
         state |= IoSerialiser<protocol, double>::serialise(buffer, "doubleField", 2.3);

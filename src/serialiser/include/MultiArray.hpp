@@ -199,14 +199,14 @@ public:
     MultiArray &operator+=(const MultiArray<value_type, n_dims> &operand) {
         // todo: verify dimension match. Allow broadcasting (adding a column vector to each row or similar)?
         for (size_t_ i = 0; i < n_element_; ++i) { // todo: use iterator to only change valid fields
-            this[i] += operand[i];
+            operator[](i) += operand[i];
         }
         return *this;
     }
     template<AnyNumber R>
     MultiArray &operator+=(const R &operand) {
         for (size_t_ i = 0; i < n_element_; ++i) { // todo: use iterator to only change valid fields
-            this[i] += operand;
+            operator[](i) += operand;
         }
         return *this;
     }
@@ -215,7 +215,7 @@ public:
         // todo: verify dimension match. Allow broadcasting (adding a column vector to each row or similar)?
         MultiArray &result = MultiArray<value_type, n_dims>(this->dims_);
         for (size_t_ i = 0; i < n_element_; ++i) { // todo: use iterator to only change valid fields
-            result[i] = this[i] + operand[i];
+            result[i] = operator[](i) + operand[i];
         }
         return result;
     }
@@ -223,7 +223,7 @@ public:
     MultiArray &operator+(const R &operand) {
         MultiArray &result = MultiArray<value_type, n_dims>(this->dims_);
         for (size_t_ i = 0; i < n_element_; ++i) { // todo: use iterator to only change valid fields
-            this[i] += operand;
+            operator[](i) += operand;
         }
         return result;
     }
