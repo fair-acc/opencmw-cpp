@@ -103,7 +103,7 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
         // std::cout << fmt::format("parsed field {:<20} meta data: [{}] {} dir: {}\n", fieldName, unit, description, modifier);
 
         // skip to data start
-        buffer.position() = dataStartPosition;
+        buffer.set_position(dataStartPosition);
 
         if (intDataType == IoSerialiser<protocol, END_MARKER>::getDataTypeId()) {
             // reached end of sub-structure
@@ -111,7 +111,7 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
                 IoSerialiser<protocol, END_MARKER>::deserialise(buffer, fieldName, END_MARKER_INST);
             } catch (ProtocolException &exception) { // protocol exception
                 if constexpr (protocolCheckVariant == IGNORE) {
-                    buffer.position() = dataEndPosition;
+                    buffer.set_position(dataEndPosition);
                     continue;
                 }
                 const auto text = fmt::format("IoSerialiser<{}, END_MARKER>::deserialise(buffer, fieldName, END_MARKER_INST) exception for class {}: position {} vs. size {} -- exception thrown: {}",
@@ -120,11 +120,11 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
                     throw ProtocolException(text);
                 }
                 info.exceptions.emplace_back(ProtocolException(text));
-                buffer.position() = dataEndPosition;
+                buffer.set_position(dataEndPosition);
                 continue;
             } catch (...) {
                 if constexpr (protocolCheckVariant == IGNORE) {
-                    buffer.position() = dataEndPosition;
+                    buffer.set_position(dataEndPosition);
                     continue;
                 }
                 throw ProtocolException(fmt::format("unknown exception in IoSerialiser<{}, START_MARKER>::deserialise(buffer, fieldName, START_MARKER_INST) for class {}: position {} vs. size {}",
@@ -137,7 +137,7 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
             searchIndex = static_cast<int32_t>(findMemberIndex<T>(fieldName));
         } catch (std::out_of_range &e) {
             if constexpr (protocolCheckVariant == IGNORE) {
-                buffer.position() = dataEndPosition;
+                buffer.set_position(dataEndPosition);
                 continue;
             }
             const auto exception = fmt::format("missing field (type:{}) {}::{} at buffer[{}, size:{}]",
@@ -147,7 +147,7 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
             }
             info.exceptions.emplace_back(ProtocolException(exception));
             info.additionalFields.emplace_back(std::make_tuple(fmt::format("{}::{}", structName, fieldName), intDataType));
-            buffer.position() = dataEndPosition;
+            buffer.set_position(dataEndPosition);
             continue;
         }
 
@@ -157,7 +157,7 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
                 IoSerialiser<protocol, START_MARKER>::deserialise(buffer, fieldName, START_MARKER_INST);
             } catch (ProtocolException &exception) { // protocol exception
                 if constexpr (protocolCheckVariant == IGNORE) {
-                    buffer.position() = dataEndPosition;
+                    buffer.set_position(dataEndPosition);
                     continue;
                 }
                 const auto text = fmt::format("IoSerialiser<{}, START_MARKER>::deserialise(buffer, fieldName, START_MARKER_INST) exception for class {}: position {} vs. size {} -- exception thrown: {}",
@@ -166,11 +166,11 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
                     throw ProtocolException(text);
                 }
                 info.exceptions.emplace_back(ProtocolException(text));
-                buffer.position() = dataEndPosition;
+                buffer.set_position(dataEndPosition);
                 continue;
             } catch (...) {
                 if constexpr (protocolCheckVariant == IGNORE) {
-                    buffer.position() = dataEndPosition;
+                    buffer.set_position(dataEndPosition);
                     continue;
                 }
                 throw ProtocolException(fmt::format("unknown exception in IoSerialiser<{}, START_MARKER>::deserialise(buffer, fieldName, START_MARKER_INST) for class {}: position {} vs. size {}",
@@ -189,7 +189,7 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
                 }
             });
 
-            buffer.position() = dataEndPosition;
+            buffer.set_position(dataEndPosition);
             continue;
         }
 
@@ -265,7 +265,7 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
         });
 #pragma clang diagnostic pop
         // skip to data end
-        buffer.position() = dataEndPosition;
+        buffer.set_position(dataEndPosition);
     }
     if (hierarchyDepth == 0 && buffer.position() != buffer.size()) {
         if constexpr (protocolCheckVariant == IGNORE) {
