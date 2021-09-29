@@ -58,11 +58,11 @@ template<SerialiserProtocol protocol, const bool writeMetaInfo = true, Reflectab
 constexpr void serialise(IoBuffer &buffer, const T &value) {
     putHeaderInfo<protocol>(buffer);
     const refl::type_descriptor<T> &reflectionData       = refl::reflect(value);
-    const auto                      type_name            = reflectionData.name.str();
-    std::size_t                     posSizePositionStart = opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, type_name, START_MARKER_INST);
+    const auto                      type_name            = reflectionData.name.c_str();
+    std::size_t                     posSizePositionStart = opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, type_name, reflectionData.name.size, START_MARKER_INST);
     std::size_t                     posStartDataStart    = buffer.size();
     serialise<protocol, writeMetaInfo>(buffer, value, 0);
-    opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, type_name, END_MARKER_INST);
+    opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, type_name, reflectionData.name.size, END_MARKER_INST);
     buffer.at<int32_t>(posSizePositionStart) = static_cast<int32_t>(buffer.size() - posStartDataStart); // write data size
 }
 
@@ -78,13 +78,13 @@ constexpr void serialise(IoBuffer &buffer, const T &value, const uint8_t hierarc
                 }
             }
             if constexpr (isReflectableClass<MemberType>()) { // nested data-structure
-                std::size_t posSizePositionStart = opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, member.name.str(), START_MARKER_INST);
+                std::size_t posSizePositionStart = opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, member.name.c_str(), member.name.size, START_MARKER_INST);
                 std::size_t posStartDataStart    = buffer.size();
                 serialise<protocol, writeMetaInfo>(buffer, getAnnotatedMember(unwrapPointer(member(value))), hierarchyDepth + 1); // do not inspect annotation itself
-                opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, member.name.str(), END_MARKER_INST);
+                opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, member.name.c_str(), member.name.size, END_MARKER_INST);
                 buffer.at<int32_t>(posSizePositionStart) = static_cast<int32_t>(buffer.size() - posStartDataStart); // write data size
             } else {                                                                                                // primitive type
-                opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, member.name.str(), member(value));
+                opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, member.name.c_str(), member.name.size, member(value));
             }
         }
     });

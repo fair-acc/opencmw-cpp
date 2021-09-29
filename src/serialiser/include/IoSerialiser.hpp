@@ -263,21 +263,21 @@ struct IoSerialiser<YaS, END_MARKER> {
 };
 
 template<SerialiserProtocol protocol, const bool writeMetaInfo, typename DataType>
-std::size_t putFieldHeader(IoBuffer &buffer, const std::string_view &fieldName, const DataType &data) {
+std::size_t putFieldHeader(IoBuffer &buffer, const char *fieldName, const int fieldNameSize, const DataType &data) {
     using StrippedDataType         = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(data)))>;
     constexpr int32_t dataTypeSize = static_cast<int32_t>(sizeof(StrippedDataType));
-    buffer.reserve_spare(((fieldName.length() + 18) * sizeof(uint8_t)) + dataTypeSize);
+    buffer.reserve_spare(((static_cast<uint64_t>(fieldNameSize) + 18) * sizeof(uint8_t)) + dataTypeSize);
 
     // -- offset 0 vs. field start
     const std::size_t headerStart = buffer.size();
     buffer.put(static_cast<uint8_t>(IoSerialiser<protocol, StrippedDataType>::getDataTypeId())); // data type ID
-    buffer.put(opencmw::hash(fieldName));                                                        // unique hashCode identifier -- TODO: choose more performant implementation instead of java default
+    buffer.put(opencmw::hash(fieldName, fieldNameSize));                                         // unique hashCode identifier -- TODO: choose more performant implementation instead of java default
     const std::size_t dataStartOffsetPosition = buffer.size();
     buffer.put(-1); // dataStart offset
     const int32_t     dataSize         = is_supported_number<DataType> ? dataTypeSize : -1;
     const std::size_t dataSizePosition = buffer.size();
-    buffer.put(dataSize);  // dataSize (N.B. 'headerStart' + 'dataStart + dataSize' == start of next field header
-    buffer.put(fieldName); // full field name
+    buffer.put(dataSize);                    // dataSize (N.B. 'headerStart' + 'dataStart + dataSize' == start of next field header
+    buffer.put<std::string_view>(fieldName); // full field name
 
     if constexpr (is_annotated<DataType>) {
         if (writeMetaInfo) {
