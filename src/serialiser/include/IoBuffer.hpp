@@ -109,28 +109,26 @@ public:
         other._buffer = nullptr;
     }
 
-    ~IoBuffer() {
+    constexpr ~IoBuffer() {
         freeInternalBuffer();
     }
 
-    [[nodiscard]] constexpr IoBuffer &operator=(const IoBuffer &other) {
-        if (this == &other) {
-            return *this;
-        }
-        freeInternalBuffer();
-        _position = _size = other._size;
-        reallocate(other._size);
+    constexpr void swap(IoBuffer &other) {
+        std::swap(_position, other._position);
+        std::swap(_size, other._size);
+        std::swap(_capacity, other._capacity);
+        std::swap(_buffer, other._buffer);
+    }
 
+    [[nodiscard]] constexpr IoBuffer &operator=(const IoBuffer &other) {
+        auto temp = other;
+        swap(temp);
         return *this;
     }
 
     [[nodiscard]] constexpr IoBuffer &operator=(IoBuffer &&other) noexcept {
-        if (this == &other) {
-            return *this;
-        }
-        freeInternalBuffer();
-        _buffer   = other._buffer;
-        _position = _size = other._size;
+        auto temp = std::move(other);
+        swap(temp);
         return *this;
     }
 
