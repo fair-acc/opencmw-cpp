@@ -220,7 +220,7 @@ struct IoSerialiser<YaS, T> {
         for (auto i = 0U; i < T::n_dims_; i++) {
             value.dimensions()[i] = static_cast<typename T::size_t_>(dimWire[i]);
         }
-        value.element_count()        = 1;
+        value.element_count()        = value.dimensions()[T::n_dims_];
         value.stride(T::n_dims_ - 1) = 1;
         value.offset(T::n_dims_ - 1) = 0;
         for (auto i = T::n_dims_ - 1; i > 0; i--) {
