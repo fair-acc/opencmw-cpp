@@ -237,18 +237,13 @@ template<>
 struct IoSerialiser<YaS, START_MARKER> {
     inline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<START_MARKER>(); }
 
-    constexpr static bool           serialise(IoBuffer &buffer, const ClassField & /*field*/, const START_MARKER & /*value*/) noexcept {
-        buffer.put<uint8_t>(getDataTypeId());
+    constexpr static bool           serialise(IoBuffer & /*buffer*/, const ClassField & /*field*/, const START_MARKER & /*value*/) noexcept {
+        // do not do anything, as the start marker is of size zero and only the type byte is important
         return std::is_constant_evaluated();
     }
 
-    constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, const START_MARKER &) {
-        const auto markerByte = buffer.get<uint8_t>();
-        if (getDataTypeId() != markerByte) {
-            //TODO: convert to appropriate protocol exception
-            std::cerr << fmt::format("START_MARKER ** error ** reached start of struct pos {} vs size {} - marker value {} (should) vs. {} (is)\n",
-                    buffer.position(), buffer.size(), getDataTypeId(), markerByte);
-        }
+    constexpr static bool deserialise(IoBuffer & /*buffer*/, const ClassField & /*field*/, const START_MARKER &) {
+        // do not do anything, as the start marker is of size zero and only the type byte is important
         return std::is_constant_evaluated();
     }
 };
@@ -256,37 +251,33 @@ struct IoSerialiser<YaS, START_MARKER> {
 template<>
 struct IoSerialiser<YaS, END_MARKER> {
     inline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<END_MARKER>(); }
-    static bool                     serialise(IoBuffer &buffer, const ClassField & /*field*/, const END_MARKER & /*value*/) noexcept {
-        buffer.put<uint8_t>(getDataTypeId()); // N.B. ensure that the wrapped value and not the annotation itself is serialised
+    static bool                     serialise(IoBuffer & /*buffer*/, const ClassField & /*field*/, const END_MARKER & /*value*/) noexcept {
+        // do not do anything, as the end marker is of size zero and only the type byte is important
         return std::is_constant_evaluated();
     }
 
-    constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, const END_MARKER &) {
-        const auto markerByte = buffer.get<uint8_t>();
-        if (getDataTypeId() != markerByte) { //TODO: convert to appropriate protocol exception
-            std::cerr << fmt::format("END_MARKER ** error ** reached end of struct pos {} vs size {} - marker value {} (should) vs. {} (is)\n",
-                    buffer.position(), buffer.size(), getDataTypeId(), markerByte);
-        }
+    constexpr static bool deserialise(IoBuffer & /*buffer*/, const ClassField & /*field*/, const END_MARKER &) {
+        // do not do anything, as the end marker is of size zero and only the type byte is important
         return std::is_constant_evaluated();
     }
 };
 
 template<SerialiserProtocol protocol, const bool writeMetaInfo, typename DataType>
-std::size_t putFieldHeader(IoBuffer &buffer, const std::string_view &fieldName, const DataType &data) {
+std::size_t putFieldHeader(IoBuffer &buffer, const char *fieldName, const int fieldNameSize, const DataType &data) {
     using StrippedDataType         = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(data)))>;
     constexpr int32_t dataTypeSize = static_cast<int32_t>(sizeof(StrippedDataType));
-    buffer.reserve_spare(((fieldName.length() + 18) * sizeof(uint8_t)) + dataTypeSize);
+    buffer.reserve_spare(((static_cast<uint64_t>(fieldNameSize) + 18) * sizeof(uint8_t)) + dataTypeSize);
 
     // -- offset 0 vs. field start
     const std::size_t headerStart = buffer.size();
     buffer.put(static_cast<uint8_t>(IoSerialiser<protocol, StrippedDataType>::getDataTypeId())); // data type ID
-    buffer.put(static_cast<int32_t>(std::hash<std::string_view>{}(fieldName)));                  // unique hashCode identifier -- TODO: unify across C++/Java & optimise performance
+    buffer.put(opencmw::hash(fieldName, fieldNameSize));                                         // unique hashCode identifier -- TODO: choose more performant implementation instead of java default
     const std::size_t dataStartOffsetPosition = buffer.size();
     buffer.put(-1); // dataStart offset
     const int32_t     dataSize         = is_supported_number<DataType> ? dataTypeSize : -1;
     const std::size_t dataSizePosition = buffer.size();
-    buffer.put(dataSize);  // dataSize (N.B. 'headerStart' + 'dataStart + dataSize' == start of next field header
-    buffer.put(fieldName); // full field name
+    buffer.put(dataSize);                    // dataSize (N.B. 'headerStart' + 'dataStart + dataSize' == start of next field header
+    buffer.put<std::string_view>(fieldName); // full field name
 
     if constexpr (is_annotated<DataType>) {
         if (writeMetaInfo) {
@@ -294,7 +285,7 @@ std::size_t putFieldHeader(IoBuffer &buffer, const std::string_view &fieldName, 
             buffer.put(std::string_view(data.getDescription()));
             buffer.put(static_cast<uint8_t>(data.getModifier()));
             // TODO: write group meta data
-            //final String[] groups = fieldDescription.getFieldGroups().toArray(new String[0]);
+            //final String[] groups = fieldDescription.getFieldGroups().toArray(new String[0]); // java uses non-array string
             //buffer.putStringArray(groups, groups.length);
             //buffer.put<std::string[]>({""});
         }

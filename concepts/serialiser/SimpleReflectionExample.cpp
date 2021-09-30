@@ -59,7 +59,7 @@ int main() {
         std::cout << "caught unknown exception " << std::endl;
     }
     assert(a == b && "a & b should be equal here"); // just checking
-    std::cout << fmt::format("finished simple serialise-deserialise identity -- IoBbuffer required {} bytes\n", buffer.size());
+    std::cout << fmt::format("finished simple serialise-deserialise identity -- IoBuffer required {} bytes\n", buffer.size());
     diffView(std::cout, a, b);
     // N.B. the buffer size is larger than the mere field sizes because of additional meta information that is required
     // for safely transmitting the data via the network and between different programming languages.
