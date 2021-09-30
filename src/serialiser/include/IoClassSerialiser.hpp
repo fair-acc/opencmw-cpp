@@ -12,7 +12,7 @@ enum ProtocolCheck {
 
 template<SerialiserProtocol protocol>
 constexpr void putHeaderInfo(IoBuffer &buffer) {
-    buffer.ensure(2 * sizeof(int) + 7); // magic int + string length int + 4 byte 'YAS\0` string + 3 version bytes
+    buffer.reserve_spare(2 * sizeof(int) + 7); // magic int + string length int + 4 byte 'YAS\0` string + 3 version bytes
     buffer.put(yas::VERSION_MAGIC_NUMBER);
     buffer.put(yas::PROTOCOL_NAME);
     buffer.put(yas::VERSION_MAJOR);
