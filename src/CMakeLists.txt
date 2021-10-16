@@ -1,5 +1,6 @@
 add_subdirectory(utils)
 add_subdirectory(serialiser)
+add_subdirectory(yaxxzmq/test)
 # add_subdirectory(core)
 # add_subdirectory(client)
 # add_subdirectory(server)
