@@ -60,7 +60,7 @@ public:
 
     void read() requires SocketGroupHandler<Handler, Socket> {
         Poller<sizeof...(Sockets)> poller;
-        auto                      *handler_ptr = meta::to_pointer(_handler);
+        auto *                     handler_ptr = meta::to_pointer(_handler);
 
         meta::for_each_indexed(_sockets,
                 [&poller](std::size_t index, auto &socket) {
@@ -106,4 +106,3 @@ auto make_socket_group(Context &context) {
 } // namespace yaz
 
 #endif // include guard
-

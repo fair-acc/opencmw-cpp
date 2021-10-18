@@ -33,4 +33,3 @@ private:
 } // namespace yaz
 
 #endif // include guard
-

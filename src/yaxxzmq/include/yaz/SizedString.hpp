@@ -63,4 +63,3 @@ concept sized_string_instance = meta::is_value_instantiation_of_v<::yaz::SizedSt
 } // namespace yaz
 
 #endif // include guard
-
