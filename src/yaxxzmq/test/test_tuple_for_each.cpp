@@ -26,4 +26,3 @@ TEST_CASE("For each", "[tuple]") {
 
     REQUIRE(total_size == sizeof(int) + sizeof(float) + sizeof(double));
 }
-

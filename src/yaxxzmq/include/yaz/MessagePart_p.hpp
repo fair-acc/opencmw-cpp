@@ -65,4 +65,3 @@ private:
 } // namespace yaz::detail
 
 #endif // include guard
-

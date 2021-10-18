@@ -97,4 +97,3 @@ struct regular_void {};
 } // namespace yaz::meta
 
 #endif // include guard
-

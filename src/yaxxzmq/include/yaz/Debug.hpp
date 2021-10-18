@@ -10,4 +10,3 @@ inline auto &debug() {
 }
 
 #endif // include guard
-

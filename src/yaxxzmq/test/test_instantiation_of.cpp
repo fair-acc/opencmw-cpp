@@ -18,4 +18,3 @@ struct value_parametrised {};
 
 static_assert(yaz::meta::is_value_instantiation_of_v<value_parametrised, value_parametrised<0>>);
 static_assert(not yaz::meta::is_instantiation_of_v<std::list, int>);
-
