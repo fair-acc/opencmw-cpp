@@ -45,9 +45,9 @@ class Socket {
 
 public:
     explicit Socket(
-            Context   &context,
+            Context &  context,
             SocketType type,
-            Handler  &&handler)
+            Handler && handler)
         : _handler(std::move(handler)), _zsocket(zmq_socket(context._zcontext, to_zmq_type(type))), _fd(file_descriptor()) {
     }
     ~Socket() {
@@ -204,4 +204,3 @@ private:
 } // namespace yaz
 
 #endif // include guard
-

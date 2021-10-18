@@ -13,7 +13,7 @@ namespace yaz {
 //   message
 template<typename Sender, typename Handler, typename Message>
 void pass_to_message_handler(Sender &sender, Handler &&handler, Message &&message) {
-    auto                *handler_ptr = meta::to_pointer(YAZ_FWD(handler));
+    auto *               handler_ptr = meta::to_pointer(YAZ_FWD(handler));
 
     constexpr const bool has_full_handle_message_v
             = requires {
@@ -53,4 +53,3 @@ void pass_to_message_handler(Sender &sender, Handler &&handler, Message &&messag
 } // namespace yaz
 
 #endif // include guard
-
