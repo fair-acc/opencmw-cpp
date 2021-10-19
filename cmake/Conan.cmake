@@ -26,7 +26,7 @@ macro(run_conan)
     # Make sure to use conanfile.py to define dependencies, to stay consistent
     conan_cmake_run(
             REQUIRES
-            catch2/2.13.3
+            catch2/2.13.6
             fmt/7.1.3
             mp-units/0.7.0
             # refl-cpp/0.12.1 # could be used once there is a new release
