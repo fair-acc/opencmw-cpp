@@ -13,16 +13,20 @@ macro(run_conan)
       file(DOWNLOAD "https://github.com/conan-io/cmake-conan/raw/v0.16.1/conan.cmake" "${CMAKE_BINARY_DIR}/conan.cmake")
     endif()
 
-    set(ENV{CONAN_REVISIONS_ENABLED} 1) # required for new bincrafters repository
+    set(ENV{CONAN_REVISIONS_ENABLED} 1) # required for new conan center repository
     include(${CMAKE_BINARY_DIR}/conan.cmake)
 
-    conan_add_remote(
-            NAME bincrafters
-            URL https://bincrafters.jfrog.io/artifactory/api/conan/public-conan)
+
+
+     message(STATUS "If your conan version is older than 1.40.3, you need to manually update the conan certificate. see: https://github.com/conan-io/conan/issues/9695#issuecomment-931406912")
+     message(STATUS "$ conan config install https://github.com/conan-io/conanclientcert.git")
+     conan_add_remote( # in case of problems with conan repositories, try to delete ~/.conan/remotes.json
+            NAME conan-center
+            URL https://center.conan.io)
     # Make sure to use conanfile.py to define dependencies, to stay consistent
     conan_cmake_run(
             REQUIRES
-            catch2/2.13.3
+            catch2/2.13.6
             fmt/7.1.3
             mp-units/0.7.0
             # refl-cpp/0.12.1 # could be used once there is a new release
