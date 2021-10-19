@@ -20,6 +20,9 @@ class result;
 
 template<typename T>
 class [[nodiscard]] result<T, result_type::only_zero_valid> {
+private:
+    T _value;
+
 public:
     constexpr explicit result(T value)
         : _value{ std::move(value) } {}
@@ -49,13 +52,13 @@ public:
         assert(!has_value());
         return _value;
     }
-
-private:
-    T _value;
 };
 
 template<typename T>
 class [[nodiscard]] result<T, result_type::positive_values_valid> {
+private:
+    T _value;
+
 public:
     constexpr explicit result(T value)
         : _value{ std::move(value) } {}
@@ -85,13 +88,14 @@ public:
         assert(!has_value());
         return _value;
     }
-
-private:
-    T _value;
 };
 
 template<typename T>
 class [[nodiscard]] result<T, result_type::positive_values_valid, result_type::error_in_errno> {
+private:
+    T   _value;
+    int _error;
+
 public:
     constexpr explicit result(T value)
         : _value{ std::move(value) }, _error{ errno } {}
@@ -121,10 +125,6 @@ public:
         assert(!has_value());
         return _error;
     }
-
-private:
-    T   _value;
-    int _error;
 };
 
 template<typename T>
