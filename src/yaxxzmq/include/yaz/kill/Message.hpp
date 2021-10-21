@@ -86,12 +86,18 @@ public:
     Message() = default;
     explicit Message(Bytes message)
         : _parts{ std::move(message) } {}
+    explicit Message(std::vector<Bytes> &&parts)
+        : _parts{parts} {}
 
     ~Message()               = default;
     Message(const Message &) = delete;
     Message &operator=(const Message &) = delete;
     Message(Message &&other)            = default;
     Message &operator=(Message &&other) = default;
+
+    std::vector<Bytes> take_parts() {
+        return std::move(_parts);
+    }
 
     // Adds a new part to the message
     void add_part(const Bytes &part) {
