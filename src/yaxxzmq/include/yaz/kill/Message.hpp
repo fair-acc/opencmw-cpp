@@ -25,8 +25,8 @@ public:
         zmq_msg_init(&_message);
     }
 
-    explicit MessagePart(const Bytes &data) {
-        auto *buf = new Bytes(data);
+    explicit MessagePart(Bytes &&data) {
+        auto *buf = new Bytes(std::move(data));
         zmq_msg_init_data(
                 &_message, buf->data(), buf->size(),
                 [](void *, void *buf_owned) {
@@ -84,10 +84,11 @@ private:
 
 public:
     Message() = default;
-    explicit Message(Bytes message)
-        : _parts{ std::move(message) } {}
+    explicit Message(Bytes message) {
+        _parts.emplace_back(std::move(message));
+    }
     explicit Message(std::vector<Bytes> &&parts)
-        : _parts{parts} {}
+        : _parts{std::move(parts)} {}
 
     ~Message()               = default;
     Message(const Message &) = delete;

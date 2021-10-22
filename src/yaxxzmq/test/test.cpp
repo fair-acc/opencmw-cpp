@@ -25,7 +25,10 @@ public:
     explicit router_socket(yaz::Context &context, Handler &&handler)
         : base_socket<Handler>(context, ZMQ_ROUTER, std::move(handler)) {
         debug() << "Creating an instance of router_socket\n";
-        bind("inproc://broker/router");
+        if (!bind("inproc://broker/router")) {
+            std::cerr << "Cannot bind router socket" << std::endl;
+            std::terminate();
+        }
     }
 };
 
@@ -62,7 +65,10 @@ public:
 
     explicit publisher_socket(yaz::Context &context, Handler &&handler)
         : yaz::Socket<Handler>(context, ZMQ_PUB, std::move(handler)) {
-        bind(address);
+        if (!bind(address)) {
+            std::cerr << "Cannot bind publisher socket to " << address << std::endl;
+            std::terminate();
+        }
     }
 };
 
@@ -73,7 +79,10 @@ public:
 
     explicit subscriber_socket(yaz::Context &context, Handler &&handler)
         : yaz::Socket<Handler>(context, ZMQ_SUB, std::move(handler)) {
-        connect(address);
+        if (!connect(address)) {
+            std::cerr << "Cannot connect subcriber socket to address " << address << std::endl;
+            std::terminate();
+        }
         _id = s_last_id++;
     }
 
@@ -114,11 +123,14 @@ int main(int argc, char *argv[]) {
     if (mode == "pub") {
         yaz::Socket publisher(
                 context, ZMQ_PUB, [](auto && /*socket*/, auto && /*message*/) { std::cout << "publisher got a message\n"; });
-        publisher.bind(address);
+        if (!publisher.bind(address)) {
+            std::cerr << "Could not bind publisher to address " << address << std::endl;
+            std::terminate();
+        }
 
         yaz::Message message("Hello");
         while (true) {
-            publisher.send(message);
+            publisher.send(std::move(message));
         }
 
     } else if (mode == "sub") {
@@ -128,7 +140,10 @@ int main(int argc, char *argv[]) {
             //     std::cout << "part: [" << part << "]\n";
             // }
         });
-        subscriber.connect(address);
+        if (!subscriber.connect(address)) {
+            std::cerr << "Could not connect subscriber to address " << address << std::endl;
+            std::terminate();
+        }
 
         while (true) {
             subscriber.read();
@@ -148,7 +163,7 @@ int main(int argc, char *argv[]) {
         std::uniform_int_distribution<int> dist(0, 42);
         while (true) {
             yaz::Message message("Hello " + std::to_string(dist(rd)));
-            publisher.send(message);
+            publisher.send(std::move(message));
         }
 
     } else if (mode == "sub_g") {

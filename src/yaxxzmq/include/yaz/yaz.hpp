@@ -242,30 +242,35 @@ public:
         swap(_fd, other._fd);
     }
 
-    void connect(std::string_view address,
+    bool connect(std::string_view address,
             std::string_view      subscription = "") {
-        zmq_connect(_zsocket, address.data());
+        if (zmq_connect(_zsocket, address.data()) != 0)
+            return false;
         set_option<ZMQ_SUBSCRIBE>(subscription.data());
+        return true;
     }
 
-    void disconnect() {
-        if (_zsocket != nullptr) {
-            zmq_close(_zsocket);
+    bool disconnect() {
+        if (_zsocket != nullptr && zmq_close(_zsocket) == 0) {
             _zsocket = nullptr;
+            return true;
         }
+
+        return false;
     }
 
-    void bind(std::string_view address) {
-        zmq_bind(_zsocket, address.data());
+    bool bind(std::string_view address) {
+        return zmq_bind(_zsocket, address.data()) == 0;
     }
 
-    void send(const Message &message) {
+    void send(Message &&message) {
         using detail::MessagePart;
-        for (std::size_t message_id = 0; message_id < message.parts_count(); ++message_id) {
-            MessagePart msg(message[message_id]);
+        auto parts = message.take_parts();
+        for (size_t part = 0; part < parts.size(); ++part) {
+            MessagePart msg(std::move(parts[part]));
 
-            const auto  flags  = message_id + 1 == message.parts_count() ? ZMQ_DONTWAIT
-                                                                         : ZMQ_DONTWAIT | ZMQ_SNDMORE;
+            const auto  flags  = part + 1 == parts.size() ? ZMQ_DONTWAIT
+                                                          : ZMQ_DONTWAIT | ZMQ_SNDMORE;
             auto        result = msg.send(_zsocket, flags);
 
             if (!result) {
