@@ -2,8 +2,13 @@
 #define YAZ_MESSAGE_H
 
 #include <iostream>
+#include <memory>
 #include <string>
 #include <vector>
+
+#include <zmq.h>
+
+#include "../Result.hpp"
 
 // These classes are temporary for demonstration purposes only
 
@@ -12,21 +17,24 @@ namespace yaz {
 using Bytes = std::string;
 using Byte  = std::string::value_type;
 
-namespace detail {
-
+// TODO: Allocators
 class MessagePart {
 private:
+    bool _owning = true;
+
     // Marked as mutable as this is our bridge to C API
     // that doesn't care about constness
     mutable zmq_msg_t _message{};
 
 public:
+    struct static_bytes_tag {};
+    struct dynamic_bytes_tag {};
+
     MessagePart() {
         zmq_msg_init(&_message);
     }
 
-    explicit MessagePart(Bytes &&data) {
-        auto *buf = new Bytes(std::move(data));
+    explicit MessagePart(Bytes *buf, dynamic_bytes_tag /*tag*/ = {}) {
         zmq_msg_init_data(
                 &_message, buf->data(), buf->size(),
                 [](void *, void *buf_owned) {
@@ -35,14 +43,46 @@ public:
                 buf);
     }
 
+    explicit MessagePart(std::string_view buf, static_bytes_tag) {
+        zmq_msg_init_data(
+                &_message, const_cast<char *>(buf.data()), buf.size(),
+                [](void *, void *) {
+                    // We don't want to delete a static RO string literal
+                },
+                nullptr);
+    }
+
     ~MessagePart() {
-        zmq_msg_close(&_message);
+        if (_owning) {
+            zmq_msg_close(&_message);
+        }
     }
 
     MessagePart(const MessagePart &other) = delete;
     MessagePart &operator=(const MessagePart &other) = delete;
-    MessagePart(MessagePart &&other)                 = delete;
-    MessagePart &operator=(MessagePart &&other) = delete;
+    MessagePart(MessagePart &&other)
+        : _owning(other._owning) {
+        zmq_msg_init(&_message);
+        zmq_msg_move(&_message, &other._message);
+
+        other._owning = false;
+        zmq_msg_close(&other._message);
+    }
+    MessagePart &operator=(MessagePart &&other) {
+        auto temp = std::move(other);
+        swap(other);
+        return *this;
+    }
+
+    void swap(MessagePart &other) {
+        std::swap(_owning, other._owning);
+        zmq_msg_t temp;
+        zmq_msg_init(&temp);
+        zmq_msg_move(&temp, &_message);
+        zmq_msg_move(&_message, &other._message);
+        zmq_msg_move(&other._message, &temp);
+        zmq_msg_close(&temp);
+    }
 
     // Reads a message from the socket
     // Returns the number of received bytes
@@ -54,29 +94,42 @@ public:
     // Sending is not const as 0mq nullifies the message
     // See: http://api.zeromq.org/3-2:zmq-msg-send
     positive_or_errno<int> send(void *socket, int flags) {
-        return positive_or_errno<int>{ zmq_msg_send(&_message, socket, flags) };
+        auto result = positive_or_errno<int>{ zmq_msg_send(&_message, socket, flags) };
+        if (result) {
+            _owning = false;
+        }
+        return result;
     }
 
     size_t size() const {
         return zmq_msg_size(&_message);
     }
 
-    auto data() const {
-        return Bytes(
+    std::string_view data() const {
+        return std::string_view(
                 static_cast<char *>(zmq_msg_data(&_message)), size());
     }
 };
 
-} // namespace detail
-
 class Message {
 private:
-    std::vector<Bytes>   _parts;
+    // In order to have a zero-copy sending API, we allow API clients
+    // to give us their internal data that will be freed automatically
+    // when the message is sent.
+    //
+    // The non-nullptr items in the vector have not been sent yet
+    //
+    // TODO: Investigate whether we want unique_ptrs with custom
+    // deleters (that is, do we want a generic smart pointer support)
+    using BytesPtr = std::unique_ptr<Bytes>;
+    std::vector<MessagePart> _parts;
 
+    // Helper function to print out the current message
+    // TODO: Remove as we don't want to depend on <iostream>
     friend std::ostream &operator<<(std::ostream &out, const Message &message) {
         out << '{';
         for (const auto &part : message._parts) {
-            out << part;
+            out << part.data();
         }
         out << '}';
         return out;
@@ -84,11 +137,20 @@ private:
 
 public:
     Message() = default;
-    explicit Message(Bytes message) {
-        _parts.emplace_back(std::move(message));
+    explicit Message(BytesPtr &&part) {
+        // zmq_msg_t takes ownership of the data
+        _parts.emplace_back(part.release());
     }
-    explicit Message(std::vector<Bytes> &&parts)
-        : _parts{std::move(parts)} {}
+    explicit Message(std::vector<BytesPtr> &parts) {
+        _parts.reserve(parts.size());
+        std::transform(
+                std::make_move_iterator(parts.begin()),
+                std::make_move_iterator(parts.end()),
+                std::back_inserter(_parts),
+                [](BytesPtr &&ptr) {
+                    return MessagePart(ptr.release());
+                });
+    }
 
     ~Message()               = default;
     Message(const Message &) = delete;
@@ -96,28 +158,24 @@ public:
     Message(Message &&other)            = default;
     Message &operator=(Message &&other) = default;
 
-    std::vector<Bytes> take_parts() {
-        return std::move(_parts);
-    }
-
-    // Adds a new part to the message
-    void add_part(const Bytes &part) {
-        _parts.emplace_back(part);
-    }
-    void add_part(Bytes &&part) {
-        _parts.emplace_back(std::move(part));
-    }
-
-    // template<std::size_t Length>
-    // void add_part(const SizedString<Length> &part) {
-    //     _parts.emplace_back(static_cast<std::string_view>(part));
+    // std::vector<BytesPtr> take_parts() {
+    //     return std::move(_parts);
     // }
 
-    void add_part(std::initializer_list<char> part) {
-        _parts.emplace_back(part);
+    // Adds a new part to the message
+    auto &add_part(BytesPtr &&part) {
+        return _parts.emplace_back(part.release());
     }
 
-    const Bytes &operator[](std::size_t index) const {
+    auto &add_part() {
+        return _parts.emplace_back();
+    }
+
+    const auto &operator[](std::size_t index) const {
+        return _parts[index];
+    }
+
+    auto &operator[](std::size_t index) {
         return _parts[index];
     }
 
@@ -125,8 +183,16 @@ public:
         return _parts.size();
     }
 
+    [[nodiscard]] auto &back() const {
+        return _parts.back();
+    }
+
     void clear() {
         _parts.clear();
+    }
+
+    void resize(std::size_t size) {
+        _parts.resize(size);
     }
 };
 

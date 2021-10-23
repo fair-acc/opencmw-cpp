@@ -74,7 +74,7 @@ concept sized_string_instance = meta::is_value_instantiation_of_v<::yaz::SizedSt
 // A simple RAII wrapper class for 0mq context
 class Context {
 private:
-    template<typename Handler>
+    template<typename Message, typename Handler>
     friend class Socket;
 
     // Ah, 0mq and void pointers
@@ -199,7 +199,7 @@ void pass_to_message_handler(Sender &sender, Handler &&handler, Message &&messag
 // A handler can also be a pointer to an object with above qualities. This is useful
 // in the case when you want to create a `Socket` member variable inside of an object
 // that will be used as `Socket`'s handler.
-template<typename Handler = meta::regular_void>
+template<typename Message, typename Handler = meta::regular_void>
 class Socket {
 private:
     // Ah, 0mq and void stars
@@ -264,18 +264,12 @@ public:
     }
 
     void send(Message &&message) {
-        using detail::MessagePart;
-        auto parts = message.take_parts();
-        for (size_t part = 0; part < parts.size(); ++part) {
-            MessagePart msg(std::move(parts[part]));
-
-            const auto  flags  = part + 1 == parts.size() ? ZMQ_DONTWAIT
-                                                          : ZMQ_DONTWAIT | ZMQ_SNDMORE;
-            auto        result = msg.send(_zsocket, flags);
-
-            if (!result) {
-                assert(false && "sending failed");
-            }
+        auto parts_count = message.parts_count();
+        for (std::size_t part_index = 0; part_index < parts_count; part_index++) {
+            const auto flags  = part_index + 1 == parts_count ? ZMQ_DONTWAIT
+                                                              : ZMQ_DONTWAIT | ZMQ_SNDMORE;
+            const auto result = message[part_index].send(_zsocket, flags);
+            assert(result);
         }
     }
 
@@ -288,16 +282,13 @@ public:
 
         Message message;
 
-        using detail::MessagePart;
         while (true) {
-            MessagePart part;
-            const auto  byte_count_result = part.receive(_zsocket, ZMQ_NOBLOCK);
+            MessagePart &part              = message.add_part();
+            const auto   byte_count_result = part.receive(_zsocket, ZMQ_NOBLOCK);
 
             if (!byte_count_result) {
                 break;
             }
-
-            message.add_part(part.data());
 
             if (receive_more()) {
                 // multipart message
@@ -348,6 +339,11 @@ protected:
     template<typename, template<typename> typename...>
     friend class SocketGroup;
 };
+
+template<typename Message, typename Handler>
+auto make_socket(Context &context, int type, Handler &&handler) {
+    return Socket<Message, Handler>(context, type, YAZ_FWD(handler));
+}
 
 template<typename Handler, template<typename> typename Socket, typename HandlerValue = std::remove_cvref_t<Handler>>
 concept SocketGroupHandler = requires(HandlerValue handler, Socket<HandlerValue> &socket) {

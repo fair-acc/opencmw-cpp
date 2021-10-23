@@ -3,44 +3,6 @@
 
 #include <yaz/yaz.hpp>
 
-template<typename Handler>
-class base_socket : public yaz::Socket<Handler> {
-public:
-    explicit base_socket(yaz::Context &context, int type, Handler &&handler)
-        : yaz::Socket<Handler>(context, type, std::move(handler)) {
-        // socket.setHWM(HIGH_WATER_MARK);
-        // socket.setHeartbeatContext(PROT_CLIENT.getData());
-        // socket.setHeartbeatTtl(HEARTBEAT_INTERVAL * HEARTBEAT_LIVENESS);
-        // socket.setHeartbeatTimeout(HEARTBEAT_INTERVAL * HEARTBEAT_LIVENESS);
-        // socket.setHeartbeatIvl(HEARTBEAT_INTERVAL);
-        // socket.setLinger(HEARTBEAT_INTERVAL);
-    }
-};
-
-template<typename Handler>
-class router_socket : public base_socket<Handler> {
-public:
-    using base_socket<Handler>::bind;
-
-    explicit router_socket(yaz::Context &context, Handler &&handler)
-        : base_socket<Handler>(context, ZMQ_ROUTER, std::move(handler)) {
-        debug() << "Creating an instance of router_socket\n";
-        if (!bind("inproc://broker/router")) {
-            std::cerr << "Cannot bind router socket" << std::endl;
-            std::terminate();
-        }
-    }
-};
-
-template<typename Handler>
-class socket_type_1 : public yaz::Socket<Handler> {
-public:
-    explicit socket_type_1(yaz::Context &context, Handler &&handler)
-        : yaz::Socket<Handler>(context, ZMQ_XPUB, std::move(handler)) {
-        debug() << "Creating an instance of socket\n";
-    }
-};
-
 class ignore_all {
 public:
     template<typename... Args>
@@ -59,12 +21,12 @@ public:
 const std::string_view address = "ipc:///tmp/0mqtest";
 
 template<typename Handler>
-class publisher_socket : public yaz::Socket<Handler> {
+class publisher_socket : public yaz::Socket<yaz::Message, Handler> {
 public:
-    using yaz::Socket<Handler>::bind;
+    using yaz::Socket<yaz::Message, Handler>::bind;
 
     explicit publisher_socket(yaz::Context &context, Handler &&handler)
-        : yaz::Socket<Handler>(context, ZMQ_PUB, std::move(handler)) {
+        : yaz::Socket<yaz::Message, Handler>(context, ZMQ_PUB, std::move(handler)) {
         if (!bind(address)) {
             std::cerr << "Cannot bind publisher socket to " << address << std::endl;
             std::terminate();
@@ -73,12 +35,12 @@ public:
 };
 
 template<typename Handler>
-class subscriber_socket : public yaz::Socket<Handler> {
+class subscriber_socket : public yaz::Socket<yaz::Message, Handler> {
 public:
-    using yaz::Socket<Handler>::connect;
+    using yaz::Socket<yaz::Message, Handler>::connect;
 
     explicit subscriber_socket(yaz::Context &context, Handler &&handler)
-        : yaz::Socket<Handler>(context, ZMQ_SUB, std::move(handler)) {
+        : yaz::Socket<yaz::Message, Handler>(context, ZMQ_SUB, std::move(handler)) {
         if (!connect(address)) {
             std::cerr << "Cannot connect subcriber socket to address " << address << std::endl;
             std::terminate();
@@ -86,28 +48,11 @@ public:
         _id = s_last_id++;
     }
 
-    int               id() const { return _id; }
-    int               _id;
+    int id() const { return _id; }
+    int _id;
+
+    // Just counting how many sockets we have
     inline static int s_last_id = 0;
-};
-
-struct sub_g_handler {
-    bool receive_message(auto &socket, bool /*something*/) {
-        socket.read([&](auto && /*message*/) {
-            std::cout << "subscriber got a message\n";
-            // for (const auto &part : message) {
-            //     std::cout << socket.id() << "part: [" << part << "]\n";
-            // }
-        });
-        // for (const auto &part : message) {
-        //     std::cout << "part: [" << part << "]\n";
-        // }
-        return true;
-    }
-
-    bool continue_after_messages_read(bool anything_received) {
-        return anything_received;
-    }
 };
 
 int main(int argc, char *argv[]) {
@@ -121,20 +66,20 @@ int main(int argc, char *argv[]) {
     yaz::Context     context;
 
     if (mode == "pub") {
-        yaz::Socket publisher(
+        auto publisher = yaz::make_socket<yaz::Message>(
                 context, ZMQ_PUB, [](auto && /*socket*/, auto && /*message*/) { std::cout << "publisher got a message\n"; });
         if (!publisher.bind(address)) {
             std::cerr << "Could not bind publisher to address " << address << std::endl;
             std::terminate();
         }
 
-        yaz::Message message("Hello");
         while (true) {
+            yaz::Message message(std::make_unique<std::string>("Hello"));
             publisher.send(std::move(message));
         }
 
     } else if (mode == "sub") {
-        yaz::Socket subscriber(context, ZMQ_SUB, [](auto && /*socket*/, auto && /*message*/) {
+        auto subscriber = yaz::make_socket<yaz::Message>(context, ZMQ_SUB, [](auto && /*socket*/, auto && /*message*/) {
             std::cout << "subscriber got a message\n";
             // for (const auto &part : message) {
             //     std::cout << "part: [" << part << "]\n";
@@ -147,32 +92,6 @@ int main(int argc, char *argv[]) {
 
         while (true) {
             subscriber.read();
-        }
-    }
-
-    {
-        auto group = yaz::make_socket_group<router_socket, socket_type_1, socket_type_1>(context, ignore_all{});
-    }
-
-    if (mode == "pub_g") {
-        auto  group     = yaz::make_socket_group<publisher_socket>(context);
-        auto &publisher = group.get<0>();
-
-        // Let's generate some random messages for debugging purposes
-        std::random_device                 rd;
-        std::uniform_int_distribution<int> dist(0, 42);
-        while (true) {
-            yaz::Message message("Hello " + std::to_string(dist(rd)));
-            publisher.send(std::move(message));
-        }
-
-    } else if (mode == "sub_g") {
-        auto group = yaz::make_socket_group<subscriber_socket, subscriber_socket>(context, sub_g_handler{});
-        // auto &subscriber = group.get<0>();
-
-        while (true) {
-            // subscriber.read();
-            group.read();
         }
     }
 }

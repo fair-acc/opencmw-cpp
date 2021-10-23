@@ -1,11 +1,19 @@
-#include <stdlib.h>
+#include <cstdlib>
 
-size_t bytesAllocated = 0;
+std::size_t bytesAllocated = 0;
 
-void* operator new(size_t size)
-{
+// Custom new and delete to count allocated bytes
+void *operator new(std::size_t size) {
     bytesAllocated += size;
     return malloc(size);
+}
+
+void operator delete(void *ptr) noexcept {
+    free(ptr);
+}
+
+void operator delete(void *ptr, std::size_t /*size*/) noexcept {
+    free(ptr);
 }
 
 #define CATCH_CONFIG_MAIN // This tells the catch header to generate a main
@@ -13,11 +21,11 @@ void* operator new(size_t size)
 
 #include <yaz/yaz.hpp>
 
-static std::string generate_string(size_t length) {
-    std::string s;
-    s.reserve(length);
-    for (size_t i = 0; i < length; ++i) {
-        s += static_cast<char>(i % 255);
+static std::unique_ptr<std::string> generate_string_data(std::size_t length) {
+    auto s = std::make_unique<std::string>();
+    s->reserve(length);
+    for (std::size_t i = 0; i < length; ++i) {
+        *s += static_cast<char>(i % 255);
     }
 
     return s;
@@ -30,14 +38,14 @@ TEST_CASE("Simple pub/sub example using inproc", "[yaz]") {
 
     const std::string_view address = "inproc://test";
 
-    std::vector<Message> receivedQueue;
-    Context context;
-    Socket publisher(context, ZMQ_PUB, [](auto && /*socket*/, auto && /*message*/) {
+    std::vector<Message>   receivedQueue;
+    Context                context;
+    auto                   publisher = yaz::make_socket<yaz::Message>(context, ZMQ_PUB, [](auto                   &&/*socket*/, auto                   &&/*message*/) {
         FAIL("Unexpected message received (PUB socket)");
     });
     REQUIRE(publisher.bind(address));
 
-    Socket subscriber(context, ZMQ_SUB, [&receivedQueue](auto && /*socket*/, auto &&message) {
+    auto subscriber = yaz::make_socket<yaz::Message>(context, ZMQ_SUB, [&receivedQueue](auto && /*socket*/, auto &&message) {
         receivedQueue.emplace_back(std::move(message));
     });
 
@@ -45,51 +53,50 @@ TEST_CASE("Simple pub/sub example using inproc", "[yaz]") {
 
     // test simple message
     {
-        Message test{"Hello hello"};
+        Message test{ std::make_unique<std::string>("Hello hello") };
         publisher.send(std::move(test));
 
-        while (receivedQueue.empty())
+        while (receivedQueue.empty()) {
             subscriber.read();
+        }
 
         std::vector<Message> received;
         std::swap(receivedQueue, received);
         REQUIRE(received.size() == 1);
         REQUIRE(received[0].parts_count() == 1);
-        REQUIRE(received[0][0] == "Hello hello");
+        REQUIRE(received[0][0].data() == "Hello hello");
     }
 
     // test message with many parts
     {
-        Message test;
-        constexpr size_t NumParts = 1024;
-        for (size_t i = 0; i < NumParts; ++i) {
-            test.add_part(std::to_string(i));
+        Message               test;
+        constexpr std::size_t NumParts = 1024;
+        for (std::size_t i = 0; i < NumParts; ++i) {
+            test.add_part(std::make_unique<std::string>(std::to_string(i)));
         }
 
         publisher.send(std::move(test));
 
-        while (receivedQueue.empty())
+        while (receivedQueue.empty()) {
             subscriber.read();
+        }
 
         std::vector<Message> received;
         std::swap(receivedQueue, received);
         REQUIRE(received.size() == 1);
         REQUIRE(received[0].parts_count() == NumParts);
-        for(size_t i = 0; i < NumParts; ++i) {
-            REQUIRE(received[0][i] == std::to_string(i));
+        for (std::size_t i = 0; i < NumParts; ++i) {
+            REQUIRE(received[0][i].data() == std::to_string(i));
         }
     }
 
     // send a 10 MB message and test that there's unnecessary copying of data when sending or receiving
     {
-        const auto tenMB = generate_string(10 * 1024 * 1024);
+        auto    tenMB           = generate_string_data(10 * 1024 * 1024);
 
-        std::vector<std::string> copyToSend;
-        copyToSend.emplace_back(tenMB);
+        auto    allocatedBefore = bytesAllocated;
 
-        auto allocatedBefore = bytesAllocated;
-
-        Message msg(std::move(copyToSend));
+        Message msg(std::move(tenMB));
 
         // assert no allocations in message creation
         REQUIRE(bytesAllocated - allocatedBefore == 0);
@@ -101,16 +108,17 @@ TEST_CASE("Simple pub/sub example using inproc", "[yaz]") {
         // no copying of data during sending, allowing for some slack for zeromq internals
         REQUIRE(bytesAllocated - allocatedBefore < Slack);
 
-        while (receivedQueue.empty())
+        while (receivedQueue.empty()) {
             subscriber.read();
+        }
 
         std::vector<Message> received;
         std::swap(receivedQueue, received);
 
         // no copying of read data
-        REQUIRE(bytesAllocated - allocatedBefore < tenMB.size() + 2 * Slack);
+        REQUIRE(bytesAllocated - allocatedBefore < tenMB->size() + 2 * Slack);
         REQUIRE(received.size() == 1);
         REQUIRE(received[0].parts_count() == 1);
-        REQUIRE(received[0][0] == tenMB);
+        REQUIRE(received[0][0].data() == *tenMB);
     }
 }
