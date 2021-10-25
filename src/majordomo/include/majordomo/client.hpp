@@ -3,6 +3,7 @@
 
 #include <cassert>
 #include <chrono>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -27,15 +28,17 @@ class Client {
 
 public:
     template<typename BrokerPath>
-    Client(yaz::Context &context, BrokerPath &&broker_path)
-        : _context{ context }
-        , _broker_url{ YAZ_FWD(broker_path) } {}
+    Client(std::shared_ptr<yaz::Context> context, BrokerPath &&broker_path)
+        : _context{ std::move(context) }
+        , _broker_url{ YAZ_FWD(broker_path) } {
+        assert(context);
+    }
 
-    void connect() {
+    bool connect() {
         assert(!_socket.has_value());
 
-        _socket = Socket(_context, yaz::SocketType::Dealer, this);
-        _socket->connect(_broker_url);
+        _socket = Socket(*_context, yaz::SocketType::Dealer, this);
+        return _socket->connect(_broker_url);
     }
 
     void disconnect() {
@@ -72,9 +75,9 @@ private:
         return message;
     }
 
-    yaz::Context         &_context;
-    std::optional<Socket> _socket;
-    std::string           _broker_url;
+    std::shared_ptr<yaz::Context> _context;
+    std::optional<Socket>         _socket;
+    std::string                   _broker_url;
 };
 
 } // namespace yamal

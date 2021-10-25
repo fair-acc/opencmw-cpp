@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <exception>
 #include <functional>
+#include <optional>
 #include <string_view>
 #include <tuple>
 
@@ -244,9 +245,10 @@ public:
 
     bool connect(std::string_view address,
             std::string_view      subscription = "") {
-        if (zmq_connect(_zsocket, address.data()) != 0)
+        if (zmq_connect(_zsocket, address.data()) != 0) {
             return false;
-        return static_cast<bool>(set_option<ZMQ_SUBSCRIBE>(subscription.data()));
+        }
+        return subscription.empty() || static_cast<bool>(set_option<ZMQ_SUBSCRIBE>(subscription.data()));
     }
 
     bool disconnect() {
@@ -262,6 +264,13 @@ public:
         return zmq_bind(_zsocket, address.data()) == 0;
     }
 
+    void send_more(std::string_view data) {
+        // TODO handle other types/allocation
+        MessagePart part(std::move(data), MessagePart::dynamic_bytes_tag{});
+        const auto result = part.send(_zsocket, ZMQ_DONTWAIT | ZMQ_SNDMORE);
+        assert(result);
+    }
+
     void send(Message &&message) {
         auto parts_count = message.parts_count();
         for (std::size_t part_index = 0; part_index < parts_count; part_index++) {
@@ -272,18 +281,20 @@ public:
         }
     }
 
-    Message receive() {
+    std::optional<Message> receive() {
         if (_zsocket == nullptr) {
             std::terminate();
         }
 
-        Message message;
+        std::vector<MessagePart> parts;
 
         while (true) {
-            MessagePart &part              = message.add_part();
-            const auto   byte_count_result = part.receive(_zsocket, ZMQ_NOBLOCK);
+            MessagePart  part;
+            const auto   byte_count_result = part.receive(_zsocket, ZMQ_DONTWAIT);
 
-            if (!byte_count_result) {
+            if (byte_count_result) {
+                parts.emplace_back(std::move(part));
+            } else {
                 break;
             }
 
@@ -295,14 +306,21 @@ public:
             }
         }
 
-        return message;
+        if (parts.empty()) {
+            return {};
+        }
+
+        return { Message{ std::move(parts) } };
     }
 
     template<typename ReadHandler>
     void read(ReadHandler &&handler) {
         while (true) {
-            Message message = receive();
-            pass_to_message_handler(*this, handler, message);
+            auto message = receive();
+            if (message.has_value()) {
+                pass_to_message_handler(*this, handler, std::move(*message));
+                return;
+            }
         }
     }
 

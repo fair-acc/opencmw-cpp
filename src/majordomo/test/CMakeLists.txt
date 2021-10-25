@@ -22,9 +22,11 @@ target_link_libraries (
     majordomo_testapp
     PUBLIC
         zmq
+        pthread
         project_warnings
         project_options
         CONAN_PKG::catch2
+        CONAN_PKG::fmt
     )
 
 
@@ -51,6 +53,7 @@ target_link_libraries (
         project_warnings
         project_options
         CONAN_PKG::catch2
+        CONAN_PKG::fmt
     )
 
 catch_discover_tests(majordomo_tests)

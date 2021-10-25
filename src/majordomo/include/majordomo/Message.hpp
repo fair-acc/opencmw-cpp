@@ -49,13 +49,14 @@ private:
     }
 
     explicit MdpMessage(char command) {
-        add_part(std::make_unique<std::string>(1, command));
         resize(numFrames);
+        setFrameData(Frame::Command, new std::string(1, command), MessagePart::dynamic_bytes_tag{});
+        assert(this->command() == command);
     }
 
     [[nodiscard]] char command() const {
         assert(frameAt(Frame::Command).data().length() == 1);
-        return static_cast<char>(frameAt(Frame::Command).data()[0]);
+        return frameAt(Frame::Command).data()[0];
     }
 
     // TODO better error handling
@@ -116,8 +117,8 @@ public:
         Worker
     };
 
-    MdpMessage() {
-        resize(numFrames);
+    explicit MdpMessage(std::vector<yaz::MessagePart> &&parts)
+        : yaz::Message(std::move(parts)) {
     }
 
     ~MdpMessage()                  = default;
@@ -136,6 +137,16 @@ public:
         MdpMessage msg{ static_cast<char>(cmd) };
         msg.setFrameData(Frame::Protocol, workerProtocol, MessagePart::static_bytes_tag{});
         return msg;
+    }
+
+    [[nodiscard]] bool isValid() const {
+        return isMessageValid(*this);
+    }
+
+    void setProtocol(Protocol protocol) {
+        setFrameData(Frame::Protocol,
+                     protocol == Protocol::Client ? clientProtocol : workerProtocol,
+                     MessagePart::static_bytes_tag{});
     }
 
     [[nodiscard]] Protocol protocol() const {
@@ -165,6 +176,15 @@ public:
     template<typename Field, typename T, typename Tag>
     void setFrameData(Field field, T &&value, Tag tag) {
         frameAt(field) = MessagePart(YAZ_FWD(value), tag);
+    }
+
+    template<typename T, typename Tag>
+    void setSourceId(T &&sourceId, Tag tag) {
+        setFrameData(Frame::SourceId, YAZ_FWD(sourceId), tag);
+    }
+
+    [[nodiscard]] std::string_view sourceId() const {
+        return frameAt(Frame::SourceId).data();
     }
 
     template<typename T, typename Tag>

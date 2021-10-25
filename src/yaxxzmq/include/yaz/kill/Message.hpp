@@ -43,6 +43,10 @@ public:
                 buf);
     }
 
+    explicit MessagePart(std::string_view view, dynamic_bytes_tag tag)
+        : MessagePart(new std::string(view), tag)
+    {}
+
     explicit MessagePart(std::string_view buf, static_bytes_tag) {
         zmq_msg_init_data(
                 &_message, const_cast<char *>(buf.data()), buf.size(),
@@ -70,7 +74,7 @@ public:
     }
     MessagePart &operator=(MessagePart &&other) {
         auto temp = std::move(other);
-        swap(other);
+        swap(temp);
         return *this;
     }
 
@@ -150,6 +154,10 @@ public:
                 [](BytesPtr &&ptr) {
                     return MessagePart(ptr.release());
                 });
+    }
+
+    explicit Message(std::vector<MessagePart> &&parts)
+        : _parts{ std::move(parts) } {
     }
 
     ~Message()               = default;

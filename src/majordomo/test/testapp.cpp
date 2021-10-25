@@ -4,7 +4,8 @@
 #include <majordomo/broker.hpp>
 
 int main(int /*argc*/, char ** /*argv*/) {
-    Majordomo::OpenCMW::Broker broker("", "");
+    yaz::Context context;
+    Majordomo::OpenCMW::Broker broker("", "", context);
     broker.run();
 }
 
