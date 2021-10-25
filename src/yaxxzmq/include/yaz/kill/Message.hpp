@@ -86,15 +86,15 @@ public:
 
     // Reads a message from the socket
     // Returns the number of received bytes
-    positive_or_errno<int> receive(void *socket, int flags) {
+    nonnegative_or_errno<int> receive(void *socket, int flags) {
         // TODO: hide 0mq flags
-        return positive_or_errno<int>{ zmq_msg_recv(&_message, socket, flags) };
+        return nonnegative_or_errno<int>{ zmq_msg_recv(&_message, socket, flags) };
     }
 
     // Sending is not const as 0mq nullifies the message
     // See: http://api.zeromq.org/3-2:zmq-msg-send
-    positive_or_errno<int> send(void *socket, int flags) {
-        auto result = positive_or_errno<int>{ zmq_msg_send(&_message, socket, flags) };
+    nonnegative_or_errno<int> send(void *socket, int flags) {
+        auto result = nonnegative_or_errno<int>{ zmq_msg_send(&_message, socket, flags) };
         if (result) {
             _owning = false;
         }
@@ -158,9 +158,11 @@ public:
     Message(Message &&other)            = default;
     Message &operator=(Message &&other) = default;
 
-    // std::vector<BytesPtr> take_parts() {
-    //     return std::move(_parts);
-    // }
+    // Disable slicing
+    template<typename Other>
+    requires(!std::is_same_v<Other, Message>)
+            Message(const Other &other)
+    = delete;
 
     // Adds a new part to the message
     auto &add_part(BytesPtr &&part) {

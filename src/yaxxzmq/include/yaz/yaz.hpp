@@ -80,12 +80,12 @@ private:
     // Ah, 0mq and void pointers
     using zmq_context_handle = void *;
 
-    [[nodiscard]] positive_or_errno<int> set_option(int option, int value) {
-        return positive_or_errno<int>{ zmq_ctx_set(_zcontext, option, value) };
+    [[nodiscard]] nonnegative_or_errno<int> set_option(int option, int value) {
+        return nonnegative_or_errno<int>{ zmq_ctx_set(_zcontext, option, value) };
     }
 
-    [[nodiscard]] positive_or_errno<int> option(int option) const {
-        return positive_or_errno<int>{ zmq_ctx_get(_zcontext, option) };
+    [[nodiscard]] nonnegative_or_errno<int> option(int option) const {
+        return nonnegative_or_errno<int>{ zmq_ctx_get(_zcontext, option) };
     }
 
     zmq_context_handle _zcontext;
@@ -140,8 +140,8 @@ public:
         return _items[index];
     }
 
-    [[nodiscard]] positive_or_errno<int> poll() {
-        return positive_or_errno<int>{ zmq_poll(_items.data(), ItemCount, 0) };
+    [[nodiscard]] nonnegative_or_errno<int> poll() {
+        return nonnegative_or_errno<int>{ zmq_poll(_items.data(), ItemCount, 0) };
     }
 };
 
@@ -246,8 +246,7 @@ public:
             std::string_view      subscription = "") {
         if (zmq_connect(_zsocket, address.data()) != 0)
             return false;
-        set_option<ZMQ_SUBSCRIBE>(subscription.data());
-        return true;
+        return static_cast<bool>(set_option<ZMQ_SUBSCRIBE>(subscription.data()));
     }
 
     bool disconnect() {
@@ -273,11 +272,9 @@ public:
         }
     }
 
-    template<typename ReadHandler>
-    void read(ReadHandler &&handler) {
+    Message receive() {
         if (_zsocket == nullptr) {
             std::terminate();
-            return;
         }
 
         Message message;
@@ -294,9 +291,18 @@ public:
                 // multipart message
 
             } else {
-                pass_to_message_handler(*this, handler, message);
-                message.clear();
+                break;
             }
+        }
+
+        return message;
+    }
+
+    template<typename ReadHandler>
+    void read(ReadHandler &&handler) {
+        while (true) {
+            Message message = receive();
+            pass_to_message_handler(*this, handler, message);
         }
     }
 
@@ -304,26 +310,54 @@ public:
         read(_handler);
     }
 
+    auto set_xpub_verbose(bool value) {
+        return set_option<ZMQ_XPUB_VERBOSE>(value);
+    }
+
+    auto set_hwm(int value) {
+        // setHWM in java version sets both of these
+        return set_option<ZMQ_SNDHWM>(value) && set_option<ZMQ_RCVHWM>(value);
+    }
+
+    auto set_heartbeat_ttl(int value) {
+        return set_option<ZMQ_HEARTBEAT_TTL>(value);
+    }
+
+    auto set_heartbeat_timeout(int value) {
+        return set_option<ZMQ_HEARTBEAT_TIMEOUT>(value);
+    }
+
+    auto set_heartbeat_ivl(int value) {
+        return set_option<ZMQ_HEARTBEAT_IVL>(value);
+    }
+
+    auto set_linger(int value) {
+        return set_option<ZMQ_LINGER>(value);
+    }
+
 protected:
     template<int flag, typename Type, typename Result = Type>
     inline Result option() const {
         // Pointers... pointers everywhere
         Type   result;
-        size_t size = sizeof(result);
-        zmq_getsockopt(_zsocket, flag, &result, &size);
+        size_t size    = sizeof(result);
+
+        auto   success = nonnegative_or_errno<int>(zmq_getsockopt(_zsocket, flag, &result, &size));
+        assert(success);
+
         return result;
     }
 
     template<int flag>
-    inline void set_option(const Bytes &value) {
-        zmq_setsockopt(_zsocket, flag,
-                value.data(), value.size());
+    inline nonnegative_or_errno<int> set_option(const Bytes &value) {
+        return nonnegative_or_errno<int>{ zmq_setsockopt(_zsocket, flag,
+                value.data(), value.size()) };
     }
 
     template<int flag>
-    inline void set_option(int value) {
-        zmq_setsockopt(_zsocket, flag,
-                &value, sizeof(value));
+    inline nonnegative_or_errno<int> set_option(int value) {
+        return nonnegative_or_errno<int>{ zmq_setsockopt(_zsocket, flag,
+                &value, sizeof(value)) };
     }
 
     [[nodiscard]] inline intptr_t file_descriptor() const {
@@ -334,7 +368,9 @@ protected:
         return option<ZMQ_RCVMORE, intptr_t, bool>();
     }
 
-    [[nodiscard]] zmq_socket_ptr zsocket() const { return _zsocket; }
+    [[nodiscard]] zmq_socket_ptr zsocket() const {
+        return _zsocket;
+    }
 
     template<typename, template<typename> typename...>
     friend class SocketGroup;
@@ -362,8 +398,8 @@ concept SocketGroupHandler = requires(HandlerValue handler, Socket<HandlerValue>
 template<typename Handler, template<typename> typename... Sockets>
 class SocketGroup {
 private:
-    static_assert(std::is_same_v<Handler, meta::regular_void> || SocketGroupHandler<Handler, Socket>);
     using this_t = SocketGroup<Handler, Sockets...>;
+    // static_assert(std::is_same_v<Handler, meta::regular_void> || (SocketGroupHandler<this_t *, Sockets> && ...));
 
     std::tuple<Sockets<this_t *>...> _sockets;
     Handler                          _handler;
@@ -382,14 +418,14 @@ public:
         return std::get<Id>(_sockets);
     }
 
-    template<typename T>
+    template<template<typename> typename Socket>
     [[nodiscard]] const auto &get() const {
-        return std::get<T>(_sockets);
+        return std::get<Socket<this_t *>>(_sockets);
     }
 
-    template<typename T>
+    template<template<typename> typename Socket>
     [[nodiscard]] auto &get() {
-        return std::get<T>(_sockets);
+        return std::get<Socket<this_t *>>(_sockets);
     }
 
     void read() requires SocketGroupHandler<Handler, Socket> {

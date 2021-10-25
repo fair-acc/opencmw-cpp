@@ -11,7 +11,7 @@ namespace yaz {
 namespace result_type {
 // TODO: refactor to proper policies instead of type tags
 class only_zero_valid;
-class positive_values_valid;
+class nonnegative_values_valid;
 class error_in_errno;
 } // namespace result_type
 
@@ -55,7 +55,7 @@ public:
 };
 
 template<typename T>
-class [[nodiscard]] result<T, result_type::positive_values_valid> {
+class [[nodiscard]] result<T, result_type::nonnegative_values_valid> {
 private:
     T _value;
 
@@ -64,11 +64,11 @@ public:
         : _value{ std::move(value) } {}
 
     [[nodiscard]] constexpr bool has_value() const {
-        return _value > 0;
+        return _value >= 0;
     }
 
     constexpr explicit operator bool() const {
-        return _value > 0;
+        return _value >= 0;
     }
 
     constexpr T &value() {
@@ -91,7 +91,7 @@ public:
 };
 
 template<typename T>
-class [[nodiscard]] result<T, result_type::positive_values_valid, result_type::error_in_errno> {
+class [[nodiscard]] result<T, result_type::nonnegative_values_valid, result_type::error_in_errno> {
 private:
     T   _value;
     int _error;
@@ -101,11 +101,11 @@ public:
         : _value{ std::move(value) }, _error{ errno } {}
 
     [[nodiscard]] constexpr bool has_value() const {
-        return _value > 0;
+        return _value >= 0;
     }
 
     constexpr explicit operator bool() const {
-        return _value > 0;
+        return _value >= 0;
     }
 
     constexpr T &value() {
@@ -125,12 +125,17 @@ public:
         assert(!has_value());
         return _error;
     }
+
+    friend auto operator&&(const result &left, const result &right) {
+        // If left is false, return it
+        return !left ? left : right;
+    }
 };
 
 template<typename T>
-using positive_result = result<T, result_type::positive_values_valid>;
+using nonnegative_result = result<T, result_type::nonnegative_values_valid>;
 template<typename T>
-using positive_or_errno = result<T, result_type::positive_values_valid, result_type::error_in_errno>;
+using nonnegative_or_errno = result<T, result_type::nonnegative_values_valid, result_type::error_in_errno>;
 template<typename T>
 using shell_result = result<T, result_type::only_zero_valid>;
 

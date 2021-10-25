@@ -116,6 +116,10 @@ public:
         Worker
     };
 
+    MdpMessage() {
+        resize(numFrames);
+    }
+
     ~MdpMessage()                  = default;
     MdpMessage(const MdpMessage &) = delete;
     MdpMessage &operator=(const MdpMessage &) = delete;
