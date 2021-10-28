@@ -44,8 +44,7 @@ public:
     }
 
     explicit MessagePart(std::string_view view, dynamic_bytes_tag tag)
-        : MessagePart(new std::string(view), tag)
-    {}
+        : MessagePart(new std::string(view), tag) {}
 
     explicit MessagePart(std::string_view buf, static_bytes_tag) {
         zmq_msg_init_data(

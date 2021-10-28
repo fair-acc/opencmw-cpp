@@ -264,10 +264,17 @@ public:
         return zmq_bind(_zsocket, address.data()) == 0;
     }
 
+    // TODO these are hacks to prepend frames and send subscribe/unsubscribe messages
+    // that don't fit into the Message pattern
     void send_more(std::string_view data) {
-        // TODO handle other types/allocation
         MessagePart part(std::move(data), MessagePart::dynamic_bytes_tag{});
-        const auto result = part.send(_zsocket, ZMQ_DONTWAIT | ZMQ_SNDMORE);
+        const auto  result = part.send(_zsocket, ZMQ_DONTWAIT | ZMQ_SNDMORE);
+        assert(result);
+    }
+
+    void send(std::string_view data) {
+        MessagePart part(std::move(data), MessagePart::dynamic_bytes_tag{});
+        const auto  result = part.send(_zsocket, ZMQ_DONTWAIT);
         assert(result);
     }
 
@@ -289,8 +296,8 @@ public:
         std::vector<MessagePart> parts;
 
         while (true) {
-            MessagePart  part;
-            const auto   byte_count_result = part.receive(_zsocket, ZMQ_DONTWAIT);
+            MessagePart part;
+            const auto  byte_count_result = part.receive(_zsocket, ZMQ_DONTWAIT);
 
             if (byte_count_result) {
                 parts.emplace_back(std::move(part));

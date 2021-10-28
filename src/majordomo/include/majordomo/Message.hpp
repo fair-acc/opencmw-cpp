@@ -48,11 +48,22 @@ private:
         return operator[](index(value));
     }
 
+    MdpMessage() {
+        resize(numFrames);
+    }
+
     explicit MdpMessage(char command) {
         resize(numFrames);
-        setFrameData(Frame::Command, new std::string(1, command), MessagePart::dynamic_bytes_tag{});
+        setCommand(command);
         assert(this->command() == command);
     }
+
+    void setCommand(char command) {
+        setFrameData(Frame::Command, new std::string(1, command), MessagePart::dynamic_bytes_tag{});
+    }
+
+    MdpMessage(const MdpMessage &) = default;
+    MdpMessage        &operator=(const MdpMessage &) = default;
 
     [[nodiscard]] char command() const {
         assert(frameAt(Frame::Command).data().length() == 1);
@@ -122,9 +133,7 @@ public:
     }
 
     ~MdpMessage()                  = default;
-    MdpMessage(const MdpMessage &) = delete;
-    MdpMessage &operator=(const MdpMessage &) = delete;
-    MdpMessage(MdpMessage &&other)            = default;
+    MdpMessage(MdpMessage &&other) = default;
     MdpMessage       &operator=(MdpMessage &&other) = default;
 
     static MdpMessage createClientMessage(ClientCommand cmd) {
@@ -139,14 +148,22 @@ public:
         return msg;
     }
 
+    MdpMessage clone() const {
+        // TODO make this nicer...
+        MdpMessage tmp;
+        for (size_t i = 0; i < parts_count(); ++i)
+            tmp.add_part(std::make_unique<std::string>((*this)[i].data()));
+        return tmp;
+    }
+
     [[nodiscard]] bool isValid() const {
         return isMessageValid(*this);
     }
 
     void setProtocol(Protocol protocol) {
         setFrameData(Frame::Protocol,
-                     protocol == Protocol::Client ? clientProtocol : workerProtocol,
-                     MessagePart::static_bytes_tag{});
+                protocol == Protocol::Client ? clientProtocol : workerProtocol,
+                MessagePart::static_bytes_tag{});
     }
 
     [[nodiscard]] Protocol protocol() const {
@@ -163,9 +180,17 @@ public:
         return protocol() == Protocol::Worker;
     }
 
+    void setClientCommand(ClientCommand cmd) {
+        setCommand(static_cast<char>(cmd));
+    }
+
     [[nodiscard]] ClientCommand clientCommand() const {
         assert(isClientMessage());
         return static_cast<ClientCommand>(command());
+    }
+
+    void setWorkerCommand(WorkerCommand cmd) {
+        setCommand(static_cast<char>(cmd));
     }
 
     [[nodiscard]] WorkerCommand workerCommand() const {

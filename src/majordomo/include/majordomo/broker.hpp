@@ -5,6 +5,7 @@
 #include <chrono>
 #include <deque>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 
@@ -172,6 +173,8 @@ private:
         }
     };
 
+    std::unordered_map<std::string, std::set<std::string>> _subscribed_clients_by_topic; // topic -> client IDs
+    std::unordered_map<std::string, int> _subscribed_topics; // topic -> subscription count
     std::unordered_map<std::string, Client> _clients;
     std::unordered_map<std::string, Worker> _workers;
     std::unordered_map<std::string, Service> _services;
@@ -192,6 +195,10 @@ private:
     // Common
     auto &pub_socket() {
         return _sockets.get<PubSocket>();
+    }
+
+    auto &sub_socket() {
+        return _sockets.get<SubSocket>();
     }
 
     Service& require_service(std::string service_name, std::string service_description) {
@@ -238,6 +245,44 @@ private:
             message.setProtocol(MdpMessage::Protocol::Worker);
             // TODO assert that command exists in both protocols?
             worker->socket->send(std::move(message));
+        }
+    }
+
+    void send_with_source_id(MdpMessage &&message, std::string_view source_id) {
+        message.setSourceId(source_id, MessagePart::dynamic_bytes_tag{});
+        _sockets.get<RouterSocket>().send(std::move(message));
+    }
+
+    static bool matches_subscription_topic(std::string_view topic, std::string_view subscription_topic) {
+        // TODO check what this actually is supposed to do
+        return subscription_topic.rfind(topic, 0) == 0;
+    }
+
+    void dispatch_message_to_matching_subscriber(MdpMessage &&message) {
+        const auto it = _subscribed_clients_by_topic.find(std::string(message.topic()));
+        const auto has_router_subscriptions = it != _subscribed_clients_by_topic.end();
+
+        std::vector<std::string> pubsub_subscriptions;
+        for (const auto &topic_it : _subscribed_topics) {
+            if (matches_subscription_topic(message.topic(), topic_it.first)) {
+                pubsub_subscriptions.push_back(topic_it.first);
+            }
+        }
+
+        for (size_t i = 0; i < pubsub_subscriptions.size(); ++i) {
+            const auto is_last = !has_router_subscriptions && i + 1 == pubsub_subscriptions.size();
+            pub_socket().send_more(message.topic());
+            pub_socket().send(is_last ? std::move(message) : message.clone());
+        }
+
+        if (has_router_subscriptions) {
+            size_t sent = 0;
+            for (const auto &client_id : it->second) {
+                const auto is_last = sent + 1 == it->second.size();
+
+                send_with_source_id(is_last ? std::move(message) : message.clone(), client_id);
+                ++sent;
+            }
         }
     }
 
@@ -339,11 +384,29 @@ public:
             switch (message.clientCommand()) {
             // TODO handle READY (client)?
             case MdpMessage::ClientCommand::Subscribe:
-                // TODO
+            {
+                auto it = _subscribed_clients_by_topic.try_emplace(std::string(message.topic()), std::set<std::string>{});
+                // TODO check for duplicate subscriptions?
+                it.first->second.emplace(message.sourceId());
+                if (it.first->second.size() == 1) {
+                    //TODO correct?
+                    sub_socket().send(std::string("\x1") + std::string(message.topic()));
+                }
                 break;
+            }
             case MdpMessage::ClientCommand::Unsubscribe:
-                // TODO
+            {
+                auto it = _subscribed_clients_by_topic.find(std::string(message.topic()));
+                if (it != _subscribed_clients_by_topic.end()) {
+                    it->second.erase(std::string(message.sourceId()));
+                    if (it->second.empty()) {
+                        _subscribed_clients_by_topic.erase(it);
+                        // TODO correct?
+                        sub_socket().send(std::string("\x0") + std::string(message.topic()));
+                    }
+                }
                 break;
+            }
             // TODO handle HEARTBEAT (client)?
             default:
                 break;
@@ -408,8 +471,18 @@ public:
             } else {
                 // TODO delete_worker(worker_id, true);
             }
+            break;
         }
+        case MdpMessage::WorkerCommand::Notify:
+        {
+            message.setProtocol(MdpMessage::Protocol::Client);
+            message.setClientCommand(MdpMessage::ClientCommand::Final);
+            message.setSourceId(message.serviceName(), yaz::MessagePart::dynamic_bytes_tag{});
+            message.setServiceName(worker.service_name, yaz::MessagePart::dynamic_bytes_tag{});
 
+            dispatch_message_to_matching_subscriber(std::move(message));
+            break;
+        }
         default:
             break;
         }
