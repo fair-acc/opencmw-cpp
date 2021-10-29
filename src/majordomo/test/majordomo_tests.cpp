@@ -1,7 +1,7 @@
 #include <cstdlib>
 
-#include <majordomo/broker.hpp>
 #include <majordomo/Message.hpp>
+#include <majordomo/broker.hpp>
 
 #include <catch2/catch.hpp>
 #include <deque>
@@ -13,7 +13,7 @@ class TestNode {
     std::deque<yaz::Message> _receivedMessages;
 
 public:
-    yaz::Socket<yaz::Message, TestNode*> _socket;
+    yaz::Socket<yaz::Message, TestNode *> _socket;
 
     explicit TestNode(yaz::Context &context)
         : _socket(yaz::make_socket<yaz::Message>(context, ZMQ_DEALER, this)) {
@@ -83,16 +83,16 @@ TEST_CASE("Request answered with unknown service", "[Broker]") {
     using Majordomo::OpenCMW::Broker;
     using Majordomo::OpenCMW::MdpMessage;
 
-    yaz::Context context;
-    Broker broker("testbroker", {}, context);
+    yaz::Context   context;
+    Broker         broker("testbroker", {}, context);
 
-    std::thread brokerThread([&broker] {
+    std::thread    brokerThread([&broker] {
         broker.run();
-    });
+       });
 
     constexpr auto address = std::string_view("inproc://broker/router"); // TODO use shared address with broker
 
-    TestNode client(context);
+    TestNode       client(context);
     REQUIRE(client.connect(address));
 
     yaz::Message request;
@@ -126,12 +126,12 @@ TEST_CASE("One client/one worker roundtrip", "[Broker]") {
     using Majordomo::OpenCMW::Broker;
     using Majordomo::OpenCMW::MdpMessage;
 
-    yaz::Context context;
-    Broker broker("testbroker", {}, context);
+    yaz::Context   context;
+    Broker         broker("testbroker", {}, context);
 
     constexpr auto address = std::string_view("inproc://broker/router"); // TODO use shared address with broker
 
-    TestNode worker(context);
+    TestNode       worker(context);
     REQUIRE(worker.connect(address));
 
     TestNode client(context);
