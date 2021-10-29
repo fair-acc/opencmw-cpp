@@ -216,7 +216,7 @@ private:
         }
 
         auto does_not_start_with = [&service_name](auto service) {
-            return service->name.rfind(service_name, 0) != 0;
+            return !service->name.starts_with(service_name);
         };
 
         services.erase(std::remove_if(services.begin(), services.end(), does_not_start_with), services.end());
@@ -255,7 +255,7 @@ private:
 
     static bool matches_subscription_topic(std::string_view topic, std::string_view subscription_topic) {
         // TODO check what this actually is supposed to do
-        return subscription_topic.rfind(topic, 0) == 0;
+        return subscription_topic.starts_with(topic);
     }
 
     void dispatch_message_to_matching_subscriber(MdpMessage &&message) {
