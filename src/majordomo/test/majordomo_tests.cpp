@@ -15,12 +15,12 @@ class TestNode {
 public:
     yaz::Socket<yaz::Message, TestNode *> _socket;
 
-    explicit TestNode(yaz::Context &context)
-        : _socket(yaz::make_socket<yaz::Message>(context, ZMQ_DEALER, this)) {
+    explicit TestNode(yaz::Context &context, int socket_type = ZMQ_DEALER)
+        : _socket(yaz::make_socket<yaz::Message>(context, socket_type, this)) {
     }
 
-    bool connect(std::string_view address) {
-        return _socket.connect(address);
+    bool connect(std::string_view address, std::string_view subscription="") {
+        return _socket.connect(address, subscription);
     }
 
     yaz::Message read_one() {
@@ -199,4 +199,49 @@ TEST_CASE("One client/one worker roundtrip", "[Broker]") {
     REQUIRE(reply[5].data() == "reply body");
     REQUIRE(reply[6].data().empty());
     REQUIRE(reply[7].data() == "rbac_worker");
+}
+
+TEST_CASE("Simple pubsub example", "[Broker]") {
+    using Majordomo::OpenCMW::Broker;
+    using Majordomo::OpenCMW::MdpMessage;
+
+    yaz::Context   context;
+    Broker         broker("testbroker", {}, context);
+
+    constexpr auto router_address = std::string_view("inproc://broker/router"); // TODO use shared address with broker
+    constexpr auto publisher_address = std::string_view("inproc://broker/publisher"); // TODO use shared address with broker
+
+    TestNode subscriber(context, ZMQ_SUB);
+    REQUIRE(subscriber.connect(publisher_address, "a.topic"));
+
+    broker.process_one_message();
+
+    TestNode publisher(context);
+    REQUIRE(publisher.connect(router_address));
+
+    yaz::Message pub_msg1;
+    pub_msg1.add_part(std::make_unique<std::string>("MDPW03"));
+    pub_msg1.add_part(std::make_unique<std::string>("\x5")); // NOTIFY
+    pub_msg1.add_part(std::make_unique<std::string>("a.service"));
+    pub_msg1.add_part(std::make_unique<std::string>("1"));
+    pub_msg1.add_part(std::make_unique<std::string>("a.topic"));
+    pub_msg1.add_part(std::make_unique<std::string>("First notification about a.topic"));
+    pub_msg1.add_part();
+    pub_msg1.add_part(std::make_unique<std::string>("rbac_worker"));
+
+    publisher.send(std::move(pub_msg1));
+
+    broker.process_one_message();
+
+    const auto reply = subscriber.read_one();
+    REQUIRE(reply.parts_count() == 9);
+    REQUIRE(reply[0].data() == "a.topic");
+    REQUIRE(reply[1].data() == "MDPC03");
+    REQUIRE(reply[2].data() == "\x6"); // FINAL
+    REQUIRE(reply[3].data() == "a.service");
+    REQUIRE(reply[4].data() == "1");
+    REQUIRE(reply[5].data() == "a.topic");
+    REQUIRE(reply[6].data() == "First notification about a.topic");
+    REQUIRE(reply[7].data().empty());
+    REQUIRE(reply[8].data() == "rbac_worker");
 }

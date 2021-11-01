@@ -266,10 +266,14 @@ public:
 
     // TODO these are hacks to prepend frames and send subscribe/unsubscribe messages
     // that don't fit into the Message pattern
-    void send_more(std::string_view data) {
-        MessagePart part(std::move(data), MessagePart::dynamic_bytes_tag{});
-        const auto  result = part.send(_zsocket, ZMQ_DONTWAIT | ZMQ_SNDMORE);
-        assert(result);
+    void send(std::vector<MessagePart> &&message) {
+        const auto parts_count = message.size();
+        for (std::size_t part_index = 0; part_index < parts_count; part_index++) {
+            const auto flags  = part_index + 1 == parts_count ? ZMQ_DONTWAIT
+                                                              : ZMQ_DONTWAIT | ZMQ_SNDMORE;
+            const auto result = message[part_index].send(_zsocket, flags);
+            assert(result);
+        }
     }
 
     void send(std::string_view data) {
@@ -279,7 +283,7 @@ public:
     }
 
     void send(Message &&message) {
-        auto parts_count = message.parts_count();
+        const auto parts_count = message.parts_count();
         for (std::size_t part_index = 0; part_index < parts_count; part_index++) {
             const auto flags  = part_index + 1 == parts_count ? ZMQ_DONTWAIT
                                                               : ZMQ_DONTWAIT | ZMQ_SNDMORE;
@@ -288,7 +292,8 @@ public:
         }
     }
 
-    std::optional<Message> receive() {
+    // TODO review added to read subscribe/unsubscribe messages
+    std::vector<MessagePart> receive_parts() {
         if (_zsocket == nullptr) {
             std::terminate();
         }
@@ -312,6 +317,12 @@ public:
                 break;
             }
         }
+
+        return parts;
+    }
+
+    std::optional<Message> receive() {
+        auto parts = receive_parts();
 
         if (parts.empty()) {
             return {};

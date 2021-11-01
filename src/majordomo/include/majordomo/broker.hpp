@@ -258,10 +258,11 @@ private:
         return subscription_topic.starts_with(topic);
     }
 
-    void dispatch_message_to_matching_subscriber(MdpMessage &&message) {
+    void dispatch_message_to_matching_subscribers(MdpMessage &&message) {
         const auto               it                       = _subscribed_clients_by_topic.find(std::string(message.topic()));
         const auto               has_router_subscriptions = it != _subscribed_clients_by_topic.end();
 
+        message.setSourceId(message.topic(), MessagePart::dynamic_bytes_tag{});
         std::vector<std::string> pubsub_subscriptions;
         for (const auto &topic_it : _subscribed_topics) {
             if (matches_subscription_topic(message.topic(), topic_it.first)) {
@@ -271,8 +272,8 @@ private:
 
         for (size_t i = 0; i < pubsub_subscriptions.size(); ++i) {
             const auto is_last = !has_router_subscriptions && i + 1 == pubsub_subscriptions.size();
-            pub_socket().send_more(message.topic());
-            pub_socket().send(is_last ? std::move(message) : message.clone());
+            auto copy = is_last ? std::move(message) : message.clone();
+            pub_socket().send(std::move(copy));
         }
 
         if (has_router_subscriptions) {
@@ -359,8 +360,42 @@ public:
     requires yaz::meta::is_instantiation_of_v<PubSocket, Socket>
     bool receive_message(Socket &socket, bool /*wait*/) {
         // was receive plus handleSubscriptionMessage
-        auto message = socket.receive();
-        return false;
+
+        auto message = socket.receive_parts();
+        if (message.empty())
+            return false;
+
+        if (message.size() > 1) {
+            debug() << "Unexpected message on pub socket (" << message.size() << " frames)" << std::endl;
+            return false;
+        }
+
+        const auto data = message[0].data();
+
+        if (data.size() < 2 || !(data[0] == '\x0' || data[0] == '\x1')) {
+            debug() << "Unexpected subscribe/unsubscribe message: " << data << std::endl;
+            return false;
+        }
+
+        const auto topic = std::string(data.substr(1));
+
+        if (data[0] == '\x1') {
+            auto it = _subscribed_topics.try_emplace(topic, 0);
+            it.first->second++;
+            if (it.first->second == 1)
+                sub_socket().send(std::move(message));
+        } else {
+            auto it = _subscribed_topics.find(topic);
+            if (it != _subscribed_topics.end()) {
+                it->second--;
+                if (it->second == 0) {
+                    _subscribed_topics.erase(topic);
+                    sub_socket().send(std::move(message));
+                }
+            }
+        }
+
+        return true;
     }
 
     template<typename Socket>
@@ -444,8 +479,7 @@ public:
             notify.setServiceName(INTERNAL_SERVICE_NAMES, dynamic_tag);
             notify.setTopic(INTERNAL_SERVICE_NAMES, dynamic_tag);
             notify.setClientRequestId(_broker_name, dynamic_tag);
-
-            pub_socket().send_more(std::string(INTERNAL_SERVICE_NAMES));
+            notify.setSourceId(std::string(INTERNAL_SERVICE_NAMES), yaz::MessagePart::dynamic_bytes_tag{});
             pub_socket().send(std::move(notify));
             break;
         }
@@ -475,7 +509,7 @@ public:
             message.setSourceId(message.serviceName(), yaz::MessagePart::dynamic_bytes_tag{});
             message.setServiceName(worker.service_name, yaz::MessagePart::dynamic_bytes_tag{});
 
-            dispatch_message_to_matching_subscriber(std::move(message));
+            dispatch_message_to_matching_subscribers(std::move(message));
             break;
         }
         default:
