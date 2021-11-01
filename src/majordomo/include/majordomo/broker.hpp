@@ -348,6 +348,90 @@ private:
         return result;
     }
 
+    template<typename Socket>
+    void process_worker(Socket &socket, MdpMessage &&message) {
+        assert(message.isWorkerMessage());
+
+        const auto service_name = std::string(message.serviceName());
+        const auto worker_id    = std::string(message.sourceId());
+        const auto known_worker = _workers.contains(worker_id);
+        auto      &worker       = _workers.try_emplace(worker_id, &socket, worker_id, service_name).first->second;
+        worker.update_expiry();
+
+        switch (message.workerCommand()) {
+        case MdpMessage::WorkerCommand::Ready: {
+            debug() << "log new local/external worker for service " << service_name << " - " << message << std::endl;
+            std::ignore = require_service(service_name, std::string(message.body()));
+            worker_waiting(worker);
+
+            // notify potential listeners
+            auto       notify      = MdpMessage::createWorkerMessage(MdpMessage::WorkerCommand::Notify);
+            const auto dynamic_tag = yaz::MessagePart::dynamic_bytes_tag{};
+            notify.setServiceName(INTERNAL_SERVICE_NAMES, dynamic_tag);
+            notify.setTopic(INTERNAL_SERVICE_NAMES, dynamic_tag);
+            notify.setClientRequestId(_broker_name, dynamic_tag);
+            notify.setSourceId(std::string(INTERNAL_SERVICE_NAMES), dynamic_tag);
+            pub_socket().send(std::move(notify));
+            break;
+        }
+        case MdpMessage::WorkerCommand::Disconnect:
+            // delete_worker(worker); // TODO handle? also commented out in java impl
+            break;
+        case MdpMessage::WorkerCommand::Partial:
+        case MdpMessage::WorkerCommand::Final: {
+            if (known_worker) {
+                const auto client_id = message.clientSourceId();
+                auto       client    = _clients.find(std::string(client_id));
+                if (client == _clients.end()) {
+                    return; // drop if client unknown/disappeared
+                }
+
+                message.setSourceId(client_id, yaz::MessagePart::dynamic_bytes_tag{});
+                message.setServiceName(worker.service_name, yaz::MessagePart::dynamic_bytes_tag{});
+                message.setProtocol(MdpMessage::Protocol::Client);
+                client->second.socket->send(std::move(message));
+                worker_waiting(worker);
+            } else {
+                disconnect_worker(worker);
+            }
+            break;
+        }
+        case MdpMessage::WorkerCommand::Notify: {
+            message.setProtocol(MdpMessage::Protocol::Client);
+            message.setClientCommand(MdpMessage::ClientCommand::Final);
+            message.setSourceId(message.serviceName(), yaz::MessagePart::dynamic_bytes_tag{});
+            message.setServiceName(worker.service_name, yaz::MessagePart::dynamic_bytes_tag{});
+
+            dispatch_message_to_matching_subscribers(std::move(message));
+            break;
+        }
+        default:
+            break;
+        }
+    }
+
+    void delete_worker(Worker &worker) {
+        auto serviceIt = _services.find(worker.service_name);
+        if (serviceIt != _services.end()) {
+            auto &waiting = serviceIt->second.waiting;
+            waiting.erase(std::remove(waiting.begin(), waiting.end(), &worker), waiting.end());
+        }
+
+        _workers.erase(worker.id);
+    }
+
+    void disconnect_worker(Worker &worker) {
+        auto disconnect = MdpMessage::createWorkerMessage(MdpMessage::WorkerCommand::Disconnect);
+        constexpr auto dynamic_tag = yaz::MessagePart::dynamic_bytes_tag{};
+        disconnect.setSourceId(worker.id, dynamic_tag);
+        disconnect.setServiceName(worker.service_name, dynamic_tag);
+        disconnect.setTopic(worker.service_name, dynamic_tag);
+        disconnect.setBody("broker shutdown", yaz::MessagePart::static_bytes_tag{});
+        disconnect.setRbac(_rbac, dynamic_tag);
+        worker.socket->send(std::move(disconnect));
+        delete_worker(worker);
+    }
+
 public:
     Broker(std::string broker_name, std::string dns_address, yaz::Context &context)
         : _broker_name{ std::move(broker_name) }
@@ -457,68 +541,6 @@ public:
         return true;
     }
 
-    template<typename Socket>
-    void process_worker(Socket &socket, MdpMessage &&message) {
-        assert(message.isWorkerMessage());
-
-        const auto service_name = std::string(message.serviceName());
-        const auto worker_id    = std::string(message.sourceId());
-        const auto known_worker = _workers.contains(worker_id);
-        auto      &worker       = _workers.try_emplace(worker_id, &socket, worker_id, service_name).first->second;
-        worker.update_expiry();
-
-        switch (message.workerCommand()) {
-        case MdpMessage::WorkerCommand::Ready: {
-            debug() << "log new local/external worker for service " << service_name << " - " << message << std::endl;
-            std::ignore = require_service(service_name, std::string(message.body()));
-            worker_waiting(worker);
-
-            // notify potential listeners
-            auto       notify      = MdpMessage::createWorkerMessage(MdpMessage::WorkerCommand::Notify);
-            const auto dynamic_tag = yaz::MessagePart::dynamic_bytes_tag{};
-            notify.setServiceName(INTERNAL_SERVICE_NAMES, dynamic_tag);
-            notify.setTopic(INTERNAL_SERVICE_NAMES, dynamic_tag);
-            notify.setClientRequestId(_broker_name, dynamic_tag);
-            notify.setSourceId(std::string(INTERNAL_SERVICE_NAMES), dynamic_tag);
-            pub_socket().send(std::move(notify));
-            break;
-        }
-        case MdpMessage::WorkerCommand::Disconnect:
-            // delete_worker(worker); // TODO handle? also commented out in java impl
-            break;
-        case MdpMessage::WorkerCommand::Partial:
-        case MdpMessage::WorkerCommand::Final: {
-            if (known_worker) {
-                const auto client_id = message.clientSourceId();
-                auto       client    = _clients.find(std::string(client_id));
-                if (client == _clients.end()) {
-                    return; // drop if client unknown/disappeared
-                }
-
-                message.setSourceId(client_id, yaz::MessagePart::dynamic_bytes_tag{});
-                message.setServiceName(worker.service_name, yaz::MessagePart::dynamic_bytes_tag{});
-                message.setProtocol(MdpMessage::Protocol::Client);
-                client->second.socket->send(std::move(message));
-                worker_waiting(worker);
-            } else {
-                disconnect_worker(worker);
-            }
-            break;
-        }
-        case MdpMessage::WorkerCommand::Notify: {
-            message.setProtocol(MdpMessage::Protocol::Client);
-            message.setClientCommand(MdpMessage::ClientCommand::Final);
-            message.setSourceId(message.serviceName(), yaz::MessagePart::dynamic_bytes_tag{});
-            message.setServiceName(worker.service_name, yaz::MessagePart::dynamic_bytes_tag{});
-
-            dispatch_message_to_matching_subscribers(std::move(message));
-            break;
-        }
-        default:
-            break;
-        }
-    }
-
     bool continue_after_messages_read(bool anything_received) {
         process_clients();
 
@@ -532,28 +554,6 @@ public:
         }
 
         return anything_received; // TODO: && thread_not_interrupted && run
-    }
-
-    void delete_worker(Worker &worker) {
-        auto serviceIt = _services.find(worker.service_name);
-        if (serviceIt != _services.end()) {
-            auto &waiting = serviceIt->second.waiting;
-            waiting.erase(std::remove(waiting.begin(), waiting.end(), &worker), waiting.end());
-        }
-
-        _workers.erase(worker.id);
-    }
-
-    void disconnect_worker(Worker &worker) {
-        auto disconnect = MdpMessage::createWorkerMessage(MdpMessage::WorkerCommand::Disconnect);
-        constexpr auto dynamic_tag = yaz::MessagePart::dynamic_bytes_tag{};
-        disconnect.setSourceId(worker.id, dynamic_tag);
-        disconnect.setServiceName(worker.service_name, dynamic_tag);
-        disconnect.setTopic(worker.service_name, dynamic_tag);
-        disconnect.setBody("broker shutdown", yaz::MessagePart::static_bytes_tag{});
-        disconnect.setRbac(_rbac, dynamic_tag);
-        worker.socket->send(std::move(disconnect));
-        delete_worker(worker);
     }
 
     void run() {
