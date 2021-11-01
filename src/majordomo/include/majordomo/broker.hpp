@@ -426,7 +426,7 @@ public:
                     // TODO correct?
                     sub_socket().send(std::string("\x1") + std::string(message.topic()));
                 }
-                break;
+                return true;
             }
             case MdpMessage::ClientCommand::Unsubscribe: {
                 auto it = _subscribed_clients_by_topic.find(std::string(message.topic()));
@@ -438,7 +438,7 @@ public:
                         sub_socket().send(std::string("\x0") + std::string(message.topic()));
                     }
                 }
-                break;
+                return true;
             }
             // TODO handle HEARTBEAT (client)?
             default:

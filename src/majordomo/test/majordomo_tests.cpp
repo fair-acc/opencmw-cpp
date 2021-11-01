@@ -214,7 +214,7 @@ TEST_CASE("One client/one worker roundtrip", "[Broker]") {
     REQUIRE(disconnect[7].data() == "TODO (RBAC)");
 }
 
-TEST_CASE("Simple pubsub example", "[Broker]") {
+TEST_CASE("Simple pubsub example using pub socket", "[Broker]") {
     using Majordomo::OpenCMW::Broker;
     using Majordomo::OpenCMW::MdpMessage;
 
@@ -257,4 +257,178 @@ TEST_CASE("Simple pubsub example", "[Broker]") {
     REQUIRE(reply[6].data() == "First notification about a.topic");
     REQUIRE(reply[7].data().empty());
     REQUIRE(reply[8].data() == "rbac_worker");
+}
+
+TEST_CASE("pubsub example using router socket", "[Broker]") {
+    using Majordomo::OpenCMW::Broker;
+    using Majordomo::OpenCMW::MdpMessage;
+
+    yaz::Context   context;
+    Broker         broker("testbroker", {}, context);
+
+    constexpr auto router_address = std::string_view("inproc://broker/router"); // TODO use shared address with broker
+
+    TestNode subscriber(context);
+    REQUIRE(subscriber.connect(router_address));
+
+    TestNode publisher_one(context);
+    REQUIRE(publisher_one.connect(router_address));
+
+    TestNode publisher_two(context);
+    REQUIRE(publisher_two.connect(router_address));
+
+    // subscribe client to a.topic
+    {
+        yaz::Message subscribe;
+        subscribe.add_part(std::make_unique<std::string>("MDPC03"));
+        subscribe.add_part(std::make_unique<std::string>("\x3")); // SUBSCRIBE
+        subscribe.add_part(std::make_unique<std::string>("first.service"));
+        subscribe.add_part();
+        subscribe.add_part(std::make_unique<std::string>("a.topic"));
+        subscribe.add_part();
+        subscribe.add_part();
+        subscribe.add_part(std::make_unique<std::string>("rbac"));
+        subscriber.send(std::move(subscribe));
+    }
+
+    broker.process_one_message();
+
+    // subscribe client to another.topic
+    {
+        yaz::Message subscribe;
+        subscribe.add_part(std::make_unique<std::string>("MDPC03"));
+        subscribe.add_part(std::make_unique<std::string>("\x3")); // SUBSCRIBE
+        subscribe.add_part(std::make_unique<std::string>("second.service"));
+        subscribe.add_part();
+        subscribe.add_part(std::make_unique<std::string>("another.topic"));
+        subscribe.add_part();
+        subscribe.add_part();
+        subscribe.add_part(std::make_unique<std::string>("rbac"));
+        subscriber.send(std::move(subscribe));
+    }
+
+    broker.process_one_message();
+
+    // publisher 1 sends a notification for a.topic
+    {
+        yaz::Message pub_msg;
+        pub_msg.add_part(std::make_unique<std::string>("MDPW03"));
+        pub_msg.add_part(std::make_unique<std::string>("\x5")); // NOTIFY
+        pub_msg.add_part(std::make_unique<std::string>("first.service"));
+        pub_msg.add_part(std::make_unique<std::string>("1"));
+        pub_msg.add_part(std::make_unique<std::string>("a.topic"));
+        pub_msg.add_part(std::make_unique<std::string>("First notification about a.topic"));
+        pub_msg.add_part();
+        pub_msg.add_part(std::make_unique<std::string>("rbac_worker_1"));
+        publisher_one.send(std::move(pub_msg));
+    }
+
+    broker.process_one_message();
+
+    // client receives notification for a.topic
+    {
+        const auto reply = subscriber.read_one();
+        REQUIRE(reply.parts_count() == 8);
+        REQUIRE(reply[0].data() == "MDPC03");
+        REQUIRE(reply[1].data() == "\x6"); // FINAL
+        REQUIRE(reply[2].data() == "first.service");
+        REQUIRE(reply[3].data() == "1");
+        REQUIRE(reply[4].data() == "a.topic");
+        REQUIRE(reply[5].data() == "First notification about a.topic");
+        REQUIRE(reply[6].data().empty());
+        REQUIRE(reply[7].data() == "rbac_worker_1");
+    }
+
+    // publisher 2 sends a notification for another.topic
+    {
+        yaz::Message pub_msg;
+        pub_msg.add_part(std::make_unique<std::string>("MDPW03"));
+        pub_msg.add_part(std::make_unique<std::string>("\x5")); // NOTIFY
+        pub_msg.add_part(std::make_unique<std::string>("second.service"));
+        pub_msg.add_part(std::make_unique<std::string>("1"));
+        pub_msg.add_part(std::make_unique<std::string>("another.topic"));
+        pub_msg.add_part(std::make_unique<std::string>("First notification about another.topic"));
+        pub_msg.add_part();
+        pub_msg.add_part(std::make_unique<std::string>("rbac_worker_2"));
+        publisher_two.send(std::move(pub_msg));
+    }
+
+    broker.process_one_message();
+
+    // client receives notification for another.topic
+    {
+        const auto reply = subscriber.read_one();
+        REQUIRE(reply.parts_count() == 8);
+        REQUIRE(reply[0].data() == "MDPC03");
+        REQUIRE(reply[1].data() == "\x6"); // FINAL
+        REQUIRE(reply[2].data() == "second.service");
+        REQUIRE(reply[3].data() == "1");
+        REQUIRE(reply[4].data() == "another.topic");
+        REQUIRE(reply[5].data() == "First notification about another.topic");
+        REQUIRE(reply[6].data().empty());
+        REQUIRE(reply[7].data() == "rbac_worker_2");
+    }
+
+    // unsubscribe client from first.service
+    {
+        yaz::Message unsubscribe;
+        unsubscribe.add_part(std::make_unique<std::string>("MDPC03"));
+        unsubscribe.add_part(std::make_unique<std::string>("\x4")); // UNSUBSCRIBE
+        unsubscribe.add_part(std::make_unique<std::string>("first.service"));
+        unsubscribe.add_part();
+        unsubscribe.add_part(std::make_unique<std::string>("a.topic"));
+        unsubscribe.add_part();
+        unsubscribe.add_part();
+        unsubscribe.add_part(std::make_unique<std::string>("rbac"));
+        subscriber.send(std::move(unsubscribe));
+    }
+
+    broker.process_one_message();
+
+    // publisher 1 sends a notification for a.topic
+    {
+        yaz::Message pub_msg;
+        pub_msg.add_part(std::make_unique<std::string>("MDPW03"));
+        pub_msg.add_part(std::make_unique<std::string>("\x5")); // NOTIFY
+        pub_msg.add_part(std::make_unique<std::string>("first.service"));
+        pub_msg.add_part(std::make_unique<std::string>("1"));
+        pub_msg.add_part(std::make_unique<std::string>("a.topic"));
+        pub_msg.add_part(std::make_unique<std::string>("First notification about a.topic"));
+        pub_msg.add_part();
+        pub_msg.add_part(std::make_unique<std::string>("rbac_worker_1"));
+        publisher_one.send(std::move(pub_msg));
+    }
+
+    broker.process_one_message();
+
+    // publisher 2 sends a notification for another.topic
+    {
+        yaz::Message pub_msg;
+        pub_msg.add_part(std::make_unique<std::string>("MDPW03"));
+        pub_msg.add_part(std::make_unique<std::string>("\x5")); // NOTIFY
+        pub_msg.add_part(std::make_unique<std::string>("second.service"));
+        pub_msg.add_part(std::make_unique<std::string>("1"));
+        pub_msg.add_part(std::make_unique<std::string>("another.topic"));
+        pub_msg.add_part(std::make_unique<std::string>("Second notification about another.topic"));
+        pub_msg.add_part();
+        pub_msg.add_part(std::make_unique<std::string>("rbac_worker_2"));
+        publisher_two.send(std::move(pub_msg));
+    }
+
+    broker.process_one_message();
+
+    // verify that the client receives only the notification from publisher_two
+
+    {
+        const auto reply = subscriber.read_one();
+        REQUIRE(reply.parts_count() == 8);
+        REQUIRE(reply[0].data() == "MDPC03");
+        REQUIRE(reply[1].data() == "\x6"); // FINAL
+        REQUIRE(reply[2].data() == "second.service");
+        REQUIRE(reply[3].data() == "1");
+        REQUIRE(reply[4].data() == "another.topic");
+        REQUIRE(reply[5].data() == "Second notification about another.topic");
+        REQUIRE(reply[6].data().empty());
+        REQUIRE(reply[7].data() == "rbac_worker_2");
+    }
 }
