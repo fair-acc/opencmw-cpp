@@ -199,6 +199,19 @@ TEST_CASE("One client/one worker roundtrip", "[Broker]") {
     REQUIRE(reply[5].data() == "reply body");
     REQUIRE(reply[6].data().empty());
     REQUIRE(reply[7].data() == "rbac_worker");
+
+    broker.cleanup();
+
+    const auto disconnect = worker.read_one();
+    REQUIRE(disconnect.parts_count() == 8);
+    REQUIRE(disconnect[0].data() == "MDPW03");
+    REQUIRE(disconnect[1].data() == "\x7"); // DISCONNECT
+    REQUIRE(disconnect[2].data() == "a.service");
+    REQUIRE(disconnect[3].data().empty());
+    REQUIRE(disconnect[4].data() == "a.service");
+    REQUIRE(disconnect[5].data() == "broker shutdown");
+    REQUIRE(disconnect[6].data().empty());
+    REQUIRE(disconnect[7].data() == "TODO (RBAC)");
 }
 
 TEST_CASE("Simple pubsub example", "[Broker]") {

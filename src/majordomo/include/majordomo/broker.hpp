@@ -479,11 +479,13 @@ public:
             notify.setServiceName(INTERNAL_SERVICE_NAMES, dynamic_tag);
             notify.setTopic(INTERNAL_SERVICE_NAMES, dynamic_tag);
             notify.setClientRequestId(_broker_name, dynamic_tag);
-            notify.setSourceId(std::string(INTERNAL_SERVICE_NAMES), yaz::MessagePart::dynamic_bytes_tag{});
+            notify.setSourceId(std::string(INTERNAL_SERVICE_NAMES), dynamic_tag);
             pub_socket().send(std::move(notify));
             break;
         }
-
+        case MdpMessage::WorkerCommand::Disconnect:
+            // delete_worker(worker); // TODO handle? also commented out in java impl
+            break;
         case MdpMessage::WorkerCommand::Partial:
         case MdpMessage::WorkerCommand::Final: {
             if (known_worker) {
@@ -499,7 +501,7 @@ public:
                 client->second.socket->send(std::move(message));
                 worker_waiting(worker);
             } else {
-                // TODO delete_worker(worker_id, true);
+                disconnect_worker(worker);
             }
             break;
         }
@@ -532,10 +534,34 @@ public:
         return anything_received; // TODO: && thread_not_interrupted && run
     }
 
+    void delete_worker(Worker &worker) {
+        auto serviceIt = _services.find(worker.service_name);
+        if (serviceIt != _services.end()) {
+            auto &waiting = serviceIt->second.waiting;
+            waiting.erase(std::remove(waiting.begin(), waiting.end(), &worker), waiting.end());
+        }
+
+        _workers.erase(worker.id);
+    }
+
+    void disconnect_worker(Worker &worker) {
+        auto disconnect = MdpMessage::createWorkerMessage(MdpMessage::WorkerCommand::Disconnect);
+        constexpr auto dynamic_tag = yaz::MessagePart::dynamic_bytes_tag{};
+        disconnect.setSourceId(worker.id, dynamic_tag);
+        disconnect.setServiceName(worker.service_name, dynamic_tag);
+        disconnect.setTopic(worker.service_name, dynamic_tag);
+        disconnect.setBody("broker shutdown", yaz::MessagePart::static_bytes_tag{});
+        disconnect.setRbac(_rbac, dynamic_tag);
+        worker.socket->send(std::move(disconnect));
+        delete_worker(worker);
+    }
+
     void run() {
         do {
             process_one_message();
         } while (!_shutdown_requested);
+
+        cleanup();
     }
 
     void shutdown() {
@@ -547,6 +573,16 @@ public:
     void process_one_message() {
         _loopCount = 0;
         _sockets.read();
+    }
+
+    void cleanup() {
+        // iterate and delete workers (safe in >= C++14)
+        auto it = _workers.begin();
+        while (it != _workers.end()) {
+            auto &worker = it->second;
+            ++it;
+            disconnect_worker(worker);
+        }
     }
 };
 
