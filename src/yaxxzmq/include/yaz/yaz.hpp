@@ -5,6 +5,7 @@
 #include <cassert>
 #include <concepts>
 #include <cstddef>
+#include <cstring>
 #include <exception>
 #include <functional>
 #include <optional>
@@ -245,10 +246,19 @@ public:
 
     bool connect(std::string_view address,
             std::string_view      subscription = "") {
+        // TODO forward error details in a result<>
+
         if (zmq_connect(_zsocket, address.data()) != 0) {
+            debug() << "Could not connect to '" << address << "': " << std::strerror(errno) << "\n";
             return false;
         }
-        return subscription.empty() || static_cast<bool>(set_option<ZMQ_SUBSCRIBE>(subscription.data()));
+
+        if (!subscription.empty() && !static_cast<bool>(set_option<ZMQ_SUBSCRIBE>(subscription.data()))) {
+            debug() << "Could not subscribe to '" << subscription << "'\n";
+            return false;
+        }
+
+        return true;
     }
 
     bool disconnect() {
@@ -261,7 +271,14 @@ public:
     }
 
     bool bind(std::string_view address) {
-        return zmq_bind(_zsocket, address.data()) == 0;
+        const auto success = zmq_bind(_zsocket, address.data()) == 0;
+
+        // TODO forward error details in a result<>
+        if (!success) {
+            debug() << "Could not bind to '" << address << "': " << std::strerror(errno) << "\n";
+        }
+
+        return success;
     }
 
     // TODO these are hacks to prepend frames and send subscribe/unsubscribe messages
