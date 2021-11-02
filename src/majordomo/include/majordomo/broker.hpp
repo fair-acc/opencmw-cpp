@@ -21,6 +21,8 @@ using namespace std::string_literals;
 namespace Majordomo::OpenCMW {
 
 /*constexpr*/ std::string SCHEME_TCP                 = "tcp";
+/*constexpr*/ std::string SCHEME_MDP                 = "mdp";
+/*constexpr*/ std::string SCHEME_MDS                 = "mds";
 /*constexpr*/ std::string SCHEME_INPROC              = "inproc";
 /*constexpr*/ std::string SUFFIX_ROUTER              = "/router";
 /*constexpr*/ std::string SUFFIX_PUBLISHER           = "/publisher";
@@ -193,6 +195,10 @@ private:
     SocketGroup _sockets;
 
     // Common
+    auto &router_socket() {
+        return _sockets.get<RouterSocket>();
+    }
+
     auto &pub_socket() {
         return _sockets.get<PubSocket>();
     }
@@ -336,6 +342,13 @@ private:
     void        purge_clients() {}
     void        send_heartbeats() {}
 
+    std::string get_scheme(std::string_view address) {
+        auto scheme_end = address.find(':');
+        if (scheme_end == std::string_view::npos)
+            return {};
+        return std::string(address.substr(0, scheme_end));
+    }
+
     std::string replace_scheme(std::string_view address, std::string_view scheme_replacement) {
         auto scheme_end = address.find(':');
         if (utils::iequal(address.substr(0, scheme_end), SCHEME_INPROC)) {
@@ -438,6 +451,53 @@ public:
         , _dns_address{ dns_address.empty() ? dns_address : replace_scheme(std::move(dns_address), SCHEME_TCP) }
         , _sockets(context, this) {
         _sockets.get<DnsSocket>().connect(_dns_address.empty() ? INTERNAL_ADDRESS_BROKER : _dns_address);
+    }
+
+
+    enum class BindOption {
+        DetectFromURI, ///< detect from URI which socket is meant (@see bind)
+        Router, ///< Always bind ROUTER socket
+        Pub ///< Always bind PUB socket
+    };
+    /**
+     * Bind broker to endpoint, can call this multiple times. We use a single
+     * socket for both clients and workers.
+     *
+     * @param endpoint the URI-based 'scheme://ip:port' endpoint definition the server should listen to
+     * The protocol definition
+     *  - 'mdp://' corresponds to a SocketType.ROUTER socket
+     *  - 'mds://' corresponds to a SocketType.XPUB socket
+     *  - 'tcp://' internally falls back to 'mdp://' and ROUTER socket
+     *  - 'inproc://' requires the socket type to be specified explicitly
+     *
+     * @return adjusted public address to use for clients/workers to connect
+     */
+    std::optional<std::string> bind(std::string_view endpoint, BindOption option = BindOption::DetectFromURI) {
+        // TODO use result<std::string,Error> forwarding error details
+        assert(!endpoint.empty());
+        const auto requested_scheme = get_scheme(endpoint);
+        assert(!(option == BindOption::DetectFromURI && requested_scheme == "inproc"));
+        const auto is_router_socket = option != BindOption::Pub &&
+                (option == BindOption::Router || requested_scheme.starts_with(SCHEME_MDP) || requested_scheme.starts_with(SCHEME_TCP));
+        const auto result = [&] {
+            const auto with_tcp = replace_scheme(endpoint, SCHEME_TCP);
+            if (is_router_socket)
+                return router_socket().bind(with_tcp);
+            else
+                return pub_socket().bind(with_tcp);
+        }();
+
+        if (!result) {
+            debug() << fmt::format("Could not bind broker to '{}'\n", endpoint);
+            return {};
+        }
+
+        const auto endpoint_adjusted = replace_scheme(endpoint, is_router_socket ? SCHEME_MDP : SCHEME_MDS);
+        const auto adjusted_address_public = endpoint_adjusted; // TODO (java) resolveHost(endpointAdjusted, getLocalHostName());
+
+        debug() << fmt::format("Majordomo broker/0.1 is active at '{}'\n", adjusted_address_public); // TODO do not hardcode version
+        send_heartbeats(); // TODO check that ported correctly: sendDnsHeartbeats(true);
+        return adjusted_address_public;
     }
 
     template<typename Socket>

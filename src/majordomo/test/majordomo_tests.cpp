@@ -83,14 +83,16 @@ TEST_CASE("Request answered with unknown service", "[Broker]") {
     using Majordomo::OpenCMW::Broker;
     using Majordomo::OpenCMW::MdpMessage;
 
+    constexpr auto address = std::string_view("inproc://testrouter");
+
     yaz::Context   context;
     Broker         broker("testbroker", {}, context);
+
+    REQUIRE(broker.bind(address, Broker::BindOption::Router));
 
     std::thread    brokerThread([&broker] {
         broker.run();
        });
-
-    constexpr auto address = std::string_view("inproc://broker/router"); // TODO use shared address with broker
 
     TestNode       client(context);
     REQUIRE(client.connect(address));
@@ -126,10 +128,12 @@ TEST_CASE("One client/one worker roundtrip", "[Broker]") {
     using Majordomo::OpenCMW::Broker;
     using Majordomo::OpenCMW::MdpMessage;
 
+    constexpr auto address = std::string_view("inproc://testrouter");
+
     yaz::Context   context;
     Broker         broker("testbroker", {}, context);
 
-    constexpr auto address = std::string_view("inproc://broker/router"); // TODO use shared address with broker
+    REQUIRE(broker.bind(address, Broker::BindOption::Router));
 
     TestNode       worker(context);
     REQUIRE(worker.connect(address));
@@ -218,11 +222,14 @@ TEST_CASE("Simple pubsub example using pub socket", "[Broker]") {
     using Majordomo::OpenCMW::Broker;
     using Majordomo::OpenCMW::MdpMessage;
 
+    constexpr auto router_address = std::string_view("inproc://testrouter");
+    constexpr auto publisher_address = std::string_view("inproc://testpub");
+
     yaz::Context   context;
     Broker         broker("testbroker", {}, context);
 
-    constexpr auto router_address = std::string_view("inproc://broker/router"); // TODO use shared address with broker
-    constexpr auto publisher_address = std::string_view("inproc://broker/publisher"); // TODO use shared address with broker
+    REQUIRE(broker.bind(router_address, Broker::BindOption::Router));
+    REQUIRE(broker.bind(publisher_address, Broker::BindOption::Pub));
 
     TestNode subscriber(context, ZMQ_SUB);
     REQUIRE(subscriber.connect(publisher_address, "a.topic"));
@@ -263,19 +270,21 @@ TEST_CASE("pubsub example using router socket", "[Broker]") {
     using Majordomo::OpenCMW::Broker;
     using Majordomo::OpenCMW::MdpMessage;
 
+    constexpr auto address = std::string_view("inproc://testrouter");
+
     yaz::Context   context;
     Broker         broker("testbroker", {}, context);
 
-    constexpr auto router_address = std::string_view("inproc://broker/router"); // TODO use shared address with broker
+    REQUIRE(broker.bind(address, Broker::BindOption::Router));
 
     TestNode subscriber(context);
-    REQUIRE(subscriber.connect(router_address));
+    REQUIRE(subscriber.connect(address));
 
     TestNode publisher_one(context);
-    REQUIRE(publisher_one.connect(router_address));
+    REQUIRE(publisher_one.connect(address));
 
     TestNode publisher_two(context);
-    REQUIRE(publisher_two.connect(router_address));
+    REQUIRE(publisher_two.connect(address));
 
     // subscribe client to a.topic
     {
