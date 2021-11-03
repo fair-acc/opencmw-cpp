@@ -2,6 +2,7 @@
 
 #include <majordomo/BasicMdpWorker.hpp>
 #include <majordomo/broker.hpp>
+#include <majordomo/client.hpp>
 #include <majordomo/Message.hpp>
 
 #include <catch2/catch.hpp>
@@ -12,6 +13,18 @@
 #include <thread>
 
 using Majordomo::OpenCMW::MdpMessage;
+
+template <typename Callable>
+struct OnExit {
+    Callable _c;
+
+    explicit OnExit(Callable c) : _c(YAZ_FWD(c)) {
+    }
+
+    ~OnExit() {
+        _c();
+    }
+};
 
 class TestNode {
     std::deque<yaz::Message> _receivedMessages;
@@ -447,10 +460,11 @@ TEST_CASE("pubsub example using router socket", "[Broker]") {
 }
 
 class TestIntWorker : public Majordomo::OpenCMW::BasicMdpWorker {
-    int _x = 0;
+    int _x = 10;
 public:
-    explicit TestIntWorker(yaz::Context &context, std::string service_name)
-        : Majordomo::OpenCMW::BasicMdpWorker(context, service_name) {
+    explicit TestIntWorker(yaz::Context &context, std::string service_name, int initial_value)
+        : Majordomo::OpenCMW::BasicMdpWorker(context, service_name)
+        , _x(initial_value) {
     }
 
     std::optional<MdpMessage> handle_get(MdpMessage &&msg) override {
@@ -494,8 +508,7 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[Worker]") {
         broker.run();
     });
 
-
-    TestIntWorker worker(context, "a.service");
+    TestIntWorker worker(context, "a.service", 10);
     worker.set_service_description("API description");
     worker.set_rbac_role("rbac");
 
@@ -503,6 +516,13 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[Worker]") {
 
     std::thread workerThread([&worker] {
         worker.run();
+    });
+
+    OnExit cleanup([&broker, &brokerThread, &worker, &workerThread] {
+        worker.shutdown();
+        broker.shutdown();
+        workerThread.join();
+        brokerThread.join();
     });
 
     TestNode client(context);
@@ -536,7 +556,7 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[Worker]") {
             REQUIRE(reply[2].data() == "a.service");
             REQUIRE(reply[3].data() == "1");
             REQUIRE(reply[4].data() == "topic");
-            REQUIRE(reply[5].data() == "0");
+            REQUIRE(reply[5].data() == "10");
             REQUIRE(reply[6].data().empty());
             REQUIRE(reply[7].data() == "rbac");
             reply_received = true;
@@ -548,7 +568,7 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[Worker]") {
         request.add_part(std::make_unique<std::string>("MDPC03"));
         request.add_part(std::make_unique<std::string>("\x2")); // SET
         request.add_part(std::make_unique<std::string>("a.service"));
-        request.add_part(std::make_unique<std::string>("1"));
+        request.add_part(std::make_unique<std::string>("2"));
         request.add_part(std::make_unique<std::string>("topic"));
         request.add_part(std::make_unique<std::string>("42"));
         request.add_part();
@@ -561,6 +581,7 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[Worker]") {
         REQUIRE(reply.parts_count() == 8);
         REQUIRE(reply[0].data() == "MDPC03");
         REQUIRE(reply[1].data() == "\x6"); // FINAL
+        REQUIRE(reply[3].data() == "2");
         REQUIRE(reply[5].data() == "Value set. All good!");
         REQUIRE(reply[6].data() == "");
     }
@@ -570,7 +591,7 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[Worker]") {
         request.add_part(std::make_unique<std::string>("MDPC03"));
         request.add_part(std::make_unique<std::string>("\x1")); // GET
         request.add_part(std::make_unique<std::string>("a.service"));
-        request.add_part(std::make_unique<std::string>("1"));
+        request.add_part(std::make_unique<std::string>("3"));
         request.add_part(std::make_unique<std::string>("topic"));
         request.add_part();
         request.add_part();
@@ -583,12 +604,94 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[Worker]") {
         REQUIRE(reply.parts_count() == 8);
         REQUIRE(reply[0].data() == "MDPC03");
         REQUIRE(reply[1].data() == "\x6"); // FINAL
+        REQUIRE(reply[3].data() == "3");
         REQUIRE(reply[5].data() == "42");
     }
+}
 
-    worker.shutdown();
-    broker.shutdown();
+TEST_CASE("SET/GET example using the Client and Worker classes", "[Client]") {
+    using Majordomo::OpenCMW::Broker;
+    using Majordomo::OpenCMW::Client;
+    using Majordomo::OpenCMW::MdpMessage;
 
-    workerThread.join();
-    brokerThread.join();
+    constexpr auto address = std::string_view("inproc://testrouter");
+
+    yaz::Context   context;
+    Broker         broker("testbroker", {}, context);
+
+    REQUIRE(broker.bind(address, Broker::BindOption::Router));
+
+    std::thread brokerThread([&broker] {
+        broker.run();
+    });
+
+    TestIntWorker worker(context, "a.service", 100);
+    worker.set_service_description("API description");
+    worker.set_rbac_role("rbac");
+
+    REQUIRE(worker.connect(address));
+
+    std::thread workerThread([&worker] {
+        worker.run();
+    });
+
+    OnExit cleanup([&broker, &brokerThread, &worker, &workerThread] {
+        worker.shutdown();
+        broker.shutdown();
+        workerThread.join();
+        brokerThread.join();
+    });
+
+    Client client(context);
+
+    REQUIRE(client.connect(address));
+
+    const auto main_thread_id = std::atomic(std::this_thread::get_id());
+
+    // until the worker's READY is processed by the broker, it will return
+    // an "unknown service" error, retry until we get the expected reply
+    bool good_reply_received = false;
+    while (!good_reply_received) {
+        bool any_message_received = false;
+        client.get("a.service", "", [&good_reply_received, &any_message_received, &main_thread_id](auto &&message) {
+            REQUIRE(main_thread_id == std::this_thread::get_id());
+            any_message_received = true;
+            if (message.error().empty()) {
+                REQUIRE(message.body() == "100");
+                good_reply_received = true;
+            } else {
+                REQUIRE(message.error() == "unknown service (error 501): 'a.service'");
+            }
+        });
+
+        while (!any_message_received) {
+            client.read();
+        }
+    }
+
+    bool reply_received = false;
+
+    client.set("a.service", "42", [&reply_received, &main_thread_id](auto &&message) {
+        REQUIRE(main_thread_id == std::this_thread::get_id());
+        REQUIRE(message.body() == "Value set. All good!");
+        REQUIRE(message.error().empty());
+        reply_received = true;
+    });
+
+    while (!reply_received) {
+        client.read();
+    }
+
+    reply_received = false;
+
+    client.get("a.service", "", [&reply_received, &main_thread_id](auto &&message) {
+        REQUIRE(main_thread_id == std::this_thread::get_id());
+        REQUIRE(message.body() == "42");
+        REQUIRE(message.error().empty());
+        reply_received = true;
+    });
+
+    while (!reply_received) {
+        client.read();
+    }
 }

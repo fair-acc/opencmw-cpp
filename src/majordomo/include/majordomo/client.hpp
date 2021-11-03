@@ -2,82 +2,127 @@
 #define YAMAL_CLIENT_H
 
 #include <cassert>
-#include <chrono>
-#include <memory>
-#include <optional>
+#include <charconv>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
-#include "../yaxxzmq/context.hpp"
-#include "../yaxxzmq/sized_string.hpp"
-#include "../yaxxzmq/socket.hpp"
+#include <majordomo/Message.hpp>
+#include <yaz/yaz.hpp>
 
-namespace yamal {
-
-namespace detail {
-constexpr const yaz::sized_string<6> ClientMessageHeader{ "MDPC02" };
-enum class MessageType : uint8_t {
-    Request = 0x01,
-    Partial = 0x02,
-    Final   = 0x03,
-};
-} // namespace detail
+namespace Majordomo::OpenCMW {
 
 class Client {
-    using Socket = yaz::Socket<Client *>;
+    yaz::Socket<yaz::Message, Client *> _socket;
+    std::string                       _broker_url;
+    int                               _next_request_id = 0;
+    std::unordered_map<int, std::function<void(MdpMessage)>> _callbacks;
 
 public:
-    template<typename BrokerPath>
-    Client(std::shared_ptr<yaz::Context> context, BrokerPath &&broker_path)
-        : _context{ std::move(context) }
-        , _broker_url{ YAZ_FWD(broker_path) } {
-        assert(context);
+    struct Request {
+        int id;
+    };
+
+    Client(yaz::Context &context)
+        : _socket{ yaz::make_socket<yaz::Message>(context, ZMQ_DEALER, this) }
+    {
     }
 
-    bool connect() {
-        assert(!_socket.has_value());
+    virtual ~Client() = default;
 
-        _socket = Socket(*_context, yaz::SocketType::Dealer, this);
-        return _socket->connect(_broker_url);
+    bool connect(std::string_view broker_url) {
+        return _socket.connect(broker_url);
     }
 
-    void disconnect() {
-        assert(_socket.has_value());
-        _socket.reset();
+    bool disconnect() {
+        return _socket.disconnect();
     }
 
-    template<typename Data>
-    void send(const yaz::sized_string_instance auto &service_name, Data &&data) {
-        auto message = create_request_header(service_name);
-        message.add_part(std::forward<Data>(data));
-        _socket->send(message);
+    virtual void handle_response(MdpMessage &&) {}
+
+    template <typename BodyType>
+    Request get(std::string_view service_name, BodyType request) {
+        auto [handle, message] = create_request_template(MdpMessage::ClientCommand::Get, service_name);
+        message.setBody(YAZ_FWD(request), MessagePart::dynamic_bytes_tag{});
+        send(std::move(message));
+        return handle;
     }
 
-    void handle_message(const yaz::Message &message) {
-        std::cout << "Got a reply " << message << " \n";
+    template <typename BodyType, typename Callback>
+    Request get(std::string_view service_name, BodyType request, Callback fnc) {
+        auto r = get(service_name, YAZ_FWD(request));
+        _callbacks.emplace(r.id, YAZ_FWD(fnc));
+        return r;
+    }
+
+    template <typename BodyType>
+    Request set(std::string_view service_name, BodyType request) {
+        auto [handle, message] = create_request_template(MdpMessage::ClientCommand::Set, service_name);
+        message.setBody(YAZ_FWD(request), MessagePart::dynamic_bytes_tag{});
+        send(std::move(message));
+        return handle;
+    }
+
+    template <typename BodyType, typename Callback>
+    Request set(std::string_view service_name, BodyType request, Callback fnc) {
+        auto r = set(service_name, request);
+        _callbacks.emplace(r.id, YAZ_FWD(fnc));
+        return r;
+    }
+
+    void handle_message(yaz::Message &&ymsg) {
+        auto frames = ymsg.take_parts();
+        // we receive 8 frames here, add first empty frame for MdpMessage
+        frames.emplace(frames.begin(), yaz::MessagePart{});
+
+        MdpMessage message(std::move(frames));
+
+        if (!message.isValid()) {
+            debug() << "Received invalid message" << message << std::endl;
+            return;
+        }
+
+        // TODO handle client HEARTBEAT etc.
+
+        const auto id_str = message.clientRequestId();
+        int id;
+        auto as_int = std::from_chars(id_str.begin(), id_str.end(), id);
+
+        bool handled = false;
+        if (as_int.ec != std::errc::invalid_argument) {
+            auto it = _callbacks.find(id);
+            if (it != _callbacks.end()) {
+                handled = true;
+                it->second(std::move(message));
+                _callbacks.erase(it);
+            }
+        }
+
+        if (!handled)
+            handle_response(std::move(message));
+    }
+
+    void read() {
+        _socket.read();
     }
 
 private:
-    auto create_request_header(
-            const yaz::sized_string_instance auto &service_name) {
-        // See https://rfc.zeromq.org/spec/18/#mdpclient
-        // Request consists of:
-        yaz::Message message;
-        // Frame 0: “MDPC02” (six bytes, representing MDP/Client v0.2)
-        message.add_part(detail::ClientMessageHeader);
-        // Frame 1: 0x01 (one byte, representing REQUEST)
-        message.add_part({ static_cast<yaz::Byte>(detail::MessageType::Request) });
-        // Frame 2: Service name (0mq sized string)
-        message.add_part(service_name.zmq_str());
-
-        // Frames 3+: Request body (opaque binary)
-        // will be added by the caller
-        return message;
+    std::pair<Request, MdpMessage> create_request_template(MdpMessage::ClientCommand command, std::string_view service_name) {
+        auto req = std::make_pair(make_request_handle(), MdpMessage::createClientMessage(command));
+        req.second.setServiceName(service_name, MessagePart::dynamic_bytes_tag{});
+        req.second.setClientRequestId(std::to_string(req.first.id), MessagePart::dynamic_bytes_tag{});
+        return req;
     }
 
-    std::shared_ptr<yaz::Context> _context;
-    std::optional<Socket>         _socket;
-    std::string                   _broker_url;
+    Request make_request_handle() {
+        return Request{_next_request_id++};
+    }
+
+    void send(MdpMessage &&message) {
+        auto frames = message.take_parts();
+        auto span = std::span(frames);
+        _socket.send_parts(span.subspan(1, span.size() - 1));
+    }
 };
 
 } // namespace yamal
