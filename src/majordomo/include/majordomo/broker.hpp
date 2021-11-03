@@ -401,7 +401,20 @@ private:
 
                 message.setSourceId(client_id, yaz::MessagePart::dynamic_bytes_tag{});
                 message.setServiceName(worker.service_name, yaz::MessagePart::dynamic_bytes_tag{});
+                const auto client_command = [](auto worker_cmd) {
+                    switch (worker_cmd) {
+                    case MdpMessage::WorkerCommand::Partial:
+                        return MdpMessage::ClientCommand::Partial;
+                    case MdpMessage::WorkerCommand::Final:
+                        return MdpMessage::ClientCommand::Final;
+                    default:
+                        assert(!"unexpected command");
+                        return MdpMessage::ClientCommand::Final;
+                    }
+                }(message.workerCommand());
+
                 message.setProtocol(MdpMessage::Protocol::Client);
+                message.setClientCommand(client_command);
                 client->second.socket->send(std::move(message));
                 worker_waiting(worker);
             } else {

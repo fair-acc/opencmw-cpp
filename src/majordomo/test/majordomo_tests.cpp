@@ -196,7 +196,7 @@ TEST_CASE("One client/one worker roundtrip", "[Broker]") {
     const auto reply = client.read_one();
     REQUIRE(reply.parts_count() == 8);
     REQUIRE(reply[0].data() == "MDPC03");
-    REQUIRE(reply[1].data() == "\x4"); // FINAL
+    REQUIRE(reply[1].data() == "\x6"); // FINAL
     REQUIRE(reply[2].data() == "a.service");
     REQUIRE(reply[3].data() == "1");
     REQUIRE(reply[4].data() == "topic");
