@@ -1,9 +1,13 @@
 #include <cstdlib>
 
-#include <majordomo/Message.hpp>
+#include <majordomo/BasicMdpWorker.hpp>
 #include <majordomo/broker.hpp>
+#include <majordomo/Message.hpp>
 
 #include <catch2/catch.hpp>
+#include <fmt/format.h>
+
+#include <charconv>
 #include <deque>
 #include <thread>
 
@@ -440,4 +444,151 @@ TEST_CASE("pubsub example using router socket", "[Broker]") {
         REQUIRE(reply[6].data().empty());
         REQUIRE(reply[7].data() == "rbac_worker_2");
     }
+}
+
+class TestIntWorker : public Majordomo::OpenCMW::BasicMdpWorker {
+    int _x = 0;
+public:
+    explicit TestIntWorker(yaz::Context &context, std::string service_name)
+        : Majordomo::OpenCMW::BasicMdpWorker(context, service_name) {
+    }
+
+    std::optional<MdpMessage> handle_get(MdpMessage &&msg) override {
+        msg.setWorkerCommand(MdpMessage::WorkerCommand::Final);
+        msg.setBody(std::to_string(_x), yaz::MessagePart::dynamic_bytes_tag{});
+        return std::move(msg);
+    }
+
+    std::optional<MdpMessage> handle_set(MdpMessage &&msg) override {
+        const auto request = msg.body();
+        int value;
+        const auto result = std::from_chars(request.begin(), request.end(), value);
+
+        if (result.ec == std::errc::invalid_argument) {
+            msg.setWorkerCommand(MdpMessage::WorkerCommand::Final);
+            msg.setBody("", yaz::MessagePart::static_bytes_tag{});
+            msg.setError("Not a valid int", yaz::MessagePart::static_bytes_tag{});
+        } else {
+            msg.setWorkerCommand(MdpMessage::WorkerCommand::Final);
+            _x = value;
+            msg.setBody("Value set. All good!", yaz::MessagePart::static_bytes_tag{});
+            msg.setError("", yaz::MessagePart::static_bytes_tag{});
+        }
+
+        return std::move(msg);
+    }
+};
+
+TEST_CASE("SET/GET example using the BasicMdpWorker class", "[Worker]") {
+    using Majordomo::OpenCMW::Broker;
+    using Majordomo::OpenCMW::MdpMessage;
+
+    constexpr auto address = std::string_view("inproc://testrouter");
+
+    yaz::Context   context;
+    Broker         broker("testbroker", {}, context);
+
+    REQUIRE(broker.bind(address, Broker::BindOption::Router));
+
+    std::thread brokerThread([&broker] {
+        broker.run();
+    });
+
+
+    TestIntWorker worker(context, "a.service");
+    worker.set_service_description("API description");
+    worker.set_rbac_role("rbac");
+
+    REQUIRE(worker.connect(address));
+
+    std::thread workerThread([&worker] {
+        worker.run();
+    });
+
+    TestNode client(context);
+    REQUIRE(client.connect(address));
+
+    // until the worker's READY is processed by the broker, it will return
+    // an "unknown service" error, retry until we get the expected reply
+    bool reply_received = false;
+    while (!reply_received) {
+        yaz::Message request;
+        request.add_part(std::make_unique<std::string>("MDPC03"));
+        request.add_part(std::make_unique<std::string>("\x1")); // GET
+        request.add_part(std::make_unique<std::string>("a.service"));
+        request.add_part(std::make_unique<std::string>("1"));
+        request.add_part(std::make_unique<std::string>("topic"));
+        request.add_part();
+        request.add_part();
+        request.add_part(std::make_unique<std::string>("rbac"));
+
+        client.send(std::move(request));
+
+        const auto reply = client.read_one();
+
+        REQUIRE(reply.parts_count() == 8);
+        REQUIRE(reply[0].data() == "MDPC03");
+        REQUIRE(reply[1].data() == "\x6"); // FINAL
+
+        if (!reply[6].data().empty()) {
+            REQUIRE(reply[6].data().find("error 501") != std::string_view::npos);
+        } else {
+            REQUIRE(reply[2].data() == "a.service");
+            REQUIRE(reply[3].data() == "1");
+            REQUIRE(reply[4].data() == "topic");
+            REQUIRE(reply[5].data() == "0");
+            REQUIRE(reply[6].data().empty());
+            REQUIRE(reply[7].data() == "rbac");
+            reply_received = true;
+        }
+    }
+
+    {
+        yaz::Message request;
+        request.add_part(std::make_unique<std::string>("MDPC03"));
+        request.add_part(std::make_unique<std::string>("\x2")); // SET
+        request.add_part(std::make_unique<std::string>("a.service"));
+        request.add_part(std::make_unique<std::string>("1"));
+        request.add_part(std::make_unique<std::string>("topic"));
+        request.add_part(std::make_unique<std::string>("42"));
+        request.add_part();
+        request.add_part(std::make_unique<std::string>("rbac"));
+
+        client.send(std::move(request));
+
+        const auto reply = client.read_one();
+
+        REQUIRE(reply.parts_count() == 8);
+        REQUIRE(reply[0].data() == "MDPC03");
+        REQUIRE(reply[1].data() == "\x6"); // FINAL
+        REQUIRE(reply[5].data() == "Value set. All good!");
+        REQUIRE(reply[6].data() == "");
+    }
+
+    {
+        yaz::Message request;
+        request.add_part(std::make_unique<std::string>("MDPC03"));
+        request.add_part(std::make_unique<std::string>("\x1")); // GET
+        request.add_part(std::make_unique<std::string>("a.service"));
+        request.add_part(std::make_unique<std::string>("1"));
+        request.add_part(std::make_unique<std::string>("topic"));
+        request.add_part();
+        request.add_part();
+        request.add_part(std::make_unique<std::string>("rbac"));
+
+        client.send(std::move(request));
+
+        const auto reply = client.read_one();
+
+        REQUIRE(reply.parts_count() == 8);
+        REQUIRE(reply[0].data() == "MDPC03");
+        REQUIRE(reply[1].data() == "\x6"); // FINAL
+        REQUIRE(reply[5].data() == "42");
+    }
+
+    worker.shutdown();
+    broker.shutdown();
+
+    workerThread.join();
+    brokerThread.join();
 }

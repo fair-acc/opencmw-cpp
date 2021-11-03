@@ -9,6 +9,7 @@
 #include <exception>
 #include <functional>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <tuple>
 
@@ -281,8 +282,6 @@ public:
         return success;
     }
 
-    // TODO these are hacks to prepend frames and send subscribe/unsubscribe messages
-    // that don't fit into the Message pattern
     void send(std::vector<MessagePart> &&message) {
         const auto parts_count = message.size();
         for (std::size_t part_index = 0; part_index < parts_count; part_index++) {
@@ -297,6 +296,15 @@ public:
         MessagePart part(std::move(data), MessagePart::dynamic_bytes_tag{});
         const auto  result = part.send(_zsocket, ZMQ_DONTWAIT);
         assert(result);
+    }
+
+    void send_parts(std::span<MessagePart> parts) {
+        for (std::size_t part_index = 0; part_index < parts.size(); part_index++) {
+            const auto flags  = part_index + 1 == parts.size() ? ZMQ_DONTWAIT
+                                                               : ZMQ_DONTWAIT | ZMQ_SNDMORE;
+            const auto result = parts[part_index].send(_zsocket, flags);
+            assert(result);
+        }
     }
 
     void send(Message &&message) {

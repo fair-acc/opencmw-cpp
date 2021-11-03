@@ -203,6 +203,10 @@ public:
     void resize(std::size_t size) {
         _parts.resize(size);
     }
+
+    std::vector<MessagePart> take_parts() {
+        return std::move(_parts);
+    }
 };
 
 } // namespace yaz

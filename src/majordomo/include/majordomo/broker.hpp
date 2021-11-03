@@ -276,14 +276,14 @@ private:
             }
         }
 
-        for (size_t i = 0; i < pubsub_subscriptions.size(); ++i) {
+        for (std::size_t i = 0; i < pubsub_subscriptions.size(); ++i) {
             const auto is_last = !has_router_subscriptions && i + 1 == pubsub_subscriptions.size();
             auto copy = is_last ? std::move(message) : message.clone();
             pub_socket().send(std::move(copy));
         }
 
         if (has_router_subscriptions) {
-            size_t sent = 0;
+            std::size_t sent = 0;
             for (const auto &client_id : it->second) {
                 const auto is_last = sent + 1 == it->second.size();
 
