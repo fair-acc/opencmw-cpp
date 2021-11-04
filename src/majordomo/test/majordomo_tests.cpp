@@ -665,7 +665,7 @@ TEST_CASE("SET/GET example using the Client and Worker classes", "[Client]") {
         });
 
         while (!any_message_received) {
-            client.read();
+            client.try_read();
         }
     }
 
@@ -679,7 +679,7 @@ TEST_CASE("SET/GET example using the Client and Worker classes", "[Client]") {
     });
 
     while (!reply_received) {
-        client.read();
+        client.try_read();
     }
 
     reply_received = false;
@@ -692,6 +692,6 @@ TEST_CASE("SET/GET example using the Client and Worker classes", "[Client]") {
     });
 
     while (!reply_received) {
-        client.read();
+        client.try_read();
     }
 }

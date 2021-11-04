@@ -102,8 +102,8 @@ public:
             handle_response(std::move(message));
     }
 
-    void read() {
-        _socket.read();
+    void try_read() {
+        _socket.try_read();
     }
 
 private:

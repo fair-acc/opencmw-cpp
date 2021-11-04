@@ -357,18 +357,22 @@ public:
     }
 
     template<typename ReadHandler>
-    void read(ReadHandler &&handler) {
-        while (true) {
-            auto message = receive();
-            if (message.has_value()) {
-                pass_to_message_handler(*this, handler, std::move(*message));
-                return;
-            }
+    bool try_read(ReadHandler &&handler) {
+        auto message = receive();
+        if (message.has_value()) {
+            pass_to_message_handler(*this, handler, std::move(*message));
+            return true;
         }
+
+        return false;
     }
 
     void read() {
-        read(_handler);
+        while (!try_read(_handler)) {}
+    }
+
+    bool try_read() {
+        return try_read(_handler);
     }
 
     auto set_xpub_verbose(bool value) {

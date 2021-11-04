@@ -116,7 +116,7 @@ namespace Majordomo::OpenCMW {
 
         void run() {
             while (!_shutdown_requested) {
-                _socket.read();
+                _socket.try_read();
             }
         }
     };

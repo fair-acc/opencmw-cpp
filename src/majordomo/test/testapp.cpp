@@ -217,7 +217,7 @@ int main(int argc, char ** argv) {
         }
 
         while (!reply_received) {
-            client.read();
+            client.try_read();
         }
         return 0;
     }
