@@ -1,4 +1,5 @@
 #include <iostream>
+#include <thread>
 #include <unordered_map>
 
 #include <majordomo/broker.hpp>
@@ -64,13 +65,17 @@ public:
 };
 
 int main(int argc, char ** argv) {
+    using Majordomo::OpenCMW::Broker;
+
     if (argc < 2) {
-        std::cerr << "Usage: majordomo_testapp <broker|client|worker> <options>\n\n"
+        std::cerr << "Usage: majordomo_testapp <broker|client|worker|brokerworker> <options>\n\n"
                      "Examples:\n\n"
-                     " Run Broker at tcp://127.0.0.1:12345 (Note: localhost does not work!):\n"
+                     " Run broker at tcp://127.0.0.1:12345 (Note: localhost does not work!):\n"
                      "    majordomo_testapp broker tcp://127.0.0.1:12345\n\n"
                      " Connect worker to tcp://127.0.0.1:12345 (Note: mdp:// does not work right now):\n"
                      "    majordomo_testapp worker tcp://127.0.0.1:12345\n\n"
+                     " Run broker and worker in the same process, reachable via tcp://127.0.0.1:12345:\n\n"
+                     "    majordomo_testapp brokerworker tcp://127.0.0.1:12345\n\n"
                      " Via a client, set property 'foo' to 'bar':\n"
                      "    majordomo_testapp client tcp://127.0.0.1:12345 set foo bar\n\n"
                      " Via a client, read the value of the property 'foo':\n"
@@ -80,7 +85,7 @@ int main(int argc, char ** argv) {
 
     const std::string_view mode = argv[1];
 
-    if (mode == "broker") {
+    if (mode == "broker" || mode == "brokerworker") {
         if (argc < 3) {
             std::cerr << "Usage: majordomo_testapp broker <router_endpoint> [<pub_endpoint>]\n";
             return 1;
@@ -89,7 +94,7 @@ int main(int argc, char ** argv) {
         const std::string_view pub_endpoint = argc > 3 ? argv[3] : "";
 
         yaz::Context context;
-        Majordomo::OpenCMW::Broker broker("test_broker", "", context);
+        Broker broker("test_broker", "", context);
         const auto router_address = broker.bind(router_endpoint);
         if (!router_address) {
             std::cerr << fmt::format("Could not bind to '{}'\n", router_endpoint);
@@ -108,8 +113,35 @@ int main(int argc, char ** argv) {
             std::cout << fmt::format("Listening to '{}' (ROUTER) and '{}' (PUB)\n", *router_address, *pub_address);
         }
 
-        broker.run();
-        return 0;
+        if (mode == "broker") {
+            broker.run();
+            return 0;
+        }
+
+        const auto inproc_router = std::string_view("inproc://privaterouter");
+        if (!broker.bind(inproc_router, Broker::BindOption::Router)) {
+            std::cerr << fmt::format("Could not bind broker to '{}'\n", inproc_router);
+            return 1;
+        }
+
+        TestWorker worker(context);
+
+        if (!worker.connect(inproc_router)) {
+            std::cerr << fmt::format("Could not connect worker to broker at '{}'\n", inproc_router);
+            return 1;
+        }
+
+        auto broker_thread = std::thread([&broker] {
+            broker.run();
+        });
+
+        auto worker_thread = std::thread([&worker] {
+            worker.run();
+        });
+
+        broker_thread.join();
+        worker_thread.join();
+        return 0; // never reached
     }
 
     if (mode == "worker") {
@@ -189,4 +221,7 @@ int main(int argc, char ** argv) {
         }
         return 0;
     }
+
+    std::cerr << fmt::format("Unknown mode '{}'\n", mode);
+    return 1;
 }
