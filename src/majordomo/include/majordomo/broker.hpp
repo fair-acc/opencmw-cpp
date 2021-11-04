@@ -51,7 +51,7 @@ public:
         // TODO: Does not exist in zmq.h/hpp
         // socket.setHeartbeatContext(PROT_CLIENT.getData());
 
-        bool result = this->set_hwm(HIGH_WATER_MARK)
+        [[maybe_unused]] bool result = this->set_hwm(HIGH_WATER_MARK)
                    && this->set_heartbeat_ttl(HEARTBEAT_INTERVAL * HEARTBEAT_LIVENESS)
                    && this->set_heartbeat_timeout(HEARTBEAT_INTERVAL * HEARTBEAT_LIVENESS)
                    && this->set_heartbeat_ivl(HEARTBEAT_INTERVAL)
@@ -92,7 +92,7 @@ class PubSocket : public BaseSocket<yaz::Message, Handler> {
 public:
     explicit PubSocket(yaz::Context &context, Handler &&handler)
         : BaseSocket<yaz::Message, Handler>(context, ZMQ_XPUB, std::move(handler)) {
-        auto result = this->set_xpub_verbose(true);
+        [[maybe_unused]] auto result = this->set_xpub_verbose(true);
         assert(result);
         this->bind(INTERNAL_ADDRESS_PUBLISHER);
     }

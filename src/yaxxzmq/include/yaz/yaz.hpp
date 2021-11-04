@@ -287,14 +287,14 @@ public:
         for (std::size_t part_index = 0; part_index < parts_count; part_index++) {
             const auto flags  = part_index + 1 == parts_count ? ZMQ_DONTWAIT
                                                               : ZMQ_DONTWAIT | ZMQ_SNDMORE;
-            const auto result = message[part_index].send(_zsocket, flags);
+            [[maybe_unused]] const auto result = message[part_index].send(_zsocket, flags);
             assert(result);
         }
     }
 
     void send(std::string_view data) {
         MessagePart part(std::move(data), MessagePart::dynamic_bytes_tag{});
-        const auto  result = part.send(_zsocket, ZMQ_DONTWAIT);
+        [[maybe_unused]] const auto  result = part.send(_zsocket, ZMQ_DONTWAIT);
         assert(result);
     }
 
@@ -302,7 +302,7 @@ public:
         for (std::size_t part_index = 0; part_index < parts.size(); part_index++) {
             const auto flags  = part_index + 1 == parts.size() ? ZMQ_DONTWAIT
                                                                : ZMQ_DONTWAIT | ZMQ_SNDMORE;
-            const auto result = parts[part_index].send(_zsocket, flags);
+            [[maybe_unused]] const auto result = parts[part_index].send(_zsocket, flags);
             assert(result);
         }
     }
@@ -312,7 +312,7 @@ public:
         for (std::size_t part_index = 0; part_index < parts_count; part_index++) {
             const auto flags  = part_index + 1 == parts_count ? ZMQ_DONTWAIT
                                                               : ZMQ_DONTWAIT | ZMQ_SNDMORE;
-            const auto result = message[part_index].send(_zsocket, flags);
+            [[maybe_unused]] const auto result = message[part_index].send(_zsocket, flags);
             assert(result);
         }
     }
@@ -403,7 +403,7 @@ protected:
         Type   result;
         size_t size    = sizeof(result);
 
-        auto   success = nonnegative_or_errno<int>(zmq_getsockopt(_zsocket, flag, &result, &size));
+        [[maybe_unused]] auto   success = nonnegative_or_errno<int>(zmq_getsockopt(_zsocket, flag, &result, &size));
         assert(success);
 
         return result;
