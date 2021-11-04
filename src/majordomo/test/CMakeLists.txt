@@ -60,7 +60,6 @@ catch_discover_tests(majordomo_tests)
 
 set (
     majordomo_benchmark_SRCS
-    catch_main.cpp
     majordomo_benchmark.cpp
     )
 add_executable (
@@ -80,6 +79,5 @@ target_link_libraries (
         zmq
         project_warnings
         project_options
-        CONAN_PKG::catch2
         CONAN_PKG::fmt
     )
