@@ -1,4 +1,4 @@
-#include <cstdlib>
+#include "helpers.hpp"
 
 #include <majordomo/BasicMdpWorker.hpp>
 #include <majordomo/broker.hpp>
@@ -9,22 +9,11 @@
 #include <fmt/format.h>
 
 #include <charconv>
+#include <cstdlib>
 #include <deque>
 #include <thread>
 
 using Majordomo::OpenCMW::MdpMessage;
-
-template <typename Callable>
-struct OnExit {
-    Callable _c;
-
-    explicit OnExit(Callable c) : _c(YAZ_FWD(c)) {
-    }
-
-    ~OnExit() {
-        _c();
-    }
-};
 
 class TestNode {
     std::deque<yaz::Message> _receivedMessages;
@@ -107,9 +96,7 @@ TEST_CASE("Request answered with unknown service", "[Broker]") {
 
     REQUIRE(broker.bind(address, Broker::BindOption::Router));
 
-    std::thread    brokerThread([&broker] {
-        broker.run();
-       });
+    RunInThread broker_run(broker);
 
     TestNode       client(context);
     REQUIRE(client.connect(address));
@@ -136,9 +123,6 @@ TEST_CASE("Request answered with unknown service", "[Broker]") {
     REQUIRE(reply[5].data().empty());
     REQUIRE(reply[6].data() == "unknown service (error 501): 'no.service'");
     REQUIRE(reply[7].data() == "TODO (RBAC)");
-
-    broker.shutdown();
-    brokerThread.join();
 }
 
 TEST_CASE("One client/one worker roundtrip", "[Broker]") {
@@ -504,9 +488,7 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[Worker]") {
 
     REQUIRE(broker.bind(address, Broker::BindOption::Router));
 
-    std::thread brokerThread([&broker] {
-        broker.run();
-    });
+    RunInThread broker_run(broker);
 
     TestIntWorker worker(context, "a.service", 10);
     worker.set_service_description("API description");
@@ -514,16 +496,7 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[Worker]") {
 
     REQUIRE(worker.connect(address));
 
-    std::thread workerThread([&worker] {
-        worker.run();
-    });
-
-    OnExit cleanup([&broker, &brokerThread, &worker, &workerThread] {
-        worker.shutdown();
-        broker.shutdown();
-        workerThread.join();
-        brokerThread.join();
-    });
+    RunInThread worker_run(worker);
 
     TestNode client(context);
     REQUIRE(client.connect(address));
@@ -621,9 +594,7 @@ TEST_CASE("SET/GET example using the Client and Worker classes", "[Client]") {
 
     REQUIRE(broker.bind(address, Broker::BindOption::Router));
 
-    std::thread brokerThread([&broker] {
-        broker.run();
-    });
+    RunInThread broker_run(broker);
 
     TestIntWorker worker(context, "a.service", 100);
     worker.set_service_description("API description");
@@ -631,16 +602,7 @@ TEST_CASE("SET/GET example using the Client and Worker classes", "[Client]") {
 
     REQUIRE(worker.connect(address));
 
-    std::thread workerThread([&worker] {
-        worker.run();
-    });
-
-    OnExit cleanup([&broker, &brokerThread, &worker, &workerThread] {
-        worker.shutdown();
-        broker.shutdown();
-        workerThread.join();
-        brokerThread.join();
-    });
+    RunInThread worker_run(worker);
 
     Client client(context);
 
