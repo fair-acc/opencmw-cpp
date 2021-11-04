@@ -287,23 +287,20 @@ public:
         for (std::size_t part_index = 0; part_index < parts_count; part_index++) {
             const auto flags  = part_index + 1 == parts_count ? ZMQ_DONTWAIT
                                                               : ZMQ_DONTWAIT | ZMQ_SNDMORE;
-            [[maybe_unused]] const auto result = message[part_index].send(_zsocket, flags);
-            assert(result);
+            send_part(message[part_index], flags);
         }
     }
 
     void send(std::string_view data) {
         MessagePart part(std::move(data), MessagePart::dynamic_bytes_tag{});
-        [[maybe_unused]] const auto  result = part.send(_zsocket, ZMQ_DONTWAIT);
-        assert(result);
+        send_part(part, ZMQ_DONTWAIT);
     }
 
     void send_parts(std::span<MessagePart> parts) {
         for (std::size_t part_index = 0; part_index < parts.size(); part_index++) {
             const auto flags  = part_index + 1 == parts.size() ? ZMQ_DONTWAIT
                                                                : ZMQ_DONTWAIT | ZMQ_SNDMORE;
-            [[maybe_unused]] const auto result = parts[part_index].send(_zsocket, flags);
-            assert(result);
+            send_part(parts[part_index], flags);
         }
     }
 
@@ -312,8 +309,7 @@ public:
         for (std::size_t part_index = 0; part_index < parts_count; part_index++) {
             const auto flags  = part_index + 1 == parts_count ? ZMQ_DONTWAIT
                                                               : ZMQ_DONTWAIT | ZMQ_SNDMORE;
-            [[maybe_unused]] const auto result = message[part_index].send(_zsocket, flags);
-            assert(result);
+            send_part(message[part_index], flags);
         }
     }
 
@@ -411,6 +407,20 @@ protected:
         assert(success);
 
         return result;
+    }
+
+    void send_part(MessagePart &part, int flags) {
+        assert(flags & ZMQ_DONTWAIT);
+        while (true) {
+            const auto result = part.send(_zsocket, flags);
+            if (result)
+                return;
+            if (result.error() != EAGAIN) {
+                // TODO return error to caller?
+                std::cerr << "Error writing message part: " << strerror(result.error()) << std::endl;
+                assert(false);
+            }
+        }
     }
 
     template<int flag>

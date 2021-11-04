@@ -1,6 +1,7 @@
 #ifndef YAZ_ERROR_H
 #define YAZ_ERROR_H
 
+#include <cassert>
 #include <cerrno>
 #include <utility>
 
