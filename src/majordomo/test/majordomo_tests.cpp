@@ -13,8 +13,6 @@
 #include <deque>
 #include <thread>
 
-using Majordomo::OpenCMW::MdpMessage;
-
 class TestNode {
     std::deque<yaz::Message> _receivedMessages;
 
@@ -50,39 +48,75 @@ public:
 };
 
 TEST_CASE("OpenCMW::Message basics", "[Majordomo]") {
-    using Majordomo::OpenCMW::MdpMessage;
+    {
+        using MdpMessage = Majordomo::OpenCMW::BasicMdpMessage<Majordomo::OpenCMW::MessageFormat::WithSourceId>;
+        auto msg         = MdpMessage::createClientMessage(MdpMessage::ClientCommand::Final);
+        REQUIRE(msg.isClientMessage());
+        REQUIRE(msg.clientCommand() == MdpMessage::ClientCommand::Final);
 
-    auto msg = MdpMessage::createClientMessage(MdpMessage::ClientCommand::Final);
-    REQUIRE(msg.isClientMessage());
-    REQUIRE(msg.clientCommand() == MdpMessage::ClientCommand::Final);
+        auto tag = yaz::MessagePart::static_bytes_tag{};
+        msg.setTopic("I'm a topic", tag);
+        msg.setServiceName("service://abc", tag);
+        msg.setClientRequestId("request 1", tag);
+        msg.setBody("test body test body test body test body test body test body test body", tag);
+        msg.setError("fail!", tag);
+        msg.setRbac("password", tag);
 
-    auto tag = yaz::MessagePart::static_bytes_tag{};
-    msg.setTopic("I'm a topic", tag);
-    msg.setServiceName("service://abc", tag);
-    msg.setClientRequestId("request 1", tag);
-    msg.setBody("test body test body test body test body test body test body test body", tag);
-    msg.setError("fail!", tag);
-    msg.setRbac("password", tag);
+        REQUIRE(msg.isClientMessage());
+        REQUIRE(msg.clientCommand() == MdpMessage::ClientCommand::Final);
+        REQUIRE(msg.topic() == "I'm a topic");
+        REQUIRE(msg.serviceName() == "service://abc");
+        REQUIRE(msg.clientRequestId() == "request 1");
+        REQUIRE(msg.body() == "test body test body test body test body test body test body test body");
+        REQUIRE(msg.error() == "fail!");
+        REQUIRE(msg.rbac() == "password");
 
-    REQUIRE(msg.isClientMessage());
-    REQUIRE(msg.clientCommand() == MdpMessage::ClientCommand::Final);
-    REQUIRE(msg.topic() == "I'm a topic");
-    REQUIRE(msg.serviceName() == "service://abc");
-    REQUIRE(msg.clientRequestId() == "request 1");
-    REQUIRE(msg.body() == "test body test body test body test body test body test body test body");
-    REQUIRE(msg.error() == "fail!");
-    REQUIRE(msg.rbac() == "password");
+        REQUIRE(msg.parts_count() == 9);
+        REQUIRE(msg[0].data() == "");
+        REQUIRE(msg[1].data() == "MDPC03");
+        REQUIRE(msg[2].data() == "\x6");
+        REQUIRE(msg[3].data() == "service://abc");
+        REQUIRE(msg[4].data() == "request 1");
+        REQUIRE(msg[5].data() == "I'm a topic");
+        REQUIRE(msg[6].data() == "test body test body test body test body test body test body test body");
+        REQUIRE(msg[7].data() == "fail!");
+        REQUIRE(msg[8].data() == "password");
+    }
 
-    REQUIRE(msg.parts_count() == 9);
-    REQUIRE(msg[0].data().empty());
-    REQUIRE(msg[1].data() == "MDPC03");
-    REQUIRE(msg[2].data() == "\x6");
-    REQUIRE(msg[3].data() == "service://abc");
-    REQUIRE(msg[4].data() == "request 1");
-    REQUIRE(msg[5].data() == "I'm a topic");
-    REQUIRE(msg[6].data() == "test body test body test body test body test body test body test body");
-    REQUIRE(msg[7].data() == "fail!");
-    REQUIRE(msg[8].data() == "password");
+    {
+        using MdpMessage = Majordomo::OpenCMW::BasicMdpMessage<Majordomo::OpenCMW::MessageFormat::WithoutSourceId>;
+        auto msg         = MdpMessage::createClientMessage(MdpMessage::ClientCommand::Final);
+        REQUIRE(msg.isClientMessage());
+        REQUIRE(msg.clientCommand() == MdpMessage::ClientCommand::Final);
+
+        auto tag = yaz::MessagePart::static_bytes_tag{};
+        msg.setTopic("I'm a topic", tag);
+        msg.setServiceName("service://abc", tag);
+        msg.setClientRequestId("request 1", tag);
+        msg.setBody("test body test body test body test body test body test body test body", tag);
+        msg.setError("fail!", tag);
+        msg.setRbac("password", tag);
+
+        REQUIRE(msg.isClientMessage());
+        REQUIRE(msg.clientCommand() == MdpMessage::ClientCommand::Final);
+        REQUIRE(msg.topic() == "I'm a topic");
+        REQUIRE(msg.serviceName() == "service://abc");
+        REQUIRE(msg.clientRequestId() == "request 1");
+        REQUIRE(msg.body() == "test body test body test body test body test body test body test body");
+        REQUIRE(msg.error() == "fail!");
+        REQUIRE(msg.rbac() == "password");
+
+        REQUIRE(msg.parts_count() == 8);
+        REQUIRE(msg[0].data() == "MDPC03");
+        REQUIRE(msg[1].data() == "\x6");
+        REQUIRE(msg[2].data() == "service://abc");
+        REQUIRE(msg[3].data() == "request 1");
+        REQUIRE(msg[4].data() == "I'm a topic");
+        REQUIRE(msg[5].data() == "test body test body test body test body test body test body test body");
+        REQUIRE(msg[6].data() == "fail!");
+        REQUIRE(msg[7].data() == "password");
+    }
+
 }
 
 TEST_CASE("Request answered with unknown service", "[Broker]") {
@@ -443,9 +477,12 @@ TEST_CASE("pubsub example using router socket", "[Broker]") {
     }
 }
 
+using Majordomo::OpenCMW::MdpMessage;
+
 class TestIntWorker : public Majordomo::OpenCMW::BasicMdpWorker {
     int _x = 10;
 public:
+
     explicit TestIntWorker(yaz::Context &context, std::string service_name, int initial_value)
         : Majordomo::OpenCMW::BasicMdpWorker(context, service_name)
         , _x(initial_value) {

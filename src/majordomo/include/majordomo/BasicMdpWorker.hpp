@@ -19,13 +19,6 @@ class BasicMdpWorker {
     std::atomic<bool>                         _shutdown_requested = false;
     yaz::Socket<MdpMessage, BasicMdpWorker *> _socket;
 
-    void                                      send(MdpMessage &&message) {
-        auto &frames = message.parts_ref();
-        assert(frames.size() == 9);
-        auto span = std::span(frames);
-        _socket.send_parts(span.subspan(1, span.size() - 1));
-    }
-
 protected:
     MdpMessage create_message(MdpMessage::WorkerCommand command) {
         auto message = MdpMessage::createWorkerMessage(command);
@@ -58,10 +51,6 @@ public:
     }
 
     void handle_message(MdpMessage &&message) {
-        // we receive 8 frames here, add first empty frame for MdpMessage
-        auto &frames = message.parts_ref();
-        frames.emplace(frames.begin(), yaz::MessagePart{});
-
         if (!message.isValid()) {
             debug() << "invalid MdpMessage received\n";
             return;
@@ -71,12 +60,12 @@ public:
             switch (message.workerCommand()) {
             case MdpMessage::WorkerCommand::Get:
                 if (auto reply = handle_get(std::move(message))) {
-                    send(std::move(*reply));
+                    _socket.send(std::move(*reply));
                 }
                 return;
             case MdpMessage::WorkerCommand::Set:
                 if (auto reply = handle_set(std::move(message))) {
-                    send(std::move(*reply));
+                    _socket.send(std::move(*reply));
                 }
                 return;
             case MdpMessage::WorkerCommand::Heartbeat:
@@ -100,14 +89,14 @@ public:
 
         auto ready = create_message(MdpMessage::WorkerCommand::Ready);
         ready.setBody(_service_description, yaz::MessagePart::dynamic_bytes_tag{});
-        send(std::move(ready));
+        _socket.send(std::move(ready));
 
         return true;
     }
 
     bool disconnect() {
         auto msg = create_message(MdpMessage::WorkerCommand::Disconnect);
-        send(std::move(msg));
+        _socket.send(std::move(msg));
 
         return _socket.disconnect();
     }

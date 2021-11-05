@@ -12,25 +12,35 @@ namespace Majordomo::OpenCMW {
 using yaz::Bytes;
 using yaz::MessagePart;
 
-class MdpMessage : public yaz::Message {
+enum class MessageFormat {
+    WithSourceId,   ///< 9-frame format, contains the source ID as frame 0, used with ROUTER sockets (broker)
+    WithoutSourceId ///< 8-frame format, does not contain the source ID frame
+};
+
+template<MessageFormat Format>
+class BasicMdpMessage;
+
+using MdpMessage = BasicMdpMessage<MessageFormat::WithoutSourceId>;
+
+template<MessageFormat Format>
+class BasicMdpMessage : public yaz::Message {
 private:
     static constexpr auto clientProtocol = "MDPC03";
     static constexpr auto workerProtocol = "MDPW03";
 
-    static constexpr auto numFrames      = 9;
-    // std::vector<Bytes>    _frames{ numFrames };
+    static constexpr auto FrameCount     = Format == MessageFormat::WithSourceId ? 9 : 8;
 
     enum class Frame : std::size_t {
-        SourceId        = 0,
-        Protocol        = 1,
-        Command         = 2,
-        ServiceName     = 3,
-        ClientSourceId  = ServiceName,
-        ClientRequestId = 4,
-        Topic           = 5,
-        Body            = 6,
-        Error           = 7,
-        RBAC            = 8
+        SourceId = 0,
+        Protocol = Format == MessageFormat::WithSourceId ? 1 : 0,
+        Command,
+        ServiceName,
+        ClientSourceId = ServiceName,
+        ClientRequestId,
+        Topic,
+        Body,
+        Error,
+        RBAC
     };
 
     template<typename T>
@@ -48,12 +58,12 @@ private:
         return operator[](index(value));
     }
 
-    MdpMessage() {
-        resize(numFrames);
+    BasicMdpMessage() {
+        resize(FrameCount);
     }
 
-    explicit MdpMessage(char command) {
-        resize(numFrames);
+    explicit BasicMdpMessage(char command) {
+        resize(FrameCount);
         setCommand(command);
         assert(this->command() == command);
     }
@@ -62,8 +72,8 @@ private:
         setFrameData(Frame::Command, new std::string(1, command), MessagePart::dynamic_bytes_tag{});
     }
 
-    MdpMessage(const MdpMessage &) = default;
-    MdpMessage        &operator=(const MdpMessage &) = default;
+    BasicMdpMessage(const BasicMdpMessage &) = default;
+    BasicMdpMessage   &operator=(const BasicMdpMessage &) = default;
 
     [[nodiscard]] char command() const {
         assert(frameAt(Frame::Command).data().length() == 1);
@@ -74,7 +84,7 @@ private:
     template<typename Message>
     static bool isMessageValid(const Message &ymsg) {
         // TODO better error reporting
-        if (ymsg.parts_count() != numFrames) {
+        if (ymsg.parts_count() != FrameCount) {
             return false;
         }
 
@@ -128,30 +138,31 @@ public:
         Worker
     };
 
-    explicit MdpMessage(std::vector<yaz::MessagePart> &&parts)
+    explicit BasicMdpMessage(std::vector<yaz::MessagePart> &&parts)
         : yaz::Message(std::move(parts)) {
     }
 
-    ~MdpMessage()                  = default;
-    MdpMessage(MdpMessage &&other) = default;
-    MdpMessage       &operator=(MdpMessage &&other) = default;
+    ~BasicMdpMessage()                       = default;
+    BasicMdpMessage(BasicMdpMessage &&other) = default;
+    BasicMdpMessage       &operator=(BasicMdpMessage &&other) = default;
 
-    static MdpMessage createClientMessage(ClientCommand cmd) {
-        MdpMessage msg{ static_cast<char>(cmd) };
+    static BasicMdpMessage createClientMessage(ClientCommand cmd) {
+        BasicMdpMessage msg{ static_cast<char>(cmd) };
         msg.setFrameData(Frame::Protocol, clientProtocol, MessagePart::static_bytes_tag{});
         return msg;
     }
 
-    static MdpMessage createWorkerMessage(WorkerCommand cmd) {
-        MdpMessage msg{ static_cast<char>(cmd) };
+    static BasicMdpMessage createWorkerMessage(WorkerCommand cmd) {
+        BasicMdpMessage msg{ static_cast<char>(cmd) };
         msg.setFrameData(Frame::Protocol, workerProtocol, MessagePart::static_bytes_tag{});
         return msg;
     }
 
-    MdpMessage clone() const {
+    BasicMdpMessage clone() const {
         // TODO make this nicer...
-        MdpMessage tmp;
-        for (size_t i = 0; i < parts_count(); ++i)
+        BasicMdpMessage tmp;
+        assert(parts_count() == FrameCount);
+        for (size_t i = 0; i < FrameCount; ++i)
             tmp.add_part(std::make_unique<std::string>((*this)[i].data()));
         return tmp;
     }
@@ -205,10 +216,12 @@ public:
 
     template<typename T, typename Tag>
     void setSourceId(T &&sourceId, Tag tag) {
+        static_assert(Format == MessageFormat::WithSourceId, "not available for WithoutSourceId format");
         setFrameData(Frame::SourceId, YAZ_FWD(sourceId), tag);
     }
 
     [[nodiscard]] std::string_view sourceId() const {
+        static_assert(Format == MessageFormat::WithSourceId, "not available for WithoutSourceId format");
         return frameAt(Frame::SourceId).data();
     }
 
@@ -276,7 +289,8 @@ public:
     }
 };
 
-static_assert(std::is_nothrow_move_constructible<MdpMessage>::value, "MdpMessage should be noexcept MoveConstructible");
+static_assert(std::is_nothrow_move_constructible<BasicMdpMessage<MessageFormat::WithSourceId>>::value, "MdpMessage should be noexcept MoveConstructible");
+static_assert(std::is_nothrow_move_constructible<BasicMdpMessage<MessageFormat::WithoutSourceId>>::value, "MdpMessage should be noexcept MoveConstructible");
 } // namespace Majordomo::OpenCMW
 
 #endif

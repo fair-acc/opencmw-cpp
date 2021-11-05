@@ -38,7 +38,7 @@ constexpr int             HEARTBEAT_LIVENESS         = 3;
 constexpr int             HEARTBEAT_INTERVAL         = 1000;
 constexpr auto            CLIENT_TIMEOUT             = std::chrono::seconds(10); // TODO
 
-using Majordomo::OpenCMW::MdpMessage;
+using BrokerMessage                                  = BasicMdpMessage<MessageFormat::WithSourceId>;
 
 template<typename Message, typename Handler>
 class BaseSocket : public yaz::Socket<Message, Handler> {
@@ -62,28 +62,28 @@ public:
 };
 
 template<typename Handler>
-class RouterSocket : public BaseSocket<MdpMessage, Handler> {
+class RouterSocket : public BaseSocket<BrokerMessage, Handler> {
 public:
     explicit RouterSocket(yaz::Context &context, Handler &&handler)
-        : BaseSocket<MdpMessage, Handler>(context, ZMQ_ROUTER, std::move(handler)) {
+        : BaseSocket<BrokerMessage, Handler>(context, ZMQ_ROUTER, std::move(handler)) {
         this->bind(INTERNAL_ADDRESS_BROKER);
     }
 };
 
 template<typename Handler>
-class SubSocket : public BaseSocket<MdpMessage, Handler> {
+class SubSocket : public BaseSocket<BrokerMessage, Handler> {
 public:
     explicit SubSocket(yaz::Context &context, Handler &&handler)
-        : BaseSocket<MdpMessage, Handler>(context, ZMQ_XSUB, std::move(handler)) {
+        : BaseSocket<BrokerMessage, Handler>(context, ZMQ_XSUB, std::move(handler)) {
         this->bind(INTERNAL_ADDRESS_SUBSCRIBE);
     }
 };
 
 template<typename Handler>
-class DnsSocket : public BaseSocket<MdpMessage, Handler> {
+class DnsSocket : public BaseSocket<BrokerMessage, Handler> {
 public:
     explicit DnsSocket(yaz::Context &context, Handler &&handler)
-        : BaseSocket<MdpMessage, Handler>(context, ZMQ_DEALER, std::move(handler)) {
+        : BaseSocket<BrokerMessage, Handler>(context, ZMQ_DEALER, std::move(handler)) {
     }
 };
 
@@ -107,12 +107,12 @@ private:
 
     using Timestamp                                    = std::chrono::time_point<std::chrono::steady_clock>;
     using SocketGroup                                  = yaz::SocketGroup<Broker *, RouterSocket, PubSocket, SubSocket, DnsSocket>;
-    using SocketType                                   = yaz::Socket<MdpMessage, Broker::SocketGroup *>;
+    using SocketType                                   = yaz::Socket<BrokerMessage, Broker::SocketGroup *>;
 
     struct Client {
         SocketType            *socket;
         const std::string      id;
-        std::deque<MdpMessage> requests;
+        std::deque<BrokerMessage> requests;
 
         explicit Client(SocketType *s, std::string id_)
             : socket(s)
@@ -148,19 +148,19 @@ private:
         std::string            name;
         std::string            description;
         std::deque<Worker *>   waiting;
-        std::deque<MdpMessage> requests;
+        std::deque<BrokerMessage> requests;
 
         explicit Service(std::string name_, std::string description_)
             : name(std::move(name_))
             , description(std::move(description_)) {
         }
 
-        void put_message(MdpMessage &&message) {
+        void put_message(BrokerMessage &&message) {
             // TODO prioritise by RBAC role
             requests.emplace_back(std::move(message));
         }
 
-        MdpMessage take_next_message() {
+        BrokerMessage take_next_message() {
             assert(!requests.empty());
             auto msg = std::move(requests.front());
             requests.pop_front();
@@ -248,13 +248,13 @@ private:
             assert(worker);
             message.setClientSourceId(message.sourceId(), MessagePart::dynamic_bytes_tag{});
             message.setSourceId(worker->id, MessagePart::dynamic_bytes_tag{});
-            message.setProtocol(MdpMessage::Protocol::Worker);
+            message.setProtocol(BrokerMessage::Protocol::Worker);
             // TODO assert that command exists in both protocols?
             worker->socket->send(std::move(message));
         }
     }
 
-    void send_with_source_id(MdpMessage &&message, std::string_view source_id) {
+    void send_with_source_id(BrokerMessage &&message, std::string_view source_id) {
         message.setSourceId(source_id, MessagePart::dynamic_bytes_tag{});
         _sockets.get<RouterSocket>().send(std::move(message));
     }
@@ -264,7 +264,7 @@ private:
         return subscription_topic.starts_with(topic);
     }
 
-    void dispatch_message_to_matching_subscribers(MdpMessage &&message) {
+    void dispatch_message_to_matching_subscribers(BrokerMessage &&message) {
         const auto               it                       = _subscribed_clients_by_topic.find(std::string(message.topic()));
         const auto               has_router_subscriptions = it != _subscribed_clients_by_topic.end();
 
@@ -325,7 +325,7 @@ private:
 
             // not implemented -- reply according to Majordomo Management Interface (MMI) as defined in http://rfc.zeromq.org/spec:8
 
-            auto           reply = MdpMessage::createClientMessage(MdpMessage::ClientCommand::Final);
+            auto           reply = BrokerMessage::createClientMessage(BrokerMessage::ClientCommand::Final);
             constexpr auto tag   = yaz::MessagePart::dynamic_bytes_tag{};
             reply.setSourceId(client_message.sourceId(), tag);
             reply.setClientSourceId(client_message.clientSourceId(), tag);
@@ -362,7 +362,7 @@ private:
     }
 
     template<typename Socket>
-    void process_worker(Socket &socket, MdpMessage &&message) {
+    void process_worker(Socket &socket, BrokerMessage &&message) {
         assert(message.isWorkerMessage());
 
         const auto service_name = std::string(message.serviceName());
@@ -372,13 +372,13 @@ private:
         worker.update_expiry();
 
         switch (message.workerCommand()) {
-        case MdpMessage::WorkerCommand::Ready: {
+        case BrokerMessage::WorkerCommand::Ready: {
             debug() << "log new local/external worker for service " << service_name << " - " << message << std::endl;
             std::ignore = require_service(service_name, std::string(message.body()));
             worker_waiting(worker);
 
             // notify potential listeners
-            auto       notify      = MdpMessage::createWorkerMessage(MdpMessage::WorkerCommand::Notify);
+            auto       notify      = BrokerMessage::createWorkerMessage(BrokerMessage::WorkerCommand::Notify);
             const auto dynamic_tag = yaz::MessagePart::dynamic_bytes_tag{};
             notify.setServiceName(INTERNAL_SERVICE_NAMES, dynamic_tag);
             notify.setTopic(INTERNAL_SERVICE_NAMES, dynamic_tag);
@@ -387,11 +387,11 @@ private:
             pub_socket().send(std::move(notify));
             break;
         }
-        case MdpMessage::WorkerCommand::Disconnect:
+        case BrokerMessage::WorkerCommand::Disconnect:
             // delete_worker(worker); // TODO handle? also commented out in java impl
             break;
-        case MdpMessage::WorkerCommand::Partial:
-        case MdpMessage::WorkerCommand::Final: {
+        case BrokerMessage::WorkerCommand::Partial:
+        case BrokerMessage::WorkerCommand::Final: {
             if (known_worker) {
                 const auto client_id = message.clientSourceId();
                 auto       client    = _clients.find(std::string(client_id));
@@ -403,17 +403,17 @@ private:
                 message.setServiceName(worker.service_name, yaz::MessagePart::dynamic_bytes_tag{});
                 const auto client_command = [](auto worker_cmd) {
                     switch (worker_cmd) {
-                    case MdpMessage::WorkerCommand::Partial:
-                        return MdpMessage::ClientCommand::Partial;
-                    case MdpMessage::WorkerCommand::Final:
-                        return MdpMessage::ClientCommand::Final;
+                    case BrokerMessage::WorkerCommand::Partial:
+                        return BrokerMessage::ClientCommand::Partial;
+                    case BrokerMessage::WorkerCommand::Final:
+                        return BrokerMessage::ClientCommand::Final;
                     default:
                         assert(!"unexpected command");
-                        return MdpMessage::ClientCommand::Final;
+                        return BrokerMessage::ClientCommand::Final;
                     }
                 }(message.workerCommand());
 
-                message.setProtocol(MdpMessage::Protocol::Client);
+                message.setProtocol(BrokerMessage::Protocol::Client);
                 message.setClientCommand(client_command);
                 client->second.socket->send(std::move(message));
                 worker_waiting(worker);
@@ -422,9 +422,9 @@ private:
             }
             break;
         }
-        case MdpMessage::WorkerCommand::Notify: {
-            message.setProtocol(MdpMessage::Protocol::Client);
-            message.setClientCommand(MdpMessage::ClientCommand::Final);
+        case BrokerMessage::WorkerCommand::Notify: {
+            message.setProtocol(BrokerMessage::Protocol::Client);
+            message.setClientCommand(BrokerMessage::ClientCommand::Final);
             message.setSourceId(message.serviceName(), yaz::MessagePart::dynamic_bytes_tag{});
             message.setServiceName(worker.service_name, yaz::MessagePart::dynamic_bytes_tag{});
 
@@ -447,7 +447,7 @@ private:
     }
 
     void disconnect_worker(Worker &worker) {
-        auto disconnect = MdpMessage::createWorkerMessage(MdpMessage::WorkerCommand::Disconnect);
+        auto           disconnect  = BrokerMessage::createWorkerMessage(BrokerMessage::WorkerCommand::Disconnect);
         constexpr auto dynamic_tag = yaz::MessagePart::dynamic_bytes_tag{};
         disconnect.setSourceId(worker.id, dynamic_tag);
         disconnect.setServiceName(worker.service_name, dynamic_tag);
@@ -575,7 +575,7 @@ public:
         if (message.isClientMessage()) {
             switch (message.clientCommand()) {
             // TODO handle READY (client)?
-            case MdpMessage::ClientCommand::Subscribe: {
+            case BrokerMessage::ClientCommand::Subscribe: {
                 auto it = _subscribed_clients_by_topic.try_emplace(std::string(message.topic()), std::set<std::string>{});
                 // TODO check for duplicate subscriptions?
                 it.first->second.emplace(message.sourceId());
@@ -585,7 +585,7 @@ public:
                 }
                 return true;
             }
-            case MdpMessage::ClientCommand::Unsubscribe: {
+            case BrokerMessage::ClientCommand::Unsubscribe: {
                 auto it = _subscribed_clients_by_topic.find(std::string(message.topic()));
                 if (it != _subscribed_clients_by_topic.end()) {
                     it->second.erase(std::string(message.sourceId()));

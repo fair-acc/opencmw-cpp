@@ -43,7 +43,7 @@ public:
     Request get(std::string_view service_name, BodyType request) {
         auto [handle, message] = create_request_template(MdpMessage::ClientCommand::Get, service_name);
         message.setBody(YAZ_FWD(request), MessagePart::dynamic_bytes_tag{});
-        send(std::move(message));
+        _socket.send(std::move(message));
         return handle;
     }
 
@@ -58,7 +58,7 @@ public:
     Request set(std::string_view service_name, BodyType request) {
         auto [handle, message] = create_request_template(MdpMessage::ClientCommand::Set, service_name);
         message.setBody(YAZ_FWD(request), MessagePart::dynamic_bytes_tag{});
-        send(std::move(message));
+        _socket.send(std::move(message));
         return handle;
     }
 
@@ -70,10 +70,6 @@ public:
     }
 
     void handle_message(MdpMessage &&message) {
-        // we receive 8 frames here, add first empty frame for MdpMessage
-        auto &frames = message.parts_ref();
-        frames.emplace(frames.begin(), yaz::MessagePart{});
-
         if (!message.isValid()) {
             debug() << "Received invalid message" << message << std::endl;
             return;
@@ -113,12 +109,6 @@ private:
 
     Request make_request_handle() {
         return Request{ _next_request_id++ };
-    }
-
-    void send(MdpMessage &&message) {
-        auto &frames = message.parts_ref();
-        auto  span   = std::span(frames);
-        _socket.send_parts(span.subspan(1, span.size() - 1));
     }
 };
 
