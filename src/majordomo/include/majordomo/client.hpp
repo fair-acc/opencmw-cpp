@@ -13,7 +13,7 @@
 namespace Majordomo::OpenCMW {
 
 class Client {
-    yaz::Socket<yaz::Message, Client *>                      _socket;
+    yaz::Socket<MdpMessage, Client *>                        _socket;
     std::string                                              _broker_url;
     int                                                      _next_request_id = 0;
     std::unordered_map<int, std::function<void(MdpMessage)>> _callbacks;
@@ -24,7 +24,7 @@ public:
     };
 
     Client(yaz::Context &context)
-        : _socket{ yaz::make_socket<yaz::Message>(context, ZMQ_DEALER, this) } {
+        : _socket{ yaz::make_socket<MdpMessage>(context, ZMQ_DEALER, this) } {
     }
 
     virtual ~Client() = default;
@@ -69,12 +69,10 @@ public:
         return r;
     }
 
-    void handle_message(yaz::Message &&ymsg) {
-        auto frames = ymsg.take_parts();
+    void handle_message(MdpMessage &&message) {
         // we receive 8 frames here, add first empty frame for MdpMessage
+        auto &frames = message.parts_ref();
         frames.emplace(frames.begin(), yaz::MessagePart{});
-
-        MdpMessage message(std::move(frames));
 
         if (!message.isValid()) {
             debug() << "Received invalid message" << message << std::endl;
@@ -118,8 +116,8 @@ private:
     }
 
     void send(MdpMessage &&message) {
-        auto frames = message.take_parts();
-        auto span   = std::span(frames);
+        auto &frames = message.parts_ref();
+        auto  span   = std::span(frames);
         _socket.send_parts(span.subspan(1, span.size() - 1));
     }
 };

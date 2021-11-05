@@ -13,14 +13,14 @@
 namespace Majordomo::OpenCMW {
 
 class BasicMdpWorker {
-    std::string                                 _service_name;
-    std::string                                 _service_description;
-    std::string                                 _rbac_role;
-    std::atomic<bool>                           _shutdown_requested = false;
-    yaz::Socket<yaz::Message, BasicMdpWorker *> _socket;
+    std::string                               _service_name;
+    std::string                               _service_description;
+    std::string                               _rbac_role;
+    std::atomic<bool>                         _shutdown_requested = false;
+    yaz::Socket<MdpMessage, BasicMdpWorker *> _socket;
 
-    void                                        send(MdpMessage &&message) {
-        auto frames = message.take_parts();
+    void                                      send(MdpMessage &&message) {
+        auto &frames = message.parts_ref();
         assert(frames.size() == 9);
         auto span = std::span(frames);
         _socket.send_parts(span.subspan(1, span.size() - 1));
@@ -39,7 +39,7 @@ public:
 
     explicit BasicMdpWorker(yaz::Context &context, std::string service_name)
         : _service_name{ std::move(service_name) }
-        , _socket{ yaz::make_socket<yaz::Message>(context, ZMQ_DEALER, this) } {
+        , _socket{ yaz::make_socket<MdpMessage>(context, ZMQ_DEALER, this) } {
     }
 
     virtual std::optional<MdpMessage> handle_get(MdpMessage &&request) = 0;
@@ -57,12 +57,11 @@ public:
         _shutdown_requested = true;
     }
 
-    void handle_message(yaz::Message &&ymsg) {
-        auto frames = ymsg.take_parts();
+    void handle_message(MdpMessage &&message) {
         // we receive 8 frames here, add first empty frame for MdpMessage
+        auto &frames = message.parts_ref();
         frames.emplace(frames.begin(), yaz::MessagePart{});
 
-        MdpMessage message(std::move(frames));
         if (!message.isValid()) {
             debug() << "invalid MdpMessage received\n";
             return;

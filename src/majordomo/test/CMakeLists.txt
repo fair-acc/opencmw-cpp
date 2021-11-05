@@ -50,6 +50,7 @@ target_link_libraries (
     majordomo_tests
     PUBLIC
         zmq
+        pthread
         project_warnings
         project_options
         CONAN_PKG::catch2
@@ -77,6 +78,7 @@ target_link_libraries (
     majordomo_benchmark
     PUBLIC
         zmq
+        pthread
         project_warnings
         project_options
         CONAN_PKG::fmt

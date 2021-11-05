@@ -204,8 +204,8 @@ public:
         _parts.resize(size);
     }
 
-    std::vector<MessagePart> take_parts() {
-        return std::move(_parts);
+    std::vector<MessagePart> &parts_ref() {
+        return _parts;
     }
 };
 
