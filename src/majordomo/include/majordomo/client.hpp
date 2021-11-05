@@ -13,9 +13,9 @@
 namespace Majordomo::OpenCMW {
 
 class Client {
-    yaz::Socket<yaz::Message, Client *> _socket;
-    std::string                       _broker_url;
-    int                               _next_request_id = 0;
+    yaz::Socket<yaz::Message, Client *>                      _socket;
+    std::string                                              _broker_url;
+    int                                                      _next_request_id = 0;
     std::unordered_map<int, std::function<void(MdpMessage)>> _callbacks;
 
 public:
@@ -24,8 +24,7 @@ public:
     };
 
     Client(yaz::Context &context)
-        : _socket{ yaz::make_socket<yaz::Message>(context, ZMQ_DEALER, this) }
-    {
+        : _socket{ yaz::make_socket<yaz::Message>(context, ZMQ_DEALER, this) } {
     }
 
     virtual ~Client() = default;
@@ -40,7 +39,7 @@ public:
 
     virtual void handle_response(MdpMessage &&) {}
 
-    template <typename BodyType>
+    template<typename BodyType>
     Request get(std::string_view service_name, BodyType request) {
         auto [handle, message] = create_request_template(MdpMessage::ClientCommand::Get, service_name);
         message.setBody(YAZ_FWD(request), MessagePart::dynamic_bytes_tag{});
@@ -48,14 +47,14 @@ public:
         return handle;
     }
 
-    template <typename BodyType, typename Callback>
+    template<typename BodyType, typename Callback>
     Request get(std::string_view service_name, BodyType request, Callback fnc) {
         auto r = get(service_name, YAZ_FWD(request));
         _callbacks.emplace(r.id, YAZ_FWD(fnc));
         return r;
     }
 
-    template <typename BodyType>
+    template<typename BodyType>
     Request set(std::string_view service_name, BodyType request) {
         auto [handle, message] = create_request_template(MdpMessage::ClientCommand::Set, service_name);
         message.setBody(YAZ_FWD(request), MessagePart::dynamic_bytes_tag{});
@@ -63,7 +62,7 @@ public:
         return handle;
     }
 
-    template <typename BodyType, typename Callback>
+    template<typename BodyType, typename Callback>
     Request set(std::string_view service_name, BodyType request, Callback fnc) {
         auto r = set(service_name, request);
         _callbacks.emplace(r.id, YAZ_FWD(fnc));
@@ -85,10 +84,10 @@ public:
         // TODO handle client HEARTBEAT etc.
 
         const auto id_str = message.clientRequestId();
-        int id;
-        auto as_int = std::from_chars(id_str.begin(), id_str.end(), id);
+        int        id;
+        auto       as_int  = std::from_chars(id_str.begin(), id_str.end(), id);
 
-        bool handled = false;
+        bool       handled = false;
         if (as_int.ec != std::errc::invalid_argument) {
             auto it = _callbacks.find(id);
             if (it != _callbacks.end()) {
@@ -115,16 +114,16 @@ private:
     }
 
     Request make_request_handle() {
-        return Request{_next_request_id++};
+        return Request{ _next_request_id++ };
     }
 
     void send(MdpMessage &&message) {
         auto frames = message.take_parts();
-        auto span = std::span(frames);
+        auto span   = std::span(frames);
         _socket.send_parts(span.subspan(1, span.size() - 1));
     }
 };
 
-} // namespace yamal
+} // namespace Majordomo::OpenCMW
 
 #endif // YAMAL_CLIENT_H
