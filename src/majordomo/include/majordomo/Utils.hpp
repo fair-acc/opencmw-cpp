@@ -1,5 +1,5 @@
-#ifndef UTILS_H
-#define UTILS_H
+#ifndef OPENCMW_MAJORDOMO_UTILS_H
+#define OPENCMW_MAJORDOMO_UTILS_H
 
 #include <cctype>
 #include <string_view>
@@ -14,4 +14,4 @@ bool iequal(const Left &left, const Right &right) {
 
 } // namespace utils
 
-#endif // UTILS_H
+#endif

@@ -2,70 +2,71 @@
 #include <thread>
 #include <unordered_map>
 
-#include <majordomo/broker.hpp>
-#include <majordomo/client.hpp>
 #include <majordomo/BasicMdpWorker.hpp>
+#include <majordomo/Broker.hpp>
+#include <majordomo/Client.hpp>
 
 #include <fmt/format.h>
 
-constexpr auto property_store_service = "property_store";
+constexpr auto propertyStoreService = "property_store";
 
-using Majordomo::OpenCMW::MdpMessage;
+using opencmw::majordomo::Context;
+using opencmw::majordomo::MdpMessage;
+using opencmw::majordomo::MessageFrame;
 
-class TestWorker : public Majordomo::OpenCMW::BasicMdpWorker {
-
+class TestWorker : public opencmw::majordomo::BasicMdpWorker {
     std::unordered_map<std::string, std::string> _properties;
 
 public:
-    explicit TestWorker(yaz::Context &context)
-        : BasicMdpWorker(context, property_store_service) {
+    explicit TestWorker(Context &context)
+        : BasicMdpWorker(context, propertyStoreService) {
     }
 
-    std::optional<Majordomo::OpenCMW::MdpMessage> handle_get(Majordomo::OpenCMW::MdpMessage &&message) override {
+    std::optional<opencmw::majordomo::MdpMessage> handleGet(opencmw::majordomo::MdpMessage &&message) override {
         message.setWorkerCommand(MdpMessage::WorkerCommand::Final);
 
         const auto property = std::string(message.body());
-        const auto it = _properties.find(property);
+        const auto it       = _properties.find(property);
 
         if (it != _properties.end()) {
-            message.setBody(it->second, yaz::MessagePart::dynamic_bytes_tag{});
-            message.setError("", yaz::MessagePart::static_bytes_tag{});
+            message.setBody(it->second, MessageFrame::dynamic_bytes_tag{});
+            message.setError("", MessageFrame::static_bytes_tag{});
         } else {
-            message.setBody("", yaz::MessagePart::static_bytes_tag{});
-            message.setError(fmt::format("Unknown property '{}'", property), yaz::MessagePart::dynamic_bytes_tag{});
+            message.setBody("", MessageFrame::static_bytes_tag{});
+            message.setError(fmt::format("Unknown property '{}'", property), MessageFrame::dynamic_bytes_tag{});
         }
 
         return std::move(message);
     }
 
-    std::optional<Majordomo::OpenCMW::MdpMessage> handle_set(Majordomo::OpenCMW::MdpMessage &&message) override {
+    std::optional<opencmw::majordomo::MdpMessage> handleSet(opencmw::majordomo::MdpMessage &&message) override {
         message.setWorkerCommand(MdpMessage::WorkerCommand::Final);
 
         const auto request = message.body();
 
-        const auto pos = request.find("=");
+        const auto pos     = request.find("=");
 
         if (pos != std::string_view::npos) {
-            const auto property = request.substr(0, pos);
-            const auto value = request.substr(pos + 1, request.size() - 1 - pos);
+            const auto property                = request.substr(0, pos);
+            const auto value                   = request.substr(pos + 1, request.size() - 1 - pos);
 
             _properties[std::string(property)] = value;
 
             std::cout << fmt::format("Property '{}' set to value '{}'", property, value) << std::endl;
 
-            message.setBody(fmt::format("Property '{}' set to value '{}'", property, value), yaz::MessagePart::dynamic_bytes_tag{});
-            message.setError("", yaz::MessagePart::static_bytes_tag{});
+            message.setBody(fmt::format("Property '{}' set to value '{}'", property, value), MessageFrame::dynamic_bytes_tag{});
+            message.setError("", MessageFrame::static_bytes_tag{});
         } else {
-            message.setBody("", yaz::MessagePart::static_bytes_tag{});
-            message.setError("Invalid request, \"property=value\" expected", yaz::MessagePart::static_bytes_tag{});
+            message.setBody("", MessageFrame::static_bytes_tag{});
+            message.setError("Invalid request, \"property=value\" expected", MessageFrame::static_bytes_tag{});
         }
 
         return std::move(message);
     }
 };
 
-int main(int argc, char ** argv) {
-    using Majordomo::OpenCMW::Broker;
+int main(int argc, char **argv) {
+    using opencmw::majordomo::Broker;
 
     if (argc < 2) {
         std::cerr << "Usage: majordomo_testapp <broker|client|worker|brokerworker> <options>\n\n"
@@ -87,30 +88,30 @@ int main(int argc, char ** argv) {
 
     if (mode == "broker" || mode == "brokerworker") {
         if (argc < 3) {
-            std::cerr << "Usage: majordomo_testapp broker <router_endpoint> [<pub_endpoint>]\n";
+            std::cerr << "Usage: majordomo_testapp broker <routerEndpoint> [<pubEndpoint>]\n";
             return 1;
         }
-        const std::string_view router_endpoint = argv[2];
-        const std::string_view pub_endpoint = argc > 3 ? argv[3] : "";
+        const std::string_view routerEndpoint = argv[2];
+        const std::string_view pubEndpoint    = argc > 3 ? argv[3] : "";
 
-        yaz::Context context;
-        Broker broker("test_broker", "", context);
-        const auto router_address = broker.bind(router_endpoint);
-        if (!router_address) {
-            std::cerr << fmt::format("Could not bind to '{}'\n", router_endpoint);
+        Context                context;
+        Broker                 broker("test_broker", "", context);
+        const auto             routerAddress = broker.bind(routerEndpoint);
+        if (!routerAddress) {
+            std::cerr << fmt::format("Could not bind to '{}'\n", routerEndpoint);
             return 1;
         }
 
-        if (pub_endpoint.empty()) {
-            std::cout << fmt::format("Listening to '{}' (ROUTER)\n", *router_address);
+        if (pubEndpoint.empty()) {
+            std::cout << fmt::format("Listening to '{}' (ROUTER)\n", *routerAddress);
         } else {
-            const auto pub_address = broker.bind(pub_endpoint);
-            if (!pub_address) {
-                std::cerr << fmt::format("Could not bind to '{}'\n", router_endpoint);
+            const auto pubAddress = broker.bind(pubEndpoint);
+            if (!pubAddress) {
+                std::cerr << fmt::format("Could not bind to '{}'\n", routerEndpoint);
                 return 1;
             }
 
-            std::cout << fmt::format("Listening to '{}' (ROUTER) and '{}' (PUB)\n", *router_address, *pub_address);
+            std::cout << fmt::format("Listening to '{}' (ROUTER) and '{}' (PUB)\n", *routerAddress, *pubAddress);
         }
 
         if (mode == "broker") {
@@ -118,44 +119,44 @@ int main(int argc, char ** argv) {
             return 0;
         }
 
-        const auto inproc_router = std::string_view("inproc://privaterouter");
-        if (!broker.bind(inproc_router, Broker::BindOption::Router)) {
-            std::cerr << fmt::format("Could not bind broker to '{}'\n", inproc_router);
+        const auto inprocRouter = std::string_view("inproc://privaterouter");
+        if (!broker.bind(inprocRouter, Broker::BindOption::Router)) {
+            std::cerr << fmt::format("Could not bind broker to '{}'\n", inprocRouter);
             return 1;
         }
 
         TestWorker worker(context);
 
-        if (!worker.connect(inproc_router)) {
-            std::cerr << fmt::format("Could not connect worker to broker at '{}'\n", inproc_router);
+        if (!worker.connect(inprocRouter)) {
+            std::cerr << fmt::format("Could not connect worker to broker at '{}'\n", inprocRouter);
             return 1;
         }
 
-        auto broker_thread = std::thread([&broker] {
+        auto brokerThread = std::thread([&broker] {
             broker.run();
         });
 
-        auto worker_thread = std::thread([&worker] {
+        auto workerThread = std::thread([&worker] {
             worker.run();
         });
 
-        broker_thread.join();
-        worker_thread.join();
+        brokerThread.join();
+        workerThread.join();
         return 0; // never reached
     }
 
     if (mode == "worker") {
         if (argc < 3) {
-            std::cerr << "Usage: majordomo_testapp worker <broker_address>\n";
+            std::cerr << "Usage: majordomo_testapp worker <brokerAddress>\n";
             return 1;
         }
-        const std::string_view broker_address = argv[2];
+        const std::string_view brokerAddress = argv[2];
 
-        yaz::Context context;
-        TestWorker worker(context);
+        Context                context;
+        TestWorker             worker(context);
 
-        if (!worker.connect(broker_address)) {
-            std::cerr << fmt::format("Could not connect to broker at '{}'\n", broker_address);
+        if (!worker.connect(brokerAddress)) {
+            std::cerr << fmt::format("Could not connect to broker at '{}'\n", brokerAddress);
             return 1;
         }
 
@@ -165,38 +166,38 @@ int main(int argc, char ** argv) {
 
     if (mode == "client") {
         if (argc < 4) {
-            std::cerr << "Usage: majordomo_testapp client <broker_address> set|get <options>\n";
+            std::cerr << "Usage: majordomo_testapp client <brokerAddress> set|get <options>\n";
             return 1;
         }
 
-        const std::string_view broker_address = argv[2];
-        const std::string_view command = argv[3];
+        const std::string_view brokerAddress = argv[2];
+        const std::string_view command       = argv[3];
 
         if (command == "get" && argc != 5) {
-            std::cerr << "Usage: majordomo_testapp client <broker_address> get <property>\n";
+            std::cerr << "Usage: majordomo_testapp client <brokerAddress> get <property>\n";
             return 1;
         }
 
         if (command == "set" && argc != 6) {
-            std::cerr << "Usage: majordomo_testapp client <broker_address> set <property> <value>\n";
+            std::cerr << "Usage: majordomo_testapp client <brokerAddress> set <property> <value>\n";
             return 1;
         }
 
-        const std::string_view property = argv[4];
-        const std::string_view value = argc == 6 ? argv[5] : "";
+        const std::string_view     property = argv[4];
+        const std::string_view     value    = argc == 6 ? argv[5] : "";
 
-        yaz::Context context;
-        Majordomo::OpenCMW::Client client(context);
-        if (!client.connect(broker_address)) {
-            std::cerr << fmt::format("Could not connect to broker at '{}'\n", broker_address);
+        Context                    context;
+        opencmw::majordomo::Client client(context);
+        if (!client.connect(brokerAddress)) {
+            std::cerr << fmt::format("Could not connect to broker at '{}'\n", brokerAddress);
             return 1;
         }
 
-        bool reply_received = false;
+        bool replyReceived = false;
 
         if (command == "set") {
-            client.set(property_store_service, fmt::format("{}={}", property, value), [&reply_received](auto &&reply) {
-                reply_received = true;
+            client.set(propertyStoreService, fmt::format("{}={}", property, value), [&replyReceived](auto &&reply) {
+                replyReceived = true;
                 if (!reply.error().empty()) {
                     std::cout << "Error: " << reply.error() << std::endl;
                     return;
@@ -205,8 +206,8 @@ int main(int argc, char ** argv) {
                 std::cout << reply.body() << std::endl;
             });
         } else {
-            client.get(property_store_service, property, [property, &reply_received](auto &&reply) {
-                reply_received = true;
+            client.get(propertyStoreService, property, [property, &replyReceived](auto &&reply) {
+                replyReceived = true;
                 if (!reply.error().empty()) {
                     std::cout << "Error: " << reply.error() << std::endl;
                     return;
@@ -216,8 +217,8 @@ int main(int argc, char ** argv) {
             });
         }
 
-        while (!reply_received) {
-            client.try_read();
+        while (!replyReceived) {
+            client.tryRead();
         }
         return 0;
     }

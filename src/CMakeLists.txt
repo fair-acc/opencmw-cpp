@@ -1,6 +1,5 @@
 add_subdirectory(utils)
 add_subdirectory(serialiser)
-add_subdirectory(yaxxzmq/test)
 add_subdirectory(majordomo/test)
 
 # add_subdirectory(core)

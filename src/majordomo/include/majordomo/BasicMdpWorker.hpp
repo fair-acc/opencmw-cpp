@@ -1,56 +1,79 @@
-#ifndef MAJORDOMO_OPENCMW_WORKER_H
-#define MAJORDOMO_OPENCMW_WORKER_H
+#ifndef OPENCMW_MAJORDOMO_WORKER_H
+#define OPENCMW_MAJORDOMO_WORKER_H
 
 #include "Message.hpp"
 
-#include <yaz/Debug.hpp>
-#include <yaz/yaz.hpp>
+#include "Broker.hpp"
+#include "Debug.hpp"
 
 #include <atomic>
 #include <concepts>
 #include <string>
 
-namespace Majordomo::OpenCMW {
+namespace opencmw::majordomo {
 
 class BasicMdpWorker {
-    std::string                               _service_name;
-    std::string                               _service_description;
-    std::string                               _rbac_role;
-    std::atomic<bool>                         _shutdown_requested = false;
-    yaz::Socket<MdpMessage, BasicMdpWorker *> _socket;
+    std::string           _serviceName;
+    std::string           _serviceDescription;
+    std::string           _rbacRole;
+    std::atomic<bool>     _shutdownRequested = false;
+
+    const Context        &_context;
+    std::optional<Socket> _socket;
 
 protected:
-    MdpMessage create_message(MdpMessage::WorkerCommand command) {
+    MdpMessage createMessage(MdpMessage::WorkerCommand command) {
         auto message = MdpMessage::createWorkerMessage(command);
-        message.setServiceName(_service_name, yaz::MessagePart::dynamic_bytes_tag{});
-        message.setRbac(_rbac_role, yaz::MessagePart::dynamic_bytes_tag{});
+        message.setServiceName(_serviceName, MessageFrame::dynamic_bytes_tag{});
+        message.setRbac(_rbacRole, MessageFrame::dynamic_bytes_tag{});
         return message;
     }
 
 public:
     virtual ~BasicMdpWorker() = default;
 
-    explicit BasicMdpWorker(yaz::Context &context, std::string service_name)
-        : _service_name{ std::move(service_name) }
-        , _socket{ yaz::make_socket<MdpMessage>(context, ZMQ_DEALER, this) } {
+    explicit BasicMdpWorker(const Context &context, std::string serviceName)
+        : _serviceName{ std::move(serviceName) }, _context(context) {
     }
 
-    virtual std::optional<MdpMessage> handle_get(MdpMessage &&request) = 0;
-    virtual std::optional<MdpMessage> handle_set(MdpMessage &&request) = 0;
+    virtual std::optional<MdpMessage> handleGet(MdpMessage &&request) = 0;
+    virtual std::optional<MdpMessage> handleSet(MdpMessage &&request) = 0;
 
-    void                              set_service_description(std::string description) {
-        _service_description = std::move(description);
+    // Sets the service description
+    void setServiceDescription(std::string description) {
+        _serviceDescription = std::move(description);
     }
 
-    void set_rbac_role(std::string rbac) {
-        _rbac_role = std::move(rbac);
+    void setRbacRole(std::string rbac) {
+        _rbacRole = std::move(rbac);
     }
 
     void shutdown() {
-        _shutdown_requested = true;
+        _shutdownRequested = true;
     }
 
-    void handle_message(MdpMessage &&message) {
+    bool connect(std::string_view address) {
+        _socket.emplace(_context, ZMQ_DEALER);
+
+        const auto connectResult = zmq_invoke(zmq_connect, *_socket, address.data());
+        if (!connectResult) {
+            return false;
+        }
+
+        auto ready = createMessage(MdpMessage::WorkerCommand::Ready);
+        ready.setBody(_serviceDescription, MessageFrame::dynamic_bytes_tag{});
+        ready.send(*_socket).assertSuccess();
+
+        return true;
+    }
+
+    void disconnect() {
+        auto msg = createMessage(MdpMessage::WorkerCommand::Disconnect);
+        msg.send(*_socket).assertSuccess();
+        _socket.reset();
+    }
+
+    void handleMessage(MdpMessage &&message) {
         if (!message.isValid()) {
             debug() << "invalid MdpMessage received\n";
             return;
@@ -59,20 +82,20 @@ public:
         if (message.isWorkerMessage()) {
             switch (message.workerCommand()) {
             case MdpMessage::WorkerCommand::Get:
-                if (auto reply = handle_get(std::move(message))) {
-                    _socket.send(std::move(*reply));
+                if (auto reply = handleGet(std::move(message)); reply) {
+                    reply->send(*_socket).assertSuccess();
                 }
                 return;
             case MdpMessage::WorkerCommand::Set:
-                if (auto reply = handle_set(std::move(message))) {
-                    _socket.send(std::move(*reply));
+                if (auto reply = handleSet(std::move(message)); reply) {
+                    reply->send(*_socket).assertSuccess();
                 }
                 return;
             case MdpMessage::WorkerCommand::Heartbeat:
                 debug() << "HEARTBEAT not implemented yet\n";
                 return;
             case MdpMessage::WorkerCommand::Disconnect:
-                _socket.disconnect(); // quit or reconnect?
+                _socket.reset(); // quit or reconnect?
                 return;
             default:
                 assert(!"not implemented");
@@ -83,30 +106,18 @@ public:
         }
     }
 
-    bool connect(std::string_view address) {
-        if (!_socket.connect(address))
-            return false;
-
-        auto ready = create_message(MdpMessage::WorkerCommand::Ready);
-        ready.setBody(_service_description, yaz::MessagePart::dynamic_bytes_tag{});
-        _socket.send(std::move(ready));
-
-        return true;
-    }
-
-    bool disconnect() {
-        auto msg = create_message(MdpMessage::WorkerCommand::Disconnect);
-        _socket.send(std::move(msg));
-
-        return _socket.disconnect();
-    }
-
     void run() {
-        while (!_shutdown_requested) {
-            _socket.try_read();
+        while (!_shutdownRequested) {
+            assert(_socket);
+            auto message = MdpMessage::receive(*_socket);
+            if (!message) {
+                continue;
+            }
+
+            handleMessage(std::move(*message));
         }
     }
 };
-} // namespace Majordomo::OpenCMW
+} // namespace opencmw::majordomo
 
 #endif

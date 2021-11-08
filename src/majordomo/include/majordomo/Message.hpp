@@ -1,16 +1,121 @@
-#ifndef MAJORDOMO_OPENCMW_MESSAGE_H
-#define MAJORDOMO_OPENCMW_MESSAGE_H
-
-#include <yaz/kill/Message.hpp>
-#include <yaz/yaz.hpp>
+#ifndef OPENCMW_MAJORDOMO_MESSAGE_H
+#define OPENCMW_MAJORDOMO_MESSAGE_H
 
 #include <cassert>
+#include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
-namespace Majordomo::OpenCMW {
-using yaz::Bytes;
-using yaz::MessagePart;
+#include <zmq.h>
+
+#include "Debug.hpp"
+
+#include "ZmqPtr.hpp"
+
+namespace opencmw::majordomo {
+using Bytes = std::string;
+using Byte  = std::string::value_type;
+
+class MessageFrame {
+private:
+    bool _owning = true;
+
+    // mutable as 0mq API knows no const
+    mutable zmq_msg_t _message;
+
+public:
+    struct static_bytes_tag {};
+    struct dynamic_bytes_tag {};
+
+    MessageFrame() {
+        zmq_msg_init(&_message);
+    }
+
+    explicit MessageFrame(Bytes *buf, dynamic_bytes_tag /*tag*/ = {}) {
+        zmq_msg_init_data(
+                &_message, buf->data(), buf->size(),
+                [](void * /*unused*/, void *bufOwned) {
+                    delete static_cast<Bytes *>(bufOwned);
+                },
+                buf);
+    }
+
+    explicit MessageFrame(std::string_view view, dynamic_bytes_tag tag)
+        : MessageFrame(new std::string(view), tag) {}
+
+    explicit MessageFrame(std::string_view buf, static_bytes_tag) {
+        zmq_msg_init_data(
+                &_message, const_cast<char *>(buf.data()), buf.size(),
+                [](void *, void *) {
+                    // We don't want to delete a static RO string literal
+                },
+                nullptr);
+    }
+
+    ~MessageFrame() {
+        if (_owning) {
+            zmq_msg_close(&_message);
+        }
+    }
+
+    MessageFrame(const MessageFrame &other) = delete;
+    MessageFrame &operator=(const MessageFrame &other) = delete;
+
+    MessageFrame(MessageFrame &&other) noexcept
+        : MessageFrame() {
+        _owning = false;
+        std::swap(_owning, other._owning);
+        zmq_msg_move(&_message, &other._message);
+    }
+
+    MessageFrame &operator=(MessageFrame &&other) noexcept {
+        _owning = false;
+        std::swap(_owning, other._owning);
+        zmq_msg_move(&_message, &other._message);
+        return *this;
+    }
+
+    [[nodiscard]] MessageFrame clone() const {
+        return MessageFrame(std::make_unique<std::string>(data()).release(), dynamic_bytes_tag{});
+    }
+
+    void swap(MessageFrame &other) {
+        std::swap(_owning, other._owning);
+        std::swap(_message, other._message);
+    }
+
+    // Reads a message from the socket
+    // Returns the number of received bytes
+    Result<int> receive(Socket &socket, int flags) {
+        auto result = zmq_invoke(zmq_msg_recv, &_message, socket, flags);
+        _owning     = result.isValid();
+        return result;
+    }
+
+    // Sending is not const as 0mq nullifies the message
+    // See: http://api.zeromq.org/3-2:zmq-msg-send
+    [[nodiscard]] auto send(Socket &socket, int flags) {
+        if (data().size() > 0 && data()[0] == '`') {
+            throw 32;
+        }
+        auto result = zmq_invoke(zmq_msg_send, &_message, socket, flags);
+        assert(result.isValid());
+        _owning = false;
+        return result;
+    }
+
+    [[nodiscard]] std::size_t
+    size() const {
+        // assert(_owning);
+        return zmq_msg_size(&_message);
+    }
+
+    std::string_view data() const {
+        return std::string_view(
+                static_cast<char *>(zmq_msg_data(&_message)), size());
+    }
+};
 
 enum class MessageFormat {
     WithSourceId,   ///< 9-frame format, contains the source ID as frame 0, used with ROUTER sockets (broker)
@@ -18,17 +123,37 @@ enum class MessageFormat {
 };
 
 template<MessageFormat Format>
-class BasicMdpMessage;
-
-using MdpMessage = BasicMdpMessage<MessageFormat::WithoutSourceId>;
-
-template<MessageFormat Format>
-class BasicMdpMessage : public yaz::Message {
+class BasicMdpMessage {
 private:
-    static constexpr auto clientProtocol = "MDPC03";
-    static constexpr auto workerProtocol = "MDPW03";
+    using this_t                             = BasicMdpMessage<Format>;
 
-    static constexpr auto FrameCount     = Format == MessageFormat::WithSourceId ? 9 : 8;
+    static constexpr auto clientProtocol     = std::string_view{ "MDPC03" };
+    static constexpr auto workerProtocol     = std::string_view{ "MDPW03" };
+
+    static constexpr auto MessageFormat      = Format;
+    static constexpr auto RequiredFrameCount = std::size_t{ Format == MessageFormat::WithSourceId ? 9 : 8 };
+
+    // In order to have a zero-copy sending API, we allow API clients
+    // to give us their internal data that will be freed automatically
+    // when the message is sent.
+    //
+    // The non-nullptr items in the vector have not been sent yet
+    //
+    // TODO: Investigate whether we want unique_ptrs with custom
+    // deleters (that is, do we want a generic smart pointer support)
+    using BytesPtr = std::unique_ptr<Bytes>;
+    std::vector<MessageFrame> _frames;
+
+    // Helper function to print out the current message
+    // TODO: Remove as we don't want to depend on <iostream>
+    friend std::ostream &operator<<(std::ostream &out, const BasicMdpMessage &message) {
+        out << '{';
+        for (const auto &frame : message._frames) {
+            out << frame.data();
+        }
+        out << '}';
+        return out;
+    }
 
     enum class Frame : std::size_t {
         SourceId = 0,
@@ -43,33 +168,67 @@ private:
         RBAC
     };
 
+    struct empty_tag {};
+
+    BasicMdpMessage(empty_tag) {
+    }
+
     template<typename T>
     static constexpr auto index(T value) {
         return static_cast<std::underlying_type_t<T>>(value);
     }
 
-    template<typename T>
-    MessagePart &frameAt(T value) {
-        return operator[](index(value));
+    // Just a workaround for items in initializer lists not being
+    // movable, and we need to move unique ptrs in setFrames.
+    struct MovableBytesPtrWrapper {
+        mutable BytesPtr ptr;
+
+        // Getting the unique_ptr from the wrapper
+        operator BytesPtr() const && { return std::move(ptr); }
+        MovableBytesPtrWrapper(BytesPtr &&_ptr)
+            : ptr{ std::move(_ptr) } {}
+    };
+
+public:
+    void setFrames(std::array<MovableBytesPtrWrapper, RequiredFrameCount> &&data) {
+        _frames.resize(0);
+        _frames.reserve(RequiredFrameCount);
+        for (std::size_t i = 0; i < RequiredFrameCount; ++i) {
+            _frames.emplace_back(data[i].ptr.release(), MessageFrame::dynamic_bytes_tag{});
+        }
+        assert(_frames.size() == RequiredFrameCount);
+    }
+
+    [[nodiscard]] MessageFrame &frameAt(int index) {
+        return _frames[static_cast<std::size_t>(index)];
+    }
+
+    [[nodiscard]] const MessageFrame &frameAt(int index) const {
+        return _frames[static_cast<std::size_t>(index)];
     }
 
     template<typename T>
-    const MessagePart &frameAt(T value) const {
-        return operator[](index(value));
+    [[nodiscard]] MessageFrame &frameAt(T value) {
+        return _frames[index(value)];
+    }
+
+    template<typename T>
+    [[nodiscard]] const MessageFrame &frameAt(T value) const {
+        return _frames[index(value)];
     }
 
     BasicMdpMessage() {
-        resize(FrameCount);
+        _frames.resize(RequiredFrameCount);
     }
 
     explicit BasicMdpMessage(char command) {
-        resize(FrameCount);
+        _frames.resize(RequiredFrameCount);
         setCommand(command);
         assert(this->command() == command);
     }
 
     void setCommand(char command) {
-        setFrameData(Frame::Command, new std::string(1, command), MessagePart::dynamic_bytes_tag{});
+        setFrameData(Frame::Command, new std::string(1, command), MessageFrame::dynamic_bytes_tag{});
     }
 
     BasicMdpMessage(const BasicMdpMessage &) = default;
@@ -80,39 +239,76 @@ private:
         return frameAt(Frame::Command).data()[0];
     }
 
-    // TODO better error handling
-    template<typename Message>
-    static bool isMessageValid(const Message &ymsg) {
-        // TODO better error reporting
-        if (ymsg.parts_count() != FrameCount) {
-            return false;
+    [[nodiscard]] auto sendFrame(Socket &socket, std::size_t index, int flags) {
+        assert(flags & ZMQ_DONTWAIT);
+        while (true) {
+            const auto result = _frames[index].send(socket, flags);
+            if (result) {
+                return result;
+            }
+            if (result.error() != EAGAIN) {
+                return result;
+            }
+        }
+    }
+
+    [[nodiscard]] auto sendFrame(Socket &socket, std::size_t index) {
+        const auto flags = index + 1 == RequiredFrameCount ? ZMQ_DONTWAIT : ZMQ_DONTWAIT | ZMQ_SNDMORE;
+        return sendFrame(socket, index, flags);
+    }
+
+    [[nodiscard]] auto send(Socket &socket) {
+        decltype(sendFrame(socket, 0)) result{ 0 };
+        for (std::size_t i = 0; i < RequiredFrameCount; ++i) {
+            result = sendFrame(socket, i);
+            if (!result) {
+                return result;
+            }
         }
 
-        const auto &commandStr = ymsg[index(Frame::Command)];
+        return result;
+    }
 
-        if (commandStr.size() != 1) {
-            return false;
-        }
+    [[nodiscard]] bool receiveInplace(Socket &socket) {
+        _frames.clear();
 
-        const auto &protocol = ymsg[index(Frame::Protocol)].data();
-        const auto  command  = static_cast<unsigned char>(commandStr.data()[0]);
-        if (protocol == clientProtocol) {
-            if (command == 0 || command > static_cast<unsigned char>(ClientCommand::Final)) {
+        while (true) {
+            MessageFrame frame;
+            const auto   byteCountResult = frame.receive(socket, ZMQ_DONTWAIT);
+
+            if (byteCountResult) {
+                _frames.emplace_back(std::move(frame));
+            } else {
                 return false;
             }
 
-        } else if (protocol == workerProtocol) {
-            if (command == 0 || command > static_cast<unsigned char>(WorkerCommand::Heartbeat)) {
+            int64_t more;
+            size_t  moreSize = sizeof(more);
+            if (!zmq_invoke(zmq_getsockopt, socket, ZMQ_RCVMORE, &more, &moreSize)) {
+                // Can not check rcvmore
                 return false;
+
+            } else if (more != 0) {
+                // Multi-part message
+                continue;
+
+            } else {
+                break;
             }
-        } else {
-            return false;
         }
 
         return true;
     }
 
-public:
+    static std::optional<this_t> receive(Socket &socket) {
+        std::optional<this_t> result = this_t();
+        if (!result->receiveInplace(socket)) {
+            return {};
+        }
+
+        return result;
+    }
+
     enum class ClientCommand {
         Get         = 0x01,
         Set         = 0x02,
@@ -138,43 +334,76 @@ public:
         Worker
     };
 
-    explicit BasicMdpMessage(std::vector<yaz::MessagePart> &&parts)
-        : yaz::Message(std::move(parts)) {
-    }
+    explicit BasicMdpMessage(std::vector<MessageFrame> &&frames)
+        : _frames(std::move(frames)) {}
 
-    ~BasicMdpMessage()                       = default;
+    ~BasicMdpMessage()
+            = default;
     BasicMdpMessage(BasicMdpMessage &&other) = default;
     BasicMdpMessage       &operator=(BasicMdpMessage &&other) = default;
 
     static BasicMdpMessage createClientMessage(ClientCommand cmd) {
         BasicMdpMessage msg{ static_cast<char>(cmd) };
-        msg.setFrameData(Frame::Protocol, clientProtocol, MessagePart::static_bytes_tag{});
+        msg.setFrameData(Frame::Protocol, clientProtocol, MessageFrame::static_bytes_tag{});
         return msg;
     }
 
     static BasicMdpMessage createWorkerMessage(WorkerCommand cmd) {
         BasicMdpMessage msg{ static_cast<char>(cmd) };
-        msg.setFrameData(Frame::Protocol, workerProtocol, MessagePart::static_bytes_tag{});
+        msg.setFrameData(Frame::Protocol, workerProtocol, MessageFrame::static_bytes_tag{});
         return msg;
+    }
+
+    bool isValid() const {
+        // TODO better error reporting
+        if (_frames.size() != RequiredFrameCount) {
+            debugWithLocation() << "Message size is wrong";
+            return false;
+        }
+
+        const auto &commandStr = _frames[index(Frame::Command)];
+
+        if (commandStr.size() != 1) {
+            debugWithLocation() << "Command size is wrong";
+            return false;
+        }
+
+        const auto &protocol = _frames[index(Frame::Protocol)].data();
+        const auto  command  = static_cast<unsigned char>(commandStr.data()[0]);
+        if (protocol == clientProtocol) {
+            if (command == 0 || command > static_cast<unsigned char>(ClientCommand::Final)) {
+                debugWithLocation() << "Message command out of range for client";
+                return false;
+            }
+
+        } else if (protocol == workerProtocol) {
+            if (command == 0 || command > static_cast<unsigned char>(WorkerCommand::Heartbeat)) {
+                debugWithLocation() << "Message command out of range for worker";
+                return false;
+            }
+        } else {
+            debugWithLocation() << "Message has a wrong protocol" << protocol;
+            return false;
+        }
+
+        return true;
     }
 
     BasicMdpMessage clone() const {
         // TODO make this nicer...
-        BasicMdpMessage tmp;
-        assert(parts_count() == FrameCount);
-        for (size_t i = 0; i < FrameCount; ++i)
-            tmp.add_part(std::make_unique<std::string>((*this)[i].data()));
+        BasicMdpMessage tmp{ empty_tag{} };
+        assert(_frames.size() == RequiredFrameCount);
+        tmp._frames.reserve(RequiredFrameCount);
+        for (const auto &frame : _frames) {
+            tmp._frames.emplace_back(frame.clone());
+        }
         return tmp;
-    }
-
-    [[nodiscard]] bool isValid() const {
-        return isMessageValid(*this);
     }
 
     void setProtocol(Protocol protocol) {
         setFrameData(Frame::Protocol,
                 protocol == Protocol::Client ? clientProtocol : workerProtocol,
-                MessagePart::static_bytes_tag{});
+                MessageFrame::static_bytes_tag{});
     }
 
     [[nodiscard]] Protocol protocol() const {
@@ -209,15 +438,23 @@ public:
         return static_cast<WorkerCommand>(command());
     }
 
+    std::size_t availableFrameCount() const {
+        return _frames.size();
+    }
+
+    std::size_t requiresFrameCount() const {
+        return RequiredFrameCount;
+    }
+
     template<typename Field, typename T, typename Tag>
     void setFrameData(Field field, T &&value, Tag tag) {
-        frameAt(field) = MessagePart(YAZ_FWD(value), tag);
+        frameAt(field) = MessageFrame(std::forward<T>(value), tag);
     }
 
     template<typename T, typename Tag>
     void setSourceId(T &&sourceId, Tag tag) {
         static_assert(Format == MessageFormat::WithSourceId, "not available for WithoutSourceId format");
-        setFrameData(Frame::SourceId, YAZ_FWD(sourceId), tag);
+        setFrameData(Frame::SourceId, std::forward<T>(sourceId), tag);
     }
 
     [[nodiscard]] std::string_view sourceId() const {
@@ -227,7 +464,7 @@ public:
 
     template<typename T, typename Tag>
     void setServiceName(T &&serviceName, Tag tag) {
-        setFrameData(Frame::ServiceName, YAZ_FWD(serviceName), tag);
+        setFrameData(Frame::ServiceName, std::forward<T>(serviceName), tag);
     }
 
     [[nodiscard]] std::string_view serviceName() const {
@@ -236,7 +473,7 @@ public:
 
     template<typename T, typename Tag>
     void setClientSourceId(T &&clientSourceId, Tag tag) {
-        setFrameData(Frame::ClientSourceId, YAZ_FWD(clientSourceId), tag);
+        setFrameData(Frame::ClientSourceId, std::forward<T>(clientSourceId), tag);
     }
 
     [[nodiscard]] std::string_view clientSourceId() const {
@@ -245,7 +482,7 @@ public:
 
     template<typename T, typename Tag>
     void setClientRequestId(T &&clientRequestId, Tag tag) {
-        setFrameData(Frame::ClientRequestId, YAZ_FWD(clientRequestId), tag);
+        setFrameData(Frame::ClientRequestId, std::forward<T>(clientRequestId), tag);
     }
 
     [[nodiscard]] std::string_view clientRequestId() const {
@@ -254,7 +491,7 @@ public:
 
     template<typename T, typename Tag>
     void setTopic(T &&topic, Tag tag) {
-        setFrameData(Frame::Topic, YAZ_FWD(topic), tag);
+        setFrameData(Frame::Topic, std::forward<T>(topic), tag);
     }
 
     [[nodiscard]] std::string_view topic() const {
@@ -263,7 +500,7 @@ public:
 
     template<typename T, typename Tag>
     void setBody(T &&body, Tag tag) {
-        setFrameData(Frame::Body, YAZ_FWD(body), tag);
+        setFrameData(Frame::Body, std::forward<T>(body), tag);
     }
 
     [[nodiscard]] std::string_view body() const {
@@ -272,7 +509,7 @@ public:
 
     template<typename T, typename Tag>
     void setError(T &&error, Tag tag) {
-        setFrameData(Frame::Error, YAZ_FWD(error), tag);
+        setFrameData(Frame::Error, std::forward<T>(error), tag);
     }
 
     [[nodiscard]] std::string_view error() const {
@@ -281,7 +518,7 @@ public:
 
     template<typename T, typename Tag>
     void setRbac(T &&rbac, Tag tag) {
-        setFrameData(Frame::RBAC, YAZ_FWD(rbac), tag);
+        setFrameData(Frame::RBAC, std::forward<T>(rbac), tag);
     }
 
     [[nodiscard]] std::string_view rbac() const {
@@ -289,8 +526,10 @@ public:
     }
 };
 
-static_assert(std::is_nothrow_move_constructible<BasicMdpMessage<MessageFormat::WithSourceId>>::value, "MdpMessage should be noexcept MoveConstructible");
-static_assert(std::is_nothrow_move_constructible<BasicMdpMessage<MessageFormat::WithoutSourceId>>::value, "MdpMessage should be noexcept MoveConstructible");
-} // namespace Majordomo::OpenCMW
+using MdpMessage = BasicMdpMessage<MessageFormat::WithoutSourceId>;
+
+static_assert(std::is_nothrow_move_constructible_v<MdpMessage>, "MdpMessage should be noexcept MoveConstructible");
+static_assert(std::is_nothrow_move_constructible_v<MdpMessage>, "MdpMessage should be noexcept MoveConstructible");
+} // namespace opencmw::majordomo
 
 #endif

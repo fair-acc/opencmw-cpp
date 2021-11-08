@@ -1,28 +1,26 @@
 #ifndef MAJORDOMO_TESTS_HELPERS_H
 #define MAJORDOMO_TESTS_HELPERS_H
 
-#include <yaz/Meta.hpp>
-
 #include <thread>
 
-template <typename T>
+template<typename T>
 concept Shutdownable = requires(T s) {
     s.run();
     s.shutdown();
 };
 
-template <Shutdownable T>
+template<Shutdownable T>
 struct RunInThread {
-    T& _to_run;
+    T          &_toRun;
     std::thread _thread;
 
-    RunInThread(T &to_run)
-        : _to_run(to_run)
-        , _thread([this] { _to_run.run(); }) {
+    RunInThread(T &toRun)
+        : _toRun(toRun)
+        , _thread([this] { _toRun.run(); }) {
     }
 
     ~RunInThread() {
-        _to_run.shutdown();
+        _toRun.shutdown();
         _thread.join();
     }
 };
