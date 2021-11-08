@@ -251,14 +251,13 @@ private:
 
             // not implemented -- reply according to Majordomo Management Interface (MMI) as defined in http://rfc.zeromq.org/spec:8
 
-            auto           reply       = BrokerMessage::createClientMessage(BrokerMessage::ClientCommand::Final);
+            auto           reply       = std::move(clientMessage);
             constexpr auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
-            reply.setSourceId(clientMessage.sourceId(), dynamic_tag);
-            reply.setClientSourceId(clientMessage.clientSourceId(), dynamic_tag);
-            reply.setClientRequestId(clientMessage.clientRequestId(), dynamic_tag);
-            reply.setServiceName(clientMessage.serviceName(), dynamic_tag);
-            reply.setTopic(INTERNAL_SERVICE_NAMES, MessageFrame::static_bytes_tag{});
-            reply.setError(fmt::format("unknown service (error 501): '{}'", clientMessage.serviceName()), dynamic_tag);
+            constexpr auto static_tag = MessageFrame::static_bytes_tag{};
+            reply.setClientCommand(BrokerMessage::ClientCommand::Final);
+            reply.setTopic(INTERNAL_SERVICE_NAMES, static_tag);
+            reply.setBody("", static_tag);
+            reply.setError(fmt::format("unknown service (error 501): '{}'", reply.serviceName()), dynamic_tag);
             reply.setRbac(_rbac, dynamic_tag);
 
             reply.send(client.socket).assertSuccess();
