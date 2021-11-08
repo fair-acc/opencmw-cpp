@@ -317,13 +317,13 @@ private:
         case BrokerMessage::WorkerCommand::Partial:
         case BrokerMessage::WorkerCommand::Final: {
             if (knownWorker) {
-                const auto clientId = message.clientSourceId();
-                auto       client   = _clients.find(std::string(clientId));
+                auto clientId       = std::make_unique<std::string>(message.clientSourceId());
+                auto       client   = _clients.find(*clientId);
                 if (client == _clients.end()) {
                     return; // drop if client unknown/disappeared
                 }
 
-                message.setSourceId(clientId, MessageFrame::dynamic_bytes_tag{});
+                message.setSourceId(clientId.release(), MessageFrame::dynamic_bytes_tag{});
                 message.setServiceName(worker.serviceName, MessageFrame::dynamic_bytes_tag{});
                 const auto clientCommand = [](auto workerCommand) {
                     switch (workerCommand) {
