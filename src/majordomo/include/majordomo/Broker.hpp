@@ -117,6 +117,7 @@ private:
         }
     };
 
+    static constexpr std::string_view                      _rbac              = "TODO (RBAC)";
     std::unordered_map<std::string, std::set<std::string>> _subscribedClientsByTopic; // topic -> client IDs
     std::unordered_map<std::string, int>                   _subscribedTopics;         // topic -> subscription count
     std::unordered_map<std::string, Client>                _clients;
@@ -125,7 +126,6 @@ private:
 
     std::string                                            _brokerName;
     std::string                                            _dnsAddress;
-    const std::string                                      _rbac              = "TODO (RBAC)";
 
     int                                                    _loopCount         = 0;
     std::atomic<bool>                                      _shutdownRequested = false;
@@ -258,7 +258,7 @@ private:
             reply.setTopic(INTERNAL_SERVICE_NAMES, static_tag);
             reply.setBody("", static_tag);
             reply.setError(fmt::format("unknown service (error 501): '{}'", reply.serviceName()), dynamic_tag);
-            reply.setRbac(_rbac, dynamic_tag);
+            reply.setRbac(_rbac, static_tag);
 
             reply.send(client.socket).assertSuccess();
         }
@@ -373,11 +373,12 @@ private:
     void disconnectWorker(Worker &worker) {
         auto           disconnect  = BrokerMessage::createWorkerMessage(BrokerMessage::WorkerCommand::Disconnect);
         constexpr auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
+        constexpr auto static_tag  = MessageFrame::static_bytes_tag{};
         disconnect.setSourceId(worker.id, dynamic_tag);
         disconnect.setServiceName(worker.serviceName, dynamic_tag);
         disconnect.setTopic(worker.serviceName, dynamic_tag);
-        disconnect.setBody("broker shutdown", MessageFrame::static_bytes_tag{});
-        disconnect.setRbac(_rbac, dynamic_tag);
+        disconnect.setBody("broker shutdown", static_tag);
+        disconnect.setRbac(_rbac, static_tag);
         disconnect.send(worker.socket).assertSuccess();
         deleteWorker(worker);
     }
