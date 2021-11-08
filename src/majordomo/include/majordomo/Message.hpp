@@ -1,11 +1,11 @@
 #ifndef OPENCMW_MAJORDOMO_MESSAGE_H
 #define OPENCMW_MAJORDOMO_MESSAGE_H
 
+#include <array>
 #include <cassert>
 #include <memory>
 #include <optional>
 #include <string>
-#include <vector>
 
 #include <zmq.h>
 
@@ -142,7 +142,7 @@ private:
     // TODO: Investigate whether we want unique_ptrs with custom
     // deleters (that is, do we want a generic smart pointer support)
     using BytesPtr = std::unique_ptr<Bytes>;
-    std::vector<MessageFrame> _frames;
+    std::array<MessageFrame, RequiredFrameCount> _frames;
 
     // Helper function to print out the current message
     // TODO: Remove as we don't want to depend on <iostream>
@@ -191,12 +191,9 @@ private:
 
 public:
     void setFrames(std::array<MovableBytesPtrWrapper, RequiredFrameCount> &&data) {
-        _frames.resize(0);
-        _frames.reserve(RequiredFrameCount);
         for (std::size_t i = 0; i < RequiredFrameCount; ++i) {
-            _frames.emplace_back(data[i].ptr.release(), MessageFrame::dynamic_bytes_tag{});
+            _frames[i] = MessageFrame(data[i].ptr.release(), MessageFrame::dynamic_bytes_tag{});
         }
-        assert(_frames.size() == RequiredFrameCount);
     }
 
     [[nodiscard]] MessageFrame &frameAt(int index) {
@@ -218,11 +215,9 @@ public:
     }
 
     BasicMdpMessage() {
-        _frames.resize(RequiredFrameCount);
     }
 
     explicit BasicMdpMessage(char command) {
-        _frames.resize(RequiredFrameCount);
         setCommand(command);
         assert(this->command() == command);
     }
@@ -269,24 +264,31 @@ public:
         return result;
     }
 
-    [[nodiscard]] bool receiveInplace(Socket &socket) {
-        _frames.clear();
+    static std::optional<this_t> receive(Socket &socket) {
+        std::optional<this_t> r;
+        std::size_t framesReceived = 0;
 
         while (true) {
             MessageFrame frame;
             const auto   byteCountResult = frame.receive(socket, ZMQ_DONTWAIT);
 
             if (byteCountResult) {
-                _frames.emplace_back(std::move(frame));
+                if (framesReceived == 0) {
+                    r = this_t();
+                }
+                if (framesReceived < r->_frames.size()) {
+                    r->_frames[framesReceived] = std::move(frame);
+                }
+                ++framesReceived;
             } else {
-                return false;
+                return {};
             }
 
             int64_t more;
             size_t  moreSize = sizeof(more);
             if (!zmq_invoke(zmq_getsockopt, socket, ZMQ_RCVMORE, &more, &moreSize)) {
                 // Can not check rcvmore
-                return false;
+                return {};
 
             } else if (more != 0) {
                 // Multi-part message
@@ -297,16 +299,12 @@ public:
             }
         }
 
-        return true;
-    }
-
-    static std::optional<this_t> receive(Socket &socket) {
-        std::optional<this_t> result = this_t();
-        if (!result->receiveInplace(socket)) {
+        if (framesReceived != RequiredFrameCount) {
+            debug() << "Received unexpected number of frames: Got " << framesReceived << ", expected " << RequiredFrameCount;
             return {};
         }
 
-        return result;
+        return r;
     }
 
     enum class ClientCommand {
@@ -334,7 +332,7 @@ public:
         Worker
     };
 
-    explicit BasicMdpMessage(std::vector<MessageFrame> &&frames)
+    explicit BasicMdpMessage(std::array<MessageFrame, RequiredFrameCount> &&frames)
         : _frames(std::move(frames)) {}
 
     ~BasicMdpMessage()
@@ -356,11 +354,6 @@ public:
 
     bool isValid() const {
         // TODO better error reporting
-        if (_frames.size() != RequiredFrameCount) {
-            debugWithLocation() << "Message size is wrong";
-            return false;
-        }
-
         const auto &commandStr = _frames[index(Frame::Command)];
 
         if (commandStr.size() != 1) {
@@ -393,9 +386,8 @@ public:
         // TODO make this nicer...
         BasicMdpMessage tmp{ empty_tag{} };
         assert(_frames.size() == RequiredFrameCount);
-        tmp._frames.reserve(RequiredFrameCount);
-        for (const auto &frame : _frames) {
-            tmp._frames.emplace_back(frame.clone());
+        for (std::size_t i = 0; i < _frames.size(); ++i) {
+            tmp._frames[i] = _frames[i].clone();
         }
         return tmp;
     }
