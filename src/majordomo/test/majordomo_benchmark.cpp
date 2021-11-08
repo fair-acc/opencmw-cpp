@@ -53,7 +53,7 @@ public:
     }
 
     template<typename BodyType>
-    void getAndusyWait(std::string serviceName, BodyType body) {
+    void getAndBusyWait(std::string serviceName, BodyType body) {
         bool receivedReply = false;
         get(std::move(serviceName), std::forward<BodyType>(body), [&receivedReply](auto &&) {
             receivedReply = true;
@@ -110,7 +110,7 @@ Result simpleOneWorkerBenchmark(std::string routerAddress, Get mode, int iterati
         }
     } else {
         for (int i = 0; i < iterations; ++i) {
-            client.getAndusyWait("blob", "");
+            client.getAndBusyWait("blob", "");
         }
     }
 
@@ -163,7 +163,7 @@ void simpleTwoWorkerBenchmark(std::string routerAddress, Get mode, int iteration
         }
     } else {
         for (int i = 0; i < iterations; ++i) {
-            client.getAndusyWait(i % 2 == 0 ? "blob1" : "blob2", "");
+            client.getAndBusyWait(i % 2 == 0 ? "blob1" : "blob2", "");
         }
     }
     const auto                          after = std::chrono::system_clock::now();
