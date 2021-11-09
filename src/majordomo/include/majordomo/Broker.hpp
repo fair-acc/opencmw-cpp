@@ -20,27 +20,27 @@ using namespace std::string_literals;
 namespace opencmw::majordomo {
 
 // TODO: Make constexpr as std::string is not yet constexpr
-/*constexpr*/ std::string SCHEME_TCP                 = "tcp";
-/*constexpr*/ std::string SCHEME_MDP                 = "mdp";
-/*constexpr*/ std::string SCHEME_MDS                 = "mds";
-/*constexpr*/ std::string SCHEME_INPROC              = "inproc";
-/*constexpr*/ std::string SUFFIX_ROUTER              = "/router";
-/*constexpr*/ std::string SUFFIX_PUBLISHER           = "/publisher";
-/*constexpr*/ std::string SUFFIX_SUBSCRIBE           = "/subscribe";
-/*constexpr*/ std::string INPROC_BROKER              = "inproc://broker";
-/*constexpr*/ std::string INTERNAL_ADDRESS_BROKER    = INPROC_BROKER + SUFFIX_ROUTER;
-/*constexpr*/ std::string INTERNAL_ADDRESS_PUBLISHER = INPROC_BROKER + SUFFIX_PUBLISHER;
-/*constexpr*/ std::string INTERNAL_ADDRESS_SUBSCRIBE = INPROC_BROKER + SUFFIX_SUBSCRIBE;
-/*constexpr*/ std::string INTERNAL_SERVICE_NAMES     = "mmi.service";
+/*constexpr*/ const std::string SCHEME_TCP                 = "tcp";
+/*constexpr*/ const std::string SCHEME_MDP                 = "mdp";
+/*constexpr*/ const std::string SCHEME_MDS                 = "mds";
+/*constexpr*/ const std::string SCHEME_INPROC              = "inproc";
+/*constexpr*/ const std::string SUFFIX_ROUTER              = "/router";
+/*constexpr*/ const std::string SUFFIX_PUBLISHER           = "/publisher";
+/*constexpr*/ const std::string SUFFIX_SUBSCRIBE           = "/subscribe";
+/*constexpr*/ const std::string INPROC_BROKER              = "inproc://broker";
+/*constexpr*/ const std::string INTERNAL_ADDRESS_BROKER    = INPROC_BROKER + SUFFIX_ROUTER;
+/*constexpr*/ const std::string INTERNAL_ADDRESS_PUBLISHER = INPROC_BROKER + SUFFIX_PUBLISHER;
+/*constexpr*/ const std::string INTERNAL_ADDRESS_SUBSCRIBE = INPROC_BROKER + SUFFIX_SUBSCRIBE;
+/*constexpr*/ const std::string INTERNAL_SERVICE_NAMES     = "mmi.service";
 
-constexpr int             HIGH_WATER_MARK            = 0;
-constexpr int             HEARTBEAT_LIVENESS         = 3;
-constexpr int             HEARTBEAT_INTERVAL         = 1000;
-constexpr auto            CLIENT_TIMEOUT             = std::chrono::seconds(10); // TODO
+constexpr int                   HIGH_WATER_MARK            = 0;
+constexpr int                   HEARTBEAT_LIVENESS         = 3;
+constexpr int                   HEARTBEAT_INTERVAL         = 1000;
+constexpr auto                  CLIENT_TIMEOUT             = std::chrono::seconds(10); // TODO
 
-using BrokerMessage                                  = BasicMdpMessage<MessageFormat::WithSourceId>;
+using BrokerMessage                                        = BasicMdpMessage<MessageFormat::WithSourceId>;
 
-class Broker {
+class Broker { // TODO: rename to: MajordomoBroker -> 'nomen est omen', Q: possible class order: <state, constructors, public/protected/private->alpha-sorted functions, private sub-classes>, grouped setter/getter -> eval if needed (alt: public fields)??
 private:
     // static constexpr std::string_view SUFFIX_ROUTER    = "/router";
     // static constexpr std::string_view SUFFIX_PUBLISHER = "/publisher";
@@ -52,30 +52,24 @@ private:
     using Timestamp = std::chrono::time_point<Clock>;
 
     struct Client {
-        Socket                   &socket;
+        const Socket             &socket;
         const std::string         id;
         std::deque<BrokerMessage> requests;
 
-        explicit Client(Socket &s, std::string id_)
-            : socket(s)
-            , id(std::move(id_)) {
-        }
-
+        explicit Client(const Socket &s, const std::string &id_)
+            : socket(s), id(std::move(id_)) {}
         Client(const Client &) = delete;
         Client operator=(const Client &c) = delete;
     };
 
     struct Worker {
-        Socket     &socket;
-        Timestamp   expiry;
-        std::string id;
-        std::string serviceName;
+        const Socket     &socket;
+        const std::string id;
+        const std::string serviceName;
+        Timestamp         expiry;
 
-        explicit Worker(Socket &s, std::string id_, std::string serviceName_)
-            : socket(s)
-            , id{ std::move(id_) }
-            , serviceName{ std::move(serviceName_) } {
-        }
+        explicit Worker(const Socket &s, const std::string &id_, const std::string &serviceName_)
+            : socket(s), id{ std::move(id_) }, serviceName{ std::move(serviceName_) } {}
 
         void updateExpiry() {
             expiry = Clock::now() + CLIENT_TIMEOUT;
@@ -117,26 +111,26 @@ private:
         }
     };
 
-    static constexpr std::string_view                      _rbac              = "TODO (RBAC)";
     std::unordered_map<std::string, std::set<std::string>> _subscribedClientsByTopic; // topic -> client IDs
     std::unordered_map<std::string, int>                   _subscribedTopics;         // topic -> subscription count
     std::unordered_map<std::string, Client>                _clients;
     std::unordered_map<std::string, Worker>                _workers;
     std::unordered_map<std::string, Service>               _services;
 
-    std::string                                            _brokerName;
-    std::string                                            _dnsAddress;
+    const std::string                                      _brokerName;
+    const std::string                                      _dnsAddress;
+    const std::string                                      _rbac              = "TODO (RBAC)";
 
-    int                                                    _loopCount         = 0;
     std::atomic<bool>                                      _shutdownRequested = false;
 
     // Sockets collection. The Broker class will be used as the handler
-    Socket   _routerSocket;
-    Socket   _pubSocket;
-    Socket   _subSocket;
-    Socket   _dnsSocket;
+    const Socket                  _routerSocket;
+    const Socket                  _pubSocket;
+    const Socket                  _subSocket;
+    const Socket                  _dnsSocket;
+    std::array<zmq_pollitem_t, 4> pollerItems;
 
-    Service &requireService(std::string serviceName, std::string serviceDescription) {
+    Service                      &requireService(std::string serviceName, std::string serviceDescription) {
         // TODO handle serviceDescription differing between workers? or is "first one wins" ok?
         auto it = _services.try_emplace(serviceName, std::move(serviceName), std::move(serviceDescription));
         return it.first->second;
@@ -258,7 +252,7 @@ private:
             reply.setTopic(INTERNAL_SERVICE_NAMES, static_tag);
             reply.setBody("", static_tag);
             reply.setError(fmt::format("unknown service (error 501): '{}'", reply.serviceName()), dynamic_tag);
-            reply.setRbac(_rbac, static_tag);
+            reply.setRbacToken(_rbac, static_tag);
 
             reply.send(client.socket).assertSuccess();
         }
@@ -286,7 +280,7 @@ private:
         return result;
     }
 
-    void processWorker(Socket &socket, BrokerMessage &&message) {
+    void processWorker(const Socket &socket, BrokerMessage &&message) {
         assert(message.isWorkerMessage());
 
         const auto serviceName = std::string(message.serviceName());
@@ -360,7 +354,7 @@ private:
         }
     }
 
-    void deleteWorker(Worker &worker) {
+    void deleteWorker(const Worker &worker) {
         auto serviceIt = _services.find(worker.serviceName);
         if (serviceIt != _services.end()) {
             auto &waiting = serviceIt->second.waiting;
@@ -377,8 +371,10 @@ private:
         disconnect.setSourceId(worker.id, dynamic_tag);
         disconnect.setServiceName(worker.serviceName, dynamic_tag);
         disconnect.setTopic(worker.serviceName, dynamic_tag);
+        disconnect.setBody("broker shutdown", MessageFrame::static_bytes_tag{});
+        disconnect.setRbacToken(_rbac, dynamic_tag);
         disconnect.setBody("broker shutdown", static_tag);
-        disconnect.setRbac(_rbac, static_tag);
+        disconnect.setRbacToken(_rbac, static_tag);
         disconnect.send(worker.socket).assertSuccess();
         deleteWorker(worker);
     }
@@ -391,18 +387,15 @@ public:
         , _pubSocket(context, ZMQ_XPUB)
         , _subSocket(context, ZMQ_XSUB)
         , _dnsSocket(context, ZMQ_DEALER) {
-        auto commonSocketInit = [](Socket &socket) {
-            int hwm     = HIGH_WATER_MARK;
-            int ttl     = HEARTBEAT_INTERVAL * HEARTBEAT_LIVENESS;
-            int timeout = HEARTBEAT_INTERVAL * HEARTBEAT_LIVENESS;
-            int ivl     = HEARTBEAT_INTERVAL;
-            int linger  = HEARTBEAT_INTERVAL;
-            return zmq_invoke(zmq_setsockopt, socket, ZMQ_SNDHWM, &hwm, sizeof(hwm))
-                && zmq_invoke(zmq_setsockopt, socket, ZMQ_RCVHWM, &hwm, sizeof(hwm))
+        auto commonSocketInit = [](const Socket &socket) {
+            const int ttl     = HEARTBEAT_INTERVAL * HEARTBEAT_LIVENESS;
+            const int timeout = HEARTBEAT_INTERVAL * HEARTBEAT_LIVENESS;
+            return zmq_invoke(zmq_setsockopt, socket, ZMQ_SNDHWM, &HIGH_WATER_MARK, sizeof(HIGH_WATER_MARK))
+                && zmq_invoke(zmq_setsockopt, socket, ZMQ_RCVHWM, &HIGH_WATER_MARK, sizeof(HIGH_WATER_MARK))
                 && zmq_invoke(zmq_setsockopt, socket, ZMQ_HEARTBEAT_TTL, &ttl, sizeof(ttl))
                 && zmq_invoke(zmq_setsockopt, socket, ZMQ_HEARTBEAT_TIMEOUT, &timeout, sizeof(timeout))
-                && zmq_invoke(zmq_setsockopt, socket, ZMQ_HEARTBEAT_IVL, &ivl, sizeof(ivl))
-                && zmq_invoke(zmq_setsockopt, socket, ZMQ_LINGER, &linger, sizeof(linger));
+                && zmq_invoke(zmq_setsockopt, socket, ZMQ_HEARTBEAT_IVL, &HEARTBEAT_INTERVAL, sizeof(HEARTBEAT_INTERVAL))
+                && zmq_invoke(zmq_setsockopt, socket, ZMQ_LINGER, &HEARTBEAT_INTERVAL, sizeof(HEARTBEAT_INTERVAL));
         };
 
         // From setDefaultSocketParameters (io/opencmw/OpenCmwConstants.java)
@@ -426,6 +419,15 @@ public:
         } else {
             zmq_invoke(zmq_connect, _dnsSocket, _dnsAddress.data()).ignoreResult();
         }
+
+        pollerItems[0].socket = _routerSocket.zmq_ptr;
+        pollerItems[0].events = ZMQ_POLLIN;
+        pollerItems[1].socket = _pubSocket.zmq_ptr;
+        pollerItems[1].events = ZMQ_POLLIN;
+        pollerItems[2].socket = _subSocket.zmq_ptr;
+        pollerItems[2].events = ZMQ_POLLIN;
+        pollerItems[3].socket = _dnsSocket.zmq_ptr;
+        pollerItems[3].events = ZMQ_POLLIN;
     }
 
     Broker(const Broker &) = delete;
@@ -476,7 +478,7 @@ public:
         return adjustedAddressPublic;
     }
 
-    bool receivePubMessage(Socket &socket) {
+    bool receivePubMessage(const Socket &socket) {
         // was receive plus handleSubscriptionMessage
 
         MessageFrame frame;
@@ -529,7 +531,7 @@ public:
         return true;
     }
 
-    bool receiveMessage(Socket &socket) {
+    bool receiveMessage(const Socket &socket) {
         // was receive plus handleReceivedMessage
         auto maybeMessage = BrokerMessage::receive(socket);
 
@@ -590,8 +592,29 @@ public:
 
     void run() {
         do {
-            processOneMessage();
-        } while (!_shutdownRequested);
+            bool anythingReceived;
+            int  loopCount = 0;
+            do {
+                anythingReceived = receiveMessage(_routerSocket);
+                anythingReceived |= receiveMessage(_dnsSocket);
+                anythingReceived |= receiveMessage(_subSocket);
+                anythingReceived |= receivePubMessage(_pubSocket);
+
+                processClients();
+
+                if (loopCount % 10 == 0) { // perform maintenance task every 10th iteration
+                    purgeWorkers();
+                    purgeClients();
+                    sendHeartbeats();
+                }
+                loopCount++;
+            } while (anythingReceived);
+
+            // N.B. block until data arrived or for at most one heart-beat interval
+            if (!zmq_invoke(zmq_poll, pollerItems.data(), static_cast<int>(pollerItems.size()), HEARTBEAT_INTERVAL)) {
+                break;
+            }
+        } while (!_shutdownRequested /* && thread is not interrupted */);
 
         cleanup();
     }
@@ -601,47 +624,6 @@ public:
     }
 
     // test interface
-
-    void processOneMessage() {
-        _loopCount = 0;
-
-        std::array<zmq_pollitem_t, 4> pollerItems;
-        pollerItems[0].socket = _routerSocket.zmq_ptr;
-        pollerItems[0].events = ZMQ_POLLIN;
-        pollerItems[1].socket = _pubSocket.zmq_ptr;
-        pollerItems[1].events = ZMQ_POLLIN;
-        pollerItems[2].socket = _subSocket.zmq_ptr;
-        pollerItems[2].events = ZMQ_POLLIN;
-        pollerItems[3].socket = _dnsSocket.zmq_ptr;
-        pollerItems[3].events = ZMQ_POLLIN;
-
-        while (true) {
-            bool anythingReceived = false;
-            anythingReceived |= receiveMessage(_routerSocket);
-            anythingReceived |= receiveMessage(_dnsSocket);
-            anythingReceived |= receiveMessage(_subSocket);
-            anythingReceived |= receivePubMessage(_pubSocket);
-
-            processClients();
-
-            if (_loopCount == 0) {
-                _loopCount = 10;
-                purgeWorkers();
-                purgeClients();
-                sendHeartbeats();
-            } else {
-                _loopCount--;
-            }
-
-            if (!anythingReceived) {
-                break;
-            } // TODO: && thread_not_interrupted && run
-
-            if (!zmq_invoke(zmq_poll, pollerItems.data(), static_cast<int>(pollerItems.size()), 0L)) {
-                break;
-            }
-        }
-    }
 
     void cleanup() {
         // iterate and delete workers (safe in >= C++14)

@@ -13,7 +13,7 @@
 namespace opencmw::majordomo {
 
 class BasicMdpWorker {
-    std::string           _serviceName;
+    const std::string     _serviceName;
     std::string           _serviceDescription;
     std::string           _rbacRole;
     std::atomic<bool>     _shutdownRequested = false;
@@ -25,7 +25,7 @@ protected:
     MdpMessage createMessage(MdpMessage::WorkerCommand command) {
         auto message = MdpMessage::createWorkerMessage(command);
         message.setServiceName(_serviceName, MessageFrame::dynamic_bytes_tag{});
-        message.setRbac(_rbacRole, MessageFrame::dynamic_bytes_tag{});
+        message.setRbacToken(_rbacRole, MessageFrame::dynamic_bytes_tag{});
         return message;
     }
 

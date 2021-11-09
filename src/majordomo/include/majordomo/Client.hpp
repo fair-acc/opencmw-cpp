@@ -45,7 +45,7 @@ public:
     virtual void handleResponse(MdpMessage && /*message*/) {}
 
     template<typename BodyType>
-    Request get(std::string_view serviceName, BodyType request) {
+    Request get(const std::string_view &serviceName, BodyType request) {
         auto [handle, message] = createRequestTemplate(MdpMessage::ClientCommand::Get, serviceName);
         message.setBody(std::forward<BodyType>(request), MessageFrame::dynamic_bytes_tag{});
         message.send(*_socket).assertSuccess();
@@ -53,7 +53,7 @@ public:
     }
 
     template<typename BodyType, typename Callback>
-    Request get(std::string_view serviceName, BodyType request, Callback fnc) {
+    Request get(const std::string_view &serviceName, BodyType request, Callback fnc) {
         auto r = get(serviceName, std::forward<BodyType>(request));
         _callbacks.emplace(r.id, std::move(fnc));
         return r;

@@ -180,16 +180,16 @@ void simpleTwoWorkerBenchmark(std::string routerAddress, Get mode, int iteration
 }
 
 int main(int argc, char **argv) {
-    const auto          N      = argc > 1 ? std::atoi(argv[1]) : 10000;
+    const auto          N      = argc > 1 ? std::atoi(argv[1]) : 100000;
     const auto          tcp    = std::string("tcp://127.0.0.1:12346");
     const auto          inproc = std::string("inproc://benchmark");
 
     std::vector<Result> results;
 
-    results.push_back(simpleOneWorkerBenchmark(tcp, Get::Async, N, 10));
-    results.push_back(simpleOneWorkerBenchmark(inproc, Get::Async, N, 10));
     results.push_back(simpleOneWorkerBenchmark(tcp, Get::Sync, N, 10));
     results.push_back(simpleOneWorkerBenchmark(inproc, Get::Sync, N, 10));
+    results.push_back(simpleOneWorkerBenchmark(tcp, Get::Async, N, 10));
+    results.push_back(simpleOneWorkerBenchmark(inproc, Get::Async, N, 10));
     // simpleOneWorkerBenchmark(tcp, Get::Async, 3000, 1024);
     // simpleOneWorkerBenchmark(tcp, Get::Async, 3000, 1024 * 1024);
     // simpleTwoWorkerBenchmark(inproc, Get::Async, 10000, 10, 10);

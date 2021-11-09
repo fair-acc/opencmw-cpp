@@ -24,6 +24,7 @@ AlignOperands: AlignAfterOperator
 AlignTrailingComments: true
 AllowAllParametersOfDeclarationOnNextLine: true
 AllowAllArgumentsOnNextLine: true
+#PackConstructorInitializers: PCIS_CurrentLine # starting with clang 14
 AllowAllConstructorInitializersOnNextLine: true
 AllowShortLambdasOnASingleLine: All
 AllowShortCaseLabelsOnASingleLine: true

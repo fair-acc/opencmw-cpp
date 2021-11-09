@@ -13,11 +13,11 @@
 
 #include "ZmqPtr.hpp"
 
-namespace opencmw::majordomo {
+namespace opencmw::majordomo { // TODO: move to opencmw and header to new 'core' package since these are needed by 'broker','worker' and 'client'
 using Bytes = std::string;
 using Byte  = std::string::value_type;
 
-class MessageFrame {
+class MessageFrame { // TODO: N.B. eventually remove debug statement for non-conforming messages (hot-spot candidates)
 private:
     bool _owning = true;
 
@@ -28,10 +28,7 @@ public:
     struct static_bytes_tag {};
     struct dynamic_bytes_tag {};
 
-    MessageFrame() {
-        zmq_msg_init(&_message);
-    }
-
+    MessageFrame() { zmq_msg_init(&_message); }
     explicit MessageFrame(Bytes *buf, dynamic_bytes_tag /*tag*/ = {}) {
         zmq_msg_init_data(
                 &_message, buf->data(), buf->size(),
@@ -87,7 +84,7 @@ public:
 
     // Reads a message from the socket
     // Returns the number of received bytes
-    Result<int> receive(Socket &socket, int flags) {
+    Result<int> receive(const Socket &socket, int flags) {
         auto result = zmq_invoke(zmq_msg_recv, &_message, socket, flags);
         _owning     = result.isValid();
         return result;
@@ -95,7 +92,7 @@ public:
 
     // Sending is not const as 0mq nullifies the message
     // See: http://api.zeromq.org/3-2:zmq-msg-send
-    [[nodiscard]] auto send(Socket &socket, int flags) {
+    [[nodiscard]] auto send(const Socket &socket, int flags) {
         if (data().size() > 0 && data()[0] == '`') {
             throw 32;
         }
@@ -129,8 +126,6 @@ private:
 
     static constexpr auto clientProtocol     = std::string_view{ "MDPC03" };
     static constexpr auto workerProtocol     = std::string_view{ "MDPW03" };
-
-    static constexpr auto MessageFormat      = Format;
     static constexpr auto RequiredFrameCount = std::size_t{ Format == MessageFormat::WithSourceId ? 9 : 8 };
 
     // In order to have a zero-copy sending API, we allow API clients
@@ -145,7 +140,7 @@ private:
     std::array<MessageFrame, RequiredFrameCount> _frames;
 
     // Helper function to print out the current message
-    // TODO: Remove as we don't want to depend on <iostream>
+    // TODO: Remove as we don't want to depend on <iostream> -> move to existing Debug.h reflection-based helper/printout functions
     friend std::ostream &operator<<(std::ostream &out, const BasicMdpMessage &message) {
         out << '{';
         for (const auto &frame : message._frames) {
@@ -170,8 +165,7 @@ private:
 
     struct empty_tag {};
 
-    BasicMdpMessage(empty_tag) {
-    }
+    explicit constexpr BasicMdpMessage(empty_tag) {}
 
     template<typename T>
     static constexpr auto index(T value) {
@@ -190,53 +184,51 @@ private:
     };
 
 public:
+    BasicMdpMessage() {}
+
+    explicit BasicMdpMessage(char command) {
+        setCommand(command);
+        assert(this->command() == command);
+    }
+    BasicMdpMessage(const BasicMdpMessage &) = default;
+    explicit BasicMdpMessage(std::array<MessageFrame, RequiredFrameCount> &&frames) // TODO-Q: unused
+        : _frames(std::move(frames)) {}
+    ~BasicMdpMessage()                       = default; // TODO-Q: why declaring default destructor 'default'?
+    BasicMdpMessage(BasicMdpMessage &&other) = default;
+    BasicMdpMessage &operator=(BasicMdpMessage &&other) = default;
+    BasicMdpMessage &operator=(const BasicMdpMessage &) = default;
+    BasicMdpMessage  clone() const {
+        // TODO make this nicer...
+        BasicMdpMessage tmp{ empty_tag{} };
+        assert(_frames.size() == RequiredFrameCount);
+        for (std::size_t i = 0; i < _frames.size(); ++i) {
+            tmp._frames[i] = _frames[i].clone();
+        }
+        return tmp;
+    }
+
+    [[nodiscard]] MessageFrame       &frameAt(int index) { return _frames[static_cast<std::size_t>(index)]; }
+    [[nodiscard]] const MessageFrame &frameAt(int index) const { return _frames[static_cast<std::size_t>(index)]; }
+
+    template<typename T>
+    [[nodiscard]] MessageFrame &frameAt(T value) { return _frames[index(value)]; } // TODO: N.B. unused
+    template<typename T>
+    [[nodiscard]] const MessageFrame &frameAt(T value) const { return _frames[index(value)]; }
+    void                              setCommand(char command) { setFrameData(Frame::Command, new std::string(1, command), MessageFrame::dynamic_bytes_tag{}); }
+    [[nodiscard]] char                command() const {
+        assert(frameAt(Frame::Command).data().length() == 1);
+        return frameAt(Frame::Command).data()[0];
+    }
+
     void setFrames(std::array<MovableBytesPtrWrapper, RequiredFrameCount> &&data) {
         for (std::size_t i = 0; i < RequiredFrameCount; ++i) {
             _frames[i] = MessageFrame(data[i].ptr.release(), MessageFrame::dynamic_bytes_tag{});
         }
     }
 
-    [[nodiscard]] MessageFrame &frameAt(int index) {
-        return _frames[static_cast<std::size_t>(index)];
-    }
-
-    [[nodiscard]] const MessageFrame &frameAt(int index) const {
-        return _frames[static_cast<std::size_t>(index)];
-    }
-
-    template<typename T>
-    [[nodiscard]] MessageFrame &frameAt(T value) {
-        return _frames[index(value)];
-    }
-
-    template<typename T>
-    [[nodiscard]] const MessageFrame &frameAt(T value) const {
-        return _frames[index(value)];
-    }
-
-    BasicMdpMessage() {
-    }
-
-    explicit BasicMdpMessage(char command) {
-        setCommand(command);
-        assert(this->command() == command);
-    }
-
-    void setCommand(char command) {
-        setFrameData(Frame::Command, new std::string(1, command), MessageFrame::dynamic_bytes_tag{});
-    }
-
-    BasicMdpMessage(const BasicMdpMessage &) = default;
-    BasicMdpMessage   &operator=(const BasicMdpMessage &) = default;
-
-    [[nodiscard]] char command() const {
-        assert(frameAt(Frame::Command).data().length() == 1);
-        return frameAt(Frame::Command).data()[0];
-    }
-
-    [[nodiscard]] auto sendFrame(Socket &socket, std::size_t index, int flags) {
+    [[nodiscard]] auto sendFrame(const Socket &socket, std::size_t index, int flags) {
         assert(flags & ZMQ_DONTWAIT);
-        while (true) {
+        while (true) { // TODO -Q: could become a infinite busy-loop?!?
             const auto result = _frames[index].send(socket, flags);
             if (result) {
                 return result;
@@ -247,12 +239,12 @@ public:
         }
     }
 
-    [[nodiscard]] auto sendFrame(Socket &socket, std::size_t index) {
+    [[nodiscard]] auto sendFrame(const Socket &socket, std::size_t index) {
         const auto flags = index + 1 == RequiredFrameCount ? ZMQ_DONTWAIT : ZMQ_DONTWAIT | ZMQ_SNDMORE;
         return sendFrame(socket, index, flags);
     }
 
-    [[nodiscard]] auto send(Socket &socket) {
+    [[nodiscard]] auto send(const Socket &socket) {
         decltype(sendFrame(socket, 0)) result{ 0 };
         for (std::size_t i = 0; i < RequiredFrameCount; ++i) {
             result = sendFrame(socket, i);
@@ -264,9 +256,9 @@ public:
         return result;
     }
 
-    static std::optional<this_t> receive(Socket &socket) {
+    static std::optional<this_t> receive(const Socket &socket) {
         std::optional<this_t> r;
-        std::size_t framesReceived = 0;
+        std::size_t           framesReceived = 0;
 
         while (true) {
             MessageFrame frame;
@@ -332,14 +324,6 @@ public:
         Worker
     };
 
-    explicit BasicMdpMessage(std::array<MessageFrame, RequiredFrameCount> &&frames)
-        : _frames(std::move(frames)) {}
-
-    ~BasicMdpMessage()
-            = default;
-    BasicMdpMessage(BasicMdpMessage &&other) = default;
-    BasicMdpMessage       &operator=(BasicMdpMessage &&other) = default;
-
     static BasicMdpMessage createClientMessage(ClientCommand cmd) {
         BasicMdpMessage msg{ static_cast<char>(cmd) };
         msg.setFrameData(Frame::Protocol, clientProtocol, MessageFrame::static_bytes_tag{});
@@ -382,66 +366,32 @@ public:
         return true;
     }
 
-    BasicMdpMessage clone() const {
-        // TODO make this nicer...
-        BasicMdpMessage tmp{ empty_tag{} };
-        assert(_frames.size() == RequiredFrameCount);
-        for (std::size_t i = 0; i < _frames.size(); ++i) {
-            tmp._frames[i] = _frames[i].clone();
-        }
-        return tmp;
-    }
-
-    void setProtocol(Protocol protocol) {
-        setFrameData(Frame::Protocol,
-                protocol == Protocol::Client ? clientProtocol : workerProtocol,
-                MessageFrame::static_bytes_tag{});
-    }
-
+    void                   setProtocol(Protocol protocol) { setFrameData(Frame::Protocol, protocol == Protocol::Client ? clientProtocol : workerProtocol, MessageFrame::static_bytes_tag{}); }
     [[nodiscard]] Protocol protocol() const {
         const auto &protocol = frameAt(Frame::Protocol);
         assert(protocol.data() == clientProtocol || protocol.data() == workerProtocol);
         return protocol.data() == clientProtocol ? Protocol::Client : Protocol::Worker;
     }
 
-    [[nodiscard]] bool isClientMessage() const {
-        return protocol() == Protocol::Client;
-    }
-
-    [[nodiscard]] bool isWorkerMessage() const {
-        return protocol() == Protocol::Worker;
-    }
-
-    void setClientCommand(ClientCommand cmd) {
-        setCommand(static_cast<char>(cmd));
-    }
-
+    [[nodiscard]] bool          isClientMessage() const { return protocol() == Protocol::Client; }
+    [[nodiscard]] bool          isWorkerMessage() const { return protocol() == Protocol::Worker; }
+    void                        setClientCommand(ClientCommand cmd) { setCommand(static_cast<char>(cmd)); }
     [[nodiscard]] ClientCommand clientCommand() const {
         assert(isClientMessage());
         return static_cast<ClientCommand>(command());
     }
 
-    void setWorkerCommand(WorkerCommand cmd) {
-        setCommand(static_cast<char>(cmd));
-    }
-
+    void                        setWorkerCommand(WorkerCommand cmd) { setCommand(static_cast<char>(cmd)); }
     [[nodiscard]] WorkerCommand workerCommand() const {
         assert(isWorkerMessage());
         return static_cast<WorkerCommand>(command());
     }
 
-    std::size_t availableFrameCount() const {
-        return _frames.size();
-    }
-
-    std::size_t requiresFrameCount() const {
-        return RequiredFrameCount;
-    }
+    std::size_t availableFrameCount() const { return _frames.size(); }
+    std::size_t requiresFrameCount() const { return RequiredFrameCount; } // TODO: make field public?
 
     template<typename Field, typename T, typename Tag>
-    void setFrameData(Field field, T &&value, Tag tag) {
-        frameAt(field) = MessageFrame(std::forward<T>(value), tag);
-    }
+    void setFrameData(Field field, T &&value, Tag tag) { frameAt(field) = MessageFrame(std::forward<T>(value), tag); }
 
     template<typename T, typename Tag>
     void setSourceId(T &&sourceId, Tag tag) {
@@ -455,67 +405,32 @@ public:
     }
 
     template<typename T, typename Tag>
-    void setServiceName(T &&serviceName, Tag tag) {
-        setFrameData(Frame::ServiceName, std::forward<T>(serviceName), tag);
-    }
-
-    [[nodiscard]] std::string_view serviceName() const {
-        return frameAt(Frame::ServiceName).data();
-    }
+    void                           setServiceName(T &&serviceName, Tag tag) { setFrameData(Frame::ServiceName, std::forward<T>(serviceName), tag); }
+    [[nodiscard]] std::string_view serviceName() const { return frameAt(Frame::ServiceName).data(); }
 
     template<typename T, typename Tag>
-    void setClientSourceId(T &&clientSourceId, Tag tag) {
-        setFrameData(Frame::ClientSourceId, std::forward<T>(clientSourceId), tag);
-    }
-
-    [[nodiscard]] std::string_view clientSourceId() const {
-        return frameAt(Frame::ClientSourceId).data();
-    }
+    void                           setClientSourceId(T &&clientSourceId, Tag tag) { setFrameData(Frame::ClientSourceId, std::forward<T>(clientSourceId), tag); }
+    [[nodiscard]] std::string_view clientSourceId() const { return frameAt(Frame::ClientSourceId).data(); }
 
     template<typename T, typename Tag>
-    void setClientRequestId(T &&clientRequestId, Tag tag) {
-        setFrameData(Frame::ClientRequestId, std::forward<T>(clientRequestId), tag);
-    }
-
-    [[nodiscard]] std::string_view clientRequestId() const {
-        return frameAt(Frame::ClientRequestId).data();
-    }
+    void                           setClientRequestId(T &&clientRequestId, Tag tag) { setFrameData(Frame::ClientRequestId, std::forward<T>(clientRequestId), tag); }
+    [[nodiscard]] std::string_view clientRequestId() const { return frameAt(Frame::ClientRequestId).data(); }
 
     template<typename T, typename Tag>
-    void setTopic(T &&topic, Tag tag) {
-        setFrameData(Frame::Topic, std::forward<T>(topic), tag);
-    }
-
-    [[nodiscard]] std::string_view topic() const {
-        return frameAt(Frame::Topic).data();
-    }
+    void                           setTopic(T &&topic, Tag tag) { setFrameData(Frame::Topic, std::forward<T>(topic), tag); }
+    [[nodiscard]] std::string_view topic() const { return frameAt(Frame::Topic).data(); }
 
     template<typename T, typename Tag>
-    void setBody(T &&body, Tag tag) {
-        setFrameData(Frame::Body, std::forward<T>(body), tag);
-    }
-
-    [[nodiscard]] std::string_view body() const {
-        return frameAt(Frame::Body).data();
-    }
+    void                           setBody(T &&body, Tag tag) { setFrameData(Frame::Body, std::forward<T>(body), tag); }
+    [[nodiscard]] std::string_view body() const { return frameAt(Frame::Body).data(); }
 
     template<typename T, typename Tag>
-    void setError(T &&error, Tag tag) {
-        setFrameData(Frame::Error, std::forward<T>(error), tag);
-    }
-
-    [[nodiscard]] std::string_view error() const {
-        return frameAt(Frame::Error).data();
-    }
+    void                           setError(T &&error, Tag tag) { setFrameData(Frame::Error, std::forward<T>(error), tag); }
+    [[nodiscard]] std::string_view error() const { return frameAt(Frame::Error).data(); }
 
     template<typename T, typename Tag>
-    void setRbac(T &&rbac, Tag tag) {
-        setFrameData(Frame::RBAC, std::forward<T>(rbac), tag);
-    }
-
-    [[nodiscard]] std::string_view rbac() const {
-        return frameAt(Frame::RBAC).data();
-    }
+    void                           setRbacToken(T &&rbac, Tag tag) { setFrameData(Frame::RBAC, std::forward<T>(rbac), tag); }
+    [[nodiscard]] std::string_view rbacToken() const { return frameAt(Frame::RBAC).data(); }
 };
 
 using MdpMessage = BasicMdpMessage<MessageFormat::WithoutSourceId>;

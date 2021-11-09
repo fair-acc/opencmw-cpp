@@ -19,10 +19,10 @@
 namespace opencmw::majordomo {
 
 template<typename T>
-class [[nodiscard]] Result {
+class [[nodiscard]] Result { // TODO-Q rstein: could this be made constexpr? Need a bit of explanation...
 private:
-    T   _value;
-    int _error = 0;
+    /*const*/ T   _value;
+    /*const*/ int _error = 0;
 
 #if (ENABLE_RESULT_CHECKS)
     // This serves just to check whether we
@@ -68,7 +68,7 @@ public:
 
     explicit operator bool() const { return isValid(); }
 
-    Result(T value)
+    explicit constexpr Result(const T value)
         : _value{ value } {
         if (!isValid()) {
             _error = errno;
@@ -88,15 +88,6 @@ public:
         , _ignoreError(other._ignoreError)
 #endif
     {
-    }
-
-    Result(Result &&other)
-        : _value{} {
-        std::swap(_value, other._value);
-        std::swap(_error, other._error);
-#if (ENABLE_RESULT_CHECKS)
-        other._ignoreError = true;
-#endif
     }
 
     Result &operator=(Result other) {
@@ -121,7 +112,7 @@ concept ZmqPtrWrapper = requires(T s) {
 };
 
 template<typename Arg, typename ArgValueType = std::remove_cvref_t<Arg>>
-decltype(auto) passArgument(Arg &&arg) {
+constexpr decltype(auto) passArgument(Arg &&arg) {
     if constexpr (ZmqPtrWrapper<ArgValueType>) {
         return arg.zmq_ptr;
     } else if constexpr (std::is_same_v<ArgValueType, std::string>) {
@@ -135,7 +126,7 @@ decltype(auto) passArgument(Arg &&arg) {
 } // namespace detail
 
 template<typename Function, typename... Args>
-[[nodiscard]] auto zmq_invoke(Function &&f, Args &&...args) {
+[[nodiscard]] auto zmq_invoke(const Function &&f, Args &&...args) {
     static_assert((not std::is_same_v<std::remove_cvref_t<Args>, void *> && ...));
     auto result = f(detail::passArgument(std::forward<Args>(args))...);
     return Result{ result };
@@ -143,31 +134,25 @@ template<typename Function, typename... Args>
 
 struct ZmqPtr {
     void *zmq_ptr;
-    ZmqPtr(void *_ptr)
-        : zmq_ptr{ _ptr } {
-        assert(zmq_ptr != nullptr);
-    }
-
-    ZmqPtr(const ZmqPtr &) = delete;
+    explicit ZmqPtr(void *_ptr)
+        : zmq_ptr{ _ptr } { assert(zmq_ptr != nullptr); }
+    ZmqPtr()         = delete;
+    ZmqPtr(ZmqPtr &) = delete;
     ZmqPtr &operator=(const ZmqPtr &) = delete;
 };
 
 struct Context : ZmqPtr {
     Context()
-        : ZmqPtr{ zmq_ctx_new() } {
-    }
-
+        : ZmqPtr{ zmq_ctx_new() } {}
     ~Context() { zmq_ctx_term(zmq_ptr); }
 };
 
 struct Socket : ZmqPtr {
-    Socket(const Context &context, int type)
+    Socket(const Context &context, const int type)
         : ZmqPtr(zmq_socket(context.zmq_ptr, type)) {
     }
-
-    ~Socket() {
-        zmq_close(zmq_ptr);
-    }
+    Socket() = delete;
+    ~Socket() { zmq_close(zmq_ptr); }
 };
 
 } // namespace opencmw::majordomo

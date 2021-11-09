@@ -94,7 +94,7 @@ TEST_CASE("OpenCMW::Message basics", "[message]") {
         msg.setClientRequestId("request 1", tag);
         msg.setBody("test body test body test body test body test body test body test body", tag);
         msg.setError("fail!", tag);
-        msg.setRbac("password", tag);
+        msg.setRbacToken("password", tag);
 
         REQUIRE(msg.isClientMessage());
         REQUIRE(msg.clientCommand() == BrokerMessage::ClientCommand::Final);
@@ -103,7 +103,7 @@ TEST_CASE("OpenCMW::Message basics", "[message]") {
         REQUIRE(msg.clientRequestId() == "request 1");
         REQUIRE(msg.body() == "test body test body test body test body test body test body test body");
         REQUIRE(msg.error() == "fail!");
-        REQUIRE(msg.rbac() == "password");
+        REQUIRE(msg.rbacToken() == "password");
 
         REQUIRE(msg.isValid());
         REQUIRE(msg.availableFrameCount() == 9);
@@ -129,7 +129,7 @@ TEST_CASE("OpenCMW::Message basics", "[message]") {
         msg.setClientRequestId("request 1", tag);
         msg.setBody("test body test body test body test body test body test body test body", tag);
         msg.setError("fail!", tag);
-        msg.setRbac("password", tag);
+        msg.setRbacToken("password", tag);
 
         REQUIRE(msg.isClientMessage());
         REQUIRE(msg.clientCommand() == MdpMessage::ClientCommand::Final);
@@ -138,7 +138,7 @@ TEST_CASE("OpenCMW::Message basics", "[message]") {
         REQUIRE(msg.clientRequestId() == "request 1");
         REQUIRE(msg.body() == "test body test body test body test body test body test body test body");
         REQUIRE(msg.error() == "fail!");
-        REQUIRE(msg.rbac() == "password");
+        REQUIRE(msg.rbacToken() == "password");
 
         REQUIRE(msg.isValid());
         REQUIRE(msg.availableFrameCount() == 8);
@@ -177,7 +177,7 @@ TEST_CASE("Request answered with unknown service", "[broker][unknown_service]") 
             std::make_unique<std::string>("topic"),
             std::make_unique<std::string>(""),
             std::make_unique<std::string>(""),
-            std::make_unique<std::string>("rbac") });
+            std::make_unique<std::string>("rbacToken") });
 
     client.send(request);
 
@@ -220,7 +220,7 @@ TEST_CASE("One client/one worker roundtrip", "[broker][roundtrip]") {
             std::make_unique<std::string>("topic"),
             std::make_unique<std::string>("API description"),
             std::make_unique<std::string>(""),
-            std::make_unique<std::string>("rbac") });
+            std::make_unique<std::string>("rbacToken") });
     worker.send(ready);
 
     broker.processOneMessage();
@@ -233,7 +233,7 @@ TEST_CASE("One client/one worker roundtrip", "[broker][roundtrip]") {
             std::make_unique<std::string>("topic"),
             std::make_unique<std::string>(""),
             std::make_unique<std::string>(""),
-            std::make_unique<std::string>("rbac") });
+            std::make_unique<std::string>("rbacToken") });
 
     client.send(request);
 
@@ -249,7 +249,7 @@ TEST_CASE("One client/one worker roundtrip", "[broker][roundtrip]") {
     REQUIRE(requestAtWorker.frameAt(4).data() == "topic");
     REQUIRE(requestAtWorker.frameAt(5).data().empty());
     REQUIRE(requestAtWorker.frameAt(6).data().empty());
-    REQUIRE(requestAtWorker.frameAt(7).data() == "rbac");
+    REQUIRE(requestAtWorker.frameAt(7).data() == "rbacToken");
 
     MdpMessage replyFromWorker;
     replyFromWorker.setFrames({ std::make_unique<std::string>("MDPW03"),
@@ -371,7 +371,7 @@ TEST_CASE("pubsub example using router socket", "[broker][pubsub_router]") {
                 std::make_unique<std::string>("a.topic"),
                 std::make_unique<std::string>(""),
                 std::make_unique<std::string>(""),
-                std::make_unique<std::string>("rbac") });
+                std::make_unique<std::string>("rbacToken") });
         subscriber.send(subscribe);
     }
 
@@ -387,7 +387,7 @@ TEST_CASE("pubsub example using router socket", "[broker][pubsub_router]") {
                 std::make_unique<std::string>("another.topic"),
                 std::make_unique<std::string>(""),
                 std::make_unique<std::string>(""),
-                std::make_unique<std::string>("rbac") });
+                std::make_unique<std::string>("rbacToken") });
         subscriber.send(subscribe);
     }
 
@@ -464,7 +464,7 @@ TEST_CASE("pubsub example using router socket", "[broker][pubsub_router]") {
                 std::make_unique<std::string>("a.topic"),
                 std::make_unique<std::string>(""),
                 std::make_unique<std::string>(""),
-                std::make_unique<std::string>("rbac") });
+                std::make_unique<std::string>("rbacToken") });
         subscriber.send(unsubscribe);
     }
 
@@ -570,7 +570,7 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[worker][getset_bas
 
     TestIntWorker worker(context, "a.service", 10);
     worker.setServiceDescription("API description");
-    worker.setRbacRole("rbac");
+    worker.setRbacRole("rbacToken");
 
     REQUIRE(worker.connect(address));
 
@@ -591,7 +591,7 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[worker][getset_bas
                 std::make_unique<std::string>("topic"),
                 std::make_unique<std::string>(""),
                 std::make_unique<std::string>(""),
-                std::make_unique<std::string>("rbac") });
+                std::make_unique<std::string>("rbacToken") });
 
         client.send(request);
 
@@ -610,7 +610,7 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[worker][getset_bas
             REQUIRE(reply.frameAt(4).data() == "topic");
             REQUIRE(reply.frameAt(5).data() == "10");
             REQUIRE(reply.frameAt(6).data().empty());
-            REQUIRE(reply.frameAt(7).data() == "rbac");
+            REQUIRE(reply.frameAt(7).data() == "rbacToken");
             replyReceived = true;
         }
     }
@@ -624,7 +624,7 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[worker][getset_bas
                 std::make_unique<std::string>("topic"),
                 std::make_unique<std::string>("42"),
                 std::make_unique<std::string>(""),
-                std::make_unique<std::string>("rbac") });
+                std::make_unique<std::string>("rbacToken") });
 
         client.send(request);
 
@@ -647,7 +647,7 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[worker][getset_bas
                 std::make_unique<std::string>("topic"),
                 std::make_unique<std::string>(""),
                 std::make_unique<std::string>(""),
-                std::make_unique<std::string>("rbac") });
+                std::make_unique<std::string>("rbacToken") });
 
         client.send(request);
 
@@ -678,7 +678,7 @@ TEST_CASE("SET/GET example using the Client and Worker classes", "[client][getse
 
     TestIntWorker worker(context, "a.service", 100);
     worker.setServiceDescription("API description");
-    worker.setRbacRole("rbac");
+    worker.setRbacRole("rbacToken");
 
     REQUIRE(worker.connect(address));
 
