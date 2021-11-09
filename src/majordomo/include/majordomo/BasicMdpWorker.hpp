@@ -18,7 +18,7 @@ class BasicMdpWorker {
     std::string           _rbacRole;
     std::atomic<bool>     _shutdownRequested = false;
 
-    const Context        &_context;
+    const Context &       _context;
     std::optional<Socket> _socket;
 
 protected:

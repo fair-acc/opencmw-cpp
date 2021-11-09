@@ -11,7 +11,7 @@ concept Shutdownable = requires(T s) {
 
 template<Shutdownable T>
 struct RunInThread {
-    T          &_toRun;
+    T &          _toRun;
     std::jthread _thread;
 
     explicit RunInThread(T &toRun)
