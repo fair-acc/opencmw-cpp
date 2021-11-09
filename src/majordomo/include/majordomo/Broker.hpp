@@ -592,29 +592,7 @@ public:
 
     void run() {
         do {
-            bool anythingReceived;
-            int  loopCount = 0;
-            do {
-                anythingReceived = receiveMessage(_routerSocket);
-                anythingReceived |= receiveMessage(_dnsSocket);
-                anythingReceived |= receiveMessage(_subSocket);
-                anythingReceived |= receivePubMessage(_pubSocket);
-
-                processClients();
-
-                if (loopCount % 10 == 0) { // perform maintenance task every 10th iteration
-                    purgeWorkers();
-                    purgeClients();
-                    sendHeartbeats();
-                }
-                loopCount++;
-            } while (anythingReceived);
-
-            // N.B. block until data arrived or for at most one heart-beat interval
-            if (!zmq_invoke(zmq_poll, pollerItems.data(), static_cast<int>(pollerItems.size()), HEARTBEAT_INTERVAL)) {
-                break;
-            }
-        } while (!_shutdownRequested /* && thread is not interrupted */);
+        } while (processOneMessage() && !_shutdownRequested /* && thread is not interrupted */);
 
         cleanup();
     }
@@ -624,6 +602,30 @@ public:
     }
 
     // test interface
+
+    bool processOneMessage() {
+        bool anythingReceived;
+        int  loopCount = 0;
+        do {
+            anythingReceived = receiveMessage(_routerSocket);
+            anythingReceived |= receiveMessage(_dnsSocket);
+            anythingReceived |= receiveMessage(_subSocket);
+            anythingReceived |= receivePubMessage(_pubSocket);
+
+            processClients();
+
+            if (loopCount % 10 == 0) { // perform maintenance task every 10th iteration
+                purgeWorkers();
+                purgeClients();
+                sendHeartbeats();
+            }
+            loopCount++;
+        } while (anythingReceived);
+
+        // N.B. block until data arrived or for at most one heart-beat interval
+        const auto result = zmq_invoke(zmq_poll, pollerItems.data(), static_cast<int>(pollerItems.size()), HEARTBEAT_INTERVAL);
+        return result.isValid();
+    }
 
     void cleanup() {
         // iterate and delete workers (safe in >= C++14)
