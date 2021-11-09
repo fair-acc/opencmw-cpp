@@ -21,12 +21,12 @@ target_include_directories (
 target_link_libraries (
     majordomo_testapp
     PUBLIC
-        zmq
         pthread
         project_warnings
         project_options
         CONAN_PKG::catch2
         CONAN_PKG::fmt
+        CONAN_PKG::zeromq
     )
 
 
@@ -49,12 +49,12 @@ target_include_directories (
 target_link_libraries (
     majordomo_tests
     PUBLIC
-        zmq
         pthread
         project_warnings
         project_options
         CONAN_PKG::catch2
         CONAN_PKG::fmt
+        CONAN_PKG::zeromq
     )
 
 catch_discover_tests(majordomo_tests)
@@ -77,9 +77,9 @@ target_include_directories (
 target_link_libraries (
     majordomo_benchmark
     PUBLIC
-        zmq
         pthread
         project_warnings
         project_options
         CONAN_PKG::fmt
+        CONAN_PKG::zeromq
     )
