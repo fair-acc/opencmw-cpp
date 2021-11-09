@@ -26,7 +26,7 @@ public:
         int id;
     };
 
-    Client(const Context &context)
+    explicit Client(const Context &context)
         : _context(context) {
     }
 

@@ -14,7 +14,7 @@ struct RunInThread {
     T          &_toRun;
     std::jthread _thread;
 
-    RunInThread(T &toRun)
+    explicit RunInThread(T &toRun)
         : _toRun(toRun)
         , _thread([this] { _toRun.run(); }) {
     }
