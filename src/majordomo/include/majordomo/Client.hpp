@@ -46,7 +46,7 @@ public:
 
     template<typename BodyType>
     Request get(const std::string_view &serviceName, BodyType request) {
-        auto [handle, message] = createRequestTemplate(MdpMessage::ClientCommand::Get, serviceName);
+        auto [handle, message] = createRequestTemplate(ClientCommand::Get, serviceName);
         message.setBody(std::forward<BodyType>(request), MessageFrame::dynamic_bytes_tag{});
         message.send(*_socket).assertSuccess();
         return handle;
@@ -61,7 +61,7 @@ public:
 
     template<typename BodyType>
     Request set(std::string_view serviceName, BodyType request) {
-        auto [handle, message] = createRequestTemplate(MdpMessage::ClientCommand::Set, serviceName);
+        auto [handle, message] = createRequestTemplate(ClientCommand::Set, serviceName);
         message.setBody(std::forward<BodyType>(request), MessageFrame::dynamic_bytes_tag{});
         message.send(*_socket).assertSuccess();
         return handle;
@@ -113,7 +113,7 @@ public:
     }
 
 private:
-    std::pair<Request, MdpMessage> createRequestTemplate(MdpMessage::ClientCommand command, std::string_view serviceName) {
+    std::pair<Request, MdpMessage> createRequestTemplate(ClientCommand command, std::string_view serviceName) {
         auto req = std::make_pair(makeRequestHandle(), MdpMessage::createClientMessage(command));
         req.second.setServiceName(serviceName, MessageFrame::dynamic_bytes_tag{});
         req.second.setClientRequestId(std::to_string(req.first.id), MessageFrame::dynamic_bytes_tag{});

@@ -19,7 +19,7 @@
 namespace opencmw::majordomo {
 
 template<typename T>
-class [[nodiscard]] Result { // TODO-Q rstein: could this be made constexpr? Need a bit of explanation...
+class [[nodiscard]] Result {
 private:
     /*const*/ T   _value;
     /*const*/ int _error = 0;

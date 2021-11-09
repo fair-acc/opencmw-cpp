@@ -22,7 +22,7 @@ class BasicMdpWorker {
     std::optional<Socket> _socket;
 
 protected:
-    MdpMessage createMessage(MdpMessage::WorkerCommand command) {
+    MdpMessage createMessage(WorkerCommand command) {
         auto message = MdpMessage::createWorkerMessage(command);
         message.setServiceName(_serviceName, MessageFrame::dynamic_bytes_tag{});
         message.setRbacToken(_rbacRole, MessageFrame::dynamic_bytes_tag{});
@@ -60,7 +60,7 @@ public:
             return false;
         }
 
-        auto ready = createMessage(MdpMessage::WorkerCommand::Ready);
+        auto ready = createMessage(WorkerCommand::Ready);
         ready.setBody(_serviceDescription, MessageFrame::dynamic_bytes_tag{});
         ready.send(*_socket).assertSuccess();
 
@@ -68,7 +68,7 @@ public:
     }
 
     void disconnect() {
-        auto msg = createMessage(MdpMessage::WorkerCommand::Disconnect);
+        auto msg = createMessage(WorkerCommand::Disconnect);
         msg.send(*_socket).assertSuccess();
         _socket.reset();
     }
@@ -81,20 +81,20 @@ public:
 
         if (message.isWorkerMessage()) {
             switch (message.workerCommand()) {
-            case MdpMessage::WorkerCommand::Get:
+            case WorkerCommand::Get:
                 if (auto reply = handleGet(std::move(message)); reply) {
                     reply->send(*_socket).assertSuccess();
                 }
                 return;
-            case MdpMessage::WorkerCommand::Set:
+            case WorkerCommand::Set:
                 if (auto reply = handleSet(std::move(message)); reply) {
                     reply->send(*_socket).assertSuccess();
                 }
                 return;
-            case MdpMessage::WorkerCommand::Heartbeat:
+            case WorkerCommand::Heartbeat:
                 debug() << "HEARTBEAT not implemented yet\n";
                 return;
-            case MdpMessage::WorkerCommand::Disconnect:
+            case WorkerCommand::Disconnect:
                 _socket.reset(); // quit or reconnect?
                 return;
             default:

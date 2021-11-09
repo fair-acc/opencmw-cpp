@@ -31,7 +31,7 @@ public:
     }
 
     std::optional<MdpMessage> handleGet(MdpMessage &&request) override {
-        request.setWorkerCommand(MdpMessage::WorkerCommand::Final);
+        request.setWorkerCommand(opencmw::majordomo::WorkerCommand::Final);
         request.setBody(_payload, opencmw::majordomo::MessageFrame::static_bytes_tag{});
         return std::move(request);
     }

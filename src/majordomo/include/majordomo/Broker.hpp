@@ -171,7 +171,7 @@ private:
             assert(worker);
             message.setClientSourceId(message.sourceId(), MessageFrame::dynamic_bytes_tag{});
             message.setSourceId(worker->id, MessageFrame::dynamic_bytes_tag{});
-            message.setProtocol(BrokerMessage::Protocol::Worker);
+            message.setProtocol(Protocol::Worker);
             // TODO assert that command exists in both protocols?
             message.send(worker->socket).assertSuccess();
         }
@@ -247,8 +247,8 @@ private:
 
             auto           reply       = std::move(clientMessage);
             constexpr auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
-            constexpr auto static_tag = MessageFrame::static_bytes_tag{};
-            reply.setClientCommand(BrokerMessage::ClientCommand::Final);
+            constexpr auto static_tag  = MessageFrame::static_bytes_tag{};
+            reply.setClientCommand(ClientCommand::Final);
             reply.setTopic(INTERNAL_SERVICE_NAMES, static_tag);
             reply.setBody("", static_tag);
             reply.setError(fmt::format("unknown service (error 501): '{}'", reply.serviceName()), dynamic_tag);
@@ -290,13 +290,13 @@ private:
         worker.updateExpiry();
 
         switch (message.workerCommand()) {
-        case BrokerMessage::WorkerCommand::Ready: {
+        case WorkerCommand::Ready: {
             debug() << "log new local/external worker for service " << serviceName << " - " << message;
             std::ignore = requireService(serviceName, std::string(message.body()));
             workerWaiting(worker);
 
             // notify potential listeners
-            auto       notify      = BrokerMessage::createWorkerMessage(BrokerMessage::WorkerCommand::Notify);
+            auto       notify      = BrokerMessage::createWorkerMessage(WorkerCommand::Notify);
             const auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
             notify.setServiceName(INTERNAL_SERVICE_NAMES, dynamic_tag);
             notify.setTopic(INTERNAL_SERVICE_NAMES, dynamic_tag);
@@ -305,14 +305,14 @@ private:
             notify.send(_pubSocket).assertSuccess();
             break;
         }
-        case BrokerMessage::WorkerCommand::Disconnect:
+        case WorkerCommand::Disconnect:
             // deleteWorker(worker); // TODO handle? also commented out in java impl
             break;
-        case BrokerMessage::WorkerCommand::Partial:
-        case BrokerMessage::WorkerCommand::Final: {
+        case WorkerCommand::Partial:
+        case WorkerCommand::Final: {
             if (knownWorker) {
-                auto clientId       = std::make_unique<std::string>(message.clientSourceId());
-                auto       client   = _clients.find(*clientId);
+                auto clientId = std::make_unique<std::string>(message.clientSourceId());
+                auto client   = _clients.find(*clientId);
                 if (client == _clients.end()) {
                     return; // drop if client unknown/disappeared
                 }
@@ -321,17 +321,17 @@ private:
                 message.setServiceName(worker.serviceName, MessageFrame::dynamic_bytes_tag{});
                 const auto clientCommand = [](auto workerCommand) {
                     switch (workerCommand) {
-                    case BrokerMessage::WorkerCommand::Partial:
-                        return BrokerMessage::ClientCommand::Partial;
-                    case BrokerMessage::WorkerCommand::Final:
-                        return BrokerMessage::ClientCommand::Final;
+                    case WorkerCommand::Partial:
+                        return ClientCommand::Partial;
+                    case WorkerCommand::Final:
+                        return ClientCommand::Final;
                     default:
                         assert(!"unexpected command");
-                        return BrokerMessage::ClientCommand::Final;
+                        return ClientCommand::Final;
                     }
                 }(message.workerCommand());
 
-                message.setProtocol(BrokerMessage::Protocol::Client);
+                message.setProtocol(Protocol::Client);
                 message.setClientCommand(clientCommand);
                 message.send(client->second.socket).assertSuccess();
                 workerWaiting(worker);
@@ -340,9 +340,9 @@ private:
             }
             break;
         }
-        case BrokerMessage::WorkerCommand::Notify: {
-            message.setProtocol(BrokerMessage::Protocol::Client);
-            message.setClientCommand(BrokerMessage::ClientCommand::Final);
+        case WorkerCommand::Notify: {
+            message.setProtocol(Protocol::Client);
+            message.setClientCommand(ClientCommand::Final);
             message.setSourceId(message.serviceName(), MessageFrame::dynamic_bytes_tag{});
             message.setServiceName(worker.serviceName, MessageFrame::dynamic_bytes_tag{});
 
@@ -365,7 +365,7 @@ private:
     }
 
     void disconnectWorker(Worker &worker) {
-        auto           disconnect  = BrokerMessage::createWorkerMessage(BrokerMessage::WorkerCommand::Disconnect);
+        auto           disconnect  = BrokerMessage::createWorkerMessage(WorkerCommand::Disconnect);
         constexpr auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
         constexpr auto static_tag  = MessageFrame::static_bytes_tag{};
         disconnect.setSourceId(worker.id, dynamic_tag);
@@ -549,7 +549,7 @@ public:
         if (message.isClientMessage()) {
             switch (message.clientCommand()) {
             // TODO handle READY (client)?
-            case BrokerMessage::ClientCommand::Subscribe: {
+            case ClientCommand::Subscribe: {
                 auto it = _subscribedClientsByTopic.try_emplace(std::string(message.topic()), std::set<std::string>{});
                 // TODO check for duplicate subscriptions?
                 it.first->second.emplace(message.sourceId());
@@ -560,7 +560,7 @@ public:
                 }
                 return true;
             }
-            case BrokerMessage::ClientCommand::Unsubscribe: {
+            case ClientCommand::Unsubscribe: {
                 auto it = _subscribedClientsByTopic.find(std::string(message.topic()));
                 if (it != _subscribedClientsByTopic.end()) {
                     it->second.erase(std::string(message.sourceId()));

@@ -119,6 +119,31 @@ enum class MessageFormat {
     WithoutSourceId ///< 8-frame format, does not contain the source ID frame
 };
 
+enum class ClientCommand {
+    Get         = 0x01,
+    Set         = 0x02,
+    Subscribe   = 0x03,
+    Unsubscribe = 0x04,
+    Partial     = 0x05,
+    Final       = 0x06
+};
+
+enum class WorkerCommand {
+    Get        = 0x01,
+    Set        = 0x02,
+    Partial    = 0x03,
+    Final      = 0x04,
+    Notify     = 0x05,
+    Ready      = 0x06,
+    Disconnect = 0x07,
+    Heartbeat  = 0x08
+};
+
+enum class Protocol {
+    Client,
+    Worker
+};
+
 template<MessageFormat Format>
 class BasicMdpMessage {
 private:
@@ -163,10 +188,6 @@ private:
         RBAC
     };
 
-    struct empty_tag {};
-
-    explicit constexpr BasicMdpMessage(empty_tag) {}
-
     template<typename T>
     static constexpr auto index(T value) {
         return static_cast<std::underlying_type_t<T>>(value);
@@ -190,16 +211,22 @@ public:
         setCommand(command);
         assert(this->command() == command);
     }
-    BasicMdpMessage(const BasicMdpMessage &) = default;
-    explicit BasicMdpMessage(std::array<MessageFrame, RequiredFrameCount> &&frames) // TODO-Q: unused
-        : _frames(std::move(frames)) {}
-    ~BasicMdpMessage()                       = default; // TODO-Q: why declaring default destructor 'default'?
-    BasicMdpMessage(BasicMdpMessage &&other) = default;
-    BasicMdpMessage &operator=(BasicMdpMessage &&other) = default;
-    BasicMdpMessage &operator=(const BasicMdpMessage &) = default;
-    BasicMdpMessage  clone() const {
+
+    static BasicMdpMessage createClientMessage(ClientCommand cmd) {
+        BasicMdpMessage msg{ static_cast<char>(cmd) };
+        msg.setFrameData(Frame::Protocol, clientProtocol, MessageFrame::static_bytes_tag{});
+        return msg;
+    }
+
+    static BasicMdpMessage createWorkerMessage(WorkerCommand cmd) {
+        BasicMdpMessage msg{ static_cast<char>(cmd) };
+        msg.setFrameData(Frame::Protocol, workerProtocol, MessageFrame::static_bytes_tag{});
+        return msg;
+    }
+
+    BasicMdpMessage clone() const {
         // TODO make this nicer...
-        BasicMdpMessage tmp{ empty_tag{} };
+        BasicMdpMessage tmp{};
         assert(_frames.size() == RequiredFrameCount);
         for (std::size_t i = 0; i < _frames.size(); ++i) {
             tmp._frames[i] = _frames[i].clone();
@@ -297,43 +324,6 @@ public:
         }
 
         return r;
-    }
-
-    enum class ClientCommand {
-        Get         = 0x01,
-        Set         = 0x02,
-        Subscribe   = 0x03,
-        Unsubscribe = 0x04,
-        Partial     = 0x05,
-        Final       = 0x06
-    };
-
-    enum class WorkerCommand {
-        Get        = 0x01,
-        Set        = 0x02,
-        Partial    = 0x03,
-        Final      = 0x04,
-        Notify     = 0x05,
-        Ready      = 0x06,
-        Disconnect = 0x07,
-        Heartbeat  = 0x08
-    };
-
-    enum class Protocol {
-        Client,
-        Worker
-    };
-
-    static BasicMdpMessage createClientMessage(ClientCommand cmd) {
-        BasicMdpMessage msg{ static_cast<char>(cmd) };
-        msg.setFrameData(Frame::Protocol, clientProtocol, MessageFrame::static_bytes_tag{});
-        return msg;
-    }
-
-    static BasicMdpMessage createWorkerMessage(WorkerCommand cmd) {
-        BasicMdpMessage msg{ static_cast<char>(cmd) };
-        msg.setFrameData(Frame::Protocol, workerProtocol, MessageFrame::static_bytes_tag{});
-        return msg;
     }
 
     bool isValid() const {

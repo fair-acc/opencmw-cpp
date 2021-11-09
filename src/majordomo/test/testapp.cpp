@@ -23,7 +23,7 @@ public:
     }
 
     std::optional<opencmw::majordomo::MdpMessage> handleGet(opencmw::majordomo::MdpMessage &&message) override {
-        message.setWorkerCommand(MdpMessage::WorkerCommand::Final);
+        message.setWorkerCommand(opencmw::majordomo::WorkerCommand::Final);
 
         const auto property = std::string(message.body());
         const auto it       = _properties.find(property);
@@ -40,7 +40,7 @@ public:
     }
 
     std::optional<opencmw::majordomo::MdpMessage> handleSet(opencmw::majordomo::MdpMessage &&message) override {
-        message.setWorkerCommand(MdpMessage::WorkerCommand::Final);
+        message.setWorkerCommand(opencmw::majordomo::WorkerCommand::Final);
 
         const auto request = message.body();
 

@@ -84,9 +84,9 @@ TEST_CASE("OpenCMW::Frame cloning", "[frame][cloning]") {
 
 TEST_CASE("OpenCMW::Message basics", "[message]") {
     {
-        auto msg = BrokerMessage::createClientMessage(BrokerMessage::ClientCommand::Final);
+        auto msg = BrokerMessage::createClientMessage(ClientCommand::Final);
         REQUIRE(msg.isClientMessage());
-        REQUIRE(msg.clientCommand() == BrokerMessage::ClientCommand::Final);
+        REQUIRE(msg.clientCommand() == ClientCommand::Final);
 
         auto tag = MessageFrame::static_bytes_tag{};
         msg.setTopic("I'm a topic", tag);
@@ -97,7 +97,7 @@ TEST_CASE("OpenCMW::Message basics", "[message]") {
         msg.setRbacToken("password", tag);
 
         REQUIRE(msg.isClientMessage());
-        REQUIRE(msg.clientCommand() == BrokerMessage::ClientCommand::Final);
+        REQUIRE(msg.clientCommand() == ClientCommand::Final);
         REQUIRE(msg.topic() == "I'm a topic");
         REQUIRE(msg.serviceName() == "service://abc");
         REQUIRE(msg.clientRequestId() == "request 1");
@@ -119,9 +119,9 @@ TEST_CASE("OpenCMW::Message basics", "[message]") {
     }
 
     {
-        auto msg = MdpMessage::createClientMessage(MdpMessage::ClientCommand::Final);
+        auto msg = MdpMessage::createClientMessage(ClientCommand::Final);
         REQUIRE(msg.isClientMessage());
-        REQUIRE(msg.clientCommand() == MdpMessage::ClientCommand::Final);
+        REQUIRE(msg.clientCommand() == ClientCommand::Final);
 
         auto tag = MessageFrame::static_bytes_tag{};
         msg.setTopic("I'm a topic", tag);
@@ -132,7 +132,7 @@ TEST_CASE("OpenCMW::Message basics", "[message]") {
         msg.setRbacToken("password", tag);
 
         REQUIRE(msg.isClientMessage());
-        REQUIRE(msg.clientCommand() == MdpMessage::ClientCommand::Final);
+        REQUIRE(msg.clientCommand() == ClientCommand::Final);
         REQUIRE(msg.topic() == "I'm a topic");
         REQUIRE(msg.serviceName() == "service://abc");
         REQUIRE(msg.clientRequestId() == "request 1");
@@ -530,7 +530,7 @@ public:
     }
 
     std::optional<MdpMessage> handleGet(MdpMessage &&msg) override {
-        msg.setWorkerCommand(MdpMessage::WorkerCommand::Final);
+        msg.setWorkerCommand(WorkerCommand::Final);
         msg.setBody(std::to_string(_x), MessageFrame::dynamic_bytes_tag{});
         return std::move(msg);
     }
@@ -541,11 +541,11 @@ public:
         const auto result = std::from_chars(request.begin(), request.end(), value);
 
         if (result.ec == std::errc::invalid_argument) {
-            msg.setWorkerCommand(MdpMessage::WorkerCommand::Final);
+            msg.setWorkerCommand(WorkerCommand::Final);
             msg.setBody("", MessageFrame::static_bytes_tag{});
             msg.setError("Not a valid int", MessageFrame::static_bytes_tag{});
         } else {
-            msg.setWorkerCommand(MdpMessage::WorkerCommand::Final);
+            msg.setWorkerCommand(WorkerCommand::Final);
             _x = value;
             msg.setBody("Value set. All good!", MessageFrame::static_bytes_tag{});
             msg.setError("", MessageFrame::static_bytes_tag{});
