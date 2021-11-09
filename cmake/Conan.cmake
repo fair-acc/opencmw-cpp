@@ -29,6 +29,7 @@ macro(run_conan)
             catch2/2.13.6
             fmt/7.1.3
             mp-units/0.7.0
+            zeromq/4.3.4
             # refl-cpp/0.12.1 # could be used once there is a new release
             OPTIONS
             BASIC_SETUP
