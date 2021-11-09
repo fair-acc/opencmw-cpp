@@ -15,7 +15,6 @@ add_executable(
 target_include_directories (
     majordomo_testapp
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../include
-    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../../yaxxzmq/include
     )
 
 target_link_libraries (
@@ -43,7 +42,6 @@ add_executable (
 target_include_directories (
     majordomo_tests
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../include
-    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../../yaxxzmq/include
     )
 
 target_link_libraries (
@@ -71,7 +69,6 @@ add_executable (
 target_include_directories (
     majordomo_benchmark
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../include
-    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../../yaxxzmq/include
     )
 
 target_link_libraries (
