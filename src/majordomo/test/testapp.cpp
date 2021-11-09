@@ -132,11 +132,11 @@ int main(int argc, char **argv) {
             return 1;
         }
 
-        auto brokerThread = std::thread([&broker] {
+        auto brokerThread = std::jthread([&broker] {
             broker.run();
         });
 
-        auto workerThread = std::thread([&worker] {
+        auto workerThread = std::jthread([&worker] {
             worker.run();
         });
 
