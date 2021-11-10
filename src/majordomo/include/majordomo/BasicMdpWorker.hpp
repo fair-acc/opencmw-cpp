@@ -30,7 +30,7 @@ class BasicMdpWorker {
     }
 
 protected:
-    MdpMessage createMessage(WorkerCommand command) {
+    MdpMessage createMessage(Command command) {
         auto message = MdpMessage::createWorkerMessage(command);
         message.setServiceName(_serviceName, MessageFrame::dynamic_bytes_tag{});
         message.setRbacToken(_rbacRole, MessageFrame::dynamic_bytes_tag{});
@@ -68,7 +68,7 @@ public:
             return false;
         }
 
-        auto ready = createMessage(WorkerCommand::Ready);
+        auto ready = createMessage(Command::Ready);
         ready.setBody(_serviceDescription, MessageFrame::dynamic_bytes_tag{});
         ready.send(*_socket).assertSuccess();
 
@@ -76,7 +76,7 @@ public:
     }
 
     void disconnect() {
-        auto msg = createMessage(WorkerCommand::Disconnect);
+        auto msg = createMessage(Command::Disconnect);
         msg.send(*_socket).assertSuccess();
         _socket.reset();
     }
@@ -88,21 +88,21 @@ public:
         }
 
         if (message.isWorkerMessage()) {
-            switch (message.workerCommand()) {
-            case WorkerCommand::Get:
+            switch (message.command()) {
+            case Command::Get:
                 if (auto reply = handleGet(std::move(message)); reply) {
                     reply->send(*_socket).assertSuccess();
                 }
                 return;
-            case WorkerCommand::Set:
+            case Command::Set:
                 if (auto reply = handleSet(std::move(message)); reply) {
                     reply->send(*_socket).assertSuccess();
                 }
                 return;
-            case WorkerCommand::Heartbeat:
+            case Command::Heartbeat:
                 debug() << "HEARTBEAT not implemented yet\n";
                 return;
-            case WorkerCommand::Disconnect:
+            case Command::Disconnect:
                 _socket.reset(); // quit or reconnect?
                 return;
             default:
