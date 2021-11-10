@@ -84,9 +84,9 @@ TEST_CASE("OpenCMW::Frame cloning", "[frame][cloning]") {
 
 TEST_CASE("OpenCMW::Message basics", "[message]") {
     {
-        auto msg = BrokerMessage::createClientMessage(ClientCommand::Final);
+        auto msg = BrokerMessage::createClientMessage(Command::Final);
         REQUIRE(msg.isClientMessage());
-        REQUIRE(msg.clientCommand() == ClientCommand::Final);
+        REQUIRE(msg.command() == Command::Final);
 
         auto tag = MessageFrame::static_bytes_tag{};
         msg.setTopic("I'm a topic", tag);
@@ -97,7 +97,7 @@ TEST_CASE("OpenCMW::Message basics", "[message]") {
         msg.setRbacToken("password", tag);
 
         REQUIRE(msg.isClientMessage());
-        REQUIRE(msg.clientCommand() == ClientCommand::Final);
+        REQUIRE(msg.command() == Command::Final);
         REQUIRE(msg.topic() == "I'm a topic");
         REQUIRE(msg.serviceName() == "service://abc");
         REQUIRE(msg.clientRequestId() == "request 1");
@@ -109,7 +109,7 @@ TEST_CASE("OpenCMW::Message basics", "[message]") {
         REQUIRE(msg.availableFrameCount() == 9);
         REQUIRE(msg.frameAt(0).data() == "");
         REQUIRE(msg.frameAt(1).data() == "MDPC03");
-        REQUIRE(msg.frameAt(2).data() == "\x6");
+        REQUIRE(msg.frameAt(2).data() == "\x4");
         REQUIRE(msg.frameAt(3).data() == "service://abc");
         REQUIRE(msg.frameAt(4).data() == "request 1");
         REQUIRE(msg.frameAt(5).data() == "I'm a topic");
@@ -119,9 +119,9 @@ TEST_CASE("OpenCMW::Message basics", "[message]") {
     }
 
     {
-        auto msg = MdpMessage::createClientMessage(ClientCommand::Final);
+        auto msg = MdpMessage::createClientMessage(Command::Final);
         REQUIRE(msg.isClientMessage());
-        REQUIRE(msg.clientCommand() == ClientCommand::Final);
+        REQUIRE(msg.command() == Command::Final);
 
         auto tag = MessageFrame::static_bytes_tag{};
         msg.setTopic("I'm a topic", tag);
@@ -132,7 +132,7 @@ TEST_CASE("OpenCMW::Message basics", "[message]") {
         msg.setRbacToken("password", tag);
 
         REQUIRE(msg.isClientMessage());
-        REQUIRE(msg.clientCommand() == ClientCommand::Final);
+        REQUIRE(msg.command() == Command::Final);
         REQUIRE(msg.topic() == "I'm a topic");
         REQUIRE(msg.serviceName() == "service://abc");
         REQUIRE(msg.clientRequestId() == "request 1");
@@ -143,7 +143,7 @@ TEST_CASE("OpenCMW::Message basics", "[message]") {
         REQUIRE(msg.isValid());
         REQUIRE(msg.availableFrameCount() == 8);
         REQUIRE(msg.frameAt(0).data() == "MDPC03");
-        REQUIRE(msg.frameAt(1).data() == "\x6");
+        REQUIRE(msg.frameAt(1).data() == "\x4");
         REQUIRE(msg.frameAt(2).data() == "service://abc");
         REQUIRE(msg.frameAt(3).data() == "request 1");
         REQUIRE(msg.frameAt(4).data() == "I'm a topic");
@@ -171,7 +171,7 @@ TEST_CASE("Request answered with unknown service", "[broker][unknown_service]") 
 
     MdpMessage request;
     request.setFrames({ std::make_unique<std::string>("MDPC03"),
-            std::make_unique<std::string>("\x1"),
+            std::make_unique<std::string>("\x5"), // READY
             std::make_unique<std::string>("no.service"),
             std::make_unique<std::string>("1"),
             std::make_unique<std::string>("topic"),
@@ -186,7 +186,7 @@ TEST_CASE("Request answered with unknown service", "[broker][unknown_service]") 
     REQUIRE(reply.isValid());
     REQUIRE(reply.availableFrameCount() == 8);
     REQUIRE(reply.frameAt(0).data() == "MDPC03");
-    REQUIRE(reply.frameAt(1).data() == "\x6");
+    REQUIRE(reply.frameAt(1).data() == "\x4"); // FINAL
     REQUIRE(reply.frameAt(2).data() == "no.service");
     REQUIRE(reply.frameAt(3).data() == "1");
     REQUIRE(reply.frameAt(4).data() == "mmi.service");
@@ -214,7 +214,7 @@ TEST_CASE("One client/one worker roundtrip", "[broker][roundtrip]") {
 
     MdpMessage ready;
     ready.setFrames({ std::make_unique<std::string>("MDPW03"),
-            std::make_unique<std::string>("\x6"), // READY
+            std::make_unique<std::string>("\x5"), // READY
             std::make_unique<std::string>("a.service"),
             std::make_unique<std::string>("1"),
             std::make_unique<std::string>("topic"),
@@ -269,7 +269,7 @@ TEST_CASE("One client/one worker roundtrip", "[broker][roundtrip]") {
     REQUIRE(reply.isValid());
     REQUIRE(reply.availableFrameCount() == 8);
     REQUIRE(reply.frameAt(0).data() == "MDPC03");
-    REQUIRE(reply.frameAt(1).data() == "\x6"); // FINAL
+    REQUIRE(reply.frameAt(1).data() == "\x4"); // FINAL
     REQUIRE(reply.frameAt(2).data() == "a.service");
     REQUIRE(reply.frameAt(3).data() == "1");
     REQUIRE(reply.frameAt(4).data() == "topic");
@@ -283,7 +283,7 @@ TEST_CASE("One client/one worker roundtrip", "[broker][roundtrip]") {
     REQUIRE(disconnect.isValid());
     REQUIRE(disconnect.availableFrameCount() == 8);
     REQUIRE(disconnect.frameAt(0).data() == "MDPW03");
-    REQUIRE(disconnect.frameAt(1).data() == "\x7"); // DISCONNECT
+    REQUIRE(disconnect.frameAt(1).data() == "\x6"); // DISCONNECT
     REQUIRE(disconnect.frameAt(2).data() == "a.service");
     REQUIRE(disconnect.frameAt(3).data().empty());
     REQUIRE(disconnect.frameAt(4).data() == "a.service");
@@ -315,7 +315,7 @@ TEST_CASE("Simple pubsub example using pub socket", "[broker][pubsub_pub]") {
 
     MdpMessage pubMsg1;
     pubMsg1.setFrames({ std::make_unique<std::string>("MDPW03"),
-            std::make_unique<std::string>("\x5"), // NOTIFY
+            std::make_unique<std::string>("\x9"), // NOTIFY
             std::make_unique<std::string>("a.service"),
             std::make_unique<std::string>("1"),
             std::make_unique<std::string>("a.topic"),
@@ -332,7 +332,7 @@ TEST_CASE("Simple pubsub example using pub socket", "[broker][pubsub_pub]") {
     REQUIRE(reply.availableFrameCount() == 9);
     REQUIRE(reply.frameAt(0).data() == "a.topic");
     REQUIRE(reply.frameAt(1).data() == "MDPC03");
-    REQUIRE(reply.frameAt(2).data() == "\x6"); // FINAL
+    REQUIRE(reply.frameAt(2).data() == "\x4"); // FINAL
     REQUIRE(reply.frameAt(3).data() == "a.service");
     REQUIRE(reply.frameAt(4).data() == "1");
     REQUIRE(reply.frameAt(5).data() == "a.topic");
@@ -365,7 +365,7 @@ TEST_CASE("pubsub example using router socket", "[broker][pubsub_router]") {
     {
         MdpMessage subscribe;
         subscribe.setFrames({ std::make_unique<std::string>("MDPC03"),
-                std::make_unique<std::string>("\x3"), // SUBSCRIBE
+                std::make_unique<std::string>("\x7"), // SUBSCRIBE
                 std::make_unique<std::string>("first.service"),
                 std::make_unique<std::string>(""),
                 std::make_unique<std::string>("a.topic"),
@@ -381,7 +381,7 @@ TEST_CASE("pubsub example using router socket", "[broker][pubsub_router]") {
     {
         MdpMessage subscribe;
         subscribe.setFrames({ std::make_unique<std::string>("MDPC03"),
-                std::make_unique<std::string>("\x3"), // SUBSCRIBE
+                std::make_unique<std::string>("\x7"), // SUBSCRIBE
                 std::make_unique<std::string>("second.service"),
                 std::make_unique<std::string>(""),
                 std::make_unique<std::string>("another.topic"),
@@ -397,7 +397,7 @@ TEST_CASE("pubsub example using router socket", "[broker][pubsub_router]") {
     {
         MdpMessage pubMsg;
         pubMsg.setFrames({ std::make_unique<std::string>("MDPW03"),
-                std::make_unique<std::string>("\x5"), // NOTIFY
+                std::make_unique<std::string>("\x9"), // NOTIFY
                 std::make_unique<std::string>("first.service"),
                 std::make_unique<std::string>("1"),
                 std::make_unique<std::string>("a.topic"),
@@ -414,7 +414,7 @@ TEST_CASE("pubsub example using router socket", "[broker][pubsub_router]") {
         const auto reply = subscriber.readOne();
         REQUIRE(reply.availableFrameCount() == 8);
         REQUIRE(reply.frameAt(0).data() == "MDPC03");
-        REQUIRE(reply.frameAt(1).data() == "\x6"); // FINAL
+        REQUIRE(reply.frameAt(1).data() == "\x4"); // FINAL
         REQUIRE(reply.frameAt(2).data() == "first.service");
         REQUIRE(reply.frameAt(3).data() == "1");
         REQUIRE(reply.frameAt(4).data() == "a.topic");
@@ -427,7 +427,7 @@ TEST_CASE("pubsub example using router socket", "[broker][pubsub_router]") {
     {
         MdpMessage pubMsg;
         pubMsg.setFrames({ std::make_unique<std::string>("MDPW03"),
-                std::make_unique<std::string>("\x5"), // NOTIFY
+                std::make_unique<std::string>("\x9"), // NOTIFY
                 std::make_unique<std::string>("second.service"),
                 std::make_unique<std::string>("1"),
                 std::make_unique<std::string>("another.topic"),
@@ -445,7 +445,7 @@ TEST_CASE("pubsub example using router socket", "[broker][pubsub_router]") {
         REQUIRE(reply.isValid());
         REQUIRE(reply.availableFrameCount() == 8);
         REQUIRE(reply.frameAt(0).data() == "MDPC03");
-        REQUIRE(reply.frameAt(1).data() == "\x6"); // FINAL
+        REQUIRE(reply.frameAt(1).data() == "\x4"); // FINAL
         REQUIRE(reply.frameAt(2).data() == "second.service");
         REQUIRE(reply.frameAt(3).data() == "1");
         REQUIRE(reply.frameAt(4).data() == "another.topic");
@@ -458,7 +458,7 @@ TEST_CASE("pubsub example using router socket", "[broker][pubsub_router]") {
     {
         MdpMessage unsubscribe;
         unsubscribe.setFrames({ std::make_unique<std::string>("MDPC03"),
-                std::make_unique<std::string>("\x4"), // UNSUBSCRIBE
+                std::make_unique<std::string>("\x8"), // UNSUBSCRIBE
                 std::make_unique<std::string>("first.service"),
                 std::make_unique<std::string>(""),
                 std::make_unique<std::string>("a.topic"),
@@ -474,7 +474,7 @@ TEST_CASE("pubsub example using router socket", "[broker][pubsub_router]") {
     {
         MdpMessage pubMsg;
         pubMsg.setFrames({ std::make_unique<std::string>("MDPW03"),
-                std::make_unique<std::string>("\x5"), // NOTIFY
+                std::make_unique<std::string>("\x9"), // NOTIFY
                 std::make_unique<std::string>("first.service"),
                 std::make_unique<std::string>("1"),
                 std::make_unique<std::string>("a.topic"),
@@ -490,7 +490,7 @@ TEST_CASE("pubsub example using router socket", "[broker][pubsub_router]") {
     {
         MdpMessage pubMsg;
         pubMsg.setFrames({ std::make_unique<std::string>("MDPW03"),
-                std::make_unique<std::string>("\x5"), // NOTIFY
+                std::make_unique<std::string>("\x9"), // NOTIFY
                 std::make_unique<std::string>("second.service"),
                 std::make_unique<std::string>("1"),
                 std::make_unique<std::string>("another.topic"),
@@ -508,7 +508,7 @@ TEST_CASE("pubsub example using router socket", "[broker][pubsub_router]") {
         const auto reply = subscriber.readOne();
         REQUIRE(reply.availableFrameCount() == 8);
         REQUIRE(reply.frameAt(0).data() == "MDPC03");
-        REQUIRE(reply.frameAt(1).data() == "\x6"); // FINAL
+        REQUIRE(reply.frameAt(1).data() == "\x4"); // FINAL
         REQUIRE(reply.frameAt(2).data() == "second.service");
         REQUIRE(reply.frameAt(3).data() == "1");
         REQUIRE(reply.frameAt(4).data() == "another.topic");
@@ -530,7 +530,7 @@ public:
     }
 
     std::optional<MdpMessage> handleGet(MdpMessage &&msg) override {
-        msg.setWorkerCommand(WorkerCommand::Final);
+        msg.setCommand(Command::Final);
         msg.setBody(std::to_string(_x), MessageFrame::dynamic_bytes_tag{});
         return std::move(msg);
     }
@@ -541,11 +541,11 @@ public:
         const auto result = std::from_chars(request.begin(), request.end(), value);
 
         if (result.ec == std::errc::invalid_argument) {
-            msg.setWorkerCommand(WorkerCommand::Final);
+            msg.setCommand(Command::Final);
             msg.setBody("", MessageFrame::static_bytes_tag{});
             msg.setError("Not a valid int", MessageFrame::static_bytes_tag{});
         } else {
-            msg.setWorkerCommand(WorkerCommand::Final);
+            msg.setCommand(Command::Final);
             _x = value;
             msg.setBody("Value set. All good!", MessageFrame::static_bytes_tag{});
             msg.setError("", MessageFrame::static_bytes_tag{});
@@ -600,7 +600,7 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[worker][getset_bas
         REQUIRE(reply.isValid());
         REQUIRE(reply.availableFrameCount() == 8);
         REQUIRE(reply.frameAt(0).data() == "MDPC03");
-        REQUIRE(reply.frameAt(1).data() == "\x6"); // FINAL
+        REQUIRE(reply.frameAt(1).data() == "\x4"); // FINAL
 
         if (!reply.frameAt(6).data().empty()) {
             REQUIRE(reply.frameAt(6).data().find("error 501") != std::string_view::npos);
@@ -632,7 +632,7 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[worker][getset_bas
 
         REQUIRE(reply.availableFrameCount() == 8);
         REQUIRE(reply.frameAt(0).data() == "MDPC03");
-        REQUIRE(reply.frameAt(1).data() == "\x6"); // FINAL
+        REQUIRE(reply.frameAt(1).data() == "\x4"); // FINAL
         REQUIRE(reply.frameAt(3).data() == "2");
         REQUIRE(reply.frameAt(5).data() == "Value set. All good!");
         REQUIRE(reply.frameAt(6).data() == "");
@@ -656,7 +656,7 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[worker][getset_bas
         REQUIRE(reply.isValid());
         REQUIRE(reply.availableFrameCount() == 8);
         REQUIRE(reply.frameAt(0).data() == "MDPC03");
-        REQUIRE(reply.frameAt(1).data() == "\x6"); // FINAL
+        REQUIRE(reply.frameAt(1).data() == "\x4"); // FINAL
         REQUIRE(reply.frameAt(3).data() == "3");
         REQUIRE(reply.frameAt(5).data() == "42");
     }

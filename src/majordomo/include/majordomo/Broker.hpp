@@ -248,7 +248,7 @@ private:
             auto           reply       = std::move(clientMessage);
             constexpr auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
             constexpr auto static_tag  = MessageFrame::static_bytes_tag{};
-            reply.setClientCommand(ClientCommand::Final);
+            reply.setCommand(Command::Final);
             reply.setTopic(INTERNAL_SERVICE_NAMES, static_tag);
             reply.setBody("", static_tag);
             reply.setError(fmt::format("unknown service (error 501): '{}'", reply.serviceName()), dynamic_tag);
@@ -289,14 +289,14 @@ private:
         auto &     worker      = _workers.try_emplace(serviceId, socket, serviceId, serviceName).first->second;
         worker.updateExpiry();
 
-        switch (message.workerCommand()) {
-        case WorkerCommand::Ready: {
+        switch (message.command()) {
+        case Command::Ready: {
             debug() << "log new local/external worker for service " << serviceName << " - " << message;
             std::ignore = requireService(serviceName, std::string(message.body()));
             workerWaiting(worker);
 
             // notify potential listeners
-            auto       notify      = BrokerMessage::createWorkerMessage(WorkerCommand::Notify);
+            auto       notify      = BrokerMessage::createWorkerMessage(Command::Notify);
             const auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
             notify.setServiceName(INTERNAL_SERVICE_NAMES, dynamic_tag);
             notify.setTopic(INTERNAL_SERVICE_NAMES, dynamic_tag);
@@ -305,11 +305,11 @@ private:
             notify.send(_pubSocket).assertSuccess();
             break;
         }
-        case WorkerCommand::Disconnect:
+        case Command::Disconnect:
             // deleteWorker(worker); // TODO handle? also commented out in java impl
             break;
-        case WorkerCommand::Partial:
-        case WorkerCommand::Final: {
+        case Command::Partial:
+        case Command::Final: {
             if (knownWorker) {
                 auto clientId = std::make_unique<std::string>(message.clientSourceId());
                 auto client   = _clients.find(*clientId);
@@ -319,20 +319,7 @@ private:
 
                 message.setSourceId(clientId.release(), MessageFrame::dynamic_bytes_tag{});
                 message.setServiceName(worker.serviceName, MessageFrame::dynamic_bytes_tag{});
-                const auto clientCommand = [](auto workerCommand) {
-                    switch (workerCommand) {
-                    case WorkerCommand::Partial:
-                        return ClientCommand::Partial;
-                    case WorkerCommand::Final:
-                        return ClientCommand::Final;
-                    default:
-                        assert(!"unexpected command");
-                        return ClientCommand::Final;
-                    }
-                }(message.workerCommand());
-
                 message.setProtocol(Protocol::Client);
-                message.setClientCommand(clientCommand);
                 message.send(client->second.socket).assertSuccess();
                 workerWaiting(worker);
             } else {
@@ -340,9 +327,9 @@ private:
             }
             break;
         }
-        case WorkerCommand::Notify: {
+        case Command::Notify: {
             message.setProtocol(Protocol::Client);
-            message.setClientCommand(ClientCommand::Final);
+            message.setCommand(Command::Final);
             message.setSourceId(message.serviceName(), MessageFrame::dynamic_bytes_tag{});
             message.setServiceName(worker.serviceName, MessageFrame::dynamic_bytes_tag{});
 
@@ -365,7 +352,7 @@ private:
     }
 
     void disconnectWorker(Worker &worker) {
-        auto           disconnect  = BrokerMessage::createWorkerMessage(WorkerCommand::Disconnect);
+        auto           disconnect  = BrokerMessage::createWorkerMessage(Command::Disconnect);
         constexpr auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
         constexpr auto static_tag  = MessageFrame::static_bytes_tag{};
         disconnect.setSourceId(worker.id, dynamic_tag);
@@ -547,9 +534,9 @@ public:
         }
 
         if (message.isClientMessage()) {
-            switch (message.clientCommand()) {
+            switch (message.command()) {
             // TODO handle READY (client)?
-            case ClientCommand::Subscribe: {
+            case Command::Subscribe: {
                 auto it = _subscribedClientsByTopic.try_emplace(std::string(message.topic()), std::set<std::string>{});
                 // TODO check for duplicate subscriptions?
                 it.first->second.emplace(message.sourceId());
@@ -560,7 +547,7 @@ public:
                 }
                 return true;
             }
-            case ClientCommand::Unsubscribe: {
+            case Command::Unsubscribe: {
                 auto it = _subscribedClientsByTopic.find(std::string(message.topic()));
                 if (it != _subscribedClientsByTopic.end()) {
                     it->second.erase(std::string(message.sourceId()));
