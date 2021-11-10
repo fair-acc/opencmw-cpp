@@ -15,6 +15,12 @@
 
 using namespace opencmw::majordomo;
 
+static opencmw::majordomo::Settings testSettings() {
+    Settings settings;
+    settings.heartbeatInterval = std::chrono::milliseconds(100);
+    return settings;
+}
+
 template<typename MessageType>
 class TestNode {
     std::deque<MessageType> _receivedMessages;
@@ -49,6 +55,20 @@ public:
         auto msg = std::move(_receivedMessages.front());
         _receivedMessages.pop_front();
         return msg;
+    }
+
+    std::optional<MessageType> tryReadOne(std::chrono::milliseconds timeout) {
+        assert(_receivedMessages.empty());
+
+        std::array<zmq_pollitem_t, 1> pollerItems;
+        pollerItems[0].socket = _socket.zmq_ptr;
+        pollerItems[0].events = ZMQ_POLLIN;
+
+        const auto result     = zmq_invoke(zmq_poll, pollerItems.data(), static_cast<int>(pollerItems.size()), timeout.count());
+        if (!result.isValid())
+            return {};
+
+        return MessageType::receive(_socket);
     }
 
     void send(MdpMessage &message) {
@@ -208,7 +228,7 @@ TEST_CASE("Request answered with unknown service", "[broker][unknown_service]") 
     constexpr auto address = std::string_view("inproc://testrouter");
 
     Context        context;
-    Broker         broker("testbroker", {}, context);
+    Broker         broker(testSettings(), "testbroker", {}, context);
 
     REQUIRE(broker.bind(address, Broker::BindOption::Router));
 
@@ -244,7 +264,7 @@ TEST_CASE("One client/one worker roundtrip", "[broker][roundtrip]") {
     constexpr auto address = std::string_view("inproc://testrouter");
 
     Context        context;
-    Broker         broker("testbroker", {}, context);
+    Broker         broker(testSettings(), "testbroker", {}, context);
 
     REQUIRE(broker.bind(address, Broker::BindOption::Router));
 
@@ -305,6 +325,15 @@ TEST_CASE("One client/one worker roundtrip", "[broker][roundtrip]") {
 
     broker.cleanup();
 
+    {
+        const auto heartbeat = worker.readOne();
+        REQUIRE(heartbeat.isValid());
+        REQUIRE(heartbeat.isWorkerMessage());
+        REQUIRE(heartbeat.command() == Command::Heartbeat);
+        REQUIRE(heartbeat.serviceName() == "a.service");
+        REQUIRE(heartbeat.rbacToken() == "TODO (RBAC)");
+    }
+
     const auto disconnect = worker.readOne();
     REQUIRE(disconnect.isValid());
     REQUIRE(disconnect.isWorkerMessage());
@@ -325,7 +354,7 @@ TEST_CASE("Simple pubsub example using pub socket", "[broker][pubsub_pub]") {
     constexpr auto publisherAddress = std::string_view("inproc://testpub");
 
     Context        context;
-    Broker         broker("testbroker", {}, context);
+    Broker         broker(testSettings(), "testbroker", {}, context);
 
     REQUIRE(broker.bind(routerAddress, Broker::BindOption::Router));
     REQUIRE(broker.bind(publisherAddress, Broker::BindOption::Pub));
@@ -359,6 +388,89 @@ TEST_CASE("Simple pubsub example using pub socket", "[broker][pubsub_pub]") {
     REQUIRE(reply.rbacToken() == "rbac_worker");
 }
 
+TEST_CASE("Broker sends heartbeats", "[broker][heartbeat]") {
+    using opencmw::majordomo::Broker;
+    using opencmw::majordomo::MdpMessage;
+    using Clock                      = std::chrono::steady_clock;
+
+    constexpr auto address           = std::string_view("inproc://testrouter");
+    constexpr auto heartbeatInterval = std::chrono::milliseconds(50);
+
+    Context        context;
+    Settings       settings;
+    settings.heartbeatInterval = heartbeatInterval;
+    Broker broker(settings, "testbroker", {}, context);
+
+    REQUIRE(broker.bind(address, Broker::BindOption::Router));
+
+    RunInThread          brokerRun(broker);
+
+    TestNode<MdpMessage> worker(context);
+    REQUIRE(worker.connect(address));
+
+    {
+        auto ready = MdpMessage::createWorkerMessage(Command::Ready);
+        ready.setServiceName("heartbeat.service", static_tag);
+        ready.setBody("API description", static_tag);
+        ready.setRbacToken("rbac_worker", static_tag);
+        worker.send(ready);
+    }
+
+    const auto afterReady = Clock::now();
+
+    std::this_thread::sleep_for(heartbeatInterval * 0.75);
+
+    {
+        auto heartbeat = MdpMessage::createWorkerMessage(Command::Heartbeat);
+        heartbeat.setServiceName("heartbeat.service", static_tag);
+        heartbeat.setRbacToken("rbac_worker", static_tag);
+        worker.send(heartbeat);
+    }
+
+    const auto heartbeat = worker.readOne();
+    REQUIRE(heartbeat.command() == Command::Heartbeat);
+
+    const auto afterHeartbeat = Clock::now();
+
+    // Ensure that the broker sends a heartbeat after a "reasonable time"
+    REQUIRE(afterHeartbeat - afterReady < heartbeatInterval * 2);
+
+    // As the worker is sending no more heartbeats, ensure that the broker also stops sending them,
+    // i.e. that it purged us (silently). We allow one more heartbeat.
+    const auto maybeHeartbeat = worker.tryReadOne(heartbeatInterval * 2);
+    REQUIRE((maybeHeartbeat.has_value() || maybeHeartbeat->command() == Command::Heartbeat));
+    REQUIRE(!worker.tryReadOne(heartbeatInterval * 2).has_value());
+}
+
+TEST_CASE("Broker disconnects on unexpected heartbeat", "[broker][unexpected_heartbeat]") {
+    using opencmw::majordomo::Broker;
+    using opencmw::majordomo::MdpMessage;
+
+    constexpr auto address           = std::string_view("inproc://testrouter");
+    constexpr auto heartbeatInterval = std::chrono::milliseconds(50);
+
+    Context        context;
+    Settings       settings;
+    settings.heartbeatInterval = heartbeatInterval;
+    Broker broker(settings, "testbroker", {}, context);
+
+    REQUIRE(broker.bind(address, Broker::BindOption::Router));
+
+    RunInThread          brokerRun(broker);
+
+    TestNode<MdpMessage> worker(context);
+    REQUIRE(worker.connect(address));
+
+    // send heartbeat without initial ready - invalid
+    auto heartbeat = MdpMessage::createWorkerMessage(Command::Heartbeat);
+    heartbeat.setServiceName("heartbeat.service", static_tag);
+    heartbeat.setRbacToken("rbac_worker", static_tag);
+    worker.send(heartbeat);
+
+    const auto disconnect = worker.readOne();
+    REQUIRE(disconnect.command() == Command::Disconnect);
+}
+
 TEST_CASE("pubsub example using router socket", "[broker][pubsub_router]") {
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::MdpMessage;
@@ -366,7 +478,7 @@ TEST_CASE("pubsub example using router socket", "[broker][pubsub_router]") {
     constexpr auto address = std::string_view("inproc://testrouter");
 
     Context        context;
-    Broker         broker("testbroker", {}, context);
+    Broker         broker(testSettings(), "testbroker", {}, context);
 
     REQUIRE(broker.bind(address, Broker::BindOption::Router));
 
@@ -511,8 +623,8 @@ class TestIntWorker : public opencmw::majordomo::BasicMdpWorker {
     int _x = 10;
 
 public:
-    explicit TestIntWorker(Context &context, std::string serviceName, int initialValue)
-        : opencmw::majordomo::BasicMdpWorker(context, serviceName)
+    explicit TestIntWorker(Settings settings, Context &context, std::string_view brokerName, std::string_view serviceName, int initialValue)
+        : opencmw::majordomo::BasicMdpWorker(std::move(settings), context, brokerName, serviceName)
         , _x(initialValue) {
     }
 
@@ -549,17 +661,15 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[worker][getset_bas
     constexpr auto address = std::string_view("inproc://testrouter");
 
     Context        context;
-    Broker         broker("testbroker", {}, context);
+    Broker         broker(testSettings(), "testbroker", {}, context);
 
     REQUIRE(broker.bind(address, Broker::BindOption::Router));
 
     RunInThread   brokerRun(broker);
 
-    TestIntWorker worker(context, "a.service", 10);
+    TestIntWorker worker(testSettings(), context, address, "a.service", 10);
     worker.setServiceDescription("API description");
     worker.setRbacRole("rbacToken");
-
-    REQUIRE(worker.connect(address));
 
     RunInThread          workerRun(worker);
 
@@ -643,17 +753,15 @@ TEST_CASE("SET/GET example using the Client and Worker classes", "[client][getse
     constexpr auto address = std::string_view("inproc://testrouter");
 
     Context        context;
-    Broker         broker("testbroker", {}, context);
+    Broker         broker(testSettings(), "testbroker", {}, context);
 
     REQUIRE(broker.bind(address, Broker::BindOption::Router));
 
     RunInThread   brokerRun(broker);
 
-    TestIntWorker worker(context, "a.service", 100);
+    TestIntWorker worker(testSettings(), context, address, "a.service", 100);
     worker.setServiceDescription("API description");
     worker.setRbacRole("rbacToken");
-
-    REQUIRE(worker.connect(address));
 
     RunInThread workerRun(worker);
 
