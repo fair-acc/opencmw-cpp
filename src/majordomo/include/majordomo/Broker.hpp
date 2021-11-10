@@ -35,7 +35,7 @@ namespace opencmw::majordomo {
 
 constexpr int                   HIGH_WATER_MARK            = 0;
 constexpr int                   HEARTBEAT_LIVENESS         = 3;
-constexpr int                   HEARTBEAT_INTERVAL         = 1000;
+constexpr auto                  HEARTBEAT_INTERVAL         = std::chrono::milliseconds(1000);
 constexpr auto                  CLIENT_TIMEOUT             = std::chrono::seconds(10); // TODO
 
 using BrokerMessage                                        = BasicMdpMessage<MessageFormat::WithSourceId>;
@@ -55,29 +55,24 @@ private:
         const Socket &            socket;
         const std::string         id;
         std::deque<BrokerMessage> requests;
+        Timestamp                 expiry = updatedExpiry();
 
         explicit Client(const Socket &s, const std::string &id_)
             : socket(s), id(std::move(id_)) {}
-        Client(const Client &) = delete;
-        Client operator=(const Client &c) = delete;
+
+        [[nodiscard]] static Timestamp updatedExpiry() { return Clock::now() + CLIENT_TIMEOUT; }
     };
 
     struct Worker {
         const Socket &    socket;
         const std::string id;
         const std::string serviceName;
-        Timestamp         expiry;
+        Timestamp         expiry = updatedExpiry();
 
         explicit Worker(const Socket &s, const std::string &id_, const std::string &serviceName_)
             : socket(s), id{ std::move(id_) }, serviceName{ std::move(serviceName_) } {}
 
-        void updateExpiry() {
-            expiry = Clock::now() + CLIENT_TIMEOUT;
-        }
-
-        bool isExpired(auto now) {
-            return now >= expiry;
-        }
+        [[nodiscard]] static Timestamp updatedExpiry() { return Clock::now() + HEARTBEAT_LIVENESS * HEARTBEAT_INTERVAL; }
     };
 
     struct Service {
@@ -111,6 +106,7 @@ private:
         }
     };
 
+    Timestamp                                              _heartbeatAt;
     std::unordered_map<std::string, std::set<std::string>> _subscribedClientsByTopic; // topic -> client IDs
     std::unordered_map<std::string, int>                   _subscribedTopics;         // topic -> subscription count
     std::unordered_map<std::string, Client>                _clients;
@@ -220,11 +216,26 @@ private:
         auto service = _services.find(worker.serviceName);
         assert(service != _services.end());
         service->second.waiting.push_back(&worker);
-        worker.updateExpiry();
+        worker.expiry = Worker::updatedExpiry();
         dispatch(service->second);
     }
 
-    void purgeWorkers() {}
+    void purgeWorkers() {
+        const auto now = Clock::now();
+
+        for (auto &serviceIt : _services) {
+            auto &service  = serviceIt.second;
+            auto  workerIt = service.waiting.begin();
+            while (workerIt != service.waiting.end()) {
+                if ((*workerIt)->expiry < now) {
+                    workerIt = service.waiting.erase(workerIt);
+                    _workers.erase((*workerIt)->id);
+                } else {
+                    ++workerIt;
+                }
+            }
+        }
+    }
 
     void processClients() {
         for (auto &clientIt : _clients) {
@@ -258,8 +269,36 @@ private:
         }
     }
 
-    void        purgeClients() {}
-    void        sendHeartbeats() {}
+    void purgeClients() {
+        if (CLIENT_TIMEOUT.count() == 0) {
+            return;
+        }
+
+        const auto now       = Clock::now();
+
+        const auto isExpired = [&now](const auto &c) {
+            return c.second.expiry < now;
+        };
+
+        std::erase_if(_clients, isExpired);
+    }
+
+    void sendHeartbeats() {
+        if (Clock::now() < _heartbeatAt)
+            return;
+
+        for (auto &service : _services) {
+            for (auto &worker : service.second.waiting) {
+                auto heartbeat = BrokerMessage::createWorkerMessage(Command::Heartbeat);
+                heartbeat.setSourceId(worker->id, MessageFrame::dynamic_bytes_tag{});
+                heartbeat.setServiceName(worker->serviceName, MessageFrame::dynamic_bytes_tag{});
+                heartbeat.setRbacToken(_rbac, MessageFrame::static_bytes_tag{});
+                heartbeat.send(worker->socket).assertSuccess();
+            }
+        }
+
+        _heartbeatAt = Clock::now();
+    }
 
     std::string getScheme(std::string_view address) {
         auto schemeEnd = address.find(':');
@@ -287,7 +326,6 @@ private:
         const auto serviceId   = std::string(message.sourceId());
         const auto knownWorker = _workers.contains(serviceId);
         auto &     worker      = _workers.try_emplace(serviceId, socket, serviceId, serviceName).first->second;
-        worker.updateExpiry();
 
         switch (message.command()) {
         case Command::Ready: {
@@ -336,6 +374,12 @@ private:
             dispatchMessageToMatchingSubscribers(std::move(message));
             break;
         }
+        case Command::Heartbeat:
+            if (knownWorker) {
+                worker.expiry = Worker::updatedExpiry();
+            } else {
+                disconnectWorker(worker);
+            }
         default:
             break;
         }
@@ -366,6 +410,10 @@ private:
         deleteWorker(worker);
     }
 
+    static int toMilliseconds(auto duration) {
+        return static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(duration).count());
+    }
+
 public:
     Broker(std::string brokerName, std::string dnsAddress, const Context &context)
         : _brokerName{ std::move(brokerName) }
@@ -375,14 +423,15 @@ public:
         , _subSocket(context, ZMQ_XSUB)
         , _dnsSocket(context, ZMQ_DEALER) {
         auto commonSocketInit = [](const Socket &socket) {
-            const int ttl     = HEARTBEAT_INTERVAL * HEARTBEAT_LIVENESS;
-            const int timeout = HEARTBEAT_INTERVAL * HEARTBEAT_LIVENESS;
+            const int heartbeatInterval = toMilliseconds(HEARTBEAT_INTERVAL);
+            const int ttl               = heartbeatInterval * HEARTBEAT_LIVENESS;
+            const int timeout           = heartbeatInterval * HEARTBEAT_LIVENESS;
             return zmq_invoke(zmq_setsockopt, socket, ZMQ_SNDHWM, &HIGH_WATER_MARK, sizeof(HIGH_WATER_MARK))
                 && zmq_invoke(zmq_setsockopt, socket, ZMQ_RCVHWM, &HIGH_WATER_MARK, sizeof(HIGH_WATER_MARK))
                 && zmq_invoke(zmq_setsockopt, socket, ZMQ_HEARTBEAT_TTL, &ttl, sizeof(ttl))
                 && zmq_invoke(zmq_setsockopt, socket, ZMQ_HEARTBEAT_TIMEOUT, &timeout, sizeof(timeout))
-                && zmq_invoke(zmq_setsockopt, socket, ZMQ_HEARTBEAT_IVL, &HEARTBEAT_INTERVAL, sizeof(HEARTBEAT_INTERVAL))
-                && zmq_invoke(zmq_setsockopt, socket, ZMQ_LINGER, &HEARTBEAT_INTERVAL, sizeof(HEARTBEAT_INTERVAL));
+                && zmq_invoke(zmq_setsockopt, socket, ZMQ_HEARTBEAT_IVL, &heartbeatInterval, sizeof(heartbeatInterval))
+                && zmq_invoke(zmq_setsockopt, socket, ZMQ_LINGER, &heartbeatInterval, sizeof(heartbeatInterval));
         };
 
         // From setDefaultSocketParameters (io/opencmw/OpenCmwConstants.java)
@@ -560,7 +609,9 @@ public:
                 }
                 return true;
             }
-            // TODO handle HEARTBEAT (client)?
+            case Command::Heartbeat:
+                // TODO sendDnsHeartbeats(true)
+                break;
             default:
                 break;
             }
@@ -568,6 +619,7 @@ public:
             const auto senderId = std::string(message.sourceId());
             auto       client   = _clients.try_emplace(senderId, socket, senderId);
             client.first->second.requests.emplace_back(std::move(message));
+            client.first->second.expiry = Client::updatedExpiry();
 
             return true;
         }
@@ -610,7 +662,7 @@ public:
         } while (anythingReceived);
 
         // N.B. block until data arrived or for at most one heart-beat interval
-        const auto result = zmq_invoke(zmq_poll, pollerItems.data(), static_cast<int>(pollerItems.size()), HEARTBEAT_INTERVAL);
+        const auto result = zmq_invoke(zmq_poll, pollerItems.data(), static_cast<int>(pollerItems.size()), toMilliseconds(HEARTBEAT_INTERVAL));
         return result.isValid();
     }
 

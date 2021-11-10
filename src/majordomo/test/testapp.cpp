@@ -18,8 +18,8 @@ class TestWorker : public opencmw::majordomo::BasicMdpWorker {
     std::unordered_map<std::string, std::string> _properties;
 
 public:
-    explicit TestWorker(Context &context)
-        : BasicMdpWorker(context, propertyStoreService) {
+    explicit TestWorker(Context &context, std::string_view brokerAddress)
+        : BasicMdpWorker(context, brokerAddress, propertyStoreService) {
     }
 
     std::optional<opencmw::majordomo::MdpMessage> handleGet(opencmw::majordomo::MdpMessage &&message) override {
@@ -125,20 +125,15 @@ int main(int argc, char **argv) {
             return 1;
         }
 
-        TestWorker worker(context);
+        TestWorker worker(context, inprocRouter);
 
-        if (!worker.connect(inprocRouter)) {
-            std::cerr << fmt::format("Could not connect worker to broker at '{}'\n", inprocRouter);
-            return 1;
-        }
-
-        auto brokerThread = std::jthread([&broker] {
+        auto       brokerThread = std::jthread([&broker] {
             broker.run();
-        });
+              });
 
-        auto workerThread = std::jthread([&worker] {
+        auto       workerThread = std::jthread([&worker] {
             worker.run();
-        });
+              });
 
         brokerThread.join();
         workerThread.join();
@@ -153,12 +148,7 @@ int main(int argc, char **argv) {
         const std::string_view brokerAddress = argv[2];
 
         Context                context;
-        TestWorker             worker(context);
-
-        if (!worker.connect(brokerAddress)) {
-            std::cerr << fmt::format("Could not connect to broker at '{}'\n", brokerAddress);
-            return 1;
-        }
+        TestWorker             worker(context, brokerAddress);
 
         worker.run();
         return 0;

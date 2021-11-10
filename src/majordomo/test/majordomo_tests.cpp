@@ -239,6 +239,20 @@ TEST_CASE("One client/one worker roundtrip", "[broker][roundtrip]") {
 
     broker.processOneMessage();
 
+    {
+        const auto heartbeat = worker.readOne();
+        REQUIRE(heartbeat.isValid());
+        REQUIRE(heartbeat.availableFrameCount() == 8);
+        REQUIRE(heartbeat.frameAt(0).data() == "MDPW03");
+        REQUIRE(heartbeat.frameAt(1).data() == "\xa"); // HEARTBEAT
+        REQUIRE(heartbeat.frameAt(2).data() == "a.service");
+        REQUIRE(heartbeat.frameAt(3).data().empty());
+        REQUIRE(heartbeat.frameAt(4).data().empty());
+        REQUIRE(heartbeat.frameAt(5).data().empty());
+        REQUIRE(heartbeat.frameAt(6).data().empty());
+        REQUIRE(heartbeat.frameAt(7).data() == "TODO (RBAC)");
+    }
+
     const auto requestAtWorker = worker.readOne();
     REQUIRE(requestAtWorker.isValid());
     REQUIRE(requestAtWorker.availableFrameCount() == 8);
@@ -278,6 +292,20 @@ TEST_CASE("One client/one worker roundtrip", "[broker][roundtrip]") {
     REQUIRE(reply.frameAt(7).data() == "rbac_worker");
 
     broker.cleanup();
+
+    {
+        const auto heartbeat = worker.readOne();
+        REQUIRE(heartbeat.isValid());
+        REQUIRE(heartbeat.availableFrameCount() == 8);
+        REQUIRE(heartbeat.frameAt(0).data() == "MDPW03");
+        REQUIRE(heartbeat.frameAt(1).data() == "\xa"); // HEARTBEAT
+        REQUIRE(heartbeat.frameAt(2).data() == "a.service");
+        REQUIRE(heartbeat.frameAt(3).data().empty());
+        REQUIRE(heartbeat.frameAt(4).data().empty());
+        REQUIRE(heartbeat.frameAt(5).data().empty());
+        REQUIRE(heartbeat.frameAt(6).data().empty());
+        REQUIRE(heartbeat.frameAt(7).data() == "TODO (RBAC)");
+    }
 
     const auto disconnect = worker.readOne();
     REQUIRE(disconnect.isValid());
@@ -524,8 +552,8 @@ class TestIntWorker : public opencmw::majordomo::BasicMdpWorker {
     int _x = 10;
 
 public:
-    explicit TestIntWorker(Context &context, std::string serviceName, int initialValue)
-        : opencmw::majordomo::BasicMdpWorker(context, serviceName)
+    explicit TestIntWorker(Context &context, std::string_view brokerName, std::string_view serviceName, int initialValue)
+        : opencmw::majordomo::BasicMdpWorker(context, brokerName, serviceName)
         , _x(initialValue) {
     }
 
@@ -568,11 +596,9 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[worker][getset_bas
 
     RunInThread   brokerRun(broker);
 
-    TestIntWorker worker(context, "a.service", 10);
+    TestIntWorker worker(context, address, "a.service", 10);
     worker.setServiceDescription("API description");
     worker.setRbacRole("rbacToken");
-
-    REQUIRE(worker.connect(address));
 
     RunInThread          workerRun(worker);
 
@@ -676,11 +702,9 @@ TEST_CASE("SET/GET example using the Client and Worker classes", "[client][getse
 
     RunInThread   brokerRun(broker);
 
-    TestIntWorker worker(context, "a.service", 100);
+    TestIntWorker worker(context, address, "a.service", 100);
     worker.setServiceDescription("API description");
     worker.setRbacRole("rbacToken");
-
-    REQUIRE(worker.connect(address));
 
     RunInThread workerRun(worker);
 

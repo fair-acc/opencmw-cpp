@@ -25,8 +25,8 @@ class Worker : public BasicMdpWorker {
     std::string _payload;
 
 public:
-    explicit Worker(std::string payload, Context &context, std::string serviceName)
-        : BasicMdpWorker(context, std::move(serviceName))
+    explicit Worker(std::string payload, Context &context, std::string_view brokerAddress, std::string_view serviceName)
+        : BasicMdpWorker(context, brokerAddress, serviceName)
         , _payload(std::move(payload)) {
     }
 
@@ -87,8 +87,7 @@ Result simpleOneWorkerBenchmark(std::string routerAddress, Get mode, int iterati
     REQUIRE(broker.bind(workerRouter, Broker::BindOption::Router));
     RunInThread brokerRun(broker);
 
-    Worker      worker(std::string(payloadSize, '\xab'), context, "blob");
-    REQUIRE(worker.connect(workerRouter));
+    Worker      worker(std::string(payloadSize, '\xab'), context, workerRouter, "blob");
     RunInThread workerRun(worker);
 
     Context     clientContext;
@@ -135,13 +134,11 @@ void simpleTwoWorkerBenchmark(std::string routerAddress, Get mode, int iteration
     REQUIRE(broker.bind(workerRouter, Broker::BindOption::Router));
     RunInThread brokerRun(broker);
 
-    Worker      worker1(std::string(payload1_size, '\xab'), context, "blob1");
-    REQUIRE(worker1.connect(workerRouter));
+    Worker      worker1(std::string(payload1_size, '\xab'), context, workerRouter, "blob1");
 
     RunInThread worker1_run(worker1);
 
-    Worker      worker2(std::string(payload2_size, '\xab'), context, "blob2");
-    REQUIRE(worker2.connect(routerAddress));
+    Worker      worker2(std::string(payload2_size, '\xab'), context, routerAddress, "blob2");
     RunInThread worker2_run(worker2);
 
     Context     clientContext;
