@@ -3,8 +3,8 @@
 
 #include "Message.hpp"
 
-#include "Broker.hpp"
-#include "Debug.hpp"
+#include <majordomo/Debug.hpp>
+#include <majordomo/Settings.hpp>
 
 #include <array>
 #include <atomic>
@@ -15,19 +15,22 @@
 namespace opencmw::majordomo {
 
 class BasicMdpWorker {
-    const std::string     _serviceName;
-    std::string           _serviceDescription;
-    std::string           _rbacRole;
-    std::atomic<bool>     _shutdownRequested = false;
+public:
+    using Clock     = std::chrono::steady_clock;
+    using Timestamp = std::chrono::time_point<Clock>;
 
-    const Context &       _context;
-    std::optional<Socket> _socket;
+    const Settings                _settings;
+    const std::string             _brokerAddress;
+    const std::string             _serviceName;
+    std::string                   _serviceDescription;
+    std::string                   _rbacRole;
+    std::atomic<bool>             _shutdownRequested = false;
+    int                           _liveness          = 0;
+    Timestamp                     _heartbeatAt;
 
-    static constexpr auto HEARTBEAT_INTERVAL = std::chrono::milliseconds(1000); // TODO share with broker
-
-    static int toMilliseconds(auto duration) { // TODO share with broker
-        return static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(duration).count());
-    }
+    const Context &               _context;
+    std::optional<Socket>         _socket;
+    std::array<zmq_pollitem_t, 1> _pollerItems;
 
 protected:
     MdpMessage createMessage(Command command) {
@@ -40,8 +43,8 @@ protected:
 public:
     virtual ~BasicMdpWorker() = default;
 
-    explicit BasicMdpWorker(const Context &context, std::string serviceName)
-        : _serviceName{ std::move(serviceName) }, _context(context) {
+    explicit BasicMdpWorker(Settings settings, const Context &context, std::string_view brokerAddress, std::string_view serviceName)
+        : _settings{ std::move(settings) }, _brokerAddress{ std::move(brokerAddress) }, _serviceName{ std::move(serviceName) }, _context(context) {
     }
 
     virtual std::optional<MdpMessage> handleGet(MdpMessage &&request) = 0;
@@ -60,21 +63,6 @@ public:
         _shutdownRequested = true;
     }
 
-    bool connect(std::string_view address) {
-        _socket.emplace(_context, ZMQ_DEALER);
-
-        const auto connectResult = zmq_invoke(zmq_connect, *_socket, address.data());
-        if (!connectResult) {
-            return false;
-        }
-
-        auto ready = createMessage(Command::Ready);
-        ready.setBody(_serviceDescription, MessageFrame::dynamic_bytes_tag{});
-        ready.send(*_socket).assertSuccess();
-
-        return true;
-    }
-
     void disconnect() {
         auto msg = createMessage(Command::Disconnect);
         msg.send(*_socket).assertSuccess();
@@ -82,6 +70,8 @@ public:
     }
 
     void handleMessage(MdpMessage &&message) {
+        _liveness = _settings.heartbeatLiveness;
+
         if (!message.isValid()) {
             debug() << "invalid MdpMessage received\n";
             return;
@@ -100,10 +90,13 @@ public:
                 }
                 return;
             case Command::Heartbeat:
-                debug() << "HEARTBEAT not implemented yet\n";
                 return;
             case Command::Disconnect:
-                _socket.reset(); // quit or reconnect?
+                if (message.body() == "broker shutdown") {
+                    _shutdownRequested = true;
+                } else {
+                    connectToBroker();
+                }
                 return;
             default:
                 assert(!"not implemented");
@@ -115,18 +108,55 @@ public:
     }
 
     void run() {
+        if (!connectToBroker())
+            return;
+
         assert(_socket);
 
-        std::array<zmq_pollitem_t, 1> pollerItems;
-        pollerItems[0].socket = _socket->zmq_ptr;
-        pollerItems[0].events = ZMQ_POLLIN;
+        const auto heartbeatIntervalMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(_settings.heartbeatInterval).count());
 
         do {
             while (auto message = MdpMessage::receive(*_socket)) {
                 handleMessage(std::move(*message));
             }
+
+            if (Clock::now() > _heartbeatAt && --_liveness == 0) {
+                std::this_thread::sleep_for(_settings.workerReconnectInterval);
+                if (!connectToBroker())
+                    return;
+            }
+            assert(_socket);
+
+            if (Clock::now() > _heartbeatAt) {
+                auto heartbeat = createMessage(Command::Heartbeat);
+                heartbeat.send(*_socket).assertSuccess();
+                _heartbeatAt = Clock::now() + _settings.heartbeatInterval;
+            }
         } while (!_shutdownRequested
-                 && zmq_invoke(zmq_poll, pollerItems.data(), static_cast<int>(pollerItems.size()), toMilliseconds(HEARTBEAT_INTERVAL)).isValid());
+                 && zmq_invoke(zmq_poll, _pollerItems.data(), static_cast<int>(_pollerItems.size()), heartbeatIntervalMs).isValid());
+    }
+
+private:
+    bool connectToBroker() {
+        _pollerItems[0].socket = nullptr;
+        _socket.emplace(_context, ZMQ_DEALER);
+
+        const auto connectResult = zmq_invoke(zmq_connect, *_socket, _brokerAddress.data());
+        if (!connectResult) {
+            return false;
+        }
+
+        auto ready = createMessage(Command::Ready);
+        ready.setBody(_serviceDescription, MessageFrame::dynamic_bytes_tag{});
+        ready.send(*_socket).assertSuccess();
+
+        _pollerItems[0].socket = _socket->zmq_ptr;
+        _pollerItems[0].events = ZMQ_POLLIN;
+
+        _liveness              = _settings.heartbeatLiveness;
+        _heartbeatAt           = Clock::now() + _settings.heartbeatInterval;
+
+        return true;
     }
 };
 } // namespace opencmw::majordomo

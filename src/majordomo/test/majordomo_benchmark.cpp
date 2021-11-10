@@ -12,6 +12,7 @@ using opencmw::majordomo::Broker;
 using opencmw::majordomo::Client;
 using opencmw::majordomo::Context;
 using opencmw::majordomo::MdpMessage;
+using opencmw::majordomo::Settings;
 
 #define REQUIRE(expression) \
     { \
@@ -21,12 +22,16 @@ using opencmw::majordomo::MdpMessage;
         } \
     }
 
+static Settings benchmarkSettings() {
+    return Settings{}; // use defaults
+}
+
 class Worker : public BasicMdpWorker {
     std::string _payload;
 
 public:
-    explicit Worker(std::string payload, Context &context, std::string serviceName)
-        : BasicMdpWorker(context, std::move(serviceName))
+    explicit Worker(Settings settings, std::string payload, Context &context, std::string_view brokerAddress, std::string_view serviceName)
+        : BasicMdpWorker(std::move(settings), context, brokerAddress, serviceName)
         , _payload(std::move(payload)) {
     }
 
@@ -82,13 +87,12 @@ Result simpleOneWorkerBenchmark(std::string routerAddress, Get mode, int iterati
     const auto workerRouter = std::string_view("inproc://for_worker");
 
     Context    context;
-    Broker     broker("benchmarkbroker", "", context);
+    Broker     broker(benchmarkSettings(), "benchmarkbroker", "", context);
     REQUIRE(broker.bind(routerAddress, Broker::BindOption::Router));
     REQUIRE(broker.bind(workerRouter, Broker::BindOption::Router));
     RunInThread brokerRun(broker);
 
-    Worker      worker(std::string(payloadSize, '\xab'), context, "blob");
-    REQUIRE(worker.connect(workerRouter));
+    Worker      worker(benchmarkSettings(), std::string(payloadSize, '\xab'), context, workerRouter, "blob");
     RunInThread workerRun(worker);
 
     Context     clientContext;
@@ -130,18 +134,16 @@ void simpleTwoWorkerBenchmark(std::string routerAddress, Get mode, int iteration
     const auto workerRouter = std::string_view("inproc://for_worker");
 
     Context    context;
-    Broker     broker("benchmarkbroker", "", context);
+    Broker     broker(benchmarkSettings(), "benchmarkbroker", "", context);
     REQUIRE(broker.bind(routerAddress, Broker::BindOption::Router));
     REQUIRE(broker.bind(workerRouter, Broker::BindOption::Router));
     RunInThread brokerRun(broker);
 
-    Worker      worker1(std::string(payload1_size, '\xab'), context, "blob1");
-    REQUIRE(worker1.connect(workerRouter));
+    Worker      worker1(benchmarkSettings(), std::string(payload1_size, '\xab'), context, workerRouter, "blob1");
 
     RunInThread worker1_run(worker1);
 
-    Worker      worker2(std::string(payload2_size, '\xab'), context, "blob2");
-    REQUIRE(worker2.connect(routerAddress));
+    Worker      worker2(benchmarkSettings(), std::string(payload2_size, '\xab'), context, routerAddress, "blob2");
     RunInThread worker2_run(worker2);
 
     Context     clientContext;
