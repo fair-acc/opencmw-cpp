@@ -82,6 +82,9 @@ TEST_CASE("OpenCMW::Frame cloning", "[frame][cloning]") {
     }
 }
 
+constexpr auto static_tag  = MessageFrame::static_bytes_tag{};
+constexpr auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
+
 TEST_CASE("OpenCMW::Message basics", "[message]") {
     {
         auto msg = BrokerMessage::createClientMessage(Command::Final);
@@ -116,6 +119,23 @@ TEST_CASE("OpenCMW::Message basics", "[message]") {
         REQUIRE(msg.frameAt(6).data() == "test body test body test body test body test body test body test body");
         REQUIRE(msg.frameAt(7).data() == "fail!");
         REQUIRE(msg.frameAt(8).data() == "password");
+
+        // Test command encoding
+        REQUIRE(BrokerMessage::createClientMessage(Command::Get).frameAt(2).data() == "\x01");
+        REQUIRE(BrokerMessage::createClientMessage(Command::Set).frameAt(2).data() == "\x02");
+        REQUIRE(BrokerMessage::createClientMessage(Command::Partial).frameAt(2).data() == "\x03");
+        REQUIRE(BrokerMessage::createClientMessage(Command::Final).frameAt(2).data() == "\x04");
+        REQUIRE(BrokerMessage::createClientMessage(Command::Ready).frameAt(2).data() == "\x05");
+        REQUIRE(BrokerMessage::createClientMessage(Command::Disconnect).frameAt(2).data() == "\x06");
+        REQUIRE(BrokerMessage::createClientMessage(Command::Subscribe).frameAt(2).data() == "\x07");
+        REQUIRE(BrokerMessage::createClientMessage(Command::Unsubscribe).frameAt(2).data() == "\x08");
+        REQUIRE(BrokerMessage::createWorkerMessage(Command::Notify).frameAt(2).data() == "\x09");
+        REQUIRE(BrokerMessage::createWorkerMessage(Command::Heartbeat).frameAt(2).data() == "\x0a");
+
+        // make sure isValid detects command/protocol mismatches
+        REQUIRE(!BrokerMessage::createClientMessage(Command::Notify).isValid());
+        REQUIRE(!BrokerMessage::createWorkerMessage(Command::Subscribe).isValid());
+        REQUIRE(!BrokerMessage::createWorkerMessage(Command::Unsubscribe).isValid());
     }
 
     {
@@ -150,6 +170,34 @@ TEST_CASE("OpenCMW::Message basics", "[message]") {
         REQUIRE(msg.frameAt(5).data() == "test body test body test body test body test body test body test body");
         REQUIRE(msg.frameAt(6).data() == "fail!");
         REQUIRE(msg.frameAt(7).data() == "password");
+
+        // make sure isValid detects command/protocol mismatches
+        REQUIRE(!MdpMessage::createClientMessage(Command::Notify).isValid());
+        REQUIRE(!MdpMessage::createWorkerMessage(Command::Subscribe).isValid());
+        REQUIRE(!MdpMessage::createWorkerMessage(Command::Unsubscribe).isValid());
+        {
+            MdpMessage invalidCmd;
+            invalidCmd.setFrames({ std::make_unique<std::string>("MDPC03"),
+                    std::make_unique<std::string>("\x20"), // invalid
+                    std::make_unique<std::string>(),
+                    std::make_unique<std::string>(),
+                    std::make_unique<std::string>(),
+                    std::make_unique<std::string>(),
+                    std::make_unique<std::string>(),
+                    std::make_unique<std::string>() });
+            REQUIRE(!invalidCmd.isValid());
+
+            MdpMessage invalidProtocol;
+            invalidProtocol.setFrames({ std::make_unique<std::string>("MDPC666"),
+                    std::make_unique<std::string>("\x1"),
+                    std::make_unique<std::string>(),
+                    std::make_unique<std::string>(),
+                    std::make_unique<std::string>(),
+                    std::make_unique<std::string>(),
+                    std::make_unique<std::string>(),
+                    std::make_unique<std::string>() });
+            REQUIRE(!invalidProtocol.isValid());
+        }
     }
 }
 
@@ -169,30 +217,24 @@ TEST_CASE("Request answered with unknown service", "[broker][unknown_service]") 
     TestNode<MdpMessage> client(context);
     REQUIRE(client.connect(address));
 
-    MdpMessage request;
-    request.setFrames({ std::make_unique<std::string>("MDPC03"),
-            std::make_unique<std::string>("\x5"), // READY
-            std::make_unique<std::string>("no.service"),
-            std::make_unique<std::string>("1"),
-            std::make_unique<std::string>("topic"),
-            std::make_unique<std::string>(""),
-            std::make_unique<std::string>(""),
-            std::make_unique<std::string>("rbacToken") });
-
+    auto request = MdpMessage::createClientMessage(Command::Get);
+    request.setServiceName("no.service", static_tag);
+    request.setClientRequestId("1", static_tag);
+    request.setTopic("topic", static_tag);
+    request.setRbacToken("rbacToken", static_tag);
     client.send(request);
 
     const auto reply = client.readOne();
 
     REQUIRE(reply.isValid());
-    REQUIRE(reply.availableFrameCount() == 8);
-    REQUIRE(reply.frameAt(0).data() == "MDPC03");
-    REQUIRE(reply.frameAt(1).data() == "\x4"); // FINAL
-    REQUIRE(reply.frameAt(2).data() == "no.service");
-    REQUIRE(reply.frameAt(3).data() == "1");
-    REQUIRE(reply.frameAt(4).data() == "mmi.service");
-    REQUIRE(reply.frameAt(5).data().empty());
-    REQUIRE(reply.frameAt(6).data() == "unknown service (error 501): 'no.service'");
-    REQUIRE(reply.frameAt(7).data() == "TODO (RBAC)");
+    REQUIRE(reply.isClientMessage());
+    REQUIRE(reply.command() == Command::Final);
+    REQUIRE(reply.serviceName() == "no.service");
+    REQUIRE(reply.clientRequestId() == "1");
+    REQUIRE(reply.topic() == "mmi.service");
+    REQUIRE(reply.body().empty());
+    REQUIRE(reply.error() == "unknown service (error 501): 'no.service'");
+    REQUIRE(reply.rbacToken() == "TODO (RBAC)");
 }
 
 TEST_CASE("One client/one worker roundtrip", "[broker][roundtrip]") {
@@ -212,29 +254,19 @@ TEST_CASE("One client/one worker roundtrip", "[broker][roundtrip]") {
     TestNode<MdpMessage> client(context);
     REQUIRE(client.connect(address));
 
-    MdpMessage ready;
-    ready.setFrames({ std::make_unique<std::string>("MDPW03"),
-            std::make_unique<std::string>("\x5"), // READY
-            std::make_unique<std::string>("a.service"),
-            std::make_unique<std::string>("1"),
-            std::make_unique<std::string>("topic"),
-            std::make_unique<std::string>("API description"),
-            std::make_unique<std::string>(""),
-            std::make_unique<std::string>("rbacToken") });
+    auto ready = MdpMessage::createWorkerMessage(Command::Ready);
+    ready.setServiceName("a.service", static_tag);
+    ready.setBody("API description", static_tag);
+    ready.setRbacToken("rbacToken", static_tag);
     worker.send(ready);
 
     broker.processOneMessage();
 
-    MdpMessage request;
-    request.setFrames({ std::make_unique<std::string>("MDPC03"),
-            std::make_unique<std::string>("\x1"), // GET
-            std::make_unique<std::string>("a.service"),
-            std::make_unique<std::string>("1"),
-            std::make_unique<std::string>("topic"),
-            std::make_unique<std::string>(""),
-            std::make_unique<std::string>(""),
-            std::make_unique<std::string>("rbacToken") });
-
+    auto request = MdpMessage::createClientMessage(Command::Get);
+    request.setServiceName("a.service", static_tag);
+    request.setClientRequestId("1", static_tag);
+    request.setTopic("topic", static_tag);
+    request.setRbacToken("rbacToken", static_tag);
     client.send(request);
 
     broker.processOneMessage();
@@ -242,82 +274,73 @@ TEST_CASE("One client/one worker roundtrip", "[broker][roundtrip]") {
     {
         const auto heartbeat = worker.readOne();
         REQUIRE(heartbeat.isValid());
-        REQUIRE(heartbeat.availableFrameCount() == 8);
-        REQUIRE(heartbeat.frameAt(0).data() == "MDPW03");
-        REQUIRE(heartbeat.frameAt(1).data() == "\xa"); // HEARTBEAT
-        REQUIRE(heartbeat.frameAt(2).data() == "a.service");
-        REQUIRE(heartbeat.frameAt(3).data().empty());
-        REQUIRE(heartbeat.frameAt(4).data().empty());
-        REQUIRE(heartbeat.frameAt(5).data().empty());
-        REQUIRE(heartbeat.frameAt(6).data().empty());
-        REQUIRE(heartbeat.frameAt(7).data() == "TODO (RBAC)");
+        REQUIRE(heartbeat.isWorkerMessage());
+        REQUIRE(heartbeat.command() == Command::Heartbeat);
+        REQUIRE(heartbeat.serviceName() == "a.service");
+        REQUIRE(heartbeat.clientRequestId().empty());
+        REQUIRE(heartbeat.topic().empty());
+        REQUIRE(heartbeat.body().empty());
+        REQUIRE(heartbeat.error().empty());
+        REQUIRE(heartbeat.rbacToken() == "TODO (RBAC)");
     }
 
     const auto requestAtWorker = worker.readOne();
     REQUIRE(requestAtWorker.isValid());
-    REQUIRE(requestAtWorker.availableFrameCount() == 8);
-    REQUIRE(requestAtWorker.frameAt(0).data() == "MDPW03");
-    REQUIRE(requestAtWorker.frameAt(1).data() == "\x1"); // GET
-    REQUIRE(!requestAtWorker.frameAt(2).data().empty()); // client ID
-    REQUIRE(requestAtWorker.frameAt(3).data() == "1");
-    REQUIRE(requestAtWorker.frameAt(4).data() == "topic");
-    REQUIRE(requestAtWorker.frameAt(5).data().empty());
-    REQUIRE(requestAtWorker.frameAt(6).data().empty());
-    REQUIRE(requestAtWorker.frameAt(7).data() == "rbacToken");
+    REQUIRE(requestAtWorker.isWorkerMessage());
+    REQUIRE(requestAtWorker.command() == Command::Get);
+    REQUIRE(!requestAtWorker.clientSourceId().empty());
+    REQUIRE(requestAtWorker.clientRequestId() == "1");
+    REQUIRE(requestAtWorker.topic() == "topic");
+    REQUIRE(requestAtWorker.body().empty());
+    REQUIRE(requestAtWorker.error().empty());
+    REQUIRE(requestAtWorker.rbacToken() == "rbacToken");
 
-    MdpMessage replyFromWorker;
-    replyFromWorker.setFrames({ std::make_unique<std::string>("MDPW03"),
-            std::make_unique<std::string>("\x4"), // FINAL
-            std::make_unique<std::string>(requestAtWorker.frameAt(2).data()),
-            std::make_unique<std::string>("1"),
-            std::make_unique<std::string>("topic"),
-            std::make_unique<std::string>("reply body"),
-            std::make_unique<std::string>(""),
-            std::make_unique<std::string>("rbac_worker") });
-
+    auto replyFromWorker = MdpMessage::createWorkerMessage(Command::Final);
+    replyFromWorker.setClientSourceId(requestAtWorker.clientSourceId(), dynamic_tag);
+    replyFromWorker.setClientRequestId("1", static_tag);
+    replyFromWorker.setTopic("topic", static_tag);
+    replyFromWorker.setBody("reply body", static_tag);
+    replyFromWorker.setRbacToken("rbac_worker", static_tag);
     worker.send(replyFromWorker);
 
     broker.processOneMessage();
 
     const auto reply = client.readOne();
     REQUIRE(reply.isValid());
-    REQUIRE(reply.availableFrameCount() == 8);
-    REQUIRE(reply.frameAt(0).data() == "MDPC03");
-    REQUIRE(reply.frameAt(1).data() == "\x4"); // FINAL
-    REQUIRE(reply.frameAt(2).data() == "a.service");
-    REQUIRE(reply.frameAt(3).data() == "1");
-    REQUIRE(reply.frameAt(4).data() == "topic");
-    REQUIRE(reply.frameAt(5).data() == "reply body");
-    REQUIRE(reply.frameAt(6).data().empty());
-    REQUIRE(reply.frameAt(7).data() == "rbac_worker");
+    REQUIRE(reply.isClientMessage());
+    REQUIRE(reply.command() == Command::Final);
+    REQUIRE(reply.serviceName() == "a.service");
+    REQUIRE(reply.clientRequestId() == "1");
+    REQUIRE(reply.topic() == "topic");
+    REQUIRE(reply.body() == "reply body");
+    REQUIRE(reply.error().empty());
+    REQUIRE(reply.rbacToken() == "rbac_worker");
 
     broker.cleanup();
 
     {
         const auto heartbeat = worker.readOne();
         REQUIRE(heartbeat.isValid());
-        REQUIRE(heartbeat.availableFrameCount() == 8);
-        REQUIRE(heartbeat.frameAt(0).data() == "MDPW03");
-        REQUIRE(heartbeat.frameAt(1).data() == "\xa"); // HEARTBEAT
-        REQUIRE(heartbeat.frameAt(2).data() == "a.service");
-        REQUIRE(heartbeat.frameAt(3).data().empty());
-        REQUIRE(heartbeat.frameAt(4).data().empty());
-        REQUIRE(heartbeat.frameAt(5).data().empty());
-        REQUIRE(heartbeat.frameAt(6).data().empty());
-        REQUIRE(heartbeat.frameAt(7).data() == "TODO (RBAC)");
+        REQUIRE(heartbeat.isWorkerMessage());
+        REQUIRE(heartbeat.command() == Command::Heartbeat);
+        REQUIRE(heartbeat.serviceName() == "a.service");
+        REQUIRE(heartbeat.clientRequestId().empty());
+        REQUIRE(heartbeat.topic().empty());
+        REQUIRE(heartbeat.body().empty());
+        REQUIRE(heartbeat.error().empty());
+        REQUIRE(heartbeat.rbacToken() == "TODO (RBAC)");
     }
 
     const auto disconnect = worker.readOne();
     REQUIRE(disconnect.isValid());
-    REQUIRE(disconnect.availableFrameCount() == 8);
-    REQUIRE(disconnect.frameAt(0).data() == "MDPW03");
-    REQUIRE(disconnect.frameAt(1).data() == "\x6"); // DISCONNECT
-    REQUIRE(disconnect.frameAt(2).data() == "a.service");
-    REQUIRE(disconnect.frameAt(3).data().empty());
-    REQUIRE(disconnect.frameAt(4).data() == "a.service");
-    REQUIRE(disconnect.frameAt(5).data() == "broker shutdown");
-    REQUIRE(disconnect.frameAt(6).data().empty());
-    REQUIRE(disconnect.frameAt(7).data() == "TODO (RBAC)");
+    REQUIRE(disconnect.isWorkerMessage());
+    REQUIRE(disconnect.command() == Command::Disconnect);
+    REQUIRE(disconnect.serviceName() == "a.service");
+    REQUIRE(disconnect.clientRequestId().empty());
+    REQUIRE(disconnect.topic() == "a.service");
+    REQUIRE(disconnect.body() == "broker shutdown");
+    REQUIRE(disconnect.error().empty());
+    REQUIRE(disconnect.rbacToken() == "TODO (RBAC)");
 }
 
 TEST_CASE("Simple pubsub example using pub socket", "[broker][pubsub_pub]") {
@@ -341,15 +364,11 @@ TEST_CASE("Simple pubsub example using pub socket", "[broker][pubsub_pub]") {
     TestNode<MdpMessage> publisher(context);
     REQUIRE(publisher.connect(routerAddress));
 
-    MdpMessage pubMsg1;
-    pubMsg1.setFrames({ std::make_unique<std::string>("MDPW03"),
-            std::make_unique<std::string>("\x9"), // NOTIFY
-            std::make_unique<std::string>("a.service"),
-            std::make_unique<std::string>("1"),
-            std::make_unique<std::string>("a.topic"),
-            std::make_unique<std::string>("First notification about a.topic"),
-            std::make_unique<std::string>(""),
-            std::make_unique<std::string>("rbac_worker") });
+    auto pubMsg1 = MdpMessage::createWorkerMessage(Command::Notify);
+    pubMsg1.setServiceName("a.service", static_tag);
+    pubMsg1.setTopic("a.topic", static_tag);
+    pubMsg1.setBody("First notification about a.topic", static_tag);
+    pubMsg1.setRbacToken("rbac_worker", static_tag);
 
     publisher.send(pubMsg1);
 
@@ -357,16 +376,13 @@ TEST_CASE("Simple pubsub example using pub socket", "[broker][pubsub_pub]") {
 
     const auto reply = subscriber.readOne();
     REQUIRE(reply.isValid());
-    REQUIRE(reply.availableFrameCount() == 9);
-    REQUIRE(reply.frameAt(0).data() == "a.topic");
-    REQUIRE(reply.frameAt(1).data() == "MDPC03");
-    REQUIRE(reply.frameAt(2).data() == "\x4"); // FINAL
-    REQUIRE(reply.frameAt(3).data() == "a.service");
-    REQUIRE(reply.frameAt(4).data() == "1");
-    REQUIRE(reply.frameAt(5).data() == "a.topic");
-    REQUIRE(reply.frameAt(6).data() == "First notification about a.topic");
-    REQUIRE(reply.frameAt(7).data().empty());
-    REQUIRE(reply.frameAt(8).data() == "rbac_worker");
+    REQUIRE(reply.isClientMessage());
+    REQUIRE(reply.sourceId() == "a.topic");
+    REQUIRE(reply.serviceName() == "a.service");
+    REQUIRE(reply.clientRequestId().empty());
+    REQUIRE(reply.body() == "First notification about a.topic");
+    REQUIRE(reply.error().empty());
+    REQUIRE(reply.rbacToken() == "rbac_worker");
 }
 
 TEST_CASE("pubsub example using router socket", "[broker][pubsub_router]") {
@@ -391,15 +407,10 @@ TEST_CASE("pubsub example using router socket", "[broker][pubsub_router]") {
 
     // subscribe client to a.topic
     {
-        MdpMessage subscribe;
-        subscribe.setFrames({ std::make_unique<std::string>("MDPC03"),
-                std::make_unique<std::string>("\x7"), // SUBSCRIBE
-                std::make_unique<std::string>("first.service"),
-                std::make_unique<std::string>(""),
-                std::make_unique<std::string>("a.topic"),
-                std::make_unique<std::string>(""),
-                std::make_unique<std::string>(""),
-                std::make_unique<std::string>("rbacToken") });
+        auto subscribe = MdpMessage::createClientMessage(Command::Subscribe);
+        subscribe.setServiceName("first.service", static_tag);
+        subscribe.setTopic("a.topic", static_tag);
+        subscribe.setRbacToken("rbacToken", static_tag);
         subscriber.send(subscribe);
     }
 
@@ -407,15 +418,10 @@ TEST_CASE("pubsub example using router socket", "[broker][pubsub_router]") {
 
     // subscribe client to another.topic
     {
-        MdpMessage subscribe;
-        subscribe.setFrames({ std::make_unique<std::string>("MDPC03"),
-                std::make_unique<std::string>("\x7"), // SUBSCRIBE
-                std::make_unique<std::string>("second.service"),
-                std::make_unique<std::string>(""),
-                std::make_unique<std::string>("another.topic"),
-                std::make_unique<std::string>(""),
-                std::make_unique<std::string>(""),
-                std::make_unique<std::string>("rbacToken") });
+        auto subscribe = MdpMessage::createClientMessage(Command::Subscribe);
+        subscribe.setServiceName("second.service", static_tag);
+        subscribe.setTopic("another.topic", static_tag);
+        subscribe.setRbacToken("rbacToken", static_tag);
         subscriber.send(subscribe);
     }
 
@@ -423,15 +429,11 @@ TEST_CASE("pubsub example using router socket", "[broker][pubsub_router]") {
 
     // publisher 1 sends a notification for a.topic
     {
-        MdpMessage pubMsg;
-        pubMsg.setFrames({ std::make_unique<std::string>("MDPW03"),
-                std::make_unique<std::string>("\x9"), // NOTIFY
-                std::make_unique<std::string>("first.service"),
-                std::make_unique<std::string>("1"),
-                std::make_unique<std::string>("a.topic"),
-                std::make_unique<std::string>("First notification about a.topic"),
-                std::make_unique<std::string>(""),
-                std::make_unique<std::string>("rbac_worker_1") });
+        auto pubMsg = MdpMessage::createWorkerMessage(Command::Notify);
+        pubMsg.setServiceName("first.service", static_tag);
+        pubMsg.setTopic("a.topic", static_tag);
+        pubMsg.setBody("First notification about a.topic", static_tag);
+        pubMsg.setRbacToken("rbac_worker_1", static_tag);
         publisherOne.send(pubMsg);
     }
 
@@ -440,28 +442,24 @@ TEST_CASE("pubsub example using router socket", "[broker][pubsub_router]") {
     // client receives notification for a.topic
     {
         const auto reply = subscriber.readOne();
-        REQUIRE(reply.availableFrameCount() == 8);
-        REQUIRE(reply.frameAt(0).data() == "MDPC03");
-        REQUIRE(reply.frameAt(1).data() == "\x4"); // FINAL
-        REQUIRE(reply.frameAt(2).data() == "first.service");
-        REQUIRE(reply.frameAt(3).data() == "1");
-        REQUIRE(reply.frameAt(4).data() == "a.topic");
-        REQUIRE(reply.frameAt(5).data() == "First notification about a.topic");
-        REQUIRE(reply.frameAt(6).data().empty());
-        REQUIRE(reply.frameAt(7).data() == "rbac_worker_1");
+        REQUIRE(reply.isValid());
+        REQUIRE(reply.isClientMessage());
+        REQUIRE(reply.command() == Command::Final);
+        REQUIRE(reply.serviceName() == "first.service");
+        REQUIRE(reply.clientRequestId().empty());
+        REQUIRE(reply.topic() == "a.topic");
+        REQUIRE(reply.body() == "First notification about a.topic");
+        REQUIRE(reply.error().empty());
+        REQUIRE(reply.rbacToken() == "rbac_worker_1");
     }
 
     // publisher 2 sends a notification for another.topic
     {
-        MdpMessage pubMsg;
-        pubMsg.setFrames({ std::make_unique<std::string>("MDPW03"),
-                std::make_unique<std::string>("\x9"), // NOTIFY
-                std::make_unique<std::string>("second.service"),
-                std::make_unique<std::string>("1"),
-                std::make_unique<std::string>("another.topic"),
-                std::make_unique<std::string>("First notification about another.topic"),
-                std::make_unique<std::string>(""),
-                std::make_unique<std::string>("rbac_worker_2") });
+        auto pubMsg = MdpMessage::createWorkerMessage(Command::Notify);
+        pubMsg.setServiceName("second.service", static_tag);
+        pubMsg.setTopic("another.topic", static_tag);
+        pubMsg.setBody("First notification about another.topic", static_tag);
+        pubMsg.setRbacToken("rbac_worker_2", static_tag);
         publisherTwo.send(pubMsg);
     }
 
@@ -471,28 +469,22 @@ TEST_CASE("pubsub example using router socket", "[broker][pubsub_router]") {
     {
         const auto reply = subscriber.readOne();
         REQUIRE(reply.isValid());
-        REQUIRE(reply.availableFrameCount() == 8);
-        REQUIRE(reply.frameAt(0).data() == "MDPC03");
-        REQUIRE(reply.frameAt(1).data() == "\x4"); // FINAL
-        REQUIRE(reply.frameAt(2).data() == "second.service");
-        REQUIRE(reply.frameAt(3).data() == "1");
-        REQUIRE(reply.frameAt(4).data() == "another.topic");
-        REQUIRE(reply.frameAt(5).data() == "First notification about another.topic");
-        REQUIRE(reply.frameAt(6).data().empty());
-        REQUIRE(reply.frameAt(7).data() == "rbac_worker_2");
+        REQUIRE(reply.isClientMessage());
+        REQUIRE(reply.command() == Command::Final);
+        REQUIRE(reply.serviceName() == "second.service");
+        REQUIRE(reply.clientRequestId().empty());
+        REQUIRE(reply.topic() == "another.topic");
+        REQUIRE(reply.body() == "First notification about another.topic");
+        REQUIRE(reply.error().empty());
+        REQUIRE(reply.rbacToken() == "rbac_worker_2");
     }
 
     // unsubscribe client from first.service
     {
-        MdpMessage unsubscribe;
-        unsubscribe.setFrames({ std::make_unique<std::string>("MDPC03"),
-                std::make_unique<std::string>("\x8"), // UNSUBSCRIBE
-                std::make_unique<std::string>("first.service"),
-                std::make_unique<std::string>(""),
-                std::make_unique<std::string>("a.topic"),
-                std::make_unique<std::string>(""),
-                std::make_unique<std::string>(""),
-                std::make_unique<std::string>("rbacToken") });
+        auto unsubscribe = MdpMessage::createClientMessage(Command::Unsubscribe);
+        unsubscribe.setServiceName("first.service", static_tag);
+        unsubscribe.setTopic("a.topic", static_tag);
+        unsubscribe.setRbacToken("rbacToken", static_tag);
         subscriber.send(unsubscribe);
     }
 
@@ -500,15 +492,11 @@ TEST_CASE("pubsub example using router socket", "[broker][pubsub_router]") {
 
     // publisher 1 sends a notification for a.topic
     {
-        MdpMessage pubMsg;
-        pubMsg.setFrames({ std::make_unique<std::string>("MDPW03"),
-                std::make_unique<std::string>("\x9"), // NOTIFY
-                std::make_unique<std::string>("first.service"),
-                std::make_unique<std::string>("1"),
-                std::make_unique<std::string>("a.topic"),
-                std::make_unique<std::string>("First notification about a.topic"),
-                std::make_unique<std::string>(""),
-                std::make_unique<std::string>("rbac_worker_1") });
+        auto pubMsg = MdpMessage::createWorkerMessage(Command::Notify);
+        pubMsg.setServiceName("first.service", static_tag);
+        pubMsg.setTopic("a.topic", static_tag);
+        pubMsg.setBody("Second notification about a.topic", static_tag);
+        pubMsg.setRbacToken("rbac_worker_1", static_tag);
         publisherOne.send(pubMsg);
     }
 
@@ -516,15 +504,11 @@ TEST_CASE("pubsub example using router socket", "[broker][pubsub_router]") {
 
     // publisher 2 sends a notification for another.topic
     {
-        MdpMessage pubMsg;
-        pubMsg.setFrames({ std::make_unique<std::string>("MDPW03"),
-                std::make_unique<std::string>("\x9"), // NOTIFY
-                std::make_unique<std::string>("second.service"),
-                std::make_unique<std::string>("1"),
-                std::make_unique<std::string>("another.topic"),
-                std::make_unique<std::string>("Second notification about another.topic"),
-                std::make_unique<std::string>(""),
-                std::make_unique<std::string>("rbac_worker_2") });
+        auto pubMsg = MdpMessage::createWorkerMessage(Command::Notify);
+        pubMsg.setServiceName("second.service", static_tag);
+        pubMsg.setTopic("another.topic", static_tag);
+        pubMsg.setBody("Second notification about another.topic", static_tag);
+        pubMsg.setRbacToken("rbac_worker_2", static_tag);
         publisherTwo.send(pubMsg);
     }
 
@@ -534,15 +518,16 @@ TEST_CASE("pubsub example using router socket", "[broker][pubsub_router]") {
 
     {
         const auto reply = subscriber.readOne();
-        REQUIRE(reply.availableFrameCount() == 8);
-        REQUIRE(reply.frameAt(0).data() == "MDPC03");
-        REQUIRE(reply.frameAt(1).data() == "\x4"); // FINAL
-        REQUIRE(reply.frameAt(2).data() == "second.service");
-        REQUIRE(reply.frameAt(3).data() == "1");
-        REQUIRE(reply.frameAt(4).data() == "another.topic");
-        REQUIRE(reply.frameAt(5).data() == "Second notification about another.topic");
-        REQUIRE(reply.frameAt(6).data().empty());
-        REQUIRE(reply.frameAt(7).data() == "rbac_worker_2");
+
+        REQUIRE(reply.isValid());
+        REQUIRE(reply.isClientMessage());
+        REQUIRE(reply.command() == Command::Final);
+        REQUIRE(reply.serviceName() == "second.service");
+        REQUIRE(reply.clientRequestId().empty());
+        REQUIRE(reply.topic() == "another.topic");
+        REQUIRE(reply.body() == "Second notification about another.topic");
+        REQUIRE(reply.error().empty());
+        REQUIRE(reply.rbacToken() == "rbac_worker_2");
     }
 }
 
@@ -609,82 +594,68 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[worker][getset_bas
     // an "unknown service" error, retry until we get the expected reply
     bool replyReceived = false;
     while (!replyReceived) {
-        MdpMessage request;
-        request.setFrames({ std::make_unique<std::string>("MDPC03"),
-                std::make_unique<std::string>("\x1"), // GET
-                std::make_unique<std::string>("a.service"),
-                std::make_unique<std::string>("1"),
-                std::make_unique<std::string>("topic"),
-                std::make_unique<std::string>(""),
-                std::make_unique<std::string>(""),
-                std::make_unique<std::string>("rbacToken") });
-
+        auto request = MdpMessage::createClientMessage(Command::Get);
+        request.setServiceName("a.service", static_tag);
+        request.setClientRequestId("1", static_tag);
+        request.setTopic("topic", static_tag);
+        request.setRbacToken("rbacToken", static_tag);
         client.send(request);
 
         const auto reply = client.readOne();
 
         REQUIRE(reply.isValid());
-        REQUIRE(reply.availableFrameCount() == 8);
-        REQUIRE(reply.frameAt(0).data() == "MDPC03");
-        REQUIRE(reply.frameAt(1).data() == "\x4"); // FINAL
+        REQUIRE(reply.isClientMessage());
+        REQUIRE(reply.command() == Command::Final);
+        REQUIRE(reply.clientRequestId() == "1");
 
-        if (!reply.frameAt(6).data().empty()) {
-            REQUIRE(reply.frameAt(6).data().find("error 501") != std::string_view::npos);
+        if (!reply.error().empty()) {
+            REQUIRE(reply.error().find("error 501") != std::string_view::npos);
         } else {
-            REQUIRE(reply.frameAt(2).data() == "a.service");
-            REQUIRE(reply.frameAt(3).data() == "1");
-            REQUIRE(reply.frameAt(4).data() == "topic");
-            REQUIRE(reply.frameAt(5).data() == "10");
-            REQUIRE(reply.frameAt(6).data().empty());
-            REQUIRE(reply.frameAt(7).data() == "rbacToken");
+            REQUIRE(reply.serviceName() == "a.service");
+            REQUIRE(reply.topic() == "topic");
+            REQUIRE(reply.body() == "10");
+            REQUIRE(reply.error().empty());
+            REQUIRE(reply.rbacToken() == "rbacToken");
             replyReceived = true;
         }
     }
 
     {
-        MdpMessage request;
-        request.setFrames({ std::make_unique<std::string>("MDPC03"),
-                std::make_unique<std::string>("\x2"), // SET
-                std::make_unique<std::string>("a.service"),
-                std::make_unique<std::string>("2"),
-                std::make_unique<std::string>("topic"),
-                std::make_unique<std::string>("42"),
-                std::make_unique<std::string>(""),
-                std::make_unique<std::string>("rbacToken") });
-
-        client.send(request);
-
-        const auto reply = client.readOne();
-
-        REQUIRE(reply.availableFrameCount() == 8);
-        REQUIRE(reply.frameAt(0).data() == "MDPC03");
-        REQUIRE(reply.frameAt(1).data() == "\x4"); // FINAL
-        REQUIRE(reply.frameAt(3).data() == "2");
-        REQUIRE(reply.frameAt(5).data() == "Value set. All good!");
-        REQUIRE(reply.frameAt(6).data() == "");
-    }
-
-    {
-        MdpMessage request;
-        request.setFrames({ std::make_unique<std::string>("MDPC03"),
-                std::make_unique<std::string>("\x1"), // GET
-                std::make_unique<std::string>("a.service"),
-                std::make_unique<std::string>("3"),
-                std::make_unique<std::string>("topic"),
-                std::make_unique<std::string>(""),
-                std::make_unique<std::string>(""),
-                std::make_unique<std::string>("rbacToken") });
+        auto request = MdpMessage::createClientMessage(Command::Set);
+        request.setServiceName("a.service", static_tag);
+        request.setClientRequestId("2", static_tag);
+        request.setTopic("topic", static_tag);
+        request.setBody("42", static_tag);
+        request.setRbacToken("rbacToken", static_tag);
 
         client.send(request);
 
         const auto reply = client.readOne();
 
         REQUIRE(reply.isValid());
-        REQUIRE(reply.availableFrameCount() == 8);
-        REQUIRE(reply.frameAt(0).data() == "MDPC03");
-        REQUIRE(reply.frameAt(1).data() == "\x4"); // FINAL
-        REQUIRE(reply.frameAt(3).data() == "3");
-        REQUIRE(reply.frameAt(5).data() == "42");
+        REQUIRE(reply.isClientMessage());
+        REQUIRE(reply.command() == Command::Final);
+        REQUIRE(reply.clientRequestId() == "2");
+        REQUIRE(reply.body() == "Value set. All good!");
+        REQUIRE(reply.error().empty());
+    }
+
+    {
+        auto request = MdpMessage::createClientMessage(Command::Get);
+        request.setServiceName("a.service", static_tag);
+        request.setClientRequestId("3", static_tag);
+        request.setTopic("3", static_tag);
+        request.setRbacToken("rbacToken", static_tag);
+        client.send(request);
+
+        const auto reply = client.readOne();
+
+        REQUIRE(reply.isValid());
+        REQUIRE(reply.isClientMessage());
+        REQUIRE(reply.command() == Command::Final);
+        REQUIRE(reply.clientRequestId() == "3");
+        REQUIRE(reply.body() == "42");
+        REQUIRE(reply.error().empty());
     }
 }
 
