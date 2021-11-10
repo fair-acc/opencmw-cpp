@@ -119,24 +119,18 @@ enum class MessageFormat {
     WithoutSourceId ///< 8-frame format, does not contain the source ID frame
 };
 
-enum class ClientCommand {
+enum class Command : unsigned char {
+    Invalid     = 0x00,
     Get         = 0x01,
     Set         = 0x02,
-    Subscribe   = 0x03,
-    Unsubscribe = 0x04,
-    Partial     = 0x05,
-    Final       = 0x06
-};
-
-enum class WorkerCommand {
-    Get        = 0x01,
-    Set        = 0x02,
-    Partial    = 0x03,
-    Final      = 0x04,
-    Notify     = 0x05,
-    Ready      = 0x06,
-    Disconnect = 0x07,
-    Heartbeat  = 0x08
+    Partial     = 0x03,
+    Final       = 0x04,
+    Ready       = 0x05, ///< optional for client
+    Disconnect  = 0x06, ///< optional for client
+    Subscribe   = 0x07, ///< client-only
+    Unsubscribe = 0x08, ///< client-only
+    Notify      = 0x09, ///< worker-only
+    Heartbeat   = 0x0a  ///< optional for client
 };
 
 enum class Protocol {
@@ -207,19 +201,19 @@ private:
 public:
     BasicMdpMessage() {}
 
-    explicit BasicMdpMessage(char command) {
+    explicit BasicMdpMessage(Command command) {
         setCommand(command);
         assert(this->command() == command);
     }
 
-    static BasicMdpMessage createClientMessage(ClientCommand cmd) {
-        BasicMdpMessage msg{ static_cast<char>(cmd) };
+    static BasicMdpMessage createClientMessage(Command cmd) {
+        BasicMdpMessage msg{ cmd };
         msg.setFrameData(Frame::Protocol, clientProtocol, MessageFrame::static_bytes_tag{});
         return msg;
     }
 
-    static BasicMdpMessage createWorkerMessage(WorkerCommand cmd) {
-        BasicMdpMessage msg{ static_cast<char>(cmd) };
+    static BasicMdpMessage createWorkerMessage(Command cmd) {
+        BasicMdpMessage msg{ cmd };
         msg.setFrameData(Frame::Protocol, workerProtocol, MessageFrame::static_bytes_tag{});
         return msg;
     }
@@ -241,13 +235,8 @@ public:
     [[nodiscard]] MessageFrame &frameAt(T value) { return _frames[index(value)]; } // TODO: N.B. unused
     template<typename T>
     [[nodiscard]] const MessageFrame &frameAt(T value) const { return _frames[index(value)]; }
-    void                              setCommand(char command) { setFrameData(Frame::Command, new std::string(1, command), MessageFrame::dynamic_bytes_tag{}); }
-    [[nodiscard]] char                command() const {
-        assert(frameAt(Frame::Command).data().length() == 1);
-        return frameAt(Frame::Command).data()[0];
-    }
 
-    void setFrames(std::array<MovableBytesPtrWrapper, RequiredFrameCount> &&data) {
+    void                              setFrames(std::array<MovableBytesPtrWrapper, RequiredFrameCount> &&data) {
         for (std::size_t i = 0; i < RequiredFrameCount; ++i) {
             _frames[i] = MessageFrame(data[i].ptr.release(), MessageFrame::dynamic_bytes_tag{});
         }
@@ -337,15 +326,20 @@ public:
 
         const auto &protocol = _frames[index(Frame::Protocol)].data();
         const auto  command  = static_cast<unsigned char>(commandStr.data()[0]);
+
+        if (command < static_cast<unsigned char>(Command::Invalid) || command > static_cast<unsigned char>(Command::Heartbeat)) {
+            debugWithLocation() << "Message command out of range";
+            return false;
+        }
+
         if (protocol == clientProtocol) {
-            if (command == 0 || command > static_cast<unsigned char>(ClientCommand::Final)) {
-                debugWithLocation() << "Message command out of range for client";
+            if (command == static_cast<unsigned char>(Command::Notify)) {
+                debugWithLocation() << "NOTIFY command invalid for client";
                 return false;
             }
-
         } else if (protocol == workerProtocol) {
-            if (command == 0 || command > static_cast<unsigned char>(WorkerCommand::Heartbeat)) {
-                debugWithLocation() << "Message command out of range for worker";
+            if (command == static_cast<unsigned char>(Command::Subscribe) || command == static_cast<unsigned char>(Command::Unsubscribe)) {
+                debugWithLocation() << "SUBSCRIBE/UNSUBSCRIBE invalid for worker";
                 return false;
             }
         } else {
@@ -363,18 +357,21 @@ public:
         return protocol.data() == clientProtocol ? Protocol::Client : Protocol::Worker;
     }
 
-    [[nodiscard]] bool          isClientMessage() const { return protocol() == Protocol::Client; }
-    [[nodiscard]] bool          isWorkerMessage() const { return protocol() == Protocol::Worker; }
-    void                        setClientCommand(ClientCommand cmd) { setCommand(static_cast<char>(cmd)); }
-    [[nodiscard]] ClientCommand clientCommand() const {
-        assert(isClientMessage());
-        return static_cast<ClientCommand>(command());
+    [[nodiscard]] bool isClientMessage() const { return protocol() == Protocol::Client; }
+    [[nodiscard]] bool isWorkerMessage() const { return protocol() == Protocol::Worker; }
+
+    void               setCommand(Command command) {
+        assert(command != Command::Invalid);
+        static constexpr auto commandStrings = std::array<std::string_view, 11>{
+            "\x0", "\x1", "\x2", "\x3", "\x4", "\x5", "\x6", "\x7", "\x8", "\x9", "\xa"
+        };
+        setFrameData(Frame::Command, commandStrings[static_cast<std::size_t>(command)], MessageFrame::static_bytes_tag{});
     }
 
-    void                        setWorkerCommand(WorkerCommand cmd) { setCommand(static_cast<char>(cmd)); }
-    [[nodiscard]] WorkerCommand workerCommand() const {
-        assert(isWorkerMessage());
-        return static_cast<WorkerCommand>(command());
+    [[nodiscard]] Command command() const {
+        assert(frameAt(Frame::Command).data().length() == 1);
+        assert(static_cast<unsigned char>(frameAt(Frame::Command).data()[0]) <= static_cast<unsigned char>(Command::Heartbeat));
+        return static_cast<Command>(frameAt(Frame::Command).data()[0]);
     }
 
     std::size_t availableFrameCount() const { return _frames.size(); }
