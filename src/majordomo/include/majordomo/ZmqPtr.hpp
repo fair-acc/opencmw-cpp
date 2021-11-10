@@ -4,6 +4,7 @@
 // A few thin RAII-only wrappers for ZMQ structures
 
 #include <cassert>
+#include <cstring>
 #include <source_location>
 #include <string>
 #include <type_traits>
@@ -44,7 +45,7 @@ public:
     void ignoreResult([[maybe_unused]] const std::source_location location = std::source_location::current()) {
 #if (ENABLE_RESULT_CHECKS)
         if (!isValid()) {
-            debugWithLocation(location) << "Ignored error result";
+            debugWithLocation(location) << "Ignored error result:" << std::strerror(_error);
         }
         _ignoreError = true;
 #endif
@@ -52,7 +53,7 @@ public:
     void assertSuccess([[maybe_unused]] const std::source_location location = std::source_location::current()) {
 #if (ENABLE_RESULT_CHECKS)
         if (!isValid()) {
-            debugWithLocation(location) << "Assertion failed";
+            debugWithLocation(location) << "Assertion failed:" << std::strerror(_error);
         }
         _ignoreError = true;
 #endif
