@@ -29,7 +29,7 @@ class BasicMdpWorker {
     int                           _liveness          = 0;
     Timestamp                     _heartbeatAt;
 
-    const Context                &_context;
+    const Context &               _context;
     std::optional<Socket>         _socket;
     std::array<zmq_pollitem_t, 1> _pollerItems;
 
