@@ -6,7 +6,9 @@
 #include "Broker.hpp"
 #include "Debug.hpp"
 
+#include <array>
 #include <atomic>
+#include <chrono>
 #include <concepts>
 #include <string>
 
@@ -20,6 +22,12 @@ class BasicMdpWorker {
 
     const Context &       _context;
     std::optional<Socket> _socket;
+
+    static constexpr auto HEARTBEAT_INTERVAL = std::chrono::milliseconds(1000); // TODO share with broker
+
+    static int toMilliseconds(auto duration) { // TODO share with broker
+        return static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(duration).count());
+    }
 
 protected:
     MdpMessage createMessage(WorkerCommand command) {
@@ -107,15 +115,18 @@ public:
     }
 
     void run() {
-        while (!_shutdownRequested) {
-            assert(_socket);
-            auto message = MdpMessage::receive(*_socket);
-            if (!message) {
-                continue;
-            }
+        assert(_socket);
 
-            handleMessage(std::move(*message));
-        }
+        std::array<zmq_pollitem_t, 1> pollerItems;
+        pollerItems[0].socket = _socket->zmq_ptr;
+        pollerItems[0].events = ZMQ_POLLIN;
+
+        do {
+            while (auto message = MdpMessage::receive(*_socket)) {
+                handleMessage(std::move(*message));
+            }
+        } while (!_shutdownRequested
+                 && zmq_invoke(zmq_poll, pollerItems.data(), static_cast<int>(pollerItems.size()), toMilliseconds(HEARTBEAT_INTERVAL)).isValid());
     }
 };
 } // namespace opencmw::majordomo
