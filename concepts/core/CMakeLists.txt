@@ -1,0 +1,2 @@
+add_executable(URI_example URI_example.cpp)
+target_link_libraries(URI_example PRIVATE core project_options project_warnings)

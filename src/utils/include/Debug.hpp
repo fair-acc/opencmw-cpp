@@ -10,6 +10,18 @@
         REQUIRE(cond); \
     } while ((void) 0, 0)
 
+#define REQUIRE_NOTHROW_MESSAGE(cond, msg) \
+    do { \
+        INFO(msg); \
+        REQUIRE_NOTHROW(cond); \
+    } while ((void) 0, 0)
+
+#define REQUIRE_THROWS_AS_MESSAGE(cond, exception, msg) \
+    do { \
+        INFO(msg); \
+        REQUIRE_THROWS_AS(cond, exception); \
+    } while ((void) 0, 0)
+
 // #define OPENCMW_INSTRUMENT_ALLOC 1 //NOLINT -- used as a global macro to enable alloc/free profiling
 namespace opencmw::debug {
 static std::size_t alloc{ 0 };   // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
@@ -31,7 +43,7 @@ static void        resetStats() {
 #pragma ide diagnostic   ignored "UnusedLocalVariable"
 class Timer {
 private:
-    const char *      _message;
+    const char       *_message;
     const int         _alignMsg;
     const int         _alignClock;
     const int         _alignTime;
@@ -102,7 +114,7 @@ public:
 #pragma ide diagnostic   ignored "cppcoreguidelines-owning-memory"
 #pragma ide diagnostic   ignored "cppcoreguidelines-macro-usage"
 #pragma ide diagnostic   ignored "misc-definitions-in-headers"
-void *                   opencmw_malloc(size_t size) {
+void                    *opencmw_malloc(size_t size) {
     opencmw::debug::alloc += 1;
     return std::malloc(size);
 }
@@ -122,10 +134,10 @@ void opencmw_free(void *ptr) {
 #define free(X) opencmw_free(X)
 #define realloc(X, Y) opencmw_realloc(X, Y)
 
-void *                   operator new(std::size_t size) { return malloc(size); }
+void                    *operator new(std::size_t size) { return malloc(size); }
 void                     operator delete(void *ptr) noexcept { free(ptr); }
 void                     operator delete(void *ptr, std::size_t /*unused*/) noexcept { free(ptr); }
 #pragma clang diagnostic pop
-#endif //OPENCMW_INSTRUMENT_ALLOC
+#endif // OPENCMW_INSTRUMENT_ALLOC
 
-#endif //OPENCMW_DEBUG_H
+#endif // OPENCMW_DEBUG_H

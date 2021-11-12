@@ -52,7 +52,7 @@ private:
     using Timestamp = std::chrono::time_point<Clock>;
 
     struct Client {
-        const Socket &            socket;
+        const Socket             &socket;
         const std::string         id;
         std::deque<BrokerMessage> requests;
 
@@ -63,7 +63,7 @@ private:
     };
 
     struct Worker {
-        const Socket &    socket;
+        const Socket     &socket;
         const std::string id;
         const std::string serviceName;
         Timestamp         expiry;
@@ -130,7 +130,7 @@ private:
     const Socket                  _dnsSocket;
     std::array<zmq_pollitem_t, 4> pollerItems;
 
-    Service &                     requireService(std::string serviceName, std::string serviceDescription) {
+    Service                      &requireService(std::string serviceName, std::string serviceDescription) {
         // TODO handle serviceDescription differing between workers? or is "first one wins" ok?
         auto it = _services.try_emplace(serviceName, std::move(serviceName), std::move(serviceDescription));
         return it.first->second;
@@ -286,7 +286,7 @@ private:
         const auto serviceName = std::string(message.serviceName());
         const auto serviceId   = std::string(message.sourceId());
         const auto knownWorker = _workers.contains(serviceId);
-        auto &     worker      = _workers.try_emplace(serviceId, socket, serviceId, serviceName).first->second;
+        auto      &worker      = _workers.try_emplace(serviceId, socket, serviceId, serviceName).first->second;
         worker.updateExpiry();
 
         switch (message.workerCommand()) {
@@ -434,7 +434,7 @@ public:
     Broker &operator=(const Broker &) = delete;
 
     enum class BindOption {
-        DetectFromURI, ///< detect from URI which socket is meant (@see bind)
+        DetectFromURI, ///< detect from uri which socket is meant (@see bind)
         Router,        ///< Always bind ROUTER socket
         Pub            ///< Always bind PUB socket
     };
@@ -443,7 +443,7 @@ public:
      * Bind broker to endpoint, can call this multiple times. We use a single
      * socket for both clients and workers.
      *
-     * @param endpoint the URI-based 'scheme://ip:port' endpoint definition the server should listen to
+     * @param endpoint the uri-based 'scheme://ip:port' endpoint definition the server should listen to
      * The protocol definition
      *  - 'mdp://' corresponds to a SocketType.ROUTER socket
      *  - 'mds://' corresponds to a SocketType.XPUB socket
