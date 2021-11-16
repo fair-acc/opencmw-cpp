@@ -330,7 +330,7 @@ public:
             if (!uri._query.empty())     { _query = uri._query; }
             if (!uri._fragment.empty())  { _fragment = uri._fragment; }
         }
-        inline UriFactory&& scheme(const std::string_view &scheme)        && noexcept { _scheme = { scheme.begin(), scheme.end() }; return std::move(*this); }
+        inline UriFactory&& scheme(const std::string_view &scheme)        && noexcept { _scheme = scheme; return std::move(*this); }
         inline UriFactory&& authority(const std::string_view &authority)  && noexcept { _authority = { authority.begin(), authority.end() }; return std::move(*this); }
         inline UriFactory&& user(const std::string_view &userName)        && noexcept { _userName = { userName.begin(), userName.end() }; return std::move(*this); }
         inline UriFactory&& password(const std::string_view &pwd)         && noexcept { _pwd = { pwd.begin(), pwd.end() }; return std::move(*this); }

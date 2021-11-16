@@ -6,8 +6,12 @@ include(cmake/StandardProjectSettings.cmake)
 include(cmake/PreventInSourceBuilds.cmake)
 include(GNUInstallDirs)
 
+include(cmake/CMakeRC.cmake)
+
 # Link this 'library' to set the c++ standard / compile-time options requested
 add_library(project_options INTERFACE)
+target_include_directories(project_options INTERFACE ${CMAKE_SOURCE_DIR}/3rd_party)
+
 target_compile_features(project_options INTERFACE cxx_std_20)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")

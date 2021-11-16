@@ -87,7 +87,6 @@ public:
 
     bool handleMessage(MdpMessage &&message) {
         if (!message.isValid()) {
-            debug() << "Received invalid message" << message; // todo ivan << std::endl;
             return false;
         }
 

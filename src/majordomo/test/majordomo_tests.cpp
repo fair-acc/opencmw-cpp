@@ -14,6 +14,7 @@
 #include <thread>
 
 using namespace opencmw::majordomo;
+using namespace std::chrono_literals;
 using URI = opencmw::URI<>;
 
 TEST_CASE("OpenCMW::Frame cloning", "[frame][cloning]") {
@@ -41,9 +42,6 @@ TEST_CASE("OpenCMW::Frame cloning", "[frame][cloning]") {
         REQUIRE(frame.data() == clone.data());
     }
 }
-
-constexpr auto static_tag  = MessageFrame::static_bytes_tag{};
-constexpr auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
 
 TEST_CASE("OpenCMW::Message basics", "[message]") {
     {
@@ -622,7 +620,7 @@ TEST_CASE("Broker sends heartbeats", "[broker][heartbeat]") {
     using opencmw::majordomo::MdpMessage;
     using Clock                      = std::chrono::steady_clock;
 
-    constexpr auto heartbeatInterval = std::chrono::milliseconds(50);
+    constexpr auto heartbeatInterval = 50ms;
 
     Settings       settings;
     settings.heartbeatInterval = heartbeatInterval;
@@ -683,7 +681,7 @@ TEST_CASE("Broker disconnects on unexpected heartbeat", "[broker][unexpected_hea
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::MdpMessage;
 
-    constexpr auto heartbeatInterval = std::chrono::milliseconds(50);
+    constexpr auto heartbeatInterval = 50ms;
 
     Settings       settings;
     settings.heartbeatInterval = heartbeatInterval;
@@ -1048,35 +1046,6 @@ TEST_CASE("pubsub example using PUB socket (SUB client)", "[broker][pubsub_subcl
 }
 
 using opencmw::majordomo::MdpMessage;
-
-class TestIntHandler {
-    int _x = 10;
-
-public:
-    explicit TestIntHandler(int initialValue)
-        : _x(initialValue) {
-    }
-
-    void operator()(RequestContext &context) {
-        if (context.request.command() == Command::Get) {
-            context.reply.setBody(std::to_string(_x), MessageFrame::dynamic_bytes_tag{});
-            return;
-        }
-
-        assert(context.request.command() == Command::Set);
-
-        const auto request = context.request.body();
-        int        value   = 0;
-        const auto result  = std::from_chars(request.begin(), request.end(), value);
-
-        if (result.ec == std::errc::invalid_argument) {
-            context.reply.setError("Not a valid int", MessageFrame::static_bytes_tag{});
-        } else {
-            _x = value;
-            context.reply.setBody("Value set. All good!", MessageFrame::static_bytes_tag{});
-        }
-    }
-};
 
 TEST_CASE("BasicWorker connects to non-existing broker", "[worker]") {
     const Context            context;
