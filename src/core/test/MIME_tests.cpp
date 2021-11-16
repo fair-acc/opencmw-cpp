@@ -2,8 +2,8 @@
 #include <MIME.hpp>
 #include <catch2/catch.hpp>
 #include <iostream>
-#include <string_view>
 #include <sstream>
+#include <string_view>
 
 TEST_CASE("basic access", "[MIME]") {
     using namespace opencmw;
@@ -23,7 +23,7 @@ TEST_CASE("basic access", "[MIME]") {
 
         // test print handler
         std::ostringstream dummyStream;
-        auto resetStream = [&dummyStream](){ dummyStream.str(""); dummyStream.clear(); REQUIRE(dummyStream.str().size() == 0);};
+        auto               resetStream = [&dummyStream]() { dummyStream.str(""); dummyStream.clear(); REQUIRE(dummyStream.str().size() == 0); };
         dummyStream << fmt::format("MIME::MimeType fmt::print: '{}'\n", type);
         REQUIRE(dummyStream.str().size() != 0);
         resetStream();

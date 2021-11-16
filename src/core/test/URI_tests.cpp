@@ -155,7 +155,7 @@ TEST_CASE("helper methods", "[URI]") {
 
     // print handler
     std::ostringstream dummyStream;
-    auto resetStream = [&dummyStream](){ dummyStream.str(""); dummyStream.clear(); REQUIRE(dummyStream.str().size() == 0);};
+    auto               resetStream = [&dummyStream]() { dummyStream.str(""); dummyStream.clear(); REQUIRE(dummyStream.str().size() == 0); };
     dummyStream << fmt::format("URI fmt::print: '{}'\n", URI<>("mdp://auth/path"));
     REQUIRE(dummyStream.str().size() != 0);
     resetStream();
