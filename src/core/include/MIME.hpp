@@ -25,9 +25,9 @@ public:
     const std::string_view              description() const noexcept { return _description; }
     const std::vector<std::string_view> fileExtensions() const noexcept { return _fileExtensions; }
 
-    constexpr auto operator<=>(const MimeType &rhs) const noexcept { return _typeName <=> rhs._typeName; }
-    constexpr bool operator!=(const MimeType &rhs) const noexcept { return _typeName != rhs._typeName; }
-    constexpr bool operator==(const MimeType &rhs) const noexcept { return _typeName == rhs._typeName; }
+    constexpr auto                      operator<=>(const MimeType &rhs) const noexcept { return _typeName <=> rhs._typeName; }
+    constexpr bool                      operator!=(const MimeType &rhs) const noexcept { return _typeName != rhs._typeName; }
+    constexpr bool                      operator==(const MimeType &rhs) const noexcept { return _typeName == rhs._typeName; }
 };
 
 /**
@@ -186,16 +186,16 @@ inline std::ostream &operator<<(std::ostream &os, const std::vector<T> &v) {
 
 template<>
 struct fmt::formatter<opencmw::MIME::MimeType> {
-            template<typename ParseContext>
-            constexpr auto parse(ParseContext &ctx) {
-                return ctx.begin(); // not (yet) implemented
-            }
+    template<typename ParseContext>
+    constexpr auto parse(ParseContext &ctx) {
+        return ctx.begin(); // not (yet) implemented
+    }
 
-            template<typename FormatContext>
-            auto format(opencmw::MIME::MimeType const &v, FormatContext &ctx) {
-                return fmt::format_to(ctx.out(), "{}", v.typeName());
-            }
-        };
+    template<typename FormatContext>
+    auto format(opencmw::MIME::MimeType const &v, FormatContext &ctx) {
+        return fmt::format_to(ctx.out(), "{}", v.typeName());
+    }
+};
 
 inline std::ostream &operator<<(std::ostream &os, const opencmw::MIME::MimeType &v) {
     return os << v.typeName();
