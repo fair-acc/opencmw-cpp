@@ -434,7 +434,7 @@ public:
     Broker &operator=(const Broker &) = delete;
 
     enum class BindOption {
-        DetectFromURI, ///< detect from URI which socket is meant (@see bind)
+        DetectFromURI, ///< detect from uri which socket is meant (@see bind)
         Router,        ///< Always bind ROUTER socket
         Pub            ///< Always bind PUB socket
     };
@@ -443,7 +443,7 @@ public:
      * Bind broker to endpoint, can call this multiple times. We use a single
      * socket for both clients and workers.
      *
-     * @param endpoint the URI-based 'scheme://ip:port' endpoint definition the server should listen to
+     * @param endpoint the uri-based 'scheme://ip:port' endpoint definition the server should listen to
      * The protocol definition
      *  - 'mdp://' corresponds to a SocketType.ROUTER socket
      *  - 'mds://' corresponds to a SocketType.XPUB socket
