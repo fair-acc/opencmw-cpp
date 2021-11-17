@@ -69,7 +69,7 @@ TEST_CASE("builder-parser identity", "[URI]") {
 
         // check identity
         const auto src = opencmw::URI<>(validURIs[0]);
-        const auto dst = opencmw::URI<>::factory(src).build();
+        const auto dst = opencmw::URI<>::factory(src).toString();
         REQUIRE(src == opencmw::URI<>(dst));
     }
 }
@@ -79,22 +79,24 @@ TEST_CASE("factory-builder API", "[URI]") {
     opencmw::debug::resetStats();
     opencmw::debug::Timer timer("URI<>() - factory-builder API", 40);
 
-    REQUIRE(URI<>::factory().build() == "");
-    REQUIRE(URI<>::factory().setScheme("mdp").setAuthority("authority").build() == "mdp://authority");
-    REQUIRE(URI<>::factory().setScheme("mdp").setAuthority("authority").setPath("path").build() == "mdp://authority/path");
-    REQUIRE(URI<>::factory().setScheme("file").setPath("path").build() == "file:path");
-    REQUIRE(URI<>::factory().setScheme("mdp").setHostName("localhost").setPort(8080).setPath("path").build() == "mdp://localhost:8080/path");
-    REQUIRE(URI<>::factory().setScheme("mdp").setHostName("localhost").setPort(8080).setPath("path").setQueryParam("key=value").setFragment("fragment").build() == "mdp://localhost:8080/path?key=value#fragment");
-    REQUIRE(URI<>::factory().setScheme("mdp").setHostName("localhost").setPort(8080).setPath("path").setFragment("fragment").build() == "mdp://localhost:8080/path#fragment");
-    REQUIRE(URI<>::factory().setScheme("mdp").setUser("user").setHostName("localhost").setPort(8080).setPath("path").setQueryParam("key=value").setFragment("fragment").build() == "mdp://user@localhost:8080/path?key=value#fragment");
-    REQUIRE(URI<>::factory().setScheme("mdp").setUser("user").setPassword("pwd").setHostName("localhost").setPort(8080).setPath("path").setQueryParam("key=value").setFragment("fragment").build() == "mdp://user:pwd@localhost:8080/path?key=value#fragment");
-    REQUIRE(URI<>::factory().setScheme("mdp").setPassword("pwd").setHostName("localhost").setPort(8080).setPath("path").setQueryParam("key=value").setFragment("fragment").build() == "mdp://localhost:8080/path?key=value#fragment");
-    REQUIRE(URI<>::factory().setQueryParam("queryOnly").build() == "?queryOnly");
-    REQUIRE(URI<>::factory().setFragment("fragmentOnly").build() == "#fragmentOnly");
+    REQUIRE(URI<>::factory().toString() == "");
+    REQUIRE(URI<>::factory().scheme("mdp").authority("authority").toString() == "mdp://authority");
+    REQUIRE(URI<>::factory().scheme("mdp").authority("authority").path("path").toString() == "mdp://authority/path");
+    REQUIRE(URI<>::factory().scheme("file").path("path").toString() == "file:path");
+    REQUIRE(URI<>::factory().scheme("mdp").hostName("localhost").port(8080).path("path").toString() == "mdp://localhost:8080/path");
+    REQUIRE(URI<>::factory().scheme("mdp").hostName("localhost").port(8080).path("path").queryParam("key=value").fragment("fragment").toString() == "mdp://localhost:8080/path?key=value#fragment");
+    REQUIRE(URI<>::factory().scheme("mdp").hostName("localhost").port(8080).path("path").fragment("fragment").toString() == "mdp://localhost:8080/path#fragment");
+    REQUIRE(URI<>::factory().scheme("mdp").user("user").hostName("localhost").port(8080).path("path").queryParam("key=value").fragment("fragment").toString() == "mdp://user@localhost:8080/path?key=value#fragment");
+    REQUIRE(URI<>::factory().scheme("mdp").user("user").password("pwd").hostName("localhost").port(8080).path("path").queryParam("key=value").fragment("fragment").toString() == "mdp://user:pwd@localhost:8080/path?key=value#fragment");
+    REQUIRE(URI<>::factory().scheme("mdp").password("pwd").hostName("localhost").port(8080).path("path").queryParam("key=value").fragment("fragment").toString() == "mdp://localhost:8080/path?key=value#fragment");
+    REQUIRE(URI<>::factory().queryParam("queryOnly").toString() == "?queryOnly");
+    REQUIRE(URI<>::factory().fragment("fragmentOnly").toString() == "#fragmentOnly");
+
+    REQUIRE(URI<>::factory().scheme("mdp").authority("authority").build().authority() == "authority");
 
     // parameter handling
-    REQUIRE(URI<>::factory(opencmw::URI<>(validURIs[12])).setQueryParam("").addQueryParameter("keyOnly").addQueryParameter("key", "value").build() == "mdp://www.fair-acc.io?key=value&keyOnly");
-    REQUIRE(URI<>::factory(opencmw::URI<>(validURIs[12])).addQueryParameter("keyOnly").addQueryParameter("key", "value").build() == "mdp://www.fair-acc.io?query&key=value&keyOnly");
+    REQUIRE(URI<>::factory(opencmw::URI<>(validURIs[12])).queryParam("").addQueryParameter("keyOnly").addQueryParameter("key", "value").toString() == "mdp://www.fair-acc.io?key=value&keyOnly");
+    REQUIRE(URI<>::factory(opencmw::URI<>(validURIs[12])).addQueryParameter("keyOnly").addQueryParameter("key", "value").toString() == "mdp://www.fair-acc.io?query&key=value&keyOnly");
 }
 
 TEST_CASE("helper methods", "[URI]") {

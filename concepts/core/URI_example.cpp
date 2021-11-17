@@ -14,17 +14,17 @@ int main() {
     fmt::print("fmt::format URI output: {}\n", uri);
 
     // URI factory examples
-    fmt::print("new URI: \"{}\"\n", opencmw::URI<>::factory(uri).build());
+    fmt::print("new URI: \"{}\"\n", opencmw::URI<>::factory(uri).toString());
 
-    fmt::print("new URI: \"{}\"\n", opencmw::URI<>::factory().build());
-    fmt::print("new URI: \"{}\"\n", opencmw::URI<>::factory().setScheme("mdp").setAuthority("authority").build());
-    fmt::print("new URI: \"{}\"\n", opencmw::URI<>::factory().setScheme("mdp").setAuthority("authority").setPath("path").build());
-    fmt::print("new URI: \"{}\"\n", opencmw::URI<>::factory().setScheme("file").setPath("path").build());
-    fmt::print("new URI: \"{}\"\n", opencmw::URI<>::factory().setScheme("mdp").setHostName("localhost").setPort(8080).setPath("path").setQueryParam("key=value").setFragment("fragment").build());
+    fmt::print("new URI: \"{}\"\n", opencmw::URI<>::factory().toString());
+    fmt::print("new URI: \"{}\"\n", opencmw::URI<>::factory().scheme("mdp").authority("authority").toString());
+    fmt::print("new URI: \"{}\"\n", opencmw::URI<>::factory().scheme("mdp").authority("authority").path("path").toString());
+    fmt::print("new URI: \"{}\"\n", opencmw::URI<>::factory().scheme("file").path("path").toString());
+    fmt::print("new URI: \"{}\"\n", opencmw::URI<>::factory().scheme("mdp").hostName("localhost").port(8080).path("path").queryParam("key=value").fragment("fragment").toString());
 
     // query parameter handling
-    fmt::print("new URI: \"{}\"\n", opencmw::URI<>::factory(uri).setQueryParam("").addQueryParameter("keyOnly").addQueryParameter("key", "value").build());
-    fmt::print("new URI: \"{}\"\n", opencmw::URI<>::factory(uri).addQueryParameter("keyOnly").addQueryParameter("key", "value").build());
+    fmt::print("new URI: \"{}\"\n", opencmw::URI<>::factory(uri).queryParam("").addQueryParameter("keyOnly").addQueryParameter("key", "value").toString());
+    fmt::print("new URI: \"{}\"\n", opencmw::URI<>::factory(uri).addQueryParameter("keyOnly").addQueryParameter("key", "value").toString());
 
     opencmw::URI<> queryURI("http://User:notSoSecretPwd@localhost.com:20/path1/path2/path3/file.ext?k0&k1=v1;k2=v2&k3#cFrag");
 

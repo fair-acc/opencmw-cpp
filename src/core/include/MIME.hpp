@@ -26,7 +26,6 @@ public:
     const std::vector<std::string_view> fileExtensions() const noexcept { return _fileExtensions; }
 
     constexpr auto                      operator<=>(const MimeType &rhs) const noexcept { return _typeName <=> rhs._typeName; }
-    constexpr bool                      operator!=(const MimeType &rhs) const noexcept { return _typeName != rhs._typeName; }
     constexpr bool                      operator==(const MimeType &rhs) const noexcept { return _typeName == rhs._typeName; }
 };
 
@@ -101,9 +100,9 @@ static const MimeType XLS{ "application/vnd.ms-excel", "Microsoft Excel", ".xls"
 static const MimeType XLSX{ "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Microsoft Excel (OpenXML)", ".xlsx" };
 static const MimeType ZIP{ "application/zip", "ZIP archive", ".zip" };
 /* fall-back */
-static const MimeType                  UNKNOWN{ "unknown/unknown", "unknown data format" };
+static const MimeType    UNKNOWN{ "unknown/unknown", "unknown data format" };
 
-static inline std::array<MimeType, 54> ALL{
+static inline std::array ALL{
     // text MIME types
     CSS, CSV, EVENT_STREAM, HTML, ICS, JAVASCRIPT, JSON, JSON_LD, TEXT, XML, YAML,
     // audio MIME types
@@ -130,10 +129,10 @@ const static MimeType &getType(const std::string_view &mimeTypeStr) {
     }
     std::string mimeType(mimeTypeStr);
     std::transform(mimeType.begin(), mimeType.end(), mimeType.begin(), static_cast<int (*)(int)>(std::tolower));
-    for (MimeType &mType : ALL) {
+    for (const MimeType &type : ALL) {
         // N.B.mimeType can contain several MIME types, e.g "image/webp,image/apng,image/*"
-        if (mimeType.find(mType.typeName()) != std::string::npos) {
-            return mType;
+        if (mimeType.find(type.typeName()) != std::string::npos) {
+            return type;
         }
     }
     return UNKNOWN;
@@ -150,15 +149,15 @@ const static MimeType &getTypeByFileName(const std::string_view &fileName) {
         return UNKNOWN;
     }
     constexpr auto ends_with = [](const std::string_view &value, const std::string_view &ending) {
-        return ending.size() > value.size() ? false : std::equal(ending.rbegin(), ending.rend(), value.rbegin());
+        return ending.size() <= value.size() ? std::equal(ending.rbegin(), ending.rend(), value.rbegin()) : false;
     };
     std::string trimmed(fileName);
     std::transform(trimmed.begin(), trimmed.end(), trimmed.begin(), static_cast<int (*)(int)>(std::tolower));
 
-    for (MimeType &mType : ALL) {
-        for (auto &ending : mType.fileExtensions()) {
+    for (const MimeType &type : ALL) {
+        for (const auto &ending : type.fileExtensions()) {
             if (ends_with(trimmed, ending)) {
-                return mType;
+                return type;
             }
         }
     }

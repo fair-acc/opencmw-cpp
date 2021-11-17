@@ -51,7 +51,7 @@ class URI {
     // computed on-demand
     std::unordered_map<string, std::optional<string>> _queryMap;
     // simple optional un-wrapper
-    inline const std::optional<string> returnOpt(const string_view &src) const noexcept { return src.empty() ? std::nullopt : std::optional(string{ src.begin(), src.end() }); };
+    inline const std::optional<string> returnOpt(const string_view &src) const noexcept { return src.empty() ? std::nullopt : std::optional<string>(src); };
 
 protected:
     // returns tif only RFC 3986 section 2.3 Unreserved Characters
@@ -62,7 +62,7 @@ protected:
             return;
         }
         size_t userSplit = std::min(_authority.find_first_of('@'), _authority.length());
-        if (userSplit != string_view::npos && userSplit < _authority.length()) {
+        if (userSplit < _authority.length()) {
             // user isUnreserved defined via '[user]:[pwd]@'
             const size_t pwdSplit = std::min(_authority.find_first_of(':'), userSplit);
             _userName             = _authority.substr(0, pwdSplit);
@@ -86,8 +86,8 @@ protected:
 
 public:
     URI() = delete;
-    explicit URI(const string_view &src)
-        : _localCopy{ src } {
+    explicit URI(std::string src)
+        : _localCopy(std::move(src)) {
         string_view source(_localCopy.c_str(), _localCopy.size());
         if constexpr (check == STRICT) {
             constexpr auto validURICharacters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/?#[]@!$&'()*+,;=%";
@@ -117,11 +117,11 @@ public:
         if (authEnd == source.length()) {
             return; // nothing more to parse
         }
-        if ((source[scheme_size] == '/' && source[scheme_size + 1] == '/' && source.length() > authOffset)
+        if ((source.length() > (authOffset + 1) && source[scheme_size] == '/' && source[scheme_size + 1] == '/')
                 || (scheme_size == 0 && source[scheme_size] != '/' && source[scheme_size] != '?' && source[scheme_size] != '#')) {
             // authority isUnreserved defined starting with '//'
             authOffset += 2;
-            authEnd    = std::min(source.find_first_of("/?#\0", authOffset), source.length());
+            authEnd    = std::min(source.find_first_of("/?#", authOffset), source.length());
             _authority = source.substr(authOffset, authEnd - authOffset);
             if constexpr (check == STRICT) {
                 if (!std::all_of(_authority.begin(), _authority.end(), [](char c) { return std::isalnum(c) || c == '@' || c == ':' || c == '.' || c == '-' || c == '_'; })) {
@@ -134,7 +134,7 @@ public:
         }
 
         size_t pathEnd = std::min(source.find_first_of("?#", authEnd), source.length());
-        if (pathEnd != string_view::npos && pathEnd <= source.length()) {
+        if (pathEnd <= source.length()) {
             _path = source.substr(authEnd, pathEnd - authEnd);
             if constexpr (check == STRICT) {
                 if (!std::all_of(_path.begin(), _path.end(), [](char c) { return std::isalnum(c) || c == '/' || c == '.' || c == '-' || c == '_'; })) {
@@ -294,20 +294,20 @@ public:
             if (!uri._query.empty())     { _query = uri._query; }
             if (!uri._fragment.empty())  { _fragment = uri._fragment; }
         }
-        inline UriFactory setScheme(const std::string_view &scheme)        noexcept { _scheme = { scheme.begin(), scheme.end() }; return *this; }
-        inline UriFactory setAuthority(const std::string_view &authority)  noexcept { _authority = { authority.begin(), authority.end() }; return *this; }
-        inline UriFactory setUser(const std::string_view &userName)        noexcept { _userName = { userName.begin(), userName.end() }; return *this; }
-        inline UriFactory setPassword(const std::string_view &pwd)         noexcept { _pwd = { pwd.begin(), pwd.end() }; return *this; }
-        inline UriFactory setHostName(const std::string_view &hostName)    noexcept { _host = { hostName.begin(), hostName.end() }; return *this; }
-        inline UriFactory setPort(const uint16_t port)                     noexcept { _port = std::optional<uint16_t>(port); return *this; }
-        inline UriFactory setPath(const std::string_view &path)            noexcept { _path = { path.begin(), path.end() }; return *this; }
-        inline UriFactory setQueryParam(const std::string_view &query)     noexcept { _query = { query.begin(), query.end() }; return *this; }
-        inline UriFactory setFragment(const std::string_view &fragment)    noexcept { _fragment = { fragment.begin(), fragment.end() }; return *this; }
-        inline UriFactory addQueryParameter(const std::string key)         noexcept { _queryMap[key] = std::nullopt; return *this; }
-        inline UriFactory addQueryParameter(const std::string key, const std::string value) noexcept { _queryMap[key] = std::optional(value); return *this; }
+        inline UriFactory& scheme(const std::string_view &scheme)        noexcept { _scheme = { scheme.begin(), scheme.end() }; return *this; }
+        inline UriFactory& authority(const std::string_view &authority)  noexcept { _authority = { authority.begin(), authority.end() }; return *this; }
+        inline UriFactory& user(const std::string_view &userName)        noexcept { _userName = { userName.begin(), userName.end() }; return *this; }
+        inline UriFactory& password(const std::string_view &pwd)         noexcept { _pwd = { pwd.begin(), pwd.end() }; return *this; }
+        inline UriFactory& hostName(const std::string_view &hostName)    noexcept { _host = { hostName.begin(), hostName.end() }; return *this; }
+        inline UriFactory& port(const uint16_t port)                     noexcept { _port = std::optional<uint16_t>(port); return *this; }
+        inline UriFactory& path(const std::string_view &path)            noexcept { _path = { path.begin(), path.end() }; return *this; }
+        inline UriFactory& queryParam(const std::string_view &query)     noexcept { _query = { query.begin(), query.end() }; return *this; }
+        inline UriFactory& fragment(const std::string_view &fragment)    noexcept { _fragment = { fragment.begin(), fragment.end() }; return *this; }
+        inline UriFactory& addQueryParameter(const std::string &key)     noexcept { _queryMap[key] = std::nullopt; return *this; }
+        inline UriFactory& addQueryParameter(const std::string &key, const std::string &value) noexcept { _queryMap[key] = std::optional(value); return *this; }
         // clang-format on
 
-        std::string build() {
+        std::string toString() {
             using namespace fmt::literals;
             if (_authority.empty()) {
                 _authority = fmt::format("{user}{opt_colon1}{pwd}{at}{host}{opt_colon2}{port}",                //
@@ -328,6 +328,10 @@ public:
                     "opt_path_slash"_a = (_path.empty() || _path.starts_with('/') || _authority.empty()) ? "" : "/", "path"_a = _path, // path
                     "qMark"_a = (_query.empty() || _query.starts_with('?')) ? "" : "?", "query"_a = _query,                            // query
                     "hashMark"_a = (_fragment.empty() || _fragment.starts_with('#')) ? "" : "#", "fragment"_a = encode(_fragment));    // fragment
+        }
+
+        URI build() {
+            return URI<check>(toString());
         }
     };
 
