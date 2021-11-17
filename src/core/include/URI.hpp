@@ -294,17 +294,17 @@ public:
             if (!uri._query.empty())     { _query = uri._query; }
             if (!uri._fragment.empty())  { _fragment = uri._fragment; }
         }
-        inline UriFactory& scheme(const std::string_view &scheme)        noexcept { _scheme = { scheme.begin(), scheme.end() }; return *this; }
-        inline UriFactory& authority(const std::string_view &authority)  noexcept { _authority = { authority.begin(), authority.end() }; return *this; }
-        inline UriFactory& user(const std::string_view &userName)        noexcept { _userName = { userName.begin(), userName.end() }; return *this; }
-        inline UriFactory& password(const std::string_view &pwd)         noexcept { _pwd = { pwd.begin(), pwd.end() }; return *this; }
-        inline UriFactory& hostName(const std::string_view &hostName)    noexcept { _host = { hostName.begin(), hostName.end() }; return *this; }
-        inline UriFactory& port(const uint16_t port)                     noexcept { _port = std::optional<uint16_t>(port); return *this; }
-        inline UriFactory& path(const std::string_view &path)            noexcept { _path = { path.begin(), path.end() }; return *this; }
-        inline UriFactory& queryParam(const std::string_view &query)     noexcept { _query = { query.begin(), query.end() }; return *this; }
-        inline UriFactory& fragment(const std::string_view &fragment)    noexcept { _fragment = { fragment.begin(), fragment.end() }; return *this; }
-        inline UriFactory& addQueryParameter(const std::string &key)     noexcept { _queryMap[key] = std::nullopt; return *this; }
-        inline UriFactory& addQueryParameter(const std::string &key, const std::string &value) noexcept { _queryMap[key] = std::optional(value); return *this; }
+        inline UriFactory&& scheme(const std::string_view &scheme)        noexcept { _scheme = { scheme.begin(), scheme.end() }; return std::move(*this); }
+        inline UriFactory&& authority(const std::string_view &authority)  noexcept { _authority = { authority.begin(), authority.end() }; return std::move(*this); }
+        inline UriFactory&& user(const std::string_view &userName)        noexcept { _userName = { userName.begin(), userName.end() }; return std::move(*this); }
+        inline UriFactory&& password(const std::string_view &pwd)         noexcept { _pwd = { pwd.begin(), pwd.end() }; return std::move(*this); }
+        inline UriFactory&& hostName(const std::string_view &hostName)    noexcept { _host = { hostName.begin(), hostName.end() }; return std::move(*this); }
+        inline UriFactory&& port(const uint16_t port)                     noexcept { _port = std::optional<uint16_t>(port); return std::move(*this); }
+        inline UriFactory&& path(const std::string_view &path)            noexcept { _path = { path.begin(), path.end() }; return std::move(*this); }
+        inline UriFactory&& queryParam(const std::string_view &query)     noexcept { _query = { query.begin(), query.end() }; return std::move(*this); }
+        inline UriFactory&& fragment(const std::string_view &fragment)    noexcept { _fragment = { fragment.begin(), fragment.end() }; return std::move(*this); }
+        inline UriFactory&& addQueryParameter(const std::string &key)     noexcept { _queryMap[key] = std::nullopt; return std::move(*this); }
+        inline UriFactory&& addQueryParameter(const std::string &key, const std::string &value) noexcept { _queryMap[key] = std::optional(value); return std::move(*this); }
         // clang-format on
 
         std::string toString() {

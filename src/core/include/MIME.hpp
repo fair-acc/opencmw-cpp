@@ -120,18 +120,17 @@ static inline std::array ALL{
 /**
  * Case-insensitive mapping between MIME-type string and enumumeration value.
  *
- * @param mimeTypeStr the string equivalent mime-type, e.g. "image/png"
+ * @param mimeType the string equivalent mime-type, e.g. "image/png"
  * @return the enumeration equivalent first matching mime-type, e.g. MimeType.PNG or MimeType.UNKNOWN as fall-back
  */
-const static MimeType &getType(const std::string_view &mimeTypeStr) {
-    if (mimeTypeStr.empty()) {
+const static MimeType &getType(const std::string_view &mimeType) {
+    if (mimeType.empty()) {
         return UNKNOWN;
     }
-    std::string mimeType(mimeTypeStr);
-    std::transform(mimeType.begin(), mimeType.end(), mimeType.begin(), static_cast<int (*)(int)>(std::tolower));
     for (const MimeType &type : ALL) {
-        // N.B.mimeType can contain several MIME types, e.g "image/webp,image/apng,image/*"
-        if (mimeType.find(type.typeName()) != std::string::npos) {
+        // N.B.mimeType may contain several MIME types, e.g "image/webp,image/apng,image/*"
+        constexpr auto lowerCaseCompare = [](char ch1, char ch2) noexcept { return std::tolower(ch1) == std::tolower(ch2); };
+        if (std::search(mimeType.begin(), mimeType.end(), type.typeName().begin(), type.typeName().end(), lowerCaseCompare) != mimeType.end()) {
             return type;
         }
     }
@@ -148,15 +147,13 @@ const static MimeType &getTypeByFileName(const std::string_view &fileName) {
     if (fileName.empty()) {
         return UNKNOWN;
     }
-    constexpr auto ends_with = [](const std::string_view &value, const std::string_view &ending) {
-        return ending.size() <= value.size() ? std::equal(ending.rbegin(), ending.rend(), value.rbegin()) : false;
+    constexpr auto lowerCaseCompare = [](char ch1, char ch2) noexcept { return std::tolower(ch1) == std::tolower(ch2); };
+    constexpr auto ends_with        = [lowerCaseCompare](const std::string_view &value, const std::string_view &ending) {
+        return ending.size() <= value.size() ? std::equal(ending.rbegin(), ending.rend(), value.rbegin(), lowerCaseCompare) : false;
     };
-    std::string trimmed(fileName);
-    std::transform(trimmed.begin(), trimmed.end(), trimmed.begin(), static_cast<int (*)(int)>(std::tolower));
-
     for (const MimeType &type : ALL) {
         for (const auto &ending : type.fileExtensions()) {
-            if (ends_with(trimmed, ending)) {
+            if (ends_with(fileName, ending)) {
                 return type;
             }
         }

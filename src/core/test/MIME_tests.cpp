@@ -12,6 +12,8 @@ TEST_CASE("basic access", "[MIME]") {
 
     // simple tests
     REQUIRE(MIME::getType(MIME::TEXT.typeName()) == MIME::TEXT);
+    REQUIRE(MIME::getType("text/plain") == MIME::TEXT);
+    REQUIRE(MIME::getType("text/PLAIN") == MIME::TEXT); // checks upper/lower case insensitivity
     REQUIRE(MIME::getTypeByFileName("readme.txt") == MIME::TEXT);
     REQUIRE(MIME::getTypeByFileName("README.TXT") == MIME::TEXT);
 
