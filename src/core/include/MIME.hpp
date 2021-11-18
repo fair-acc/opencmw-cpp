@@ -5,28 +5,29 @@
 #include <array>
 #include <cctype> // for tolower
 #include <iostream>
+#include <span>
 #include <string_view>
 #include <vector>
 
 namespace opencmw::MIME {
 
 class MimeType {
-    static constexpr std::string_view   space = " ";
-    const std::string_view              _typeName;
-    const std::string_view              _description;
-    const std::vector<std::string_view> _fileExtensions;
+    const std::string_view                _typeName;
+    const std::string_view                _description;
+    const std::array<std::string_view, 3> _fileExtensions;
+    const size_t                          _N;
 
 public:
     MimeType() = delete;
     template<class... Ts>
     constexpr explicit MimeType(const char *name, const char *description, Ts... ext) noexcept
-        : _typeName(name), _description(description), _fileExtensions{ std::forward<Ts>(ext)... } {}
-    const std::string_view              typeName() const noexcept { return _typeName; }
-    const std::string_view              description() const noexcept { return _description; }
-    const std::vector<std::string_view> fileExtensions() const noexcept { return _fileExtensions; }
+        : _typeName(name), _description(description), _fileExtensions{ std::forward<Ts>(ext)... }, _N(sizeof...(Ts)) {}
+    constexpr std::string_view                  typeName() const noexcept { return _typeName; }
+    constexpr std::string_view                  description() const noexcept { return _description; }
+    constexpr std::span<const std::string_view> fileExtensions() const noexcept { return std::span(_fileExtensions.data(), _N); };
 
-    constexpr auto                      operator<=>(const MimeType &rhs) const noexcept { return _typeName <=> rhs._typeName; }
-    constexpr bool                      operator==(const MimeType &rhs) const noexcept { return _typeName == rhs._typeName; }
+    constexpr auto                              operator<=>(const MimeType &rhs) const noexcept { return _typeName <=> rhs._typeName; }
+    constexpr bool                              operator==(const MimeType &rhs) const noexcept { return _typeName == rhs._typeName; }
 };
 
 /**
@@ -37,72 +38,72 @@ public:
  * https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types/Common_types
  */
 /* text MIME types */
-static const MimeType CSS{ "text/css", "Cascading Style Sheets (CSS)", ".css" };
-static const MimeType CSV{ "text/csv", "Comma-separated values (CSV)", ".csv" };
-static const MimeType EVENT_STREAM{ "text/event-stream", "SSE stream" };
-static const MimeType HTML{ "text/html", "HyperText Markup Language (HTML)", ".htm", ".html" };
-static const MimeType ICS{ "text/calendar", "iCalendar format", ".ics" };
-static const MimeType JAVASCRIPT{ "text/javascript", "JavaScript", ".js", ".mjs" };
-static const MimeType JSON{ "application/json", "JSON format", ".json" };
-static const MimeType JSON_LD{ "application/ld+json", "JSON-LD format", ".jsonld" };
-static const MimeType TEXT{ "text/plain", "Text, (generally ASCII or ISO 8859-n)", ".txt" };
-static const MimeType XML{ "text/xml", "XML", ".xml" };                                        // if readable from casual users (RFC 3023, section 3)
-static const MimeType YAML{ "text/yaml", "YAML Ain't Markup Language File", ".yml", ".yaml" }; // not yet an IANA standard
+constexpr MimeType CSS{ "text/css", "Cascading Style Sheets (CSS)", ".css" };
+constexpr MimeType CSV{ "text/csv", "Comma-separated values (CSV)", ".csv" };
+constexpr MimeType EVENT_STREAM{ "text/event-stream", "SSE stream" };
+constexpr MimeType HTML{ "text/html", "HyperText Markup Language (HTML)", ".htm", ".html" };
+constexpr MimeType ICS{ "text/calendar", "iCalendar format", ".ics" };
+constexpr MimeType JAVASCRIPT{ "text/javascript", "JavaScript", ".js", ".mjs" };
+constexpr MimeType JSON{ "application/json", "JSON format", ".json" };
+constexpr MimeType JSON_LD{ "application/ld+json", "JSON-LD format", ".jsonld" };
+constexpr MimeType TEXT{ "text/plain", "Text, (generally ASCII or ISO 8859-n)", ".txt" };
+constexpr MimeType XML{ "text/xml", "XML", ".xml" };                                        // if readable from casual users (RFC 3023, section 3)
+constexpr MimeType YAML{ "text/yaml", "YAML Ain't Markup Language File", ".yml", ".yaml" }; // not yet an IANA standard
 
 /* audio MIME types */
-static const MimeType AAC{ "audio/aac", "AAC audio", ".aac" };
-static const MimeType MIDI{ "audio/midi", "Musical Instrument Digital Interface (MIDI)", ".mid", ".midi" };
-static const MimeType MP3{ "audio/mpeg", "MP3 audio", ".mp3" };
-static const MimeType OTF{ "audio/opus", "Opus audio", ".opus" };
-static const MimeType WAV{ "audio/wav", "Waveform Audio Format", ".wav" };
-static const MimeType WEBM_AUDIO{ "audio/webm", "WEBM audio", ".weba" };
+constexpr MimeType AAC{ "audio/aac", "AAC audio", ".aac" };
+constexpr MimeType MIDI{ "audio/midi", "Musical Instrument Digital Interface (MIDI)", ".mid", ".midi" };
+constexpr MimeType MP3{ "audio/mpeg", "MP3 audio", ".mp3" };
+constexpr MimeType OTF{ "audio/opus", "Opus audio", ".opus" };
+constexpr MimeType WAV{ "audio/wav", "Waveform Audio Format", ".wav" };
+constexpr MimeType WEBM_AUDIO{ "audio/webm", "WEBM audio", ".weba" };
 
 /* image MIME types */
-static const MimeType BMP{ "image/bmp", "Windows OS/2 Bitmap Graphics", ".bmp" };
-static const MimeType GIF{ "image/gif", "Graphics Interchange Format (GIF)", ".gif" };
-static const MimeType ICO{ "image/vnd.microsoft.icon", "Icon format", ".ico" };
-static const MimeType JPEG{ "image/jpeg", "JPEG images", ".jpg", ".jpeg" };
-static const MimeType PNG{ "image/png", "Portable Network Graphics", ".png" };
-static const MimeType APNG{ "image/apng", "Portable Network Graphics", ".apng" }; // disabled ambiguous '.png' extension
-static const MimeType SVG{ "image/svg+xml", "Scalable Vector Graphics (SVG)", ".svg" };
-static const MimeType TIFF{ "image/tiff", "Tagged Image File Format (TIFF)", ".tif", ".tiff" };
-static const MimeType WEBP{ "image/webp", "WEBP image", ".webp" };
+constexpr MimeType BMP{ "image/bmp", "Windows OS/2 Bitmap Graphics", ".bmp" };
+constexpr MimeType GIF{ "image/gif", "Graphics Interchange Format (GIF)", ".gif" };
+constexpr MimeType ICO{ "image/vnd.microsoft.icon", "Icon format", ".ico" };
+constexpr MimeType JPEG{ "image/jpeg", "JPEG images", ".jpg", ".jpeg" };
+constexpr MimeType PNG{ "image/png", "Portable Network Graphics", ".png" };
+constexpr MimeType APNG{ "image/apng", "Portable Network Graphics", ".apng" }; // disabled ambiguous '.png' extension
+constexpr MimeType SVG{ "image/svg+xml", "Scalable Vector Graphics (SVG)", ".svg" };
+constexpr MimeType TIFF{ "image/tiff", "Tagged Image File Format (TIFF)", ".tif", ".tiff" };
+constexpr MimeType WEBP{ "image/webp", "WEBP image", ".webp" };
 
 /* video MIME types */
-static const MimeType AVI{ "video/x-msvideo", "AVI: Audio Video Interleave", ".avi" };
-static const MimeType MP2T{ "video/mp2t", "MPEG transport stream", ".ts" };
-static const MimeType MPEG{ "video/mpeg", "MPEG Video", ".mpeg" };
-static const MimeType WEBM_VIDEO{ "video/webm", "WEBM video", ".webm" };
+constexpr MimeType AVI{ "video/x-msvideo", "AVI: Audio Video Interleave", ".avi" };
+constexpr MimeType MP2T{ "video/mp2t", "MPEG transport stream", ".ts" };
+constexpr MimeType MPEG{ "video/mpeg", "MPEG Video", ".mpeg" };
+constexpr MimeType WEBM_VIDEO{ "video/webm", "WEBM video", ".webm" };
 
 /* application-specific audio MIME types -- mostly binary-type formats */
-static const MimeType BINARY{ "application/octet-stream", "Any kind of binary data", ".bin" };
-static const MimeType CMWLIGHT{ "application/cmwlight", "proprietary CERN serialiser binary format", ".cmwlight" }; // deprecated: do not use for new projects
-// static const MimeType BZIP{"application/x-bzip", "BZip archive", ".bz"}; // affected by patent
-static const MimeType BZIP2{ "application/x-bzip2", "BZip2 archive", ".bz2" };
-static const MimeType DOC{ "application/msword", "Microsoft Word", ".doc" };
-static const MimeType DOCX{ "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "Microsoft Word (OpenXML)", ".docx" };
-static const MimeType GZIP{ "application/gzip", "GZip Compressed Archive", ".gz" };
-static const MimeType JAR{ "application/java-archive", "Java Archive (JAR)", ".jar" };
-static const MimeType ODP{ "application/vnd.oasis.opendocument.presentation", "OpenDocument presentation document", ".odp" };
-static const MimeType ODS{ "application/vnd.oasis.opendocument.spreadsheet", "OpenDocument spreadsheet document", ".ods" };
-static const MimeType ODT{ "application/vnd.oasis.opendocument.text", "OpenDocument text document", ".odt" };
-static const MimeType OGG{ "application/ogg", "OGG Audio/Video File", ".ogx", ".ogv", ".oga" };
-static const MimeType PDF{ "application/pdf", "Adobe Portable Document Format (PDF)", ".pdf" };
-static const MimeType PHP{ "application/x-httpd-php", "Hypertext Preprocessor (Personal Home Page)", ".php" };
-static const MimeType PPT{ "application/vnd.ms-powerpoint", "Microsoft PowerPoint", ".ppt" };
-static const MimeType PPTX{ "application/vnd.openxmlformats-officedocument.presentationml.presentation", "Microsoft PowerPoint (OpenXML)", ".pptx" };
-static const MimeType RAR{ "application/vnd.rar", "RAR archive", ".rar" };
-static const MimeType RTF{ "application/rtf", "Rich Text Format (RTF)", ".rtf" };
-static const MimeType TAR{ "application/x-tar", "Tape Archive (TAR)", ".tar" };
-static const MimeType VSD{ "application/vnd.visio", "Microsoft Visio", ".vsd" };
-static const MimeType XHTML{ "application/xhtml+xml", "XHTML", ".xhtml" };
-static const MimeType XLS{ "application/vnd.ms-excel", "Microsoft Excel", ".xls" };
-static const MimeType XLSX{ "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Microsoft Excel (OpenXML)", ".xlsx" };
-static const MimeType ZIP{ "application/zip", "ZIP archive", ".zip" };
+constexpr MimeType BINARY{ "application/octet-stream", "Any kind of binary data", ".bin" };
+constexpr MimeType CMWLIGHT{ "application/cmwlight", "proprietary CERN serialiser binary format", ".cmwlight" }; // deprecated: do not use for new projects
+// constexpr MimeType BZIP{"application/x-bzip", "BZip archive", ".bz"}; // affected by patent
+constexpr MimeType BZIP2{ "application/x-bzip2", "BZip2 archive", ".bz2" };
+constexpr MimeType DOC{ "application/msword", "Microsoft Word", ".doc" };
+constexpr MimeType DOCX{ "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "Microsoft Word (OpenXML)", ".docx" };
+constexpr MimeType GZIP{ "application/gzip", "GZip Compressed Archive", ".gz" };
+constexpr MimeType JAR{ "application/java-archive", "Java Archive (JAR)", ".jar" };
+constexpr MimeType ODP{ "application/vnd.oasis.opendocument.presentation", "OpenDocument presentation document", ".odp" };
+constexpr MimeType ODS{ "application/vnd.oasis.opendocument.spreadsheet", "OpenDocument spreadsheet document", ".ods" };
+constexpr MimeType ODT{ "application/vnd.oasis.opendocument.text", "OpenDocument text document", ".odt" };
+constexpr MimeType OGG{ "application/ogg", "OGG Audio/Video File", ".ogx", ".ogv", ".oga" };
+constexpr MimeType PDF{ "application/pdf", "Adobe Portable Document Format (PDF)", ".pdf" };
+constexpr MimeType PHP{ "application/x-httpd-php", "Hypertext Preprocessor (Personal Home Page)", ".php" };
+constexpr MimeType PPT{ "application/vnd.ms-powerpoint", "Microsoft PowerPoint", ".ppt" };
+constexpr MimeType PPTX{ "application/vnd.openxmlformats-officedocument.presentationml.presentation", "Microsoft PowerPoint (OpenXML)", ".pptx" };
+constexpr MimeType RAR{ "application/vnd.rar", "RAR archive", ".rar" };
+constexpr MimeType RTF{ "application/rtf", "Rich Text Format (RTF)", ".rtf" };
+constexpr MimeType TAR{ "application/x-tar", "Tape Archive (TAR)", ".tar" };
+constexpr MimeType VSD{ "application/vnd.visio", "Microsoft Visio", ".vsd" };
+constexpr MimeType XHTML{ "application/xhtml+xml", "XHTML", ".xhtml" };
+constexpr MimeType XLS{ "application/vnd.ms-excel", "Microsoft Excel", ".xls" };
+constexpr MimeType XLSX{ "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Microsoft Excel (OpenXML)", ".xlsx" };
+constexpr MimeType ZIP{ "application/zip", "ZIP archive", ".zip" };
 /* fall-back */
-static const MimeType    UNKNOWN{ "unknown/unknown", "unknown data format" };
+constexpr MimeType   UNKNOWN{ "unknown/unknown", "unknown data format" };
 
-static inline std::array ALL{
+constexpr std::array ALL{
     // text MIME types
     CSS, CSV, EVENT_STREAM, HTML, ICS, JAVASCRIPT, JSON, JSON_LD, TEXT, XML, YAML,
     // audio MIME types
@@ -117,25 +118,52 @@ static inline std::array ALL{
     UNKNOWN
 };
 
+namespace detail {
+template<typename T, T Begin, class Func, T... Is>
+constexpr void static_for_impl(Func &&f, std::integer_sequence<T, Is...>) {
+    (f(std::integral_constant<T, Begin + Is>{}), ...);
+}
+
+template<typename T, T Begin, T End, class Func>
+constexpr void static_for(Func &&f) {
+    static_for_impl<T, Begin>(std::forward<Func>(f), std::make_integer_sequence<T, End - Begin>{});
+}
+
+constexpr char toLower(const char c) { return (c >= 'A' && c <= 'Z') ? c + ('a' - 'A') : c; } // N.B. needed because std::tolower isn't constexpr
+} // namespace detail
+
 /**
  * Case-insensitive mapping between MIME-type string and enumumeration value.
  *
  * @param mimeType the string equivalent mime-type, e.g. "image/png"
  * @return the enumeration equivalent first matching mime-type, e.g. MimeType.PNG or MimeType.UNKNOWN as fall-back
  */
-const static MimeType &getType(const std::string_view &mimeType) {
+constexpr const MimeType &getType(const std::string_view &mimeType) noexcept {
     if (mimeType.empty()) {
         return UNKNOWN;
     }
-    for (const MimeType &type : ALL) {
-        // N.B.mimeType may contain several MIME types, e.g "image/webp,image/apng,image/*"
-        constexpr auto lowerCaseCompare = [](char ch1, char ch2) noexcept { return std::tolower(ch1) == std::tolower(ch2); };
-        if (std::search(mimeType.begin(), mimeType.end(), type.typeName().begin(), type.typeName().end(), lowerCaseCompare) != mimeType.end()) {
-            return type;
-        }
+    if (std::is_constant_evaluated()) {
+        std::size_t    index            = SIZE_MAX;
+        constexpr auto lowerCaseCompare = [](const char ch1, const char ch2) constexpr noexcept->bool { return detail::toLower(ch1) == detail::toLower(ch2); };
+        detail::static_for<std::size_t, 0, ALL.size()>([&](auto i) {
+            constexpr auto type = std::get<i>(ALL);
+            if (std::search(mimeType.begin(), mimeType.end(), type.typeName().begin(), type.typeName().end(), lowerCaseCompare) != mimeType.end()) {
+                index = i;
+            }
+        });
+        return (index == SIZE_MAX) ? UNKNOWN : ALL[index];
     }
-    return UNKNOWN;
+
+        for (const MimeType &type : ALL) {
+            // N.B.mimeType may contain several MIME types, e.g "image/webp,image/apng,image/*"
+            constexpr auto lowerCaseCompare = [](const char ch1, const char ch2) noexcept -> bool { return detail::toLower(ch1) == detail::toLower(ch2); };
+            if (std::search(mimeType.begin(), mimeType.end(), type.typeName().begin(), type.typeName().end(), lowerCaseCompare) != mimeType.end()) {
+                return type;
+            }
+        }
+        return UNKNOWN;
 }
+static_assert(getType("text/plain") == TEXT);
 
 /**
  * Case-insensitive mapping between MIME-type string and enumeration value.
@@ -143,14 +171,29 @@ const static MimeType &getType(const std::string_view &mimeType) {
  * @param fileName the string equivalent mime-type, e.g. "image/png"
  * @return the enumeration equivalent mime-type, e.g. MimeType.PNG or MimeType.UNKNOWN as fall-back
  */
-const static MimeType &getTypeByFileName(const std::string_view &fileName) {
+constexpr const MimeType &getTypeByFileName(const std::string_view &fileName) {
     if (fileName.empty()) {
         return UNKNOWN;
     }
-    constexpr auto lowerCaseCompare = [](char ch1, char ch2) noexcept { return std::tolower(ch1) == std::tolower(ch2); };
-    constexpr auto ends_with        = [lowerCaseCompare](const std::string_view &value, const std::string_view &ending) {
+    constexpr auto ends_with = [](const std::string_view &value, const std::string_view &ending) constexpr noexcept {
+        constexpr auto lowerCaseCompare = [](char ch1, char ch2) constexpr noexcept { return detail::toLower(ch1) == detail::toLower(ch2); };
         return ending.size() <= value.size() ? std::equal(ending.rbegin(), ending.rend(), value.rbegin(), lowerCaseCompare) : false;
     };
+
+    if (std::is_constant_evaluated()) {
+        std::size_t index = SIZE_MAX;
+        detail::static_for<std::size_t, 0, ALL.size()>([&](auto i) {
+            constexpr auto extRange = std::get<i>(ALL).fileExtensions();
+            detail::static_for<std::size_t, 0, extRange.size()>([&](auto j) {
+                constexpr auto ext = extRange[j];
+                if (ends_with(fileName, ext)) {
+                    index = i;
+                }
+            });
+        });
+        return (index == SIZE_MAX) ? UNKNOWN : ALL[index];
+    }
+
     for (const MimeType &type : ALL) {
         for (const auto &ending : type.fileExtensions()) {
             if (ends_with(fileName, ending)) {
@@ -158,14 +201,30 @@ const static MimeType &getTypeByFileName(const std::string_view &fileName) {
             }
         }
     }
-
     return UNKNOWN;
 }
+static_assert(getTypeByFileName("TEST.TXT") == TEXT);
 
 } /* namespace opencmw::MIME */
 
 template<typename T>
 inline std::ostream &operator<<(std::ostream &os, const std::vector<T> &v) {
+    os << '[';
+    bool first = true;
+    for (auto t : v) {
+        if (first) {
+            os << t;
+            first = false;
+        } else {
+            os << ", ";
+            os << t;
+        }
+    }
+    return os << ']';
+}
+
+template<typename T>
+inline std::ostream &operator<<(std::ostream &os, const std::span<T> &v) {
     os << '[';
     bool first = true;
     for (auto t : v) {
