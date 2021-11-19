@@ -92,6 +92,7 @@ constexpr static END_MARKER   END_MARKER_INST;
 
 namespace opencmw {
 struct YaS : Protocol<"YaS"> {};
+struct Json : Protocol<"Json"> {}; // todo: move to more appropriate place, but has to be declared before usage
 
 namespace yas {
 static const int              VERSION_MAGIC_NUMBER = -1;    // '-1' since CmwLight cannot have a negative number of entries
@@ -264,46 +265,134 @@ struct IoSerialiser<YaS, END_MARKER> {
 
 template<SerialiserProtocol protocol, const bool writeMetaInfo, typename DataType>
 std::size_t putFieldHeader(IoBuffer &buffer, const char *fieldName, const int fieldNameSize, const DataType &data) {
-    using StrippedDataType         = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(data)))>;
-    constexpr int32_t dataTypeSize = static_cast<int32_t>(sizeof(StrippedDataType));
-    buffer.reserve_spare(((static_cast<uint64_t>(fieldNameSize) + 18) * sizeof(uint8_t)) + dataTypeSize);
+    if constexpr (std::is_same_v<protocol, opencmw::Json>) {
+        return putFieldHeaderJson(buffer, fieldName, fieldNameSize, data);
+    } else {
+        using StrippedDataType         = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(data)))>;
+        constexpr int32_t dataTypeSize = static_cast<int32_t>(sizeof(StrippedDataType));
+        buffer.reserve_spare(((static_cast<uint64_t>(fieldNameSize) + 18) * sizeof(uint8_t)) + dataTypeSize);
 
-    // -- offset 0 vs. field start
-    const std::size_t headerStart = buffer.size();
-    buffer.put(static_cast<uint8_t>(IoSerialiser<protocol, StrippedDataType>::getDataTypeId())); // data type ID
-    buffer.put(opencmw::hash(fieldName, fieldNameSize));                                         // unique hashCode identifier -- TODO: choose more performant implementation instead of java default
-    const std::size_t dataStartOffsetPosition = buffer.size();
-    buffer.put(-1); // dataStart offset
-    const int32_t     dataSize         = is_supported_number<DataType> ? dataTypeSize : -1;
-    const std::size_t dataSizePosition = buffer.size();
-    buffer.put(dataSize);                    // dataSize (N.B. 'headerStart' + 'dataStart + dataSize' == start of next field header
-    buffer.put<std::string_view>(fieldName); // full field name
+        // -- offset 0 vs. field start
+        const std::size_t headerStart = buffer.size();
+        buffer.put(static_cast<uint8_t>(IoSerialiser<protocol, StrippedDataType>::getDataTypeId())); // data type ID
+        buffer.put(opencmw::hash(fieldName, fieldNameSize));                                         // unique hashCode identifier -- TODO: choose more performant implementation instead of java default
+        const std::size_t dataStartOffsetPosition = buffer.size();
+        buffer.put(-1); // dataStart offset
+        const int32_t     dataSize         = is_supported_number<DataType> ? dataTypeSize : -1;
+        const std::size_t dataSizePosition = buffer.size();
+        buffer.put(dataSize);                    // dataSize (N.B. 'headerStart' + 'dataStart + dataSize' == start of next field header
+        buffer.put<std::string_view>(fieldName); // full field name
 
-    if constexpr (is_annotated<DataType>) {
-        if (writeMetaInfo) {
-            buffer.put(std::string_view(data.getUnit()));
-            buffer.put(std::string_view(data.getDescription()));
-            buffer.put(static_cast<uint8_t>(data.getModifier()));
-            // TODO: write group meta data
-            //final String[] groups = fieldDescription.getFieldGroups().toArray(new String[0]); // java uses non-array string
-            //buffer.putStringArray(groups, groups.length);
-            //buffer.put<std::string[]>({""});
+        if constexpr (is_annotated<DataType>) {
+            if (writeMetaInfo) {
+                buffer.put(std::string_view(data.getUnit()));
+                buffer.put(std::string_view(data.getDescription()));
+                buffer.put(static_cast<uint8_t>(data.getModifier()));
+                // TODO: write group meta data
+                // final String[] groups = fieldDescription.getFieldGroups().toArray(new String[0]); // java uses non-array string
+                // buffer.putStringArray(groups, groups.length);
+                // buffer.put<std::string[]>({""});
+            }
         }
+
+        const std::size_t dataStartPosition         = buffer.size();
+        const std::size_t dataStartOffset           = (dataStartPosition - headerStart);     // -- offset dataStart calculations
+        buffer.at<int32_t>(dataStartOffsetPosition) = static_cast<int32_t>(dataStartOffset); // write offset to dataStart
+
+        // from hereon there are data specific structures that are written to the IoBuffer
+        IoSerialiser<protocol, StrippedDataType>::serialise(buffer, fieldName, getAnnotatedMember(unwrapPointer(data)));
+
+        // add just data-end position
+        buffer.at<int32_t>(dataSizePosition) = static_cast<int32_t>(buffer.size() - dataStartPosition); // write data size
+
+        return dataSizePosition; // N.B. exported for adjusting START_MARKER -> END_MARKER data size to be adjustable and thus skippable
     }
-
-    const std::size_t dataStartPosition         = buffer.size();
-    const std::size_t dataStartOffset           = (dataStartPosition - headerStart);     // -- offset dataStart calculations
-    buffer.at<int32_t>(dataStartOffsetPosition) = static_cast<int32_t>(dataStartOffset); // write offset to dataStart
-
-    // from hereon there are data specific structures that are written to the IoBuffer
-    IoSerialiser<protocol, StrippedDataType>::serialise(buffer, fieldName, getAnnotatedMember(unwrapPointer(data)));
-
-    // add just data-end position
-    buffer.at<int32_t>(dataSizePosition) = static_cast<int32_t>(buffer.size() - dataStartPosition); // write data size
-
-    return dataSizePosition; // N.B. exported for adjusting START_MARKER -> END_MARKER data size to be adjustable and thus skippable
 }
 
+// abuse write meta info for pretty printing? or convert to enum?
+template<typename DataType>
+std::size_t putFieldHeaderJson(IoBuffer &buffer, const char *fieldName, const int fieldNameSize, const DataType &data) {
+    if constexpr (std::is_same_v<DataType, START_MARKER>) {
+        if (fieldNameSize > 0) {
+            buffer.putData(fieldName);
+            buffer.putData(":");
+        }
+        buffer.putData("{\n"); // use string put instead of other put // call serialise with the start marker instead?
+        return 0;
+    }
+    if constexpr (std::is_same_v<DataType, END_MARKER>) {
+        buffer.put('}');
+        return 0;
+    }
+    buffer.putData(std::basic_string_view(fieldName, static_cast<size_t>(fieldNameSize)));
+    buffer.put(':');
+    using StrippedDataType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(data)))>;
+    IoSerialiser<Json, StrippedDataType>::serialise(buffer, fieldName, getAnnotatedMember(unwrapPointer(data)));
+    buffer.putData(",\n");
+    return 0; // return value is irrelevant for Json
+}
+
+} // namespace opencmw
+
+/* #################################################################################### */
+/* ### Json Definitions ########################################################### */
+/* #################################################################################### */
+namespace opencmw {
+
+template<Number T>
+struct IoSerialiser<Json, T> { // catch all template
+    /*constexpr*/ static bool serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
+        // todo: constexpr not possible because of fmt
+        if constexpr (std::is_integral_v<T>) {
+            // buffer.putData(std::to_string(value));
+            buffer.putData(fmt::format("{}", value));
+        } else {
+            buffer.putData(fmt::format("{}", value));
+        }
+        return false;
+    }
+};
+template<StringLike T>
+struct IoSerialiser<Json, T> { // catch all template
+    constexpr static bool serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
+        buffer.put('"');
+        buffer.putData(value);
+        buffer.put('"');
+        return false;
+    }
+};
+
+template<ArrayOrVector T>
+struct IoSerialiser<Json, T> {
+    inline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); }
+    constexpr static bool           serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &values) noexcept {
+        using MemberType = typename T::value_type;
+        buffer.put('[');
+        for (auto value : values) {
+            // todo: use same formatting as for non array elements
+            IoSerialiser<Json, MemberType>::serialise(buffer, "", value);
+            buffer.putData(", ");
+        }
+        buffer.resize(buffer.size() - 2); // remove trailing comma
+        buffer.put(']');
+        return std::is_constant_evaluated();
+    }
+};
+
+template<MultiArrayType T>
+struct IoSerialiser<Json, T> {
+    constexpr static bool serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
+        buffer.putData("{\n");
+        std::array<int32_t, T::n_dims_> dims;
+        for (uint32_t i = 0U; i < T::n_dims_; i++) {
+            dims[i] = static_cast<int32_t>(value.dimensions()[i]);
+        }
+        putFieldHeaderJson(buffer, "dims", 4, dims);
+        putFieldHeaderJson(buffer, "values", 6, value.elements());
+        buffer.putData("}");
+        return std::is_constant_evaluated();
+    }
+};
 } // namespace opencmw
 
 /* #################################################################################### */
