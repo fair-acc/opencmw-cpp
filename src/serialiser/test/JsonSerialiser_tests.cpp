@@ -38,6 +38,23 @@ struct Data {
 // following is the visitor-pattern-macro that allows the compile-time reflections via refl-cpp
 ENABLE_REFLECTION_FOR(Data, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, constStringValue, doubleArray, floatVector, doubleMatrix, nested)
 
+TEST_CASE("JsonDeserialisation", "[IoClassSerialiser]") {
+    opencmw::debug::resetStats();
+    std::cerr << "starting json_deserialisation test\n";
+    {
+        opencmw::IoBuffer buffer;
+        auto              cars_json = R"({ "test":[ { "val1":1, "val2":2 }, { "val1":1, "val2":2 } ] })";
+        buffer.reserve_spare(strlen(cars_json));
+        std::memcpy(buffer.data(), cars_json, strlen(cars_json));
+        std::cerr << "Prepared json data\n";
+        Data foo;
+        auto result = opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::IGNORE>(buffer, foo);
+        std::cout << "deserialised\n";
+    }
+    REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
+    opencmw::debug::resetStats();
+}
+
 TEST_CASE("JsonSerialisation", "[IoClassSerialiser]") {
     opencmw::debug::resetStats();
     {

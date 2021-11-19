@@ -30,6 +30,7 @@ macro(run_conan)
             fmt/7.1.3
             mp-units/0.7.0
             zeromq/4.3.4
+            simdjson/1.0.2
             # refl-cpp/0.12.1 # could be used once there is a new release
             OPTIONS
             BASIC_SETUP

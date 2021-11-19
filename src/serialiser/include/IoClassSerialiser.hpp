@@ -1,6 +1,7 @@
 #ifndef OPENCMW_IOCLASSSERIALISER_H
 #define OPENCMW_IOCLASSSERIALISER_H
 #include "IoSerialiser.hpp"
+#include <simdjson.h>
 
 namespace opencmw {
 
@@ -123,12 +124,16 @@ int32_t findMemberIndex(const std::string_view fieldName) {
 
 template<SerialiserProtocol protocol, const ProtocolCheck protocolCheckVariant, ReflectableClass T>
 constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserInfo info = DeserialiserInfo()) {
-    // check data header for protocol version match
-    info = checkHeaderInfo<protocol, protocolCheckVariant>(buffer, info);
-    if (protocolCheckVariant == LENIENT && !info.exceptions.empty()) {
-        return info; // do not attempt to deserialise data with wrong header
+    if constexpr (std::is_same_v<protocol, opencmw::Json>) {
+        return deserialiseJson<protocolCheckVariant, T>(buffer, value, info);
+    } else {
+        // check data header for protocol version match
+        info = checkHeaderInfo<protocol, protocolCheckVariant>(buffer, info);
+        if (protocolCheckVariant == LENIENT && !info.exceptions.empty()) {
+            return info; // do not attempt to deserialise data with wrong header
+        }
+        return deserialise<protocol, protocolCheckVariant>(buffer, value, info, "root", 0);
     }
-    return deserialise<protocol, protocolCheckVariant>(buffer, value, info, "root", 0);
 }
 
 template<SerialiserProtocol protocol, const ProtocolCheck protocolCheckVariant, ReflectableClass T>
@@ -363,6 +368,96 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
         info.exceptions.emplace_back(ProtocolException(exception));
         return info;
     }
+
+    return info;
+}
+
+template<const ProtocolCheck protocolCheckVariant, ReflectableClass T>
+constexpr DeserialiserInfo deserialiseJson(IoBuffer &buffer, T &value, DeserialiserInfo info) {
+    std::cerr << "deserialising into: " << typeid(decltype(value)).name() << std::endl;
+    simdjson::ondemand::parser parser;                // todo: only allocate parser once
+    buffer.reserve_spare(simdjson::SIMDJSON_PADDING); // simdjson needs some scratch space after the data to work efficiently
+    std::cerr << "data in buffer: " << buffer.data() << std::endl;
+    auto                         cars_json = R"({ "test":[ { "val1":1, "val2":2 }, { "val1":1, "val2":2 } ] })"_padded;
+    simdjson::ondemand::document doc       = parser.iterate(cars_json);
+    //simdjson::ondemand::document doc = parser.iterate(buffer.data(), buffer.size(), buffer.capacity());
+    std::cerr << "set up simdjson\n";
+    std::cerr << "simdjson::to_json_string: " << simdjson::to_json_string(doc) << std::endl;
+    std::cerr << "test: " << simdjson::to_json_string(doc["test"].get_array().at(0)) << std::endl;
+
+    for (simdjson::ondemand::field field : doc.get_object()) {
+        std::cerr << "field: " << field.unescaped_key() << "=" << simdjson::to_json_string(field.value()) << std::endl;
+    }
+
+    ////const auto        hashFieldName     =
+    //buffer.get<int32_t>(); // hashed field name -> future: faster look-up/matching of fields
+    //const auto        dataStartOffset   = static_cast<uint64_t>(buffer.get<int32_t>());
+    //const auto        dataSize          = static_cast<uint64_t>(buffer.get<int32_t>());
+    //const str_view    fieldName         = buffer.get<std::string_view>(); // full field name
+    //const std::size_t dataStartPosition = headerStart + dataStartOffset;
+    //const std::size_t dataEndPosition   = headerStart + dataStartOffset + dataSize;
+    //// the following information is optional
+    //// e.g. could skip to 'headerStart + dataStartOffset' and start reading the data, or
+    //// e.g. could skip to 'headerStart + dataStartOffset + dataSize' and start reading the next field header
+
+    //constexpr bool ignoreChecks = protocolCheckVariant == IGNORE;
+    //const str_view unit         = ignoreChecks || (buffer.position() == dataStartPosition) ? "" : buffer.get<str_view>();
+    //const str_view description  = ignoreChecks || (buffer.position() == dataStartPosition) ? "" : buffer.get<str_view>();
+    ////ignoreChecks || (buffer.position() == dataStartPosition) ? "" : buffer.get<str_view>();
+    //const ExternalModifier modifier = ignoreChecks || (buffer.position() == dataStartPosition) ? RW : get_ext_modifier(buffer.get<uint8_t>());
+    //// std::cout << fmt::format("parsed field {:<20} meta data: [{}] {} dir: {}\n", fieldName, unit, description, modifier);
+
+    //// skip to data start
+    //buffer.set_position(dataStartPosition);
+
+    //auto searchIndex = 0; // todo: use correct index
+
+#pragma clang diagnostic push
+#pragma ide diagnostic   ignored "readability-function-cognitive-complexity"
+    //for_each(refl::reflect<T>().members, [&buffer, &value, &info, &intDataType, &fieldName, &description, &modifier, &searchIndex, &unit, &structName](auto member, int32_t index) {
+    //    using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
+
+    //    if constexpr (!isReflectableClass<MemberType>() && is_writable(member) && !is_static(member)) {
+    //        if (index != searchIndex) {
+    //            return; // fieldName does not match -- skip to next field
+    //        }
+    //        constexpr int requestedType = IoSerialiser<Json, MemberType>::getDataTypeId();
+    //        if (requestedType != intDataType) {
+    //            // mismatching data-type
+    //            if constexpr (protocolCheckVariant == IGNORE) {
+    //                return; // don't write -> skip to next
+    //            }
+    //            const auto error = fmt::format("mismatched field type for {}::{} - requested type: {} (typeID: {}) got: {}", member.declarator.name, member.name, typeName<MemberType>, requestedType, intDataType);
+    //            if constexpr (protocolCheckVariant == ALWAYS) {
+    //                throw ProtocolException(error);
+    //            }
+    //            info.exceptions.emplace_back(ProtocolException(error));
+    //            return;
+    //        }
+
+    //        IoSerialiser<Json, MemberType>::deserialise(buffer, fieldName, getAnnotatedMember(unwrapPointerCreateIfAbsent(member(value))));
+    //        if constexpr (protocolCheckVariant != IGNORE) {
+    //            info.setFields[structName][static_cast<uint64_t>(index)] = true;
+    //        }
+    //});
+#pragma clang diagnostic pop
+    // skip to data end
+    //buffer.set_position(dataEndPosition);
+    // }
+    // if (hierarchyDepth == 0 && buffer.position() != buffer.size()) {
+    //     if constexpr (protocolCheckVariant == IGNORE) {
+    //         return info;
+    //     }
+    //     std::cerr << "serialise class type " << typeName<T> << " hierarchyDepth = " << static_cast<int>(hierarchyDepth) << '\n';
+    //     const auto exception = fmt::format("protocol exception for class type {}({}): position {} vs. size {}",
+    //                                        typeName<T>, static_cast<int>(hierarchyDepth), buffer.position(), buffer.size());
+    //     if constexpr (protocolCheckVariant == ALWAYS) {
+    //         throw ProtocolException(exception);
+    //     }
+    //     std::cout << exception << std::endl; //TODO: replace std::cerr/cout by logger?
+    //     info.exceptions.emplace_back(ProtocolException(exception));
+    //     return info;
+    // }
 
     return info;
 }

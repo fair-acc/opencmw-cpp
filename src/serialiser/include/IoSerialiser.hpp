@@ -5,6 +5,7 @@
 #include "MultiArray.hpp"
 #include <list>
 #include <map>
+#include <simdjson.h>
 #include <queue>
 
 #pragma clang diagnostic push
