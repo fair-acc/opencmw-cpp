@@ -154,14 +154,14 @@ constexpr const MimeType &getType(const std::string_view &mimeType) noexcept {
         return (index == SIZE_MAX) ? UNKNOWN : ALL[index];
     }
 
-        for (const MimeType &type : ALL) {
-            // N.B.mimeType may contain several MIME types, e.g "image/webp,image/apng,image/*"
-            constexpr auto lowerCaseCompare = [](const char ch1, const char ch2) noexcept -> bool { return detail::toLower(ch1) == detail::toLower(ch2); };
-            if (std::search(mimeType.begin(), mimeType.end(), type.typeName().begin(), type.typeName().end(), lowerCaseCompare) != mimeType.end()) {
-                return type;
-            }
+    for (const MimeType &type : ALL) {
+        // N.B.mimeType may contain several MIME types, e.g "image/webp,image/apng,image/*"
+        constexpr auto lowerCaseCompare = [](const char ch1, const char ch2) noexcept -> bool { return detail::toLower(ch1) == detail::toLower(ch2); };
+        if (std::search(mimeType.begin(), mimeType.end(), type.typeName().begin(), type.typeName().end(), lowerCaseCompare) != mimeType.end()) {
+            return type;
         }
-        return UNKNOWN;
+    }
+    return UNKNOWN;
 }
 static_assert(getType("text/plain") == TEXT);
 
