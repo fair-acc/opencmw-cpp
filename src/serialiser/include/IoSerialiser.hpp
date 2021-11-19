@@ -47,6 +47,12 @@ concept SerialiserProtocol = requires { T::protocolName(); }; // TODO: find neat
 using ClassField           = std::string_view; // as a place-holder for the reflected type info
 
 /// generic protocol definition -> should throw exception when used in production code
+template<SerialiserProtocol protocol>
+inline void updateSize(IoBuffer &/*buffer*/, const size_t /*posSizePositionStart*/, const size_t /*posStartDataStart*/) { }
+
+template<SerialiserProtocol protocol>
+inline void putHeaderInfo(IoBuffer &/*buffer*/) { }
+
 template<SerialiserProtocol protocol, typename T>
 struct IoSerialiser {
     constexpr static uint8_t getDataTypeId() { return 0xFF; } // default value
@@ -347,29 +353,22 @@ std::size_t putFieldHeader(IoBuffer &buffer, const char *fieldName, const int fi
     }
 }
 
-// abuse write meta info for pretty printing? or convert to enum?
-template<typename DataType>
-std::size_t putFieldHeaderJson(IoBuffer &buffer, const char *fieldName, const int fieldNameSize, const DataType &data) {
-    if constexpr (std::is_same_v<DataType, START_MARKER>) {
-        if (fieldNameSize > 0) {
-            buffer.putData(fieldName);
-            buffer.putData(":");
-        }
-        buffer.putData("{\n"); // use string put instead of other put // call serialise with the start marker instead?
-        return 0;
-    }
-    if constexpr (std::is_same_v<DataType, END_MARKER>) {
-        buffer.put('}');
-        return 0;
-    }
-    buffer.putData(std::basic_string_view(fieldName, static_cast<size_t>(fieldNameSize)));
-    buffer.put(':');
-    using StrippedDataType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(data)))>;
-    IoSerialiser<Json, StrippedDataType>::serialise(buffer, fieldName, getAnnotatedMember(unwrapPointer(data)));
-    buffer.putData(",\n");
-    return 0; // return value is irrelevant for Json
+template<>
+inline void updateSize<YaS>(IoBuffer &buffer, const size_t posSizePositionStart, const size_t posStartDataStart) {
+    buffer.at<int32_t>(posSizePositionStart) = static_cast<int32_t>(buffer.size() - posStartDataStart); // write data size
 }
 
+template<>
+inline void putHeaderInfo<YaS>(IoBuffer &buffer) {
+    buffer.reserve_spare(2 * sizeof(int) + 7); // magic int + string length int + 4 byte 'YAS\0` string + 3 version bytes
+    buffer.put(yas::VERSION_MAGIC_NUMBER);
+    buffer.put(yas::PROTOCOL_NAME);
+    buffer.put(yas::VERSION_MAJOR);
+    buffer.put(yas::VERSION_MINOR);
+    buffer.put(yas::VERSION_MICRO);
+}
+
+// abuse write meta info for pretty printing? or convert to enum?
 } // namespace opencmw
 
 /* #################################################################################### */
@@ -431,6 +430,29 @@ struct IoSerialiser<Json, T> {
         return std::is_constant_evaluated();
     }
 };
+
+template<typename DataType>
+std::size_t putFieldHeaderJson(IoBuffer &buffer, const char *fieldName, const int fieldNameSize, const DataType &data) {
+    if constexpr (std::is_same_v<DataType, START_MARKER>) {
+        if (fieldNameSize > 0) {
+            buffer.putData(fieldName);
+            buffer.putData(":");
+        }
+        buffer.putData("{\n"); // use string put instead of other put // call serialise with the start marker instead?
+        return 0;
+    }
+    if constexpr (std::is_same_v<DataType, END_MARKER>) {
+        buffer.put('}');
+        return 0;
+    }
+    buffer.putData(std::basic_string_view(fieldName, static_cast<size_t>(fieldNameSize)));
+    buffer.put(':');
+    using StrippedDataType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(data)))>;
+    IoSerialiser<Json, StrippedDataType>::serialise(buffer, fieldName, getAnnotatedMember(unwrapPointer(data)));
+    buffer.putData(",\n");
+    return 0; // return value is irrelevant for Json
+}
+
 } // namespace opencmw
 
 /* #################################################################################### */

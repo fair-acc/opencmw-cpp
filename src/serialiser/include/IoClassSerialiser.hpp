@@ -11,18 +11,6 @@ enum ProtocolCheck {
     ALWAYS   // via ProtocolException
 };
 
-template<SerialiserProtocol protocol>
-constexpr void putHeaderInfo(IoBuffer &buffer) {
-    if constexpr (std::is_same_v<protocol, YaS>) {
-        buffer.reserve_spare(2 * sizeof(int) + 7); // magic int + string length int + 4 byte 'YAS\0` string + 3 version bytes
-        buffer.put(yas::VERSION_MAGIC_NUMBER);
-        buffer.put(yas::PROTOCOL_NAME);
-        buffer.put(yas::VERSION_MAJOR);
-        buffer.put(yas::VERSION_MINOR);
-        buffer.put(yas::VERSION_MICRO);
-    }
-}
-
 template<SerialiserProtocol protocol, const ProtocolCheck protocolCheckVariant>
 DeserialiserInfo checkHeaderInfo(IoBuffer &buffer, DeserialiserInfo info) {
     auto magic      = buffer.get<int>();
@@ -66,9 +54,7 @@ constexpr void serialise(IoBuffer &buffer, const T &value) {
     std::size_t                     posStartDataStart    = buffer.size();
     serialise<protocol, writeMetaInfo>(buffer, value, 0);
     opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, type_name, reflectionData.name.size, END_MARKER_INST);
-    if constexpr (!std::is_same_v<protocol, Json>) {                                                        // do not rewrite length for json
-        buffer.at<int32_t>(posSizePositionStart) = static_cast<int32_t>(buffer.size() - posStartDataStart); // write data size
-    }
+    updateSize<protocol>(buffer, posSizePositionStart, posStartDataStart);
 }
 
 template<SerialiserProtocol protocol, const bool writeMetaInfo = true, ReflectableClass T>
@@ -87,9 +73,7 @@ constexpr void serialise(IoBuffer &buffer, const T &value, const uint8_t hierarc
                 std::size_t posStartDataStart    = buffer.size();
                 serialise<protocol, writeMetaInfo>(buffer, getAnnotatedMember(unwrapPointer(member(value))), hierarchyDepth + 1); // do not inspect annotation itself
                 opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, member.name.c_str(), member.name.size, END_MARKER_INST);
-                if constexpr (!std::is_same_v<protocol, Json>) {                                                        // do not rewrite length for json
-                    buffer.at<int32_t>(posSizePositionStart) = static_cast<int32_t>(buffer.size() - posStartDataStart); // write data size
-                }
+                updateSize<protocol>(buffer, posSizePositionStart, posStartDataStart);
             } else { // primitive type
                 opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, member.name.c_str(), member.name.size, member(value));
             }
