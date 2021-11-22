@@ -48,10 +48,10 @@ using ClassField           = std::string_view; // as a place-holder for the refl
 
 /// generic protocol definition -> should throw exception when used in production code
 template<SerialiserProtocol protocol>
-inline void updateSize(IoBuffer &/*buffer*/, const size_t /*posSizePositionStart*/, const size_t /*posStartDataStart*/) { }
+inline void updateSize(IoBuffer & /*buffer*/, const size_t /*posSizePositionStart*/, const size_t /*posStartDataStart*/) {}
 
 template<SerialiserProtocol protocol>
-inline void putHeaderInfo(IoBuffer &/*buffer*/) { }
+inline void putHeaderInfo(IoBuffer & /*buffer*/) {}
 
 template<SerialiserProtocol protocol, typename T>
 struct IoSerialiser {
