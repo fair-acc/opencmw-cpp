@@ -18,6 +18,21 @@ struct FieldDescription {
     ExternalModifier modifier;
 };
 
+/**
+ * Helper function which handles an error depending on the selected type of error handling
+ * @tparam protocolCheckVariant Type of error handling
+ * @param info object which will be updated with error information
+ * @param formatString the format string for the error message
+ * @param arguments arguments for use in the format string
+ */
+inline constexpr void handleError(const ProtocolCheck protocolCheckVariant, DeserialiserInfo &info, const char *formatString, const auto &...arguments) {
+    const auto text = fmt::format(formatString, arguments...);
+    if (protocolCheckVariant == ALWAYS) {
+        throw ProtocolException(text);
+    }
+    info.exceptions.emplace_back(ProtocolException(text));
+}
+
 template<ReflectableClass T>
 std::unordered_map<std::string_view, int32_t> createMemberMap() {
     std::unordered_map<std::string_view, int32_t> m;
@@ -125,6 +140,98 @@ inline FieldDescription readFieldHeader<YaS>(IoBuffer &buffer, DeserialiserInfo 
     //ignoreChecks || (buffer.position() == dataStartPosition) ? "" : buffer.get<str_view>();
     result.modifier = ignoreChecks || (buffer.position() == result.dataStartPosition) ? RW : get_ext_modifier(buffer.get<uint8_t>());
     // std::cout << fmt::format("parsed field {:<20} meta data: [{}] {} dir: {}\n", fieldName, unit, description, modifier);
+    return result;
+}
+
+/**
+ * Read a json string from a buffer.
+ * @param buffer An IoBuffer with the position at the start of a JSON string.
+ * @return a string view of the string starting at the buffer position
+ */
+inline std::string_view readJsonString(IoBuffer &buffer) {
+    buffer.set_position(buffer.position() + 1); // skip leading quote
+    auto start = buffer.position();
+    while (buffer.get<uint8_t>() != '"') {
+        if (buffer.at<uint8_t>(buffer.position() - 1) == '\\') { // escape sequence detected
+            switch (buffer.get<uint8_t>()) {
+            case '"':
+            case '\\':
+            case '/':
+            case 'b':
+            case 'f':
+            case 'n':
+            case 'r':
+            case 't':
+                buffer.set_position(buffer.position() + 1); // skip escaped char
+                break;
+            case 'u':
+                buffer.set_position(buffer.position() + 5); // skip escaped unicode char
+                break;
+            default:
+                throw ProtocolException(fmt::format("illegal escape character: \\{}", buffer.at<uint8_t>(buffer.position() - 1)));
+                // todo: lenient handling methods
+            }
+            // todo: correctly treat escape sequences instead of just skipping (breaks string_view usage)
+        }
+    }
+    auto end = buffer.position() - 1;
+    return { reinterpret_cast<char *>(buffer.data() + start), end - start };
+}
+
+/**
+ * @param c the character to test
+ * @return true if the character is a whitespace character as specified by the json specification
+ */
+inline bool isJsonWhitespace(char8_t &c) {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+}
+
+/**
+ * Consume whitespace as defined by the JSON specification.
+ * After calling this function the position of the passed buffer will point to the first non-whitespace character at/after the initial position.
+ * @param buffer
+ */
+inline void consumeJsonWhitespace(IoBuffer &buffer) {
+    while (isJsonWhitespace(buffer.at<char8_t>(buffer.position()))) {
+        buffer.set_position(buffer.position() + 1);
+    }
+}
+
+template<>
+inline FieldDescription readFieldHeader<Json>(IoBuffer &buffer, DeserialiserInfo &info, const ProtocolCheck protocolCheckVariant) {
+    FieldDescription result;
+    result.headerStart = buffer.position();
+    consumeJsonWhitespace(buffer);
+    if (buffer.at<char8_t>(buffer.position()) == '{') { // start marker
+        result.intDataType = yas::getDataTypeId<START_MARKER>();
+        // set rest of fields
+        return result;
+    }
+    if (buffer.at<char8_t>(buffer.position()) == '}') { // end marker
+        result.intDataType = yas::getDataTypeId<END_MARKER>();
+        // set rest of fields
+        return result;
+    }
+    if (buffer.at<char8_t>(buffer.position()) == '"') { // string
+        result.fieldName = readJsonString(buffer);
+        if (result.fieldName.size() == 0) {
+            handleError(protocolCheckVariant, info, "Cannot read field name for field at buffer position {}", buffer.position());
+        }
+        consumeJsonWhitespace(buffer);
+        if (buffer.get<int8_t>() != ':') {
+            std::cerr << "json malformed, no colon between key/value";
+            // exception
+        }
+        consumeJsonWhitespace(buffer);
+        // read value and set type ?
+        result.intDataType       = yas::getDataTypeId<OTHER>(); // value is ignored anyway
+        result.dataStartPosition = buffer.position();
+        result.dataStartOffset   = result.dataStartPosition - result.headerStart;
+        result.dataSize          = std::numeric_limits<size_t>::max(); // not defined for non-skipable data
+        result.dataEndPosition   = std::numeric_limits<size_t>::max(); // not defined for non-skipable data
+        // there is also no way to get unit, description and modifiers
+        return result;
+    }
     return result;
 }
 
