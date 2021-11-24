@@ -58,8 +58,8 @@ TEST_CASE("IoSerialiser basic syntax", "[IoSerialiser]") {
         REQUIRE(opencmw::is_annotated<decltype(data.value)> == true);
         std::cout << fmt::format("buffer size (before): {} bytes\n", buffer.size());
 
-        opencmw::FieldHeader<opencmw::YaS>::putFieldHeader(buffer, "fieldNameA", strlen("fieldNameA"), std::move(43.0), true);
-        opencmw::FieldHeader<opencmw::YaS>::putFieldHeader(buffer, "fieldNameB", strlen("fieldNameB"), data.value.value(), true);
+        opencmw::FieldHeader<opencmw::YaS>::putFieldHeader<true>(buffer, "fieldNameA", strlen("fieldNameA"), std::move(43.0));
+        opencmw::FieldHeader<opencmw::YaS>::putFieldHeader<true>(buffer, "fieldNameB", strlen("fieldNameB"), data.value.value());
         std::cout << fmt::format("buffer size (after): {} bytes\n", buffer.size());
     }
     REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred

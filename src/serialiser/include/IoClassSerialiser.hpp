@@ -72,10 +72,10 @@ constexpr void serialise(IoBuffer &buffer, const T &value) {
     putHeaderInfo<protocol>(buffer);
     const refl::type_descriptor<T> &reflectionData       = refl::reflect(value);
     const auto                      type_name            = reflectionData.name.c_str();
-    std::size_t                     posSizePositionStart = FieldHeader<protocol>::putFieldHeader(buffer, type_name, reflectionData.name.size, START_MARKER_INST, writeMetaInfo);
+    std::size_t                     posSizePositionStart = FieldHeader<protocol>::template putFieldHeader<writeMetaInfo>(buffer, type_name, reflectionData.name.size, START_MARKER_INST);
     std::size_t                     posStartDataStart    = buffer.size();
     serialise<protocol, writeMetaInfo>(buffer, value, 0);
-    FieldHeader<protocol>::putFieldHeader(buffer, type_name, reflectionData.name.size, END_MARKER_INST, writeMetaInfo);
+    FieldHeader<protocol>::template putFieldHeader<writeMetaInfo>(buffer, type_name, reflectionData.name.size, END_MARKER_INST);
     updateSize<protocol>(buffer, posSizePositionStart, posStartDataStart);
 }
 
@@ -101,13 +101,13 @@ constexpr void serialise(IoBuffer &buffer, const T &value, const uint8_t hierarc
                 }
             }
             if constexpr (isReflectableClass<MemberType>()) { // nested data-structure
-                std::size_t posSizePositionStart = FieldHeader<protocol>::putFieldHeader(buffer, member.name.c_str(), member.name.size, START_MARKER_INST, writeMetaInfo);
+                std::size_t posSizePositionStart = FieldHeader<protocol>::template putFieldHeader<writeMetaInfo>(buffer, member.name.c_str(), member.name.size, START_MARKER_INST);
                 std::size_t posStartDataStart    = buffer.size();
                 serialise<protocol, writeMetaInfo>(buffer, getAnnotatedMember(unwrapPointer(member(value))), hierarchyDepth + 1); // do not inspect annotation itself
-                FieldHeader<protocol>::putFieldHeader(buffer, member.name.c_str(), member.name.size, END_MARKER_INST, writeMetaInfo);
+                FieldHeader<protocol>::template putFieldHeader<writeMetaInfo>(buffer, member.name.c_str(), member.name.size, END_MARKER_INST);
                 updateSize<protocol>(buffer, posSizePositionStart, posStartDataStart);
             } else { // primitive type
-                FieldHeader<protocol>::putFieldHeader(buffer, member.name.c_str(), member.name.size, member(value), writeMetaInfo);
+                FieldHeader<protocol>::template putFieldHeader<writeMetaInfo>(buffer, member.name.c_str(), member.name.size, member(value));
             }
         }
     });
