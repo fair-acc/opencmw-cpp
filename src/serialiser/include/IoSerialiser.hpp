@@ -60,7 +60,8 @@ inline void putHeaderInfo(IoBuffer & /*buffer*/) {}
 
 template<SerialiserProtocol protocol>
 struct FieldHeader { // todo: remove struct and rename to putField
-    constexpr std::size_t static putFieldHeader(IoBuffer & /*buffer*/, const char * /*fieldName*/, const int /*fieldNameSize*/, const auto & /*data*/, const bool /*writeMetaInfo*/) { return 0; }
+    template<const bool writeMetaInfo, typename DataType>
+    constexpr std::size_t static putFieldHeader(IoBuffer & /*buffer*/, const char * /*fieldName*/, const int /*fieldNameSize*/, const DataType & /*data*/) { return 0; }
 };
 
 template<SerialiserProtocol protocol>
@@ -308,7 +309,8 @@ struct IoSerialiser<YaS, END_MARKER> {
 
 template<>
 struct FieldHeader<YaS> {
-    constexpr std::size_t static putFieldHeader(IoBuffer &buffer, const char *fieldName, const int fieldNameSize, const auto &data, const bool writeMetaInfo) { // todo fieldName -> string_view
+    template<const bool writeMetaInfo, typename DataType>
+    constexpr std::size_t static putFieldHeader(IoBuffer &buffer, const char *fieldName, const int fieldNameSize, const DataType &data) { // todo fieldName -> string_view
         using StrippedDataType         = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(data)))>;
         constexpr int32_t dataTypeSize = static_cast<int32_t>(sizeof(StrippedDataType));
         buffer.reserve_spare(((static_cast<uint64_t>(fieldNameSize) + 18) * sizeof(uint8_t)) + dataTypeSize);
@@ -324,7 +326,7 @@ struct FieldHeader<YaS> {
         buffer.put(dataSize);                    // dataSize (N.B. 'headerStart' + 'dataStart + dataSize' == start of next field header
         buffer.put<std::string_view>(fieldName); // full field name
 
-        if constexpr (is_annotated<decltype(data)> && writeMetaInfo) {
+        if constexpr (is_annotated<DataType> && writeMetaInfo) {
             //if (writeMetaInfo) {
             buffer.put(std::string_view(data.getUnit()));
             buffer.put(std::string_view(data.getDescription()));
@@ -413,8 +415,8 @@ namespace json {
 
 template<>
 struct FieldHeader<Json> {
-    constexpr std::size_t static putFieldHeader(IoBuffer &buffer, const char *fieldName, const int fieldNameSize, const auto &data, const bool /*writeMetaInfo*/) { // todo fieldName -> string_view
-        using DataType = decltype(data);
+    template<const bool writeMetaInfo, typename DataType>
+    constexpr std::size_t static putFieldHeader(IoBuffer &buffer, const char *fieldName, const int fieldNameSize, const DataType &data) { // todo fieldName -> string_view
         if constexpr (std::is_same_v<DataType, START_MARKER>) {
             if (fieldNameSize > 0) {
                 buffer.putRaw(fieldName);
@@ -572,8 +574,8 @@ struct IoSerialiser<Json, T> {
         for (uint32_t i = 0U; i < T::n_dims_; i++) {
             dims[i] = static_cast<int32_t>(value.dimensions()[i]);
         }
-        FieldHeader<Json>::putFieldHeader(buffer, "dims", 4, dims, false);
-        FieldHeader<Json>::putFieldHeader(buffer, "values", 6, value.elements(), false);
+        FieldHeader<Json>::template putFieldHeader<false>(buffer, "dims", 4, dims);
+        FieldHeader<Json>::template putFieldHeader<false>(buffer, "values", 6, value.elements());
         buffer.putRaw("}");
         return std::is_constant_evaluated();
     }
