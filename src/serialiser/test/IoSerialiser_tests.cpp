@@ -42,9 +42,6 @@ TEST_CASE("IoSerialiser syntax", "[IoSerialiser]") {
 
         opencmw::IoBuffer buffer;
         Data              data;
-
-        std::cout << "YaS      constexpr: " << opencmw::serialisePartial<opencmw::YaS>(buffer, data) << '\n';
-        std::cout << "CmwLight constexpr: " << opencmw::serialisePartial<opencmw::CmwLight>(buffer, data) << '\n';
     }
     REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
     opencmw::debug::resetStats();
@@ -58,7 +55,6 @@ TEST_CASE("IoSerialiser basic syntax", "[IoSerialiser]") {
         opencmw::IoBuffer     buffer;
         Data                  data(42);
 
-        std::cout << "YaS      constexpr: " << opencmw::serialisePartial<opencmw::YaS>(buffer, data) << '\n';
         REQUIRE(opencmw::is_annotated<decltype(data.value)> == true);
         std::cout << fmt::format("buffer size (before): {} bytes\n", buffer.size());
 
