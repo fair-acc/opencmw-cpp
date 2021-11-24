@@ -91,7 +91,44 @@ struct IoSerialiser {
 /* ### Yet-Another-Serialiser - YaS Definitions ####################################### */
 /* #################################################################################### */
 struct START_MARKER {};
+template<>
+struct fmt::formatter<START_MARKER> {
+    template<typename ParseContext>
+    constexpr auto parse(ParseContext &ctx) {
+        auto it = ctx.begin(), end = ctx.end();
+        // Check if reached the end of the range:
+        if (it != end && *it != '}')
+            throw format_error("invalid format");
+        // Return an iterator past the end of the parsed range:
+        return it;
+    }
+
+    template<typename FormatContext>
+    auto format(START_MARKER const &startMarker, FormatContext &ctx) {
+        std::ignore = startMarker;
+        return fmt::format_to(ctx.out(), "START_MARKER\n");
+    }
+};
+
 struct END_MARKER {};
+template<>
+struct fmt::formatter<END_MARKER> {
+    template<typename ParseContext>
+    constexpr auto parse(ParseContext &ctx) {
+        auto it = ctx.begin(), end = ctx.end();
+        // Check if reached the end of the range:
+        if (it != end && *it != '}')
+            throw format_error("invalid format");
+        // Return an iterator past the end of the parsed range:
+        return it;
+    }
+    template<typename FormatContext>
+    auto format(END_MARKER const &endMarker, FormatContext &ctx) {
+        std::ignore = endMarker;
+        return fmt::format_to(ctx.out(), "END_MARKER\n");
+    }
+};
+
 struct OTHER {};
 
 constexpr static START_MARKER START_MARKER_INST;
