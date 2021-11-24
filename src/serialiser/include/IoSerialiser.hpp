@@ -65,19 +65,6 @@ struct IoSerialiser {
     }
 };
 
-template<SerialiserProtocol protocol, typename T>
-bool serialisePartial(IoBuffer &buffer, const T & /*obj*/) noexcept {
-    bool state = false;
-    // TODO: The check below is always true
-    if (std::is_constant_evaluated() || true) {
-        state |= IoSerialiser<protocol, int>::serialise(buffer, "intField", 2);
-        state |= IoSerialiser<protocol, double>::serialise(buffer, "doubleField", 2.3);
-        state |= IoSerialiser<protocol, short>::serialise(buffer, "shortField", 3);
-        state |= IoSerialiser<protocol, std::string_view>::serialise(buffer, "stringField", "Hello World!");
-    }
-    return state;
-}
-
 } // namespace opencmw
 
 /* #################################################################################### */
