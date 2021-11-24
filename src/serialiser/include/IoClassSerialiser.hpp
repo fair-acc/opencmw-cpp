@@ -4,68 +4,76 @@
 
 namespace opencmw {
 
-enum ProtocolCheck {
-    IGNORE,  // null return type
-    LENIENT, // via return type
-    ALWAYS   // via ProtocolException
+struct FieldDescription {
+    uint64_t         headerStart;
+    uint8_t          intDataType;
+    uint64_t         hash;
+    uint64_t         dataStartOffset;
+    uint64_t         dataSize;
+    std::string_view fieldName;
+    std::size_t      dataStartPosition;
+    std::size_t      dataEndPosition;
+    std::string_view unit;
+    std::string_view description;
+    ExternalModifier modifier;
 };
 
-template<SerialiserProtocol protocol>
-constexpr void putHeaderInfo(IoBuffer &buffer) {
-    buffer.reserve_spare(2 * sizeof(int) + 7); // magic int + string length int + 4 byte 'YAS\0` string + 3 version bytes
-    buffer.put(yas::VERSION_MAGIC_NUMBER);
-    buffer.put(yas::PROTOCOL_NAME);
-    buffer.put(yas::VERSION_MAJOR);
-    buffer.put(yas::VERSION_MINOR);
-    buffer.put(yas::VERSION_MICRO);
+template<ReflectableClass T>
+std::unordered_map<std::string_view, int32_t> createMemberMap() {
+    std::unordered_map<std::string_view, int32_t> m;
+    refl::util::for_each(refl::reflect<T>().members, [&m](auto field, auto index) {
+        m.insert({ field.name.c_str(), index });
+    });
+    return m;
 }
 
-template<SerialiserProtocol protocol, const ProtocolCheck protocolCheckVariant>
-DeserialiserInfo checkHeaderInfo(IoBuffer &buffer, DeserialiserInfo info) {
-    auto magic      = buffer.get<int>();
-    auto proto_name = buffer.get<std::string>();
-    auto ver_major  = buffer.get<int8_t>();
-    auto ver_minor  = buffer.get<int8_t>();
-    auto ver_micro  = buffer.get<int8_t>();
-    if (yas::VERSION_MAGIC_NUMBER != magic) {
-        if (protocolCheckVariant == LENIENT) {
-            info.exceptions.template emplace_back(ProtocolException(fmt::format("Wrong serialiser magic number: {} != -1", magic)));
-        }
-        if (protocolCheckVariant == ALWAYS) {
-            throw ProtocolException(fmt::format("Wrong serialiser magic number: {} != -1", magic));
-        }
-    }
-    if (yas::PROTOCOL_NAME != proto_name) {
-        if (protocolCheckVariant == LENIENT) {
-            info.exceptions.template emplace_back(ProtocolException(fmt::format("Wrong serialiser identification string: {} != YaS", proto_name)));
-        }
-        if (protocolCheckVariant == ALWAYS) {
-            throw ProtocolException(fmt::format("Wrong serialiser identification string: {} != YaS", proto_name));
-        }
-    }
-    if (yas::VERSION_MAJOR != ver_major) {
-        if (protocolCheckVariant == LENIENT) {
-            info.exceptions.template emplace_back(ProtocolException(fmt::format("Major versions do not match, received {}.{}.{}", ver_major, ver_minor, ver_micro)));
-        }
-        if (protocolCheckVariant == ALWAYS) {
-            throw ProtocolException(fmt::format("Major versions do not match, received {}.{}.{}", ver_major, ver_minor, ver_micro));
-        }
-    }
-    return info;
+template<ReflectableClass T>
+constexpr auto createMemberMap2() noexcept {
+    constexpr size_t                                        size = refl::reflect<T>().members.size;
+    constexpr ConstExprMap<std::string_view, int32_t, size> m    = { refl::util::map_to_array<std::pair<std::string_view, int32_t>>(refl::reflect<T>().members, [](auto field, auto index) {
+        return std::pair<std::string_view, int32_t>(field.name.c_str(), index);
+    }) };
+    return m;
 }
 
+template<ReflectableClass T>
+int32_t findMemberIndex(const std::string_view fieldName) {
+    //static const std::unordered_map<std::string_view, int32_t> m = createMemberMap<T>(); // TODO: consider replacing this by ConstExprMap (array list-based)
+    static constexpr auto m = createMemberMap2<T>(); //alt: array-based implementation
+    return m.at(fieldName);
+}
+
+/**
+ * Serialises an object into an IoBuffer
+ *
+ * @tparam protocol The serialisation Type to use: YaS, Json, Yaml, CMW...
+ * @tparam writeMetaInfo whether to write metadata(unit, description) if the chosen serialiser supports it
+ * @tparam T The type of the serialised object
+ * @param buffer An IoBuffer instance
+ * @param value The object to be serialised
+ */
 template<SerialiserProtocol protocol, const bool writeMetaInfo = true, ReflectableClass T>
 constexpr void serialise(IoBuffer &buffer, const T &value) {
     putHeaderInfo<protocol>(buffer);
     const refl::type_descriptor<T> &reflectionData       = refl::reflect(value);
     const auto                      type_name            = reflectionData.name.c_str();
-    std::size_t                     posSizePositionStart = opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, type_name, reflectionData.name.size, START_MARKER_INST);
+    std::size_t                     posSizePositionStart = FieldHeader<protocol>::putFieldHeader(buffer, type_name, reflectionData.name.size, START_MARKER_INST, writeMetaInfo);
     std::size_t                     posStartDataStart    = buffer.size();
     serialise<protocol, writeMetaInfo>(buffer, value, 0);
-    opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, type_name, reflectionData.name.size, END_MARKER_INST);
-    buffer.at<int32_t>(posSizePositionStart) = static_cast<int32_t>(buffer.size() - posStartDataStart); // write data size
+    FieldHeader<protocol>::putFieldHeader(buffer, type_name, reflectionData.name.size, END_MARKER_INST, writeMetaInfo);
+    updateSize<protocol>(buffer, posSizePositionStart, posStartDataStart);
 }
 
+/**
+ * Helper function which serialises a sub-object at a given hierarchy depth
+ *
+ * @tparam protocol The serialisation Type to use: YaS, Json, Yaml, CMW...
+ * @tparam writeMetaInfo whether to write metadata(unit, description) if the chosen serialiser supports it
+ * @tparam T The type of the serialised object
+ * @param buffer An IoBuffer instance
+ * @param value The object to be serialised
+ * @param hierarchyDepth The level of nesting, zero is the root object
+ */
 template<SerialiserProtocol protocol, const bool writeMetaInfo = true, ReflectableClass T>
 constexpr void serialise(IoBuffer &buffer, const T &value, const uint8_t hierarchyDepth) {
     for_each(refl::reflect(value).members, [&](const auto member, [[maybe_unused]] const auto index) {
@@ -78,47 +86,62 @@ constexpr void serialise(IoBuffer &buffer, const T &value, const uint8_t hierarc
                 }
             }
             if constexpr (isReflectableClass<MemberType>()) { // nested data-structure
-                std::size_t posSizePositionStart = opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, member.name.c_str(), member.name.size, START_MARKER_INST);
+                std::size_t posSizePositionStart = FieldHeader<protocol>::putFieldHeader(buffer, member.name.c_str(), member.name.size, START_MARKER_INST, writeMetaInfo);
                 std::size_t posStartDataStart    = buffer.size();
                 serialise<protocol, writeMetaInfo>(buffer, getAnnotatedMember(unwrapPointer(member(value))), hierarchyDepth + 1); // do not inspect annotation itself
-                opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, member.name.c_str(), member.name.size, END_MARKER_INST);
-                buffer.at<int32_t>(posSizePositionStart) = static_cast<int32_t>(buffer.size() - posStartDataStart); // write data size
-            } else {                                                                                                // primitive type
-                opencmw::putFieldHeader<protocol, writeMetaInfo>(buffer, member.name.c_str(), member.name.size, member(value));
+                FieldHeader<protocol>::putFieldHeader(buffer, member.name.c_str(), member.name.size, END_MARKER_INST, writeMetaInfo);
+                updateSize<protocol>(buffer, posSizePositionStart, posStartDataStart);
+            } else { // primitive type
+                FieldHeader<protocol>::putFieldHeader(buffer, member.name.c_str(), member.name.size, member(value), writeMetaInfo);
             }
         }
     });
 }
 
-template<typename T>
-std::unordered_map<std::string_view, int32_t> createMemberMap() {
-    std::unordered_map<std::string_view, int32_t> m;
-    refl::util::for_each(refl::reflect<T>().members, [&m](auto field, auto index) {
-        m.insert({ field.name.c_str(), index });
-    });
-    return m;
+template<SerialiserProtocol protocol>
+inline constexpr FieldDescription readFieldHeader(IoBuffer & /*buffer*/, DeserialiserInfo & /*info*/, const ProtocolCheck /*protocolCheckVariant*/) { return FieldDescription{}; }
+
+template<>
+inline FieldDescription readFieldHeader<YaS>(IoBuffer &buffer, DeserialiserInfo & /*info*/, const ProtocolCheck protocolCheckVariant) {
+    using str_view = std::string_view;
+
+    FieldDescription result;
+    result.headerStart = buffer.position();
+    result.intDataType = buffer.get<uint8_t>(); // data type ID
+    //const auto        hashFieldName     =
+    buffer.get<int32_t>(); // hashed field name -> future: faster look-up/matching of fields
+    result.dataStartOffset   = static_cast<uint64_t>(buffer.get<int32_t>());
+    result.dataSize          = static_cast<uint64_t>(buffer.get<int32_t>());
+    result.fieldName         = buffer.get<std::string_view>(); // full field name
+    result.dataStartPosition = result.headerStart + result.dataStartOffset;
+    result.dataEndPosition   = result.headerStart + result.dataStartOffset + result.dataSize;
+    // the following information is optional
+    // e.g. could skip to 'headerStart + dataStartOffset' and start reading the data, or
+    // e.g. could skip to 'headerStart + dataStartOffset + dataSize' and start reading the next field header
+
+    bool ignoreChecks  = protocolCheckVariant == IGNORE; // not constexpr because protocolCheckVariant is not NTTP
+    result.unit        = ignoreChecks || (buffer.position() == result.dataStartPosition) ? "" : buffer.get<str_view>();
+    result.description = ignoreChecks || (buffer.position() == result.dataStartPosition) ? "" : buffer.get<str_view>();
+    //ignoreChecks || (buffer.position() == dataStartPosition) ? "" : buffer.get<str_view>();
+    result.modifier = ignoreChecks || (buffer.position() == result.dataStartPosition) ? RW : get_ext_modifier(buffer.get<uint8_t>());
+    // std::cout << fmt::format("parsed field {:<20} meta data: [{}] {} dir: {}\n", fieldName, unit, description, modifier);
+    return result;
 }
 
-template<typename T>
-constexpr auto createMemberMap2() noexcept {
-    constexpr size_t                                        size = refl::reflect<T>().members.size;
-    constexpr ConstExprMap<std::string_view, int32_t, size> m    = { refl::util::map_to_array<std::pair<std::string_view, int32_t>>(refl::reflect<T>().members, [](auto field, auto index) {
-        return std::pair<std::string_view, int32_t>(field.name.c_str(), index);
-    }) };
-    return m;
-}
-
-template<typename T>
-int32_t findMemberIndex(const std::string_view fieldName) {
-    //static const std::unordered_map<std::string_view, int32_t> m = createMemberMap<T>(); // TODO: consider replacing this by ConstExprMap (array list-based)
-    static constexpr auto m = createMemberMap2<T>(); //alt: array-based implementation
-    return m.at(fieldName);
-}
-
+/**
+ * Deserialise the contents of an IoBuffer into a given object
+ * @tparam protocol The deserialisation Type to use: YaS, Json, Yaml, CMW...
+ * @tparam protocolCheckVariant determines the error and logging behaviour of the deserialiser
+ * @tparam T The type of the deserialised object
+ * @param buffer An IoBuffer instance
+ * @param value The object to be serialised
+ * @param info Object which will get populated with information about the deserialisation
+ * @return object containing info like read fields, additional fields and errors. Depends on the protocolCheck level
+ */
 template<SerialiserProtocol protocol, const ProtocolCheck protocolCheckVariant, ReflectableClass T>
 constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserInfo info = DeserialiserInfo()) {
     // check data header for protocol version match
-    info = checkHeaderInfo<protocol, protocolCheckVariant>(buffer, info);
+    info = checkHeaderInfo<protocol>(buffer, info, protocolCheckVariant);
     if (protocolCheckVariant == LENIENT && !info.exceptions.empty()) {
         return info; // do not attempt to deserialise data with wrong header
     }
