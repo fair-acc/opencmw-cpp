@@ -13,6 +13,12 @@
 
 namespace opencmw {
 
+enum ProtocolCheck {
+    IGNORE,  // null return type
+    LENIENT, // via return type
+    ALWAYS   // via ProtocolException
+};
+
 class ProtocolException {
     const std::string errorMsg;
 
@@ -46,6 +52,20 @@ concept SerialiserProtocol = requires { T::protocolName(); }; // TODO: find neat
 using ClassField           = std::string_view; // as a place-holder for the reflected type info
 
 /// generic protocol definition -> should throw exception when used in production code
+template<SerialiserProtocol protocol>
+inline void updateSize(IoBuffer & /*buffer*/, const size_t /*posSizePositionStart*/, const size_t /*posStartDataStart*/) {}
+
+template<SerialiserProtocol protocol>
+inline void putHeaderInfo(IoBuffer & /*buffer*/) {}
+
+template<SerialiserProtocol protocol>
+struct FieldHeader { // todo: remove struct and rename to putField
+    constexpr std::size_t static putFieldHeader(IoBuffer & /*buffer*/, const char * /*fieldName*/, const int /*fieldNameSize*/, const auto & /*data*/, const bool /*writeMetaInfo*/) { return 0; }
+};
+
+template<SerialiserProtocol protocol>
+inline DeserialiserInfo checkHeaderInfo(IoBuffer & /*buffer*/, DeserialiserInfo info, const ProtocolCheck /*protocolCheckVariant*/) { return info; }
+
 template<SerialiserProtocol protocol, typename T>
 struct IoSerialiser {
     constexpr static uint8_t getDataTypeId() { return 0xFF; } // default value
@@ -249,46 +269,97 @@ struct IoSerialiser<YaS, END_MARKER> {
     }
 };
 
-template<SerialiserProtocol protocol, const bool writeMetaInfo, typename DataType>
-std::size_t putFieldHeader(IoBuffer &buffer, const char *fieldName, const int fieldNameSize, const DataType &data) {
-    using StrippedDataType         = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(data)))>;
-    constexpr int32_t dataTypeSize = static_cast<int32_t>(sizeof(StrippedDataType));
-    buffer.reserve_spare(((static_cast<uint64_t>(fieldNameSize) + 18) * sizeof(uint8_t)) + dataTypeSize);
+template<>
+struct FieldHeader<YaS> {
+    constexpr std::size_t static putFieldHeader(IoBuffer &buffer, const char *fieldName, const int fieldNameSize, const auto &data, const bool writeMetaInfo) { // todo fieldName -> string_view
+        using StrippedDataType         = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(data)))>;
+        constexpr int32_t dataTypeSize = static_cast<int32_t>(sizeof(StrippedDataType));
+        buffer.reserve_spare(((static_cast<uint64_t>(fieldNameSize) + 18) * sizeof(uint8_t)) + dataTypeSize);
 
-    // -- offset 0 vs. field start
-    const std::size_t headerStart = buffer.size();
-    buffer.put(static_cast<uint8_t>(IoSerialiser<protocol, StrippedDataType>::getDataTypeId())); // data type ID
-    buffer.put(opencmw::hash(fieldName, fieldNameSize));                                         // unique hashCode identifier -- TODO: choose more performant implementation instead of java default
-    const std::size_t dataStartOffsetPosition = buffer.size();
-    buffer.put(-1); // dataStart offset
-    const int32_t     dataSize         = is_supported_number<DataType> ? dataTypeSize : -1;
-    const std::size_t dataSizePosition = buffer.size();
-    buffer.put(dataSize);                    // dataSize (N.B. 'headerStart' + 'dataStart + dataSize' == start of next field header
-    buffer.put<std::string_view>(fieldName); // full field name
+        // -- offset 0 vs. field start
+        const std::size_t headerStart = buffer.size();
+        buffer.put(static_cast<uint8_t>(IoSerialiser<YaS, StrippedDataType>::getDataTypeId())); // data type ID
+        buffer.put(opencmw::hash(fieldName, fieldNameSize));                                    // unique hashCode identifier -- TODO: choose more performant implementation instead of java default
+        const std::size_t dataStartOffsetPosition = buffer.size();
+        buffer.put(-1); // dataStart offset
+        const int32_t     dataSize         = is_supported_number<StrippedDataType> ? dataTypeSize : -1;
+        const std::size_t dataSizePosition = buffer.size();
+        buffer.put(dataSize);                    // dataSize (N.B. 'headerStart' + 'dataStart + dataSize' == start of next field header
+        buffer.put<std::string_view>(fieldName); // full field name
 
-    if constexpr (is_annotated<DataType>) {
-        if (writeMetaInfo) {
+        if constexpr (is_annotated<decltype(data)> && writeMetaInfo) {
+            //if (writeMetaInfo) {
             buffer.put(std::string_view(data.getUnit()));
             buffer.put(std::string_view(data.getDescription()));
             buffer.put(static_cast<uint8_t>(data.getModifier()));
             // TODO: write group meta data
-            //final String[] groups = fieldDescription.getFieldGroups().toArray(new String[0]); // java uses non-array string
-            //buffer.putStringArray(groups, groups.length);
-            //buffer.put<std::string[]>({""});
+            // final String[] groups = fieldDescription.getFieldGroups().toArray(new String[0]); // java uses non-array string
+            // buffer.putStringArray(groups, groups.length);
+            // buffer.put<std::string[]>({""});
+            //}
+        }
+
+        const std::size_t dataStartPosition         = buffer.size();
+        const std::size_t dataStartOffset           = (dataStartPosition - headerStart);     // -- offset dataStart calculations
+        buffer.at<int32_t>(dataStartOffsetPosition) = static_cast<int32_t>(dataStartOffset); // write offset to dataStart
+
+        // from hereon there are data specific structures that are written to the IoBuffer
+        IoSerialiser<YaS, StrippedDataType>::serialise(buffer, fieldName, getAnnotatedMember(unwrapPointer(data)));
+
+        // add just data-end position
+        buffer.at<int32_t>(dataSizePosition) = static_cast<int32_t>(buffer.size() - dataStartPosition); // write data size
+
+        return dataSizePosition; // N.B. exported for adjusting START_MARKER -> END_MARKER data size to be adjustable and thus skippable
+    }
+};
+
+template<>
+inline void updateSize<YaS>(IoBuffer &buffer, const size_t posSizePositionStart, const size_t posStartDataStart) {
+    buffer.at<int32_t>(posSizePositionStart) = static_cast<int32_t>(buffer.size() - posStartDataStart); // write data size
+}
+
+template<>
+inline void putHeaderInfo<YaS>(IoBuffer &buffer) {
+    buffer.reserve_spare(2 * sizeof(int) + 7); // magic int + string length int + 4 byte 'YAS\0` string + 3 version bytes
+    buffer.put(yas::VERSION_MAGIC_NUMBER);
+    buffer.put(yas::PROTOCOL_NAME);
+    buffer.put(yas::VERSION_MAJOR);
+    buffer.put(yas::VERSION_MINOR);
+    buffer.put(yas::VERSION_MICRO);
+}
+
+template<>
+inline DeserialiserInfo checkHeaderInfo<YaS>(IoBuffer &buffer, DeserialiserInfo info, const ProtocolCheck protocolCheckVariant) {
+    auto magic      = buffer.get<int>();
+    auto proto_name = buffer.get<std::string>();
+    auto ver_major  = buffer.get<int8_t>();
+    auto ver_minor  = buffer.get<int8_t>();
+    auto ver_micro  = buffer.get<int8_t>();
+    if (yas::VERSION_MAGIC_NUMBER != magic) {
+        if (protocolCheckVariant == LENIENT) {
+            info.exceptions.template emplace_back(ProtocolException(fmt::format("Wrong serialiser magic number: {} != -1", magic)));
+        }
+        if (protocolCheckVariant == ALWAYS) {
+            throw ProtocolException(fmt::format("Wrong serialiser magic number: {} != -1", magic));
         }
     }
-
-    const std::size_t dataStartPosition         = buffer.size();
-    const std::size_t dataStartOffset           = (dataStartPosition - headerStart);     // -- offset dataStart calculations
-    buffer.at<int32_t>(dataStartOffsetPosition) = static_cast<int32_t>(dataStartOffset); // write offset to dataStart
-
-    // from hereon there are data specific structures that are written to the IoBuffer
-    IoSerialiser<protocol, StrippedDataType>::serialise(buffer, fieldName, getAnnotatedMember(unwrapPointer(data)));
-
-    // add just data-end position
-    buffer.at<int32_t>(dataSizePosition) = static_cast<int32_t>(buffer.size() - dataStartPosition); // write data size
-
-    return dataSizePosition; // N.B. exported for adjusting START_MARKER -> END_MARKER data size to be adjustable and thus skippable
+    if (yas::PROTOCOL_NAME != proto_name) {
+        if (protocolCheckVariant == LENIENT) {
+            info.exceptions.template emplace_back(ProtocolException(fmt::format("Wrong serialiser identification string: {} != YaS", proto_name)));
+        }
+        if (protocolCheckVariant == ALWAYS) {
+            throw ProtocolException(fmt::format("Wrong serialiser identification string: {} != YaS", proto_name));
+        }
+    }
+    if (yas::VERSION_MAJOR != ver_major) {
+        if (protocolCheckVariant == LENIENT) {
+            info.exceptions.template emplace_back(ProtocolException(fmt::format("Major versions do not match, received {}.{}.{}", ver_major, ver_minor, ver_micro)));
+        }
+        if (protocolCheckVariant == ALWAYS) {
+            throw ProtocolException(fmt::format("Major versions do not match, received {}.{}.{}", ver_major, ver_minor, ver_micro));
+        }
+    }
+    return info;
 }
 
 } // namespace opencmw
