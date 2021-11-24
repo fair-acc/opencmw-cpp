@@ -402,6 +402,198 @@ inline DeserialiserInfo checkHeaderInfo<YaS>(IoBuffer &buffer, DeserialiserInfo 
 } // namespace opencmw
 
 /* #################################################################################### */
+/* ### Json Definitions ########################################################### */
+/* #################################################################################### */
+namespace opencmw {
+
+struct Json : Protocol<"Json"> {}; // todo: move to more appropriate place, but has to be declared before usage
+
+namespace json {
+}
+
+template<>
+struct FieldHeader<Json> {
+    constexpr std::size_t static putFieldHeader(IoBuffer &buffer, const char *fieldName, const int fieldNameSize, const auto &data, const bool /*writeMetaInfo*/) { // todo fieldName -> string_view
+        using DataType = decltype(data);
+        if constexpr (std::is_same_v<DataType, START_MARKER>) {
+            if (fieldNameSize > 0) {
+                buffer.putRaw(fieldName);
+                buffer.putRaw(":");
+            }
+            buffer.putRaw("{\n"); // use string put instead of other put // call serialise with the start marker instead?
+            return 0;
+        }
+        if constexpr (std::is_same_v<DataType, END_MARKER>) {
+            buffer.put('}');
+            return 0;
+        }
+        buffer.putRaw(std::basic_string_view(fieldName, static_cast<size_t>(fieldNameSize)));
+        buffer.put(':');
+        using StrippedDataType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(data)))>;
+        IoSerialiser<Json, StrippedDataType>::serialise(buffer, fieldName, getAnnotatedMember(unwrapPointer(data)));
+        buffer.putRaw(",\n");
+        return 0; // return value is irrelevant for Json
+    }
+};
+
+template<>
+struct IoSerialiser<Json, END_MARKER> { // catch all template
+    inline static constexpr uint8_t getDataTypeId() { return 0; }
+    constexpr static bool           serialise(IoBuffer &buffer, const ClassField & /*field*/, const END_MARKER & /*value*/) noexcept {
+        buffer.putRaw("}");
+        return false;
+    }
+    constexpr static bool deserialise(IoBuffer & /*buffer*/, const ClassField & /*field*/, const END_MARKER &) {
+        // do not do anything, as the end marker is of size zero and only the type byte is important
+        return std::is_constant_evaluated();
+    }
+};
+
+template<>
+struct IoSerialiser<Json, START_MARKER> { // catch all template
+    inline static constexpr uint8_t getDataTypeId() { return 0; }
+    constexpr static bool           serialise(IoBuffer &buffer, const ClassField & /*field*/, const START_MARKER & /*value*/) noexcept {
+        buffer.putRaw("{");
+        return false;
+    }
+    constexpr static bool deserialise(IoBuffer & /*buffer*/, const ClassField & /*field*/, const START_MARKER & /*value*/) {
+        // do not do anything, as the end marker is of size zero and only the type byte is important
+        return std::is_constant_evaluated();
+    }
+};
+
+inline bool isJsonNumberChar(uint8_t c) {
+    switch (c) {
+    case '-':
+    case '+':
+    case '1':
+    case '2':
+    case '3':
+    case '4':
+    case '5':
+    case '6':
+    case '7':
+    case '8':
+    case '9':
+    case '0':
+    case '.':
+    case 'e':
+    case 'E':
+        return true;
+    default:
+        return false;
+    }
+}
+
+template<Number T>
+struct IoSerialiser<Json, T> { // catch all template
+    inline static constexpr uint8_t getDataTypeId() { return 0; }
+    /*constexpr*/ static bool       serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
+        // todo: constexpr not possible because of fmt
+        if constexpr (std::is_integral_v<T>) {
+            // buffer.putRaw(std::to_string(value));
+            buffer.putRaw(fmt::format("{}", value));
+        } else {
+            buffer.putRaw(fmt::format("{}", value));
+        }
+        return false;
+    }
+    constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) {
+        // do not do anything, as the end marker is of size zero and only the type byte is important
+        auto start = buffer.position();
+        while (isJsonNumberChar(buffer.get<uint8_t>())) {
+        }
+        auto end = buffer.position();
+        // value = stringTo
+        std::ignore = start;
+        std::ignore = end;
+        std::ignore = value;
+        return std::is_constant_evaluated();
+    }
+};
+template<StringLike T>
+struct IoSerialiser<Json, T> { // catch all template
+    inline static constexpr uint8_t getDataTypeId() { return 0; }
+    constexpr static bool           serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
+        buffer.put('"');
+        buffer.putRaw(value);
+        buffer.put('"');
+        return false;
+    }
+    constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) {
+        // do not do anything, as the end marker is of size zero and only the type byte is important
+        auto start = buffer.position();
+        while (isJsonNumberChar(buffer.get<uint8_t>())) {
+        }
+        auto end = buffer.position();
+        // value = stringTo
+        std::ignore = start;
+        std::ignore = end;
+        std::ignore = value;
+        return std::is_constant_evaluated();
+    }
+};
+
+template<ArrayOrVector T>
+struct IoSerialiser<Json, T> {
+    inline static constexpr uint8_t getDataTypeId() { return 0; }
+    constexpr static bool           serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &values) noexcept {
+        using MemberType = typename T::value_type;
+        buffer.put('[');
+        for (auto value : values) {
+            // todo: use same formatting as for non array elements
+            IoSerialiser<Json, MemberType>::serialise(buffer, "", value);
+            buffer.putRaw(", ");
+        }
+        buffer.resize(buffer.size() - 2); // remove trailing comma
+        buffer.put(']');
+        return std::is_constant_evaluated();
+    }
+    constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) {
+        // do not do anything, as the end marker is of size zero and only the type byte is important
+        auto start = buffer.position();
+        while (isJsonNumberChar(buffer.get<uint8_t>())) {
+        }
+        auto end = buffer.position();
+        // value = stringTo
+        std::ignore = start;
+        std::ignore = end;
+        std::ignore = value;
+        return std::is_constant_evaluated();
+    }
+};
+
+template<MultiArrayType T>
+struct IoSerialiser<Json, T> {
+    inline static constexpr uint8_t getDataTypeId() { return 0; }
+    constexpr static bool           serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
+        buffer.putRaw("{\n");
+        std::array<int32_t, T::n_dims_> dims;
+        for (uint32_t i = 0U; i < T::n_dims_; i++) {
+            dims[i] = static_cast<int32_t>(value.dimensions()[i]);
+        }
+        FieldHeader<Json>::putFieldHeader(buffer, "dims", 4, dims, false);
+        FieldHeader<Json>::putFieldHeader(buffer, "values", 6, value.elements(), false);
+        buffer.putRaw("}");
+        return std::is_constant_evaluated();
+    }
+    constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) {
+        // do not do anything, as the end marker is of size zero and only the type byte is important
+        auto start = buffer.position();
+        while (isJsonNumberChar(buffer.get<uint8_t>())) {
+        }
+        auto end = buffer.position();
+        // value = stringTo
+        std::ignore = start;
+        std::ignore = end;
+        std::ignore = value;
+        return std::is_constant_evaluated();
+    }
+};
+
+} // namespace opencmw
+
+/* #################################################################################### */
 /* ### CmwLight Definitions ########################################################### */
 /* #################################################################################### */
 
