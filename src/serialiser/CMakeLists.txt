@@ -1,5 +1,5 @@
 # setup header only library
-add_library(serialiser INTERFACE)
+add_library(serialiser INTERFACE include/fast_float.h)
 target_include_directories(serialiser INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include/>)
 target_link_libraries(serialiser INTERFACE CONAN_PKG::mp-units refl-cpp::refl-cpp utils)
 set_target_properties(serialiser PROPERTIES PUBLIC_HEADER "include/IoBuffer.hpp;include/YaSerialiser.hpp;include/JsonSerialiser.hpp;include/CMWlightSerialiser.hpp;include/IoSerialiser.hpp;include/MultiArray.hpp;include/opencmw.hpp")

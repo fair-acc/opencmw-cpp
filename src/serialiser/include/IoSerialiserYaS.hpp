@@ -92,15 +92,11 @@ template<StringLike T>
 struct IoSerialiser<YaS, T> {
     inline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); }
     constexpr static bool           serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
-        //        std::cout << fmt::format("{} - serialise-String_like: {} {} == {} - constexpr?: {} - const {}\n",
-        //                YaS::protocolName(), typeName<T>(), field, value, std::is_constant_evaluated(), std::is_const_v<T>);
         buffer.put<T>(value); // N.B. ensure that the wrapped value and not the annotation itself is serialised
         return std::is_constant_evaluated();
     }
     constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) noexcept {
         value = buffer.get<std::string>();
-        //        std::cout << fmt::format("{} - de-serialise-String_like: {} {} == {}  {} - constexpr?: {}\n",
-        //            YaS::protocolName(), typeName<T>(), field, value, value.size(), std::is_constant_evaluated());
         return std::is_constant_evaluated();
     }
 };
@@ -123,7 +119,6 @@ struct IoSerialiser<YaS, T> {
 template<MultiArrayType T>
 struct IoSerialiser<YaS, T> {
     inline static constexpr uint8_t getDataTypeId() {
-        // std::cout << fmt::format("getDataTypeID<{}>() = {}\n", typeName<typename T::value_type>(), yas::getDataTypeId<typename T::value_type>());
         return yas::ARRAY_TYPE_OFFSET + yas::getDataTypeId<typename T::value_type>();
     }
     constexpr static bool serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
@@ -185,32 +180,27 @@ struct IoSerialiser<YaS, END_MARKER> {
 template<>
 struct FieldHeaderWriter<YaS> {
     template<const bool writeMetaInfo, typename DataType>
-    constexpr std::size_t static put(IoBuffer &buffer, const char *fieldName, const int fieldNameSize, const DataType &data) { // todo fieldName -> string_view
+    constexpr std::size_t static put(IoBuffer &buffer, const std::string_view &fieldName, const DataType &data) { // todo fieldName -> string_view
         using StrippedDataType         = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(data)))>;
         constexpr int32_t dataTypeSize = static_cast<int32_t>(sizeof(StrippedDataType));
-        buffer.reserve_spare(((static_cast<uint64_t>(fieldNameSize) + 18) * sizeof(uint8_t)) + dataTypeSize);
+        buffer.reserve_spare(((fieldName.size() + 18UL) * sizeof(uint8_t)) + dataTypeSize);
 
         // -- offset 0 vs. field start
         const std::size_t headerStart = buffer.size();
-        buffer.put(static_cast<uint8_t>(IoSerialiser<YaS, StrippedDataType>::getDataTypeId())); // data type ID
-        buffer.put(opencmw::hash(fieldName, fieldNameSize));                                    // unique hashCode identifier -- TODO: choose more performant implementation instead of java default
+        buffer.put(IoSerialiser<YaS, StrippedDataType>::getDataTypeId()); // data type ID
+        buffer.put(opencmw::hash(fieldName));                             // unique hashCode identifier -- TODO: choose more performant implementation instead of java default
         const std::size_t dataStartOffsetPosition = buffer.size();
         buffer.put(-1); // dataStart offset
-        const int32_t     dataSize         = is_supported_number<StrippedDataType> ? dataTypeSize : -1;
+        constexpr int32_t dataSize         = is_supported_number<StrippedDataType> ? dataTypeSize : -1;
         const std::size_t dataSizePosition = buffer.size();
         buffer.put(dataSize);                    // dataSize (N.B. 'headerStart' + 'dataStart + dataSize' == start of next field header
         buffer.put<std::string_view>(fieldName); // full field name
 
-        if constexpr (is_annotated<DataType> && writeMetaInfo) {
-            //if (writeMetaInfo) {
+        if constexpr (writeMetaInfo && is_annotated<DataType>) {
             buffer.put(std::string_view(data.getUnit()));
             buffer.put(std::string_view(data.getDescription()));
             buffer.put(static_cast<uint8_t>(data.getModifier()));
             // TODO: write group meta data
-            // final String[] groups = fieldDescription.getFieldGroups().toArray(new String[0]); // java uses non-array string
-            // buffer.putStringArray(groups, groups.length);
-            // buffer.put<std::string[]>({""});
-            //}
         }
 
         const std::size_t dataStartPosition         = buffer.size();
@@ -285,7 +275,7 @@ struct FieldHeaderReader<YaS> {
         FieldDescription result;
         result.headerStart = buffer.position();
         result.intDataType = buffer.get<uint8_t>(); // data type ID
-        //const auto        hashFieldName     =
+        // const auto        hashFieldName     =
         buffer.get<int32_t>(); // hashed field name -> future: faster look-up/matching of fields
         result.dataStartOffset   = static_cast<uint64_t>(buffer.get<int32_t>());
         result.dataSize          = static_cast<uint64_t>(buffer.get<int32_t>());
@@ -296,11 +286,15 @@ struct FieldHeaderReader<YaS> {
         // e.g. could skip to 'headerStart + dataStartOffset' and start reading the data, or
         // e.g. could skip to 'headerStart + dataStartOffset + dataSize' and start reading the next field header
 
-        bool ignoreChecks  = protocolCheckVariant == IGNORE; // not constexpr because protocolCheckVariant is not NTTP
-        result.unit        = ignoreChecks || (buffer.position() == result.dataStartPosition) ? "" : buffer.get<str_view>();
-        result.description = ignoreChecks || (buffer.position() == result.dataStartPosition) ? "" : buffer.get<str_view>();
-        //ignoreChecks || (buffer.position() == dataStartPosition) ? "" : buffer.get<str_view>();
-        result.modifier = ignoreChecks || (buffer.position() == result.dataStartPosition) ? RW : get_ext_modifier(buffer.get<uint8_t>());
+        if constexpr (protocolCheckVariant == IGNORE) { // safe defaults (will be ignored later on)
+            result.unit        = "";
+            result.description = "";
+            result.modifier    = ExternalModifier::RW;
+        } else { // need to read the meta information
+            result.unit        = (buffer.position() == result.dataStartPosition) ? "" : buffer.get<str_view>();
+            result.description = (buffer.position() == result.dataStartPosition) ? "" : buffer.get<str_view>();
+            result.modifier    = (buffer.position() == result.dataStartPosition) ? ExternalModifier::RW : get_ext_modifier(buffer.get<uint8_t>());
+        }
         // std::cout << fmt::format("parsed field {:<20} meta data: [{}] {} dir: {}\n", fieldName, unit, description, modifier);
         return result;
     }
@@ -309,4 +303,4 @@ struct FieldHeaderReader<YaS> {
 } // namespace opencmw
 
 #pragma clang diagnostic pop
-#endif //OPENCMW_YASERIALISER_H
+#endif // OPENCMW_YASERIALISER_H

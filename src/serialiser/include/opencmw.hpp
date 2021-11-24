@@ -14,7 +14,7 @@
     REFL_DETAIL_FOR_EACH(REFL_DETAIL_EX_1_field, __VA_ARGS__) \
     REFL_END
 
-namespace units::detail { //TODO: temporary -> remove with next mp-units release
+namespace units::detail { // TODO: temporary -> remove with next mp-units release
 template<typename T>
 requires units::is_derived_from_specialization_of<T, units::quantity> && requires {
     typename T::dimension;
@@ -305,7 +305,7 @@ inline constexpr const bool is_vector<const Annotated<const std::vector<T,A>, Q,
 template<NotAnnotatedType T>
 constexpr T getAnnotatedMember(const T &annotatedValue) noexcept {
     // N.B. still needed in 'putFieldHeader(IoBuffer&, const std::string_view &, const DataType&data, bool)'
-    return annotatedValue; //TODO: sort-out/simplify perfect forwarding/move, see https://compiler-explorer.com/z/zTTjff7Tn
+    return annotatedValue; // TODO: sort-out/simplify perfect forwarding/move, see https://compiler-explorer.com/z/zTTjff7Tn
 }
 
 template<NotAnnotatedType T>
@@ -387,11 +387,16 @@ template<ArithmeticType T> const std::string &typeName<T* const> = fmt::format("
 
 template<typename Key, typename Value, std::size_t size>
 struct ConstExprMap {
-    std::array<std::pair<Key, Value>, size> data;
+    const std::array<std::pair<Key, Value>, size> data;
 
     [[nodiscard]] constexpr Value           at(const Key &key) const {
         const auto itr = std::find_if(begin(data), end(data), [&key](const auto &v) { return v.first == key; });
         return (itr != end(data)) ? itr->second : throw std::out_of_range(fmt::format("key '{}' not found", key));
+    }
+
+    [[nodiscard]] constexpr Value           at(const Key &key, const Value &defaultValue) const noexcept {
+        auto itr = std::find_if(begin(data), end(data), [&key](const auto &v) { return v.first == key; });
+        return (itr != end(data)) ? itr->second : defaultValue;
     }
 };
 
@@ -401,9 +406,9 @@ struct ConstExprMap {
  * @param string the string to compute the hash for
  * @return hash value of the string
  */
-inline constexpr int hash(const char *string, const int size) noexcept {
+inline constexpr int hash(const std::string_view &string) noexcept {
     int h = 0;
-    for (int i = 0; i < size; i++) {
+    for (size_t i = 0; i < string.length(); i++) {
         h = h * 31 + static_cast<int>(string[i]);
     }
     return h;

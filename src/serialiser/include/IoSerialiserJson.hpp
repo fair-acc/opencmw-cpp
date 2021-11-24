@@ -2,53 +2,41 @@
 #define OPENCMW_JSONSERIALISER_H
 
 #include "IoSerialiser.hpp"
+#include "fast_float.h"
 #include <charconv>
+#include <cmath>
 #include <list>
 #include <map>
 #include <queue>
 
-#pragma clang diagnostic push
-#pragma ide diagnostic   ignored "cppcoreguidelines-avoid-magic-numbers"
-#pragma ide diagnostic   ignored "cppcoreguidelines-avoid-c-arrays"
-
 namespace opencmw {
 
-struct Json : Protocol<"Json"> {};
+struct Json : Protocol<"Json"> {}; // as specified in https://www.json.org/json-en.html
 
 namespace json {
-inline bool isNumberChar(uint8_t c) {
-    switch (c) {
-    case '-':
-    case '+':
-    case '1':
-    case '2':
-    case '3':
-    case '4':
-    case '5':
-    case '6':
-    case '7':
-    case '8':
-    case '9':
-    case '0':
-    case '.':
-    case 'e':
-    case 'E':
-        return true;
-    default:
-        return false;
+
+constexpr inline bool isNumberChar(uint8_t c) { return (c >= '+' && c <= '9' && c != '/' && c != ',') || c == 'e' || c == 'E'; }
+constexpr inline bool isWhitespace(uint8_t c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; }
+constexpr inline bool isHexNumberChar(int8_t c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'); }
+constexpr inline bool isHexNumber(const char *start, const size_t size) noexcept {
+    for (size_t i = 0; i < size; i++) {
+        if (!isHexNumberChar(start[i])) {
+            return false;
+        }
     }
+    return true;
 }
 
-/**
- * Read a json string from a buffer.
- * @param buffer An IoBuffer with the position at the start of a JSON string.
- * @return a string view of the string starting at the buffer position
- */
 inline std::string readString(IoBuffer &buffer) {
-    if (buffer.get<uint8_t>() != '"') {
-        throw ProtocolException("error: expected leading quote");
+    if (buffer.position() >= buffer.size()) {
+        return "";
     }
+    if (buffer.get<uint8_t>() != '"') {
+        throw ProtocolException("readString(IoBuffer) error: expected leading quote");
+    }
+
     std::string result;
+    result.reserve(20);
     for (auto currentChar = buffer.get<uint8_t>(); currentChar != '"'; currentChar = buffer.get<uint8_t>()) {
         if (buffer.at<uint8_t>(buffer.position() - 1) == '\\') { // escape sequence detected
             switch (buffer.get<uint8_t>()) {
@@ -72,12 +60,17 @@ inline std::string readString(IoBuffer &buffer) {
             case 't':
                 result += '\t';
                 break;
-            case 'u':
+            case 'u': {
+                char *data = reinterpret_cast<char *>(buffer.data() + buffer.position());
+                if (!isHexNumber(data, 4) || (buffer.position() + 4) >= buffer.size()) {
+                    throw ProtocolException(fmt::format("illegal hex number {} at position {} of {}", std::string{ data, 4 }, buffer.position(), buffer.size()));
+                }
                 buffer.set_position(buffer.position() + 4); // skip escaped unicode char
                 result += '_';                              // todo: implement parsing the actual unicode characters
                 break;
+            }
             default:
-                throw ProtocolException(fmt::format("illegal escape character: \\{}", buffer.at<uint8_t>(buffer.position() - 1)));
+                throw ProtocolException(fmt::format("illegal escape character: \\{} at position {} of {}", buffer.at<uint8_t>(buffer.position() - 1), buffer.position(), buffer.size()));
                 // todo: lenient error handling methods
             }
         } else {
@@ -89,7 +82,7 @@ inline std::string readString(IoBuffer &buffer) {
 
 inline std::string_view readKey(IoBuffer &buffer) {
     if (buffer.get<uint8_t>() != '"') {
-        throw ProtocolException("error: expected leading quote");
+        throw ProtocolException("readKey(IoBuffer) error: expected leading quote");
     }
     const auto start = buffer.position();
     auto       i     = start;
@@ -103,41 +96,31 @@ inline std::string_view readKey(IoBuffer &buffer) {
     return std::string_view(reinterpret_cast<const char *>(buffer.data() + start), i - start);
 }
 
-/**
- * @param c the character to test
- * @return true if the character is a whitespace character as specified by the json specification
- */
-inline bool isWhitespace(uint8_t c) {
-    return c == ' ' || c == '\t' || c == '\n' || c == '\r';
-}
-
-/**
- * Consume whitespace as defined by the JSON specification.
- * After calling this function the position of the passed buffer will point to the first non-whitespace character at/after the initial position.
- * @param buffer
- */
-inline void consumeWhitespace(IoBuffer &buffer) {
+inline constexpr void consumeWhitespace(IoBuffer &buffer) {
     while (buffer.position() < buffer.size() && isWhitespace(buffer.at<uint8_t>(buffer.position()))) {
         buffer.set_position(buffer.position() + 1);
     }
 }
 
 template<typename T>
-inline void assignArray(std::vector<T> &value, const std::vector<T> &result) {
+inline constexpr void assignArray(std::vector<T> &value, const std::vector<T> &result) {
     value = result;
 }
 
 template<typename T, size_t N>
-inline void assignArray(std::array<T, N> &value, const std::vector<T> &result) {
-    // todo: discuss if this is the right thing to do? throw error on size mismatch? zero out additional array entries?
+inline constexpr void assignArray(std::array<T, N> &value, const std::vector<T> &result) {
+    if (value.size() != result.size()) {
+        throw ProtocolException(fmt::format("vector -> array size mismatch: source<{}>[{}]={} vs. destination std::array<T,{}>", //
+                typeName<T>, result.size(), result, typeName<T>, N));
+    }
     for (size_t i = 0; i < N && i < result.size(); ++i) {
         value[i] = result[i];
     }
 }
 
-inline void skipValue(IoBuffer &buffer);
+inline constexpr void skipValue(IoBuffer &buffer);
 
-inline void skipField(IoBuffer &buffer) {
+inline void           skipField(IoBuffer &buffer) {
     consumeWhitespace(buffer);
     std::ignore = readString(buffer);
     consumeWhitespace(buffer);
@@ -149,7 +132,7 @@ inline void skipField(IoBuffer &buffer) {
     consumeWhitespace(buffer);
 }
 
-inline void skipObject(IoBuffer &buffer) {
+inline constexpr void skipObject(IoBuffer &buffer) {
     if (buffer.get<uint8_t>() != '{') {
         throw ProtocolException("error: expected {");
     }
@@ -166,13 +149,13 @@ inline void skipObject(IoBuffer &buffer) {
     consumeWhitespace(buffer);
 }
 
-inline void skipNumber(IoBuffer &buffer) {
+inline constexpr void skipNumber(IoBuffer &buffer) {
     while (isNumberChar(buffer.get<uint8_t>())) {
     }
     buffer.set_position(buffer.position() - 1);
 }
 
-inline void skipArray(IoBuffer &buffer) {
+inline constexpr void skipArray(IoBuffer &buffer) {
     if (buffer.get<uint8_t>() != '[') {
         throw ProtocolException("error: expected [");
     }
@@ -190,7 +173,7 @@ inline void skipArray(IoBuffer &buffer) {
     consumeWhitespace(buffer);
 }
 
-inline void skipValue(IoBuffer &buffer) {
+inline constexpr void skipValue(IoBuffer &buffer) {
     consumeWhitespace(buffer);
     const auto firstChar = buffer.at<int8_t>(buffer.position());
     if (firstChar == '{') {
@@ -214,12 +197,13 @@ inline void skipValue(IoBuffer &buffer) {
 template<>
 struct FieldHeaderWriter<Json> {
     template<const bool writeMetaInfo, typename DataType>
-    constexpr std::size_t static put(IoBuffer &buffer, const char *fieldName, const int fieldNameSize, const DataType &data) { // todo fieldName -> string_view
+    constexpr std::size_t static put(IoBuffer &buffer, const std::string_view &fieldName, const DataType &data) {
+        using namespace std::string_view_literals;
         if constexpr (std::is_same_v<DataType, START_MARKER>) {
-            if (fieldNameSize > 0) {
-                buffer.putRaw("\"");
+            if (fieldName.size() > 0) {
+                buffer.putRaw("\""sv);
                 buffer.putRaw(fieldName);
-                buffer.putRaw("\": ");
+                buffer.putRaw("\": "sv);
             }
             buffer.putRaw("{\n"); // use string put instead of other put // call serialise with the start marker instead?
             return 0;
@@ -228,9 +212,9 @@ struct FieldHeaderWriter<Json> {
             buffer.put('}');
             return 0;
         }
-        buffer.putRaw("\"");
-        buffer.putRaw(std::basic_string_view(fieldName, static_cast<size_t>(fieldNameSize)));
-        buffer.putRaw("\": ");
+        buffer.putRaw("\""sv);
+        buffer.putRaw(fieldName);
+        buffer.putRaw("\": "sv);
         using StrippedDataType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(data)))>;
         IoSerialiser<Json, StrippedDataType>::serialise(buffer, fieldName, getAnnotatedMember(unwrapPointer(data)));
         buffer.putRaw(",\n");
@@ -277,16 +261,18 @@ template<>
 struct IoSerialiser<Json, bool> {
     inline static constexpr uint8_t getDataTypeId() { return IoSerialiser<Json, OTHER>::getDataTypeId(); }
     constexpr static bool           serialise(IoBuffer &buffer, const ClassField & /*field*/, const bool &value) noexcept {
-        buffer.putRaw(value ? "true" : "false");
+        using namespace std::string_view_literals;
+        buffer.putRaw(value ? "true"sv : "false"sv);
         return std::is_constant_evaluated();
     }
     static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, bool &value) {
-        if (buffer.size() - buffer.position() > 5 && std::string_view(reinterpret_cast<const char *>(buffer.data() + buffer.position()), 5) == "false") {
+        using namespace std::string_view_literals;
+        if (buffer.size() - buffer.position() > 5 && std::string_view(reinterpret_cast<const char *>(buffer.data() + buffer.position()), 5) == "false"sv) {
             buffer.set_position(buffer.position() + 5);
             value = false;
             return std::is_constant_evaluated();
         }
-        if (buffer.size() - buffer.position() > 4 && std::string_view(reinterpret_cast<const char *>(buffer.data() + buffer.position()), 4) == "true") {
+        if (buffer.size() - buffer.position() > 4 && std::string_view(reinterpret_cast<const char *>(buffer.data() + buffer.position()), 4) == "true"sv) {
             buffer.set_position(buffer.position() + 4);
             value = false;
             value = true;
@@ -295,38 +281,54 @@ struct IoSerialiser<Json, bool> {
         throw ProtocolException("unsupported boolean value");
     }
 };
+
 template<Number T>
 struct IoSerialiser<Json, T> {
     inline static constexpr uint8_t getDataTypeId() { return IoSerialiser<Json, OTHER>::getDataTypeId(); }
-    /*constexpr*/ static bool       serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) {
+    constexpr static bool           serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) {
         buffer.reserve_spare(30); // just reserve some spare capacity and expect that all numbers are shorter
         const auto           start = buffer.size();
         auto                 size  = buffer.capacity();
         auto                 data  = reinterpret_cast<char *>(buffer.data());
-        T                    val   = value;
         std::to_chars_result result;
-        if constexpr (std::is_integral_v<T>) {
-            result = std::to_chars(data + start, data + size, val);
-        } else if (std::is_floating_point_v<T>) {
-            result = std::to_chars(data + start, data + size, val, std::chars_format::scientific);
+        if constexpr (std::is_floating_point_v<T>) {
+            result = std::to_chars(data + start, data + size, value, std::chars_format::scientific);
+        } else { // fall-back
+            result = std::to_chars(data + start, data + size, value);
         }
-        size_t new_pos = static_cast<size_t>(result.ptr - data);
         if (result.ec != std::errc()) {
-            throw ProtocolException(fmt::format("error({}) serialising number at buffer positon: {}", result.ec, start));
+            throw ProtocolException(fmt::format("error({}) serialising number at buffer position: {}", result.ec, start));
         }
-        buffer.resize(new_pos);
+        buffer.resize(static_cast<size_t>(result.ptr - data)); // new position
         return std::is_constant_evaluated();
     }
     static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) {
-        const auto             start   = buffer.position();
-        auto                   size    = buffer.size();
-        auto                   data    = reinterpret_cast<char *>(buffer.data());
-        std::from_chars_result result  = std::from_chars(data + start, data + size, value);
-        size_t                 new_pos = static_cast<size_t>(result.ptr - data);
-        if (result.ec != std::errc()) {
-            throw ProtocolException(fmt::format("error({}) parsing number at buffer positon: {}", result.ec, start));
+        const auto start = buffer.position();
+        const auto data  = reinterpret_cast<const char *>(buffer.data());
+        // N.B. assumes that any reasonable number representation has a maximum of 30 characters
+        const auto stop = start + 30;
+
+        //        auto     stop  = 0;
+        //        for (size_t i = start; i < buffer.size(); i++) {
+        //            if (!json::isNumberChar(buffer.data()[i])) {
+        //                stop = i;
+        //                break;
+        //            }
+        //        }
+        if constexpr (std::is_floating_point_v<T>) {
+            const auto result = fast_float::from_chars(data + start, data + stop, value);
+            if (result.ec != std::errc()) {
+                throw ProtocolException(fmt::format("error({}) parsing number at buffer position: {}", result.ec, start));
+            }
+            buffer.set_position(static_cast<size_t>(result.ptr - data)); // new position
+            return std::is_constant_evaluated();
         }
-        buffer.set_position(new_pos);
+        // fall-back
+        const auto result = std::from_chars(data + start, data + stop, value);
+        if (result.ec != std::errc()) {
+            throw ProtocolException(fmt::format("error({}) parsing number at buffer position: {}", result.ec, start));
+        }
+        buffer.set_position(static_cast<size_t>(result.ptr - data)); // new position
         return std::is_constant_evaluated();
     }
 };
@@ -397,14 +399,15 @@ template<MultiArrayType T>
 struct IoSerialiser<Json, T> {
     inline static constexpr uint8_t getDataTypeId() { return IoSerialiser<Json, OTHER>::getDataTypeId(); }
     constexpr static bool           serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
-        buffer.putRaw("{\n");
+        using namespace std::string_view_literals;
+        buffer.putRaw("{\n"sv);
         std::array<int32_t, T::n_dims_> dims;
         for (uint32_t i = 0U; i < T::n_dims_; i++) {
             dims[i] = static_cast<int32_t>(value.dimensions()[i]);
         }
-        FieldHeaderWriter<Json>::template put<false>(buffer, "dims", 4, dims);
-        FieldHeaderWriter<Json>::template put<false>(buffer, "values", 6, value.elements());
-        buffer.putRaw("}");
+        FieldHeaderWriter<Json>::template put<false>(buffer, "dims"sv, 4, dims);
+        FieldHeaderWriter<Json>::template put<false>(buffer, "values"sv, 6, value.elements());
+        buffer.putRaw("}"sv);
         return std::is_constant_evaluated();
     }
     constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) {
@@ -419,7 +422,7 @@ struct IoSerialiser<Json, T> {
 template<>
 struct FieldHeaderReader<Json> {
     template<ProtocolCheck protocolCheckVariant>
-    inline static FieldDescription get(IoBuffer &buffer, DeserialiserInfo &info) {
+    inline constexpr static FieldDescription get(IoBuffer &buffer, DeserialiserInfo &info) {
         FieldDescription result;
         result.headerStart = buffer.position();
         json::consumeWhitespace(buffer);
@@ -459,8 +462,8 @@ struct FieldHeaderReader<Json> {
             }
             result.dataStartPosition = buffer.position();
             result.dataStartOffset   = result.dataStartPosition - result.headerStart;
-            result.dataSize          = std::numeric_limits<size_t>::max(); // not defined for non-skipable data
-            result.dataEndPosition   = std::numeric_limits<size_t>::max(); // not defined for non-skipable data
+            result.dataSize          = std::numeric_limits<size_t>::max(); // not defined for non-skippable data
+            result.dataEndPosition   = std::numeric_limits<size_t>::max(); // not defined for non-skippable data
             return result;
         }
         return result;
@@ -468,5 +471,4 @@ struct FieldHeaderReader<Json> {
 };
 } // namespace opencmw
 
-#pragma clang diagnostic pop
-#endif //OPENCMW_JSONSERIALISER_H
+#endif // OPENCMW_JSONSERIALISER_H
