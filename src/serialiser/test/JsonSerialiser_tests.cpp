@@ -17,7 +17,7 @@ using namespace units::isq::si;
 using NoUnit = units::dimensionless<units::one>;
 using namespace std::literals;
 
-struct Data {
+struct DataX {
     int8_t                         byteValue        = 1;
     int16_t                        shortValue       = 2;
     int32_t                        intValue         = 3;
@@ -30,15 +30,15 @@ struct Data {
     std::array<double, 10> const   constDoubleArray = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
     std::vector<float>             floatVector      = { 0.1F, 1.1F, 2.1F, 3.1F, 4.1F, 5.1F, 6.1F, 8.1F, 9.1F, 9.1F };
     opencmw::MultiArray<double, 2> doubleMatrix{ { 1, 3, 7, 4, 2, 3 }, { 2, 3 } };
-    std::shared_ptr<Data>          nested;
+    std::shared_ptr<DataX>         nested;
 
-    Data()                              = default;
-    bool operator==(const Data &) const = default;
+    DataX()                              = default;
+    bool operator==(const DataX &) const = default;
 };
 // following is the visitor-pattern-macro that allows the compile-time reflections via refl-cpp
-ENABLE_REFLECTION_FOR(Data, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, constStringValue, doubleArray, floatVector, doubleMatrix, nested)
+ENABLE_REFLECTION_FOR(DataX, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, constStringValue, doubleArray, floatVector, doubleMatrix, nested)
 
-TEST_CASE("JsonDeserialisation", "[IoClassSerialiser]") {
+TEST_CASE("JsonDeserialisation", "[JsonClassSerialiser]") {
     opencmw::debug::resetStats();
     {
         opencmw::IoBuffer buffer;
@@ -46,8 +46,8 @@ TEST_CASE("JsonDeserialisation", "[IoClassSerialiser]") {
         buffer.reserve_spare(strlen(cars_json));
         buffer.putRaw(cars_json);
         std::cout << "Prepared json data: " << buffer.asString() << std::endl;
-        Data foo;
-        auto result = opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buffer, foo);
+        DataX foo;
+        auto  result = opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buffer, foo);
         std::cout << "deserialised: \n";
         for (auto e : result.exceptions) {
             std::cout << " ! " << e.what() << std::endl;
@@ -60,13 +60,13 @@ TEST_CASE("JsonDeserialisation", "[IoClassSerialiser]") {
     opencmw::debug::resetStats();
 }
 
-TEST_CASE("JsonSerialisation", "[IoClassSerialiser]") {
+TEST_CASE("JsonSerialisation", "[JsonClassSerialiser]") {
     opencmw::debug::resetStats();
     {
         opencmw::IoBuffer buffer;
-        Data              foo;
+        DataX             foo;
         foo.doubleValue = 42.23;
-        foo.nested      = std::make_shared<Data>();
+        foo.nested      = std::make_shared<DataX>();
         opencmw::serialise<opencmw::Json>(buffer, foo);
         std::cout << "serialised: " << buffer.asString() << std::endl;
     }
