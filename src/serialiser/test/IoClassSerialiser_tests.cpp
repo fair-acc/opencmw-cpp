@@ -3,8 +3,7 @@
 #pragma ide diagnostic   ignored "cppcoreguidelines-avoid-magic-numbers"
 
 #include <Debug.hpp>
-#include <IoClassSerialiser.hpp>
-#include <IoSerialiser.hpp>
+#include <YaSerialiser.hpp>
 #include <Utils.hpp>
 #include <algorithm>
 #include <catch2/catch.hpp>

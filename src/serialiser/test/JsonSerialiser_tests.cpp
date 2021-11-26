@@ -3,7 +3,7 @@
 #pragma ide diagnostic   ignored "cppcoreguidelines-avoid-magic-numbers"
 
 #include <Debug.hpp>
-#include <IoClassSerialiser.hpp>
+#include <JsonSerialiser.hpp>
 #include <Utils.hpp>
 #include <catch2/catch.hpp>
 #include <iostream>
