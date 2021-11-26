@@ -367,9 +367,79 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
         }
 
 
-        int32_t searchIndex = -1;
+        if (field.intDataType == IoSerialiser<protocol, START_MARKER>::getDataTypeId()) {
+            try {
+                buffer.set_position(field.headerStart); // reset buffer position for the nested deserialiser to read again
+                // reached start of sub-structure -> dive in
+                call_on_field<T>(field.fieldName, [&buffer, &value, &hierarchyDepth, &info, &structName](auto member, int32_t index) {
+                    using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
+                    if constexpr (isReflectableClass<MemberType>()) {
+                        info = deserialise<protocol, protocolCheckVariant>(buffer, unwrapPointerCreateIfAbsent(member(value)), info, fmt::format("{}.{}", structName, get_display_name(member)), hierarchyDepth + 1);
+                        if constexpr (protocolCheckVariant != IGNORE) {
+                            info.setFields[structName][static_cast<uint64_t>(index)] = true;
+                        }
+                    }
+                });
+
+                buffer.set_position(field.dataEndPosition);
+                continue;
+            } catch (std::out_of_range &e) {
+                if constexpr (protocolCheckVariant == IGNORE) {
+                    buffer.set_position(field.dataEndPosition);
+                    continue;
+                }
+                const auto exception = fmt::format("missing field (type:{}) {}::{} at buffer[{}, size:{}]",
+                                                   field.intDataType, structName, field.fieldName, buffer.position(), buffer.size());
+                if constexpr (protocolCheckVariant == ALWAYS) {
+                    throw ProtocolException(exception);
+                }
+                info.exceptions.emplace_back(ProtocolException(exception));
+                info.additionalFields.emplace_back(std::make_tuple(fmt::format("{}::{}", structName, field.fieldName), field.intDataType));
+                buffer.set_position(field.dataEndPosition);
+                continue;
+            }
+        }
+
         try {
-            searchIndex = static_cast<int32_t>(findMemberIndex<T>(field.fieldName));
+            call_on_field<T>(field.fieldName, [&buffer, &value, &info, &field, &structName](auto member, int32_t index) {
+                using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
+                if constexpr (isReflectableClass<MemberType>() || !is_writable(member) || is_static(member)) {
+                    handleError(protocolCheckVariant, info, "field is not writeable or non-primitive: {}", member.name);
+                    return;
+                } else {
+                    constexpr int requestedType = IoSerialiser<protocol, MemberType>::getDataTypeId();
+                    if (requestedType != field.intDataType) { // mismatching data-type
+                        if constexpr (protocolCheckVariant == IGNORE) {
+                            return; // don't write -> skip to next
+                        }
+                        handleError(protocolCheckVariant, info, "mismatched field type for {}::{} - requested type: {} (typeID: {}) got: {}", member.declarator.name, member.name, typeName<MemberType>, requestedType, field.intDataType);
+                        return;
+                    }
+                    constexpr bool isAnnotated = is_annotated<std::remove_reference_t<decltype(unwrapPointer(member(value)))>>;
+                    if constexpr (isAnnotated && protocolCheckVariant != IGNORE) {       // check for Annotation mismatch
+                        if (is_deprecated(unwrapPointer(member(value)).getModifier())) { // warn for deprecated access
+                            handleError(protocolCheckVariant, info, "deprecated field access for {}::{} - description: {}", member.declarator.name, member.name, unwrapPointer(member(value)).getDescription());
+                        }
+                        if (is_private(unwrapPointer(member(value)).getModifier())) { // warn for private access
+                            handleError(protocolCheckVariant, info, "private/internal field access for {}::{} - description: {}", member.declarator.name, member.name, unwrapPointer(member(value)).getDescription());
+                        }
+                        if (unwrapPointer(member(value)).getUnit().compare(field.unit)) { // error on unit mismatch
+                            handleError(protocolCheckVariant, info, "mismatched field unit for {}::{} - requested unit '{}' received '{}'", member.declarator.name, member.name, unwrapPointer(member(value)).getUnit(), field.unit);
+                            return;
+                        }
+                        if (is_readonly((unwrapPointer(member(value)).getModifier()))) { // should not set field via external reference
+                            handleError(protocolCheckVariant, info, "mismatched field access modifier for {}::{} - requested '{}' received '{}'", member.declarator.name, member.name, (unwrapPointer(member(value)).getModifier()), field.modifier);
+                            return;
+                        }
+                    }
+                    IoSerialiser<protocol, MemberType>::deserialise(buffer, field.fieldName, getAnnotatedMember(unwrapPointerCreateIfAbsent(member(value))));
+                    if constexpr (protocolCheckVariant != IGNORE) {
+                        info.setFields[structName][static_cast<uint64_t>(index)] = true;
+                    }
+                }
+            });
+            // skip to data end
+            buffer.set_position(field.dataEndPosition);
         } catch (std::out_of_range &e) {
             if constexpr (protocolCheckVariant == IGNORE) {
                 buffer.set_position(field.dataEndPosition);
@@ -385,62 +455,6 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
             buffer.set_position(field.dataEndPosition);
             continue;
         }
-        if (field.intDataType == IoSerialiser<protocol, START_MARKER>::getDataTypeId()) {
-            buffer.set_position(field.headerStart); // reset buffer position for the nested deserialiser to read again
-            // reached start of sub-structure -> dive in
-            call_on_field<T>(field.fieldName, [&buffer, &value, &hierarchyDepth, &info, &structName](auto member, int32_t index) {
-                using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
-                if constexpr (isReflectableClass<MemberType>()) {
-                    info = deserialise<protocol, protocolCheckVariant>(buffer, unwrapPointerCreateIfAbsent(member(value)), info, fmt::format("{}.{}", structName, get_display_name(member)), hierarchyDepth + 1);
-                    if constexpr (protocolCheckVariant != IGNORE) {
-                        info.setFields[structName][static_cast<uint64_t>(index)] = true;
-                    }
-                }
-            });
-
-            buffer.set_position(field.dataEndPosition);
-            continue;
-        }
-
-        call_on_field<T>(field.fieldName, [&buffer, &value, &info, &field, &searchIndex, &structName](auto member, int32_t index) {
-            using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
-            if constexpr (isReflectableClass<MemberType>() || !is_writable(member) || is_static(member)) {
-                handleError(protocolCheckVariant, info, "field is not writeable or non-primitive: {}", member.name);
-                return;
-            } else {
-                constexpr int requestedType = IoSerialiser<protocol, MemberType>::getDataTypeId();
-                if (requestedType != field.intDataType) { // mismatching data-type
-                    if constexpr (protocolCheckVariant == IGNORE) {
-                        return; // don't write -> skip to next
-                    }
-                    handleError(protocolCheckVariant, info, "mismatched field type for {}::{} - requested type: {} (typeID: {}) got: {}", member.declarator.name, member.name, typeName<MemberType>, requestedType, field.intDataType);
-                    return;
-                }
-                constexpr bool isAnnotated = is_annotated<std::remove_reference_t<decltype(unwrapPointer(member(value)))>>;
-                if constexpr (isAnnotated && protocolCheckVariant != IGNORE) {       // check for Annotation mismatch
-                    if (is_deprecated(unwrapPointer(member(value)).getModifier())) { // warn for deprecated access
-                        handleError(protocolCheckVariant, info, "deprecated field access for {}::{} - description: {}", member.declarator.name, member.name, unwrapPointer(member(value)).getDescription());
-                    }
-                    if (is_private(unwrapPointer(member(value)).getModifier())) { // warn for private access
-                        handleError(protocolCheckVariant, info, "private/internal field access for {}::{} - description: {}", member.declarator.name, member.name, unwrapPointer(member(value)).getDescription());
-                    }
-                    if (unwrapPointer(member(value)).getUnit().compare(field.unit)) { // error on unit mismatch
-                        handleError(protocolCheckVariant, info, "mismatched field unit for {}::{} - requested unit '{}' received '{}'", member.declarator.name, member.name, unwrapPointer(member(value)).getUnit(), field.unit);
-                        return;
-                    }
-                    if (is_readonly((unwrapPointer(member(value)).getModifier()))) { // should not set field via external reference
-                        handleError(protocolCheckVariant, info, "mismatched field access modifier for {}::{} - requested '{}' received '{}'", member.declarator.name, member.name, (unwrapPointer(member(value)).getModifier()), field.modifier);
-                        return;
-                    }
-                }
-                IoSerialiser<protocol, MemberType>::deserialise(buffer, field.fieldName, getAnnotatedMember(unwrapPointerCreateIfAbsent(member(value))));
-                if constexpr (protocolCheckVariant != IGNORE) {
-                    info.setFields[structName][static_cast<uint64_t>(index)] = true;
-                }
-            }
-        });
-        // skip to data end
-        buffer.set_position(field.dataEndPosition);
     }
     // check that full buffer is read. // todo: this check should be removed to allow consecutive storage of multiple objects in one buffer
     if (hierarchyDepth == 0 && buffer.position() != buffer.size()) {
