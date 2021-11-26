@@ -39,7 +39,8 @@ struct DataX {
 ENABLE_REFLECTION_FOR(DataX, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, constStringValue, doubleArray, floatVector, doubleMatrix, nested)
 
 struct SimpleInner {
-    std::string val1; std::string val2;
+    std::string val1;
+    std::string val2;
 };
 ENABLE_REFLECTION_FOR(SimpleInner, val1, val2)
 struct Simple {
@@ -51,12 +52,12 @@ TEST_CASE("JsonDeserialisation", "[JsonSerialiser]") {
     opencmw::debug::resetStats();
     {
         opencmw::IoBuffer buffer;
-        auto cars_json = R"({ "test": { "val1":"foo", "val2":"bar"}})";
+        auto              cars_json = R"({ "test": { "val1":"foo", "val2":"bar"}})";
         buffer.reserve_spare(strlen(cars_json));
         buffer.putRaw(cars_json);
         std::cout << "Prepared json data: " << buffer.asString() << std::endl;
         Simple foo;
-        auto  result = opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buffer, foo);
+        auto   result = opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buffer, foo);
         std::cout << "deserialised: \n";
         for (auto e : result.exceptions) {
             std::cout << " ! " << e.what() << std::endl;

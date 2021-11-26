@@ -92,7 +92,7 @@ inline void consumeJsonWhitespace(IoBuffer &buffer) {
     }
 }
 
-}
+} // namespace json
 
 template<>
 struct FieldHeader<Json> {
@@ -152,7 +152,7 @@ struct IoSerialiser<Json, START_MARKER> { // catch all template
 
 template<Number T>
 struct IoSerialiser<Json, T> {
-    inline static constexpr uint8_t getDataTypeId() { return IoSerialiser<Json,OTHER>::getDataTypeId(); }
+    inline static constexpr uint8_t getDataTypeId() { return IoSerialiser<Json, OTHER>::getDataTypeId(); }
     /*constexpr*/ static bool       serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
         // todo: constexpr not possible because of fmt
         if constexpr (std::is_integral_v<T>) {
@@ -177,7 +177,7 @@ struct IoSerialiser<Json, T> {
 };
 template<StringLike T>
 struct IoSerialiser<Json, T> { // catch all template
-    inline static constexpr uint8_t getDataTypeId() { return IoSerialiser<Json,OTHER>::getDataTypeId(); }
+    inline static constexpr uint8_t getDataTypeId() { return IoSerialiser<Json, OTHER>::getDataTypeId(); }
     constexpr static bool           serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
         buffer.put('"');
         buffer.putRaw(value);
@@ -192,7 +192,7 @@ struct IoSerialiser<Json, T> { // catch all template
 
 template<ArrayOrVector T>
 struct IoSerialiser<Json, T> {
-    inline static constexpr uint8_t getDataTypeId() { return IoSerialiser<Json,OTHER>::getDataTypeId(); }
+    inline static constexpr uint8_t getDataTypeId() { return IoSerialiser<Json, OTHER>::getDataTypeId(); }
     constexpr static bool           serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &values) noexcept {
         using MemberType = typename T::value_type;
         buffer.put('[');
@@ -221,7 +221,7 @@ struct IoSerialiser<Json, T> {
 
 template<MultiArrayType T>
 struct IoSerialiser<Json, T> {
-    inline static constexpr uint8_t getDataTypeId() { return IoSerialiser<Json,OTHER>::getDataTypeId(); }
+    inline static constexpr uint8_t getDataTypeId() { return IoSerialiser<Json, OTHER>::getDataTypeId(); }
     constexpr static bool           serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
         buffer.putRaw("{\n");
         std::array<int32_t, T::n_dims_> dims;
@@ -252,13 +252,13 @@ inline FieldDescription readFieldHeader<Json>(IoBuffer &buffer, DeserialiserInfo
     result.headerStart = buffer.position();
     json::consumeJsonWhitespace(buffer);
     if (buffer.at<char8_t>(buffer.position()) == '{') { // start marker
-        result.intDataType = IoSerialiser<Json, START_MARKER>::getDataTypeId();
+        result.intDataType       = IoSerialiser<Json, START_MARKER>::getDataTypeId();
         result.dataStartPosition = buffer.position() + 1;
         // set rest of fields
         return result;
     }
     if (buffer.at<char8_t>(buffer.position()) == '}') { // end marker
-        result.intDataType = IoSerialiser<Json, START_MARKER>::getDataTypeId();
+        result.intDataType       = IoSerialiser<Json, START_MARKER>::getDataTypeId();
         result.dataStartPosition = buffer.position() + 1;
         // set rest of fields
         return result;
@@ -280,11 +280,11 @@ inline FieldDescription readFieldHeader<Json>(IoBuffer &buffer, DeserialiserInfo
         }
         json::consumeJsonWhitespace(buffer);
         // read value and set type ?
-        if  (buffer.at<char8_t>(buffer.position()) == '{') { // nested object
-            result.intDataType       = IoSerialiser<Json,START_MARKER>::getDataTypeId();
+        if (buffer.at<char8_t>(buffer.position()) == '{') { // nested object
+            result.intDataType = IoSerialiser<Json, START_MARKER>::getDataTypeId();
             buffer.set_position(buffer.position() + 1);
         } else {
-            result.intDataType       = IoSerialiser<Json,OTHER>::getDataTypeId(); // value is ignored anyway
+            result.intDataType = IoSerialiser<Json, OTHER>::getDataTypeId(); // value is ignored anyway
         }
         result.dataStartPosition = buffer.position();
         result.dataStartOffset   = result.dataStartPosition - result.headerStart;
