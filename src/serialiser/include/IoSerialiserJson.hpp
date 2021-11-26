@@ -247,7 +247,7 @@ struct IoSerialiser<Json, T> {
 };
 
 template<>
-inline FieldDescription readFieldHeader<Json>(IoBuffer &buffer, DeserialiserInfo &info, const ProtocolCheck protocolCheckVariant) {
+inline FieldDescription readFieldHeader<Json>(IoBuffer &buffer, DeserialiserInfo &info, const ProtocolCheck &protocolCheckVariant) {
     FieldDescription result;
     result.headerStart = buffer.position();
     json::consumeJsonWhitespace(buffer);
@@ -266,7 +266,12 @@ inline FieldDescription readFieldHeader<Json>(IoBuffer &buffer, DeserialiserInfo
     if (buffer.at<char8_t>(buffer.position()) == '"') { // string
         result.fieldName = json::readJsonString(buffer);
         if (result.fieldName.size() == 0) {
-            handleError(protocolCheckVariant, info, "Cannot read field name for field at buffer position {}", buffer.position());
+            //handleError<protocolCheckVariant>(info, "Cannot read field name for field at buffer position {}", buffer.position());
+            const auto text = fmt::format("Cannot read field name for field at buffer position {}", buffer.position());
+            if (protocolCheckVariant == ALWAYS) {
+                throw ProtocolException(text);
+            }
+            info.exceptions.emplace_back(ProtocolException(text));
         }
         json::consumeJsonWhitespace(buffer);
         if (buffer.get<int8_t>() != ':') {

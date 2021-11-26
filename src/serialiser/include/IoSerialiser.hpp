@@ -170,9 +170,10 @@ void call_on_field(const std::string_view fieldName, const Callable &callable) {
  * @param formatString the format string for the error message
  * @param arguments arguments for use in the format string
  */
-inline constexpr void handleError(const ProtocolCheck protocolCheckVariant, DeserialiserInfo &info, const char *formatString, const auto &...arguments) {
+template<const ProtocolCheck protocolCheckVariant>
+inline constexpr void handleError(DeserialiserInfo &info, const char *formatString, const auto &...arguments) { // todo: guarded noexcept
     const auto text = fmt::format(formatString, arguments...);
-    if (protocolCheckVariant == ALWAYS) {
+    if constexpr (protocolCheckVariant == ALWAYS) {
         throw ProtocolException(text);
     }
     info.exceptions.emplace_back(ProtocolException(text));
@@ -259,7 +260,7 @@ constexpr void serialise(IoBuffer &buffer, const T &value, const uint8_t hierarc
 }
 
 template<SerialiserProtocol protocol>
-inline constexpr FieldDescription readFieldHeader(IoBuffer & /*buffer*/, DeserialiserInfo & /*info*/, const ProtocolCheck /*protocolCheckVariant*/) { return FieldDescription{}; }
+inline constexpr FieldDescription readFieldHeader(IoBuffer & /*buffer*/, DeserialiserInfo & /*info*/, const ProtocolCheck & /*protocolCheckVariant*/) { return FieldDescription{}; }
 
 /**
  * Deserialise the contents of an IoBuffer into a given object
@@ -309,7 +310,7 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
     // read initial field header
     const FieldDescription startMarker = readFieldHeader<protocol>(buffer, info, protocolCheckVariant);
     if (hierarchyDepth == 0 && startMarker.fieldName != typeName<T> && protocolCheckVariant != IGNORE) { // check if root type is matching
-        handleError(protocolCheckVariant, info, "IoSerialiser<{}, {}>::deserialise: data is not of excepted type but of type {}", protocol::protocolName(), typeName<T>, startMarker.fieldName);
+        handleError<protocolCheckVariant>(info, "IoSerialiser<{}, {}>::deserialise: data is not of excepted type but of type {}", protocol::protocolName(), typeName<T>, startMarker.fieldName);
     }
     try {
         IoSerialiser<protocol, START_MARKER>::deserialise(buffer, startMarker.fieldName, START_MARKER_INST);
@@ -318,7 +319,7 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
             buffer.set_position(startMarker.dataEndPosition);
             return info;
         }
-        handleError(protocolCheckVariant, info, "IoSerialiser<{}, START_MARKER>::deserialise(buffer, fieldName, START_MARKER_INST) exception for class {}: position {} vs. size {} -- exception thrown: {}",
+        handleError<protocolCheckVariant>(info, "IoSerialiser<{}, START_MARKER>::deserialise(buffer, fieldName, START_MARKER_INST) exception for class {}: position {} vs. size {} -- exception thrown: {}",
                 protocol::protocolName(), structName, buffer.position(), buffer.size(), exception.what());
         buffer.set_position(startMarker.dataEndPosition);
         return info;
@@ -403,7 +404,7 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
             call_on_field<T>(field.fieldName, [&buffer, &value, &info, &field, &structName](auto member, int32_t index) {
                 using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
                 if constexpr (isReflectableClass<MemberType>() || !is_writable(member) || is_static(member)) {
-                    handleError(protocolCheckVariant, info, "field is not writeable or non-primitive: {}", member.name);
+                    handleError<protocolCheckVariant>(info, "field is not writeable or non-primitive: {}", member.name);
                     return;
                 } else {
                     constexpr int requestedType = IoSerialiser<protocol, MemberType>::getDataTypeId();
@@ -411,23 +412,23 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
                         if constexpr (protocolCheckVariant == IGNORE) {
                             return; // don't write -> skip to next
                         }
-                        handleError(protocolCheckVariant, info, "mismatched field type for {}::{} - requested type: {} (typeID: {}) got: {}", member.declarator.name, member.name, typeName<MemberType>, requestedType, field.intDataType);
+                        handleError<protocolCheckVariant>(info, "mismatched field type for {}::{} - requested type: {} (typeID: {}) got: {}", member.declarator.name, member.name, typeName<MemberType>, requestedType, field.intDataType);
                         return;
                     }
                     constexpr bool isAnnotated = is_annotated<std::remove_reference_t<decltype(unwrapPointer(member(value)))>>;
                     if constexpr (isAnnotated && protocolCheckVariant != IGNORE) {       // check for Annotation mismatch
                         if (is_deprecated(unwrapPointer(member(value)).getModifier())) { // warn for deprecated access
-                            handleError(protocolCheckVariant, info, "deprecated field access for {}::{} - description: {}", member.declarator.name, member.name, unwrapPointer(member(value)).getDescription());
+                            handleError<protocolCheckVariant>(info, "deprecated field access for {}::{} - description: {}", member.declarator.name, member.name, unwrapPointer(member(value)).getDescription());
                         }
                         if (is_private(unwrapPointer(member(value)).getModifier())) { // warn for private access
-                            handleError(protocolCheckVariant, info, "private/internal field access for {}::{} - description: {}", member.declarator.name, member.name, unwrapPointer(member(value)).getDescription());
+                            handleError<protocolCheckVariant>(info, "private/internal field access for {}::{} - description: {}", member.declarator.name, member.name, unwrapPointer(member(value)).getDescription());
                         }
                         if (unwrapPointer(member(value)).getUnit().compare(field.unit)) { // error on unit mismatch
-                            handleError(protocolCheckVariant, info, "mismatched field unit for {}::{} - requested unit '{}' received '{}'", member.declarator.name, member.name, unwrapPointer(member(value)).getUnit(), field.unit);
+                            handleError<protocolCheckVariant>(info, "mismatched field unit for {}::{} - requested unit '{}' received '{}'", member.declarator.name, member.name, unwrapPointer(member(value)).getUnit(), field.unit);
                             return;
                         }
                         if (is_readonly((unwrapPointer(member(value)).getModifier()))) { // should not set field via external reference
-                            handleError(protocolCheckVariant, info, "mismatched field access modifier for {}::{} - requested '{}' received '{}'", member.declarator.name, member.name, (unwrapPointer(member(value)).getModifier()), field.modifier);
+                            handleError<protocolCheckVariant>(info, "mismatched field access modifier for {}::{} - requested '{}' received '{}'", member.declarator.name, member.name, (unwrapPointer(member(value)).getModifier()), field.modifier);
                             return;
                         }
                     }

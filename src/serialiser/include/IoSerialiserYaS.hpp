@@ -277,7 +277,7 @@ inline DeserialiserInfo checkHeaderInfo<YaS>(IoBuffer &buffer, DeserialiserInfo 
 }
 
 template<>
-inline FieldDescription readFieldHeader<YaS>(IoBuffer &buffer, DeserialiserInfo & /*info*/, const ProtocolCheck protocolCheckVariant) {
+inline FieldDescription readFieldHeader<YaS>(IoBuffer &buffer, DeserialiserInfo & /*info*/, const ProtocolCheck &protocolCheckVariant) {
     using str_view = std::string_view;
 
     FieldDescription result;

@@ -1,6 +1,7 @@
 #include "IoClassSerialiserBenchmark.hpp"
+
+#include <IoSerialiserYaS.hpp>
 #include <Utils.hpp>
-#include <YaSerialiser.hpp>
 #include <iostream>
 
 using namespace opencmw;
