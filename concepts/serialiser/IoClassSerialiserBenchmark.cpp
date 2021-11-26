@@ -1,5 +1,5 @@
 #include "IoClassSerialiserBenchmark.hpp"
-#include <YaSerialiser.hpp>
+#include <IoSerialiserYaS.hpp>
 #include <Utils.hpp>
 #include <iostream>
 
