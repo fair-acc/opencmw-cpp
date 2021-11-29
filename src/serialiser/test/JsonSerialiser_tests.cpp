@@ -39,7 +39,7 @@ struct DataX {
 ENABLE_REFLECTION_FOR(DataX, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, constStringValue, doubleArray, floatVector, doubleMatrix, nested)
 
 struct SimpleInner {
-    std::string val1;
+    double      val1;
     std::string val2;
 };
 ENABLE_REFLECTION_FOR(SimpleInner, val1, val2)
@@ -52,20 +52,12 @@ TEST_CASE("JsonDeserialisation", "[JsonSerialiser]") {
     opencmw::debug::resetStats();
     {
         opencmw::IoBuffer buffer;
-        auto              cars_json = R"({ "test": { "val1":"foo", "val2":"bar"}})";
-        buffer.reserve_spare(strlen(cars_json));
-        buffer.putRaw(cars_json);
+        buffer.putRaw(R"({ "test": { "val1":13.37e2, "val2":"bar"}})");
         std::cout << "Prepared json data: " << buffer.asString() << std::endl;
         Simple foo;
         auto   result = opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buffer, foo);
-        std::cout << "deserialised: \n";
-        for (auto e : result.exceptions) {
-            std::cout << " ! " << e.what() << std::endl;
-        }
-        for (auto f : result.additionalFields) {
-            std::cout << " + " << std::get<0>(f) << std::endl;
-        }
-        REQUIRE(foo.test.get()->val1 == "foo");
+        fmt::print(std::cout, "deserialisation finished: {}\n", result);
+        REQUIRE(foo.test.get()->val1 == 1337.0);
         REQUIRE(foo.test.get()->val2 == "bar");
     }
     REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
@@ -74,6 +66,7 @@ TEST_CASE("JsonDeserialisation", "[JsonSerialiser]") {
 
 TEST_CASE("JsonSerialisation", "[JsonSerialiser]") {
     opencmw::debug::resetStats();
+    std::cout << opencmw::utils::ClassInfoVerbose;
     {
         opencmw::IoBuffer buffer;
         DataX             foo;
@@ -81,6 +74,11 @@ TEST_CASE("JsonSerialisation", "[JsonSerialiser]") {
         foo.nested      = std::make_shared<DataX>();
         opencmw::serialise<opencmw::Json>(buffer, foo);
         std::cout << "serialised: " << buffer.asString() << std::endl;
+        DataX bar;
+        auto  result = opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buffer, bar);
+        opencmw::utils::diffView(std::cout, foo, bar);
+        fmt::print(std::cout, "deserialisation finished: {}\n", result);
+        REQUIRE(foo == bar);
     }
     REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
     opencmw::debug::resetStats();

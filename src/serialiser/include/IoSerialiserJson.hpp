@@ -92,6 +92,23 @@ inline void consumeJsonWhitespace(IoBuffer &buffer) {
     }
 }
 
+template<Number T>
+inline T parseNumber(const std::string_view & /*num*/) { return 0; };
+
+template<>
+inline double parseNumber<double>(const std::string_view &num) {
+    return std::stod(std::string{ num });
+}
+
+template<>
+inline float parseNumber<float>(const std::string_view &num) {
+    return std::stof(std::string{ num });
+}
+
+template<>
+inline int parseNumber<int>(const std::string_view &num) {
+    return std::stoi(std::string{ num });
+}
 } // namespace json
 
 template<>
@@ -167,8 +184,8 @@ struct IoSerialiser<Json, T> {
         auto start = buffer.position();
         while (json::isJsonNumberChar(buffer.get<uint8_t>())) {
         }
-        auto end = buffer.position();
-        // value = stringTo
+        auto end    = buffer.position();
+        value       = json::parseNumber<T>(std::string_view(reinterpret_cast<char *>(buffer.data()) + start, end - start));
         std::ignore = start;
         std::ignore = end;
         std::ignore = value;
