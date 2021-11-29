@@ -316,16 +316,22 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
         IoSerialiser<protocol, START_MARKER>::deserialise(buffer, startMarker.fieldName, START_MARKER_INST);
     } catch (ProtocolException &exception) { // protocol exception
         if constexpr (protocolCheckVariant == IGNORE) {
-            buffer.set_position(startMarker.dataEndPosition);
+            if (startMarker.dataEndPosition != std::numeric_limits<size_t>::max()) {
+                buffer.set_position(startMarker.dataEndPosition);
+            }
             return info;
         }
         handleError<protocolCheckVariant>(info, "IoSerialiser<{}, START_MARKER>::deserialise(buffer, fieldName, START_MARKER_INST) exception for class {}: position {} vs. size {} -- exception thrown: {}",
                 protocol::protocolName(), structName, buffer.position(), buffer.size(), exception.what());
-        buffer.set_position(startMarker.dataEndPosition);
+        if (startMarker.dataEndPosition != std::numeric_limits<size_t>::max()) {
+            buffer.set_position(startMarker.dataEndPosition);
+        }
         return info;
     } catch (...) {
         if constexpr (protocolCheckVariant == IGNORE) {
-            buffer.set_position(startMarker.dataEndPosition);
+            if (startMarker.dataEndPosition != std::numeric_limits<size_t>::max()) {
+                buffer.set_position(startMarker.dataEndPosition);
+            }
             return info;
         }
         throw ProtocolException(fmt::format("unknown exception in IoSerialiser<{}, START_MARKER>::deserialise(buffer, fieldName, START_MARKER_INST) for class {}: position {} vs. size {}",
@@ -345,7 +351,9 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
                 IoSerialiser<protocol, END_MARKER>::deserialise(buffer, field.fieldName, END_MARKER_INST);
             } catch (ProtocolException &exception) { // protocol exception
                 if constexpr (protocolCheckVariant == IGNORE) {
-                    buffer.set_position(field.dataEndPosition);
+                    if (field.dataEndPosition != std::numeric_limits<size_t>::max()) {
+                        buffer.set_position(field.dataEndPosition);
+                    }
                     continue;
                 }
                 const auto text = fmt::format("IoSerialiser<{}, END_MARKER>::deserialise(buffer, fieldName, END_MARKER_INST) exception for class {}: position {} vs. size {} -- exception thrown: {}",
@@ -353,12 +361,16 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
                 if constexpr (protocolCheckVariant == ALWAYS) {
                     throw ProtocolException(text);
                 }
-                info.exceptions.emplace_back(ProtocolException(text));
                 buffer.set_position(field.dataEndPosition);
+                if (field.dataEndPosition != std::numeric_limits<size_t>::max()) {
+                    buffer.set_position(field.dataEndPosition);
+                }
                 continue;
             } catch (...) {
                 if constexpr (protocolCheckVariant == IGNORE) {
-                    buffer.set_position(field.dataEndPosition);
+                    if (field.dataEndPosition != std::numeric_limits<size_t>::max()) {
+                        buffer.set_position(field.dataEndPosition);
+                    }
                     continue;
                 }
                 throw ProtocolException(fmt::format("unknown exception in IoSerialiser<{}, START_MARKER>::deserialise(buffer, fieldName, START_MARKER_INST) for class {}: position {} vs. size {}",
@@ -380,12 +392,19 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
                         }
                     }
                 });
-
-                buffer.set_position(field.dataEndPosition);
+                // skip to data end if field header defines the end
+                if (field.dataEndPosition != std::numeric_limits<size_t>::max() && field.dataEndPosition != buffer.position()) {
+                    if (protocolCheckVariant != IGNORE) {
+                        handleError<protocolCheckVariant>(info, "field reader for field {} did not consume until the end ({}) of the field, buffer position: {}", field.fieldName, field.dataEndPosition, buffer.position());
+                    }
+                    buffer.set_position(field.dataEndPosition);
+                }
                 continue;
             } catch (std::out_of_range &e) {
                 if constexpr (protocolCheckVariant == IGNORE) {
-                    buffer.set_position(field.dataEndPosition);
+                    if (field.dataEndPosition != std::numeric_limits<size_t>::max()) {
+                        buffer.set_position(field.dataEndPosition);
+                    }
                     continue;
                 }
                 const auto exception = fmt::format("missing field (type:{}) {}::{} at buffer[{}, size:{}]",
@@ -395,7 +414,9 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
                 }
                 info.exceptions.emplace_back(ProtocolException(exception));
                 info.additionalFields.emplace_back(std::make_tuple(fmt::format("{}::{}", structName, field.fieldName), field.intDataType));
-                buffer.set_position(field.dataEndPosition);
+                if (field.dataEndPosition != std::numeric_limits<size_t>::max()) {
+                    buffer.set_position(field.dataEndPosition);
+                }
                 continue;
             }
         }
@@ -409,6 +430,9 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
                 } else {
                     constexpr int requestedType = IoSerialiser<protocol, MemberType>::getDataTypeId();
                     if (requestedType != field.intDataType) { // mismatching data-type
+                        if (field.dataEndPosition != std::numeric_limits<size_t>::max()) {
+                            buffer.set_position(field.dataEndPosition);
+                        }
                         if constexpr (protocolCheckVariant == IGNORE) {
                             return; // don't write -> skip to next
                         }
@@ -425,10 +449,16 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
                         }
                         if (unwrapPointer(member(value)).getUnit().compare(field.unit)) { // error on unit mismatch
                             handleError<protocolCheckVariant>(info, "mismatched field unit for {}::{} - requested unit '{}' received '{}'", member.declarator.name, member.name, unwrapPointer(member(value)).getUnit(), field.unit);
+                            if (field.dataEndPosition != std::numeric_limits<size_t>::max()) {
+                                buffer.set_position(field.dataEndPosition);
+                            }
                             return;
                         }
                         if (is_readonly((unwrapPointer(member(value)).getModifier()))) { // should not set field via external reference
                             handleError<protocolCheckVariant>(info, "mismatched field access modifier for {}::{} - requested '{}' received '{}'", member.declarator.name, member.name, (unwrapPointer(member(value)).getModifier()), field.modifier);
+                            if (field.dataEndPosition != std::numeric_limits<size_t>::max()) {
+                                buffer.set_position(field.dataEndPosition);
+                            }
                             return;
                         }
                     }
@@ -438,11 +468,18 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
                     }
                 }
             });
-            // skip to data end
-            buffer.set_position(field.dataEndPosition);
+            // skip to data end if field header defines the end
+            if (field.dataEndPosition != std::numeric_limits<size_t>::max() && field.dataEndPosition != buffer.position()) {
+                if (protocolCheckVariant != IGNORE) {
+                    handleError<protocolCheckVariant>(info, "field reader for field {} did not consume until the end ({}) of the field, buffer position: {}", field.fieldName, field.dataEndPosition, buffer.position());
+                }
+                buffer.set_position(field.dataEndPosition);
+            }
         } catch (std::out_of_range &e) {
             if constexpr (protocolCheckVariant == IGNORE) {
-                buffer.set_position(field.dataEndPosition);
+                if (field.dataEndPosition != std::numeric_limits<size_t>::max()) {
+                    buffer.set_position(field.dataEndPosition);
+                }
                 continue;
             }
             const auto exception = fmt::format("missing field (type:{}) {}::{} at buffer[{}, size:{}]",
@@ -452,7 +489,9 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
             }
             info.exceptions.emplace_back(ProtocolException(exception));
             info.additionalFields.emplace_back(std::make_tuple(fmt::format("{}::{}", structName, field.fieldName), field.intDataType));
-            buffer.set_position(field.dataEndPosition);
+            if (field.dataEndPosition != std::numeric_limits<size_t>::max()) {
+                buffer.set_position(field.dataEndPosition);
+            }
             continue;
         }
     }
@@ -473,7 +512,6 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
     }
 
     return info;
-    src / serialiser / include / IoClassSerialiser.hpp
 }
 } // namespace opencmw
 // TODO: allow declaration of reflection within name-space
