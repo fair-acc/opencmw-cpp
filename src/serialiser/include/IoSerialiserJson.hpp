@@ -131,8 +131,9 @@ struct FieldHeader<Json> {
     constexpr std::size_t static putFieldHeader(IoBuffer &buffer, const char *fieldName, const int fieldNameSize, const DataType &data) { // todo fieldName -> string_view
         if constexpr (std::is_same_v<DataType, START_MARKER>) {
             if (fieldNameSize > 0) {
+                buffer.putRaw("\"");
                 buffer.putRaw(fieldName);
-                buffer.putRaw(":");
+                buffer.putRaw("\": ");
             }
             buffer.putRaw("{\n"); // use string put instead of other put // call serialise with the start marker instead?
             return 0;
@@ -141,8 +142,9 @@ struct FieldHeader<Json> {
             buffer.put('}');
             return 0;
         }
+        buffer.putRaw("\"");
         buffer.putRaw(std::basic_string_view(fieldName, static_cast<size_t>(fieldNameSize)));
-        buffer.put(':');
+        buffer.putRaw("\": ");
         using StrippedDataType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(data)))>;
         IoSerialiser<Json, StrippedDataType>::serialise(buffer, fieldName, getAnnotatedMember(unwrapPointer(data)));
         buffer.putRaw(",\n");
@@ -198,11 +200,9 @@ struct IoSerialiser<Json, T> {
         auto start = buffer.position();
         while (json::isJsonNumberChar(buffer.get<uint8_t>())) {
         }
-        auto end    = buffer.position();
-        value       = json::parseNumber<T>(std::string_view(reinterpret_cast<char *>(buffer.data()) + start, end - start));
-        std::ignore = start;
-        std::ignore = end;
-        std::ignore = value;
+        buffer.set_position(buffer.position() - 1);
+        auto end = buffer.position();
+        value    = json::parseNumber<T>(std::string_view(reinterpret_cast<char *>(buffer.data()) + start, end - start));
         return std::is_constant_evaluated();
     }
 };
