@@ -251,6 +251,11 @@ inline FieldDescription readFieldHeader<Json>(IoBuffer &buffer, DeserialiserInfo
     FieldDescription result;
     result.headerStart = buffer.position();
     json::consumeJsonWhitespace(buffer);
+    if (buffer.at<char8_t>(buffer.position()) == ',') { // move to next field
+        buffer.set_position(buffer.position() + 1);
+        json::consumeJsonWhitespace(buffer);
+        result.headerStart = buffer.position();
+    }
     if (buffer.at<char8_t>(buffer.position()) == '{') { // start marker
         result.intDataType       = IoSerialiser<Json, START_MARKER>::getDataTypeId();
         result.dataStartPosition = buffer.position() + 1;
@@ -258,7 +263,7 @@ inline FieldDescription readFieldHeader<Json>(IoBuffer &buffer, DeserialiserInfo
         return result;
     }
     if (buffer.at<char8_t>(buffer.position()) == '}') { // end marker
-        result.intDataType       = IoSerialiser<Json, START_MARKER>::getDataTypeId();
+        result.intDataType       = IoSerialiser<Json, END_MARKER>::getDataTypeId();
         result.dataStartPosition = buffer.position() + 1;
         // set rest of fields
         return result;
