@@ -93,7 +93,10 @@ inline void consumeJsonWhitespace(IoBuffer &buffer) {
 }
 
 template<Number T>
-inline T parseNumber(const std::string_view & /*num*/) { return 0; };
+inline T parseNumber(const std::string_view & /*num*/) {
+    std::cerr << "json parser for number type not implemented!\n";
+    return 0;
+};
 
 template<>
 inline double parseNumber<double>(const std::string_view &num) {
@@ -106,8 +109,23 @@ inline float parseNumber<float>(const std::string_view &num) {
 }
 
 template<>
+inline long parseNumber<long>(const std::string_view &num) {
+    return std::stol(std::string{ num });
+}
+
+template<>
 inline int parseNumber<int>(const std::string_view &num) {
     return std::stoi(std::string{ num });
+}
+
+template<>
+inline int8_t parseNumber<int8_t>(const std::string_view &num) { // byte
+    return static_cast<int8_t>(parseNumber<int>(num));
+}
+
+template<>
+inline int16_t parseNumber<int16_t>(const std::string_view &num) { // short
+    return static_cast<int16_t>(parseNumber<int>(num));
 }
 
 template<typename T>
