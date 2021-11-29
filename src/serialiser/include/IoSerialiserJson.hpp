@@ -109,6 +109,20 @@ template<>
 inline int parseNumber<int>(const std::string_view &num) {
     return std::stoi(std::string{ num });
 }
+
+template<typename T>
+inline void assignArray(std::vector<T> &value, const std::vector<T> &result) {
+    value = result;
+}
+
+template<typename T, size_t N>
+inline void assignArray(std::array<T, N> &value, const std::vector<T> &result) {
+    // todo: discuss if this is the right thing to do? throw error on size mismatch? zero out additional array entries?
+    for (size_t i = 0; i <= N && i <= result.size(); ++i) {
+        value[i] = result[i];
+    }
+}
+
 } // namespace json
 
 template<>
@@ -209,6 +223,7 @@ struct IoSerialiser<Json, T> { // catch all template
 
 template<ArrayOrVector T>
 struct IoSerialiser<Json, T> {
+    // todo: arrays of objects
     inline static constexpr uint8_t getDataTypeId() { return IoSerialiser<Json, OTHER>::getDataTypeId(); }
     constexpr static bool           serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &values) noexcept {
         using MemberType = typename T::value_type;
@@ -218,20 +233,34 @@ struct IoSerialiser<Json, T> {
             IoSerialiser<Json, MemberType>::serialise(buffer, "", value);
             buffer.putRaw(", ");
         }
-        buffer.resize(buffer.size() - 2); // remove trailing comma
+        buffer.resize(buffer.size() - 2); // remove trailing comma and space
         buffer.put(']');
         return std::is_constant_evaluated();
     }
-    constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) {
-        // do not do anything, as the end marker is of size zero and only the type byte is important
-        auto start = buffer.position();
-        while (json::isJsonNumberChar(buffer.get<uint8_t>())) {
+    constexpr static bool deserialise(IoBuffer &buffer, const ClassField &field, T &value) {
+        using MemberType = typename T::value_type;
+        if (buffer.get<uint8_t>() != '[') {
+            std::cerr << "expected [\n";
         }
-        auto end = buffer.position();
-        // value = stringTo
-        std::ignore = start;
-        std::ignore = end;
-        std::ignore = value;
+        std::vector<MemberType> result;
+        json::consumeJsonWhitespace(buffer);
+        if (buffer.at<uint8_t>(buffer.position()) != ']') { // empty array
+            while (true) {
+                MemberType entry;
+                IoSerialiser<Json, MemberType>::deserialise(buffer, field, entry);
+                result.push_back(entry);
+                json::consumeJsonWhitespace(buffer);
+                const auto next = buffer.template get<uint8_t>();
+                if (next == ']') {
+                    break;
+                }
+                if (next != ',') {
+                    std::cerr << "expected comma or end of array\n";
+                }
+                json::consumeJsonWhitespace(buffer);
+            }
+        }
+        json::assignArray(value, result);
         return std::is_constant_evaluated();
     }
 };

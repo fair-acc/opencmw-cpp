@@ -39,29 +39,53 @@ struct DataX {
 ENABLE_REFLECTION_FOR(DataX, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, constStringValue, doubleArray, floatVector, doubleMatrix, nested)
 
 struct SimpleInner {
-    double      val1;
-    std::string val2;
+    double           val1;
+    std::string      val2;
+    std::vector<int> intArray;
 };
-ENABLE_REFLECTION_FOR(SimpleInner, val1, val2)
+ENABLE_REFLECTION_FOR(SimpleInner, val1, val2, intArray)
 struct Simple {
+    float                        float1;
+    int                          int1;
     std::shared_ptr<SimpleInner> test;
 };
-ENABLE_REFLECTION_FOR(Simple, test)
+ENABLE_REFLECTION_FOR(Simple, test, float1, int1)
 
 TEST_CASE("JsonDeserialisation", "[JsonSerialiser]") {
     opencmw::debug::resetStats();
     {
         opencmw::IoBuffer buffer;
-        buffer.putRaw(R"({ "test": { "val1":13.37e2, "val2":"bar"}})");
+        buffer.putRaw(R"({ "float1": 2.3, "test": { "intArray": [1, 2, 3], "val1":13.37e2, "val2":"bar"}, "int1": 42})");
         std::cout << "Prepared json data: " << buffer.asString() << std::endl;
         Simple foo;
         auto   result = opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buffer, foo);
         fmt::print(std::cout, "deserialisation finished: {}\n", result);
         REQUIRE(foo.test.get()->val1 == 1337.0);
         REQUIRE(foo.test.get()->val2 == "bar");
+        REQUIRE(foo.test.get()->intArray == std::vector{ 1, 2, 3 });
+        REQUIRE(foo.int1 == 42);
+        REQUIRE(foo.float1 == 2.3f);
     }
     REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
     opencmw::debug::resetStats();
+}
+
+TEST_CASE("JsonArraySerialisation", "[JsonSerialiser]") {
+    std::vector<int>  test{ 1, 3, 3, 7 };
+    opencmw::IoBuffer buffer;
+    opencmw::IoSerialiser<opencmw::Json, std::vector<int>>::serialise(buffer, "test", test);
+    REQUIRE(buffer.asString() == "[1, 3, 3, 7]");
+    {
+        std::vector<int> result;
+        opencmw::IoSerialiser<opencmw::Json, std::vector<int>>::deserialise(buffer, "test", result);
+        REQUIRE(test == result);
+    }
+    buffer.set_position(0);
+    {
+        std::array<int, 4> resultArray;
+        opencmw::IoSerialiser<opencmw::Json, std::array<int, 4>>::deserialise(buffer, "test", resultArray);
+        REQUIRE(test == std::vector<int>(resultArray.begin(), resultArray.end()));
+    }
 }
 
 TEST_CASE("JsonSerialisation", "[JsonSerialiser]") {
