@@ -309,7 +309,7 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
 
     // read initial field header
     const FieldDescription startMarker = readFieldHeader<protocol>(buffer, info, protocolCheckVariant);
-    if (hierarchyDepth == 0 && startMarker.fieldName != typeName<T> && protocolCheckVariant != IGNORE) { // check if root type is matching
+    if (hierarchyDepth == 0 && startMarker.fieldName != typeName<T> && !startMarker.fieldName.empty() && protocolCheckVariant != IGNORE) { // check if root type is matching
         handleError<protocolCheckVariant>(info, "IoSerialiser<{}, {}>::deserialise: data is not of excepted type but of type {}", protocol::protocolName(), typeName<T>, startMarker.fieldName);
     }
     try {
