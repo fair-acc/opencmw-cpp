@@ -426,6 +426,9 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
                 using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
                 if constexpr (isReflectableClass<MemberType>() || !is_writable(member) || is_static(member)) {
                     handleError<protocolCheckVariant>(info, "field is not writeable or non-primitive: {}", member.name);
+                    if (field.dataEndPosition != std::numeric_limits<size_t>::max()) {
+                        buffer.set_position(field.dataEndPosition);
+                    }
                     return;
                 } else {
                     constexpr int requestedType = IoSerialiser<protocol, MemberType>::getDataTypeId();
