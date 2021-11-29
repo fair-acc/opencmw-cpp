@@ -7,5 +7,8 @@ target_link_libraries(SimpleReflectionExample PRIVATE serialiser project_options
 add_executable(SerialisationExample SerialisationExample.cpp)
 target_link_libraries(SerialisationExample PRIVATE serialiser project_options project_warnings)
 
+add_executable(JsonExample JsonExample.cpp)
+target_link_libraries(JsonExample PRIVATE serialiser project_options project_warnings)
+
 add_executable(SerialiseToFile SerialiseToFile.cpp)
 target_link_libraries(SerialiseToFile PRIVATE serialiser project_options project_warnings)
