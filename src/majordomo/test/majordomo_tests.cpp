@@ -537,8 +537,8 @@ public:
 
     std::optional<MdpMessage> handleSet(MdpMessage &&msg) override {
         const auto request = msg.body();
-        int        value;
-        const auto result = std::from_chars(request.begin(), request.end(), value);
+        int        value   = 0;
+        const auto result  = std::from_chars(request.begin(), request.end(), value);
 
         if (result.ec == std::errc::invalid_argument) {
             msg.setWorkerCommand(WorkerCommand::Final);
