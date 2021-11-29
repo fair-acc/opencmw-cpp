@@ -17,7 +17,11 @@ TEST_CASE("basic access", "[MIME]") {
     REQUIRE(MIME::getTypeByFileName("readme.txt") == MIME::TEXT);
     REQUIRE(MIME::getTypeByFileName("README.TXT") == MIME::TEXT);
 
-    for (auto type : MIME::ALL) {
+    // test constexpr evaluation
+    static_assert(MIME::getType("text/plain") == MIME::TEXT);
+    static_assert(MIME::getTypeByFileName("TEST.TXT") == MIME::TEXT);
+
+    for (auto &type : MIME::ALL) {
         REQUIRE_MESSAGE(MIME::getType(type.typeName()) == type, fmt::format("error for type '{}'", type.typeName()));
         for (auto fileExt : type.fileExtensions()) {
             REQUIRE_MESSAGE(MIME::getTypeByFileName(fmt::format("FileName{}", fileExt)) == type, fmt::format("error for type '{}' and ext '{}'", type.typeName(), fileExt));
