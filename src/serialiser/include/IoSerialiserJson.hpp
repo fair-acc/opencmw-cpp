@@ -43,9 +43,12 @@ inline bool isJsonNumberChar(uint8_t c) {
  * @param buffer An IoBuffer with the position at the start of a JSON string.
  * @return a string view of the string starting at the buffer position
  */
-inline std::string_view readJsonString(IoBuffer &buffer) {
-    buffer.set_position(buffer.position() + 1); // skip leading quote
+inline std::string readJsonString(IoBuffer &buffer) {
+    if (buffer.get<uint8_t>() != '"') {
+        std::cerr << "error: expected leading quote";
+    } // buffer.set_position(buffer.position() + 1); // skip leading quote
     auto start = buffer.position();
+    // std::string result;
     while (buffer.get<uint8_t>() != '"') {
         if (buffer.at<uint8_t>(buffer.position() - 1) == '\\') { // escape sequence detected
             switch (buffer.get<uint8_t>()) {
@@ -68,9 +71,13 @@ inline std::string_view readJsonString(IoBuffer &buffer) {
             }
             // todo: correctly treat escape sequences instead of just skipping (breaks string_view usage)
         }
+        //result.append(reinterpret_cast<char *>(buffer.at<uint8_t>(buffer.position() - 1)));
     }
-    auto end = buffer.position() - 1;
-    return { reinterpret_cast<char *>(buffer.data() + start), end - start };
+    auto        end = buffer.position() - 1;
+    std::string result;
+    result.append(buffer.asString(), start, end - start);
+    return result;
+    // return { reinterpret_cast<char *>(buffer.data() + start), end - start };
 }
 
 /**
