@@ -98,8 +98,15 @@ TEST_CASE("JsonSerialisation", "[JsonSerialiser]") {
         std::cout << "serialised: " << buffer.asString() << std::endl;
         DataX bar;
         auto  result = opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buffer, bar);
-        opencmw::utils::diffView(std::cout, foo, bar);
+        //opencmw::utils::diffView(std::cout, foo, bar); // todo: produces SEGFAULT
         fmt::print(std::cout, "deserialisation finished: {}\n", result);
+        REQUIRE(foo.doubleValue == bar.doubleValue);
+        REQUIRE(foo.doubleArray == bar.doubleArray);
+        REQUIRE(foo.floatValue == bar.floatValue);
+        REQUIRE(foo.intValue == bar.intValue);
+        REQUIRE(foo.stringValue == bar.stringValue);
+        REQUIRE(foo.byteValue == bar.byteValue);
+        REQUIRE(foo.shortValue == bar.shortValue);
         REQUIRE(foo == bar);
     }
     REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
