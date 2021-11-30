@@ -97,9 +97,9 @@ TEST_CASE("diff view test nested", "[Utils]") {
         ClassB data;
         ClassB data2;
         std::cerr << ClassInfoVerbose;
-        std::cerr << " data1 " << data << std::endl;  //TODO: add/remove breakpoint here -- segfaults here
-        std::cerr << " data2 " << data2 << std::endl; //TODO: add/remove breakpoint here -- segfaults here
-        diffView(std::cerr, data, data2);             // TODO: add/remove breakpoint here -- segfaults here
+        std::cerr << " data1 " << data << std::endl;
+        std::cerr << " data2 " << data2 << std::endl;
+        diffView(std::cerr, data, data2);
     }
     REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
     debug::resetStats();
@@ -114,7 +114,7 @@ TEST_CASE("reflectable object stdout flat", "[Utils]") {
     {
         std::ostringstream os;
         ClassA             data;
-        os << ClassInfoVerbose << data; // TODO: add/remove breakpoint here -- segfaults here
+        os << ClassInfoVerbose << data;
         // does not work because of the tabs inside of the output
         //         REQUIRE(os.str() == R"--(ClassA(
         //   0: Annotated<int8_t>  ClassA::annByteValue               = 11     // [m] - nested int8_t
