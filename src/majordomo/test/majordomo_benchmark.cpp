@@ -10,8 +10,10 @@
 using opencmw::majordomo::BasicMdpWorker;
 using opencmw::majordomo::Broker;
 using opencmw::majordomo::Client;
+using opencmw::majordomo::Command;
 using opencmw::majordomo::Context;
 using opencmw::majordomo::MdpMessage;
+using opencmw::majordomo::RequestContext;
 using opencmw::majordomo::Settings;
 
 #define REQUIRE(expression) \
@@ -26,23 +28,20 @@ static Settings benchmarkSettings() {
     return Settings{}; // use defaults
 }
 
-class Worker : public BasicMdpWorker {
+class PayloadHandler {
     std::string _payload;
 
 public:
-    explicit Worker(Settings settings, std::string payload, Context &context, std::string_view brokerAddress, std::string_view serviceName)
-        : BasicMdpWorker(std::move(settings), context, brokerAddress, serviceName)
-        , _payload(std::move(payload)) {
+    explicit PayloadHandler(std::string payload)
+        : _payload(std::move(payload)) {
     }
 
-    std::optional<MdpMessage> handleGet(MdpMessage &&request) override {
-        request.setCommand(opencmw::majordomo::Command::Final);
-        request.setBody(_payload, opencmw::majordomo::MessageFrame::static_bytes_tag{});
-        return std::move(request);
-    }
-
-    std::optional<MdpMessage> handleSet(MdpMessage &&) override {
-        return {};
+    void handleRequest(RequestContext &context) {
+        if (context.request.command() == Command::Get) {
+            context.reply->setBody(_payload, opencmw::majordomo::MessageFrame::dynamic_bytes_tag{});
+        } else {
+            context.reply.reset();
+        }
     }
 };
 
@@ -90,13 +89,13 @@ Result simpleOneWorkerBenchmark(std::string routerAddress, Get mode, int iterati
     Broker     broker(benchmarkSettings(), "benchmarkbroker", "", context);
     REQUIRE(broker.bind(routerAddress, Broker::BindOption::Router));
     REQUIRE(broker.bind(workerRouter, Broker::BindOption::Router));
-    RunInThread brokerRun(broker);
+    RunInThread    brokerRun(broker);
 
-    Worker      worker(benchmarkSettings(), std::string(payloadSize, '\xab'), context, workerRouter, "blob");
-    RunInThread workerRun(worker);
+    BasicMdpWorker worker(benchmarkSettings(), context, workerRouter, "blob", PayloadHandler(std::string(payloadSize, '\xab')));
+    RunInThread    workerRun(worker);
 
-    Context     clientContext;
-    TestClient  client(routerAddress.starts_with("inproc") ? context : clientContext);
+    Context        clientContext;
+    TestClient     client(routerAddress.starts_with("inproc") ? context : clientContext);
     REQUIRE(client.connect(routerAddress));
 
     const auto before = std::chrono::system_clock::now();
@@ -137,17 +136,16 @@ void simpleTwoWorkerBenchmark(std::string routerAddress, Get mode, int iteration
     Broker     broker(benchmarkSettings(), "benchmarkbroker", "", context);
     REQUIRE(broker.bind(routerAddress, Broker::BindOption::Router));
     REQUIRE(broker.bind(workerRouter, Broker::BindOption::Router));
-    RunInThread brokerRun(broker);
+    RunInThread    brokerRun(broker);
 
-    Worker      worker1(benchmarkSettings(), std::string(payload1_size, '\xab'), context, workerRouter, "blob1");
+    BasicMdpWorker worker1(benchmarkSettings(), context, workerRouter, "blob", PayloadHandler(std::string(payload1_size, '\xab')));
+    RunInThread    worker1_run(worker1);
 
-    RunInThread worker1_run(worker1);
+    BasicMdpWorker worker2(benchmarkSettings(), context, workerRouter, "blob", PayloadHandler(std::string(payload2_size, '\xab')));
+    RunInThread    worker2_run(worker2);
 
-    Worker      worker2(benchmarkSettings(), std::string(payload2_size, '\xab'), context, routerAddress, "blob2");
-    RunInThread worker2_run(worker2);
-
-    Context     clientContext;
-    TestClient  client(routerAddress.starts_with("inproc") ? context : clientContext);
+    Context        clientContext;
+    TestClient     client(routerAddress.starts_with("inproc") ? context : clientContext);
     REQUIRE(client.connect(routerAddress));
 
     const auto before = std::chrono::system_clock::now();

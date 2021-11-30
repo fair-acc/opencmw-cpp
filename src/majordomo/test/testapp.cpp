@@ -8,47 +8,37 @@
 
 #include <fmt/format.h>
 
-constexpr auto propertyStoreService = "property_store";
-
+using opencmw::majordomo::Command;
 using opencmw::majordomo::Context;
 using opencmw::majordomo::MdpMessage;
 using opencmw::majordomo::MessageFrame;
+using opencmw::majordomo::RequestContext;
 using opencmw::majordomo::Settings;
 
 static Settings testSettings() {
     return Settings{}; // use defaults
 }
 
-class TestWorker : public opencmw::majordomo::BasicMdpWorker {
+class TestHandler {
     std::unordered_map<std::string, std::string> _properties;
 
 public:
-    explicit TestWorker(Settings settings, Context &context, std::string_view brokerAddress)
-        : BasicMdpWorker(std::move(settings), context, brokerAddress, propertyStoreService) {
-    }
+    void handleRequest(RequestContext &context) {
+        if (context.request.command() == Command::Get) {
+            const auto property = std::string(context.request.body());
+            const auto it       = _properties.find(property);
 
-    std::optional<opencmw::majordomo::MdpMessage> handleGet(opencmw::majordomo::MdpMessage &&message) override {
-        message.setCommand(opencmw::majordomo::Command::Final);
-
-        const auto property = std::string(message.body());
-        const auto it       = _properties.find(property);
-
-        if (it != _properties.end()) {
-            message.setBody(it->second, MessageFrame::dynamic_bytes_tag{});
-            message.setError("", MessageFrame::static_bytes_tag{});
-        } else {
-            message.setBody("", MessageFrame::static_bytes_tag{});
-            message.setError(fmt::format("Unknown property '{}'", property), MessageFrame::dynamic_bytes_tag{});
+            if (it != _properties.end()) {
+                context.reply->setBody(it->second, MessageFrame::dynamic_bytes_tag{});
+            } else {
+                context.reply->setError(fmt::format("Unknown property '{}'", property), MessageFrame::dynamic_bytes_tag{});
+            }
+            return;
         }
 
-        return std::move(message);
-    }
+        assert(context.request.command() == Command::Set);
 
-    std::optional<opencmw::majordomo::MdpMessage> handleSet(opencmw::majordomo::MdpMessage &&message) override {
-        message.setCommand(opencmw::majordomo::Command::Final);
-
-        const auto request = message.body();
-
+        const auto request = context.request.body();
         const auto pos     = request.find("=");
 
         if (pos != std::string_view::npos) {
@@ -59,20 +49,19 @@ public:
 
             std::cout << fmt::format("Property '{}' set to value '{}'", property, value) << std::endl;
 
-            message.setBody(fmt::format("Property '{}' set to value '{}'", property, value), MessageFrame::dynamic_bytes_tag{});
-            message.setError("", MessageFrame::static_bytes_tag{});
+            context.reply->setBody(fmt::format("Property '{}' set to value '{}'", property, value), MessageFrame::dynamic_bytes_tag{});
         } else {
-            message.setBody("", MessageFrame::static_bytes_tag{});
-            message.setError("Invalid request, \"property=value\" expected", MessageFrame::static_bytes_tag{});
+            context.reply->setError("Invalid request, \"property=value\" expected", MessageFrame::static_bytes_tag{});
         }
-
-        return std::move(message);
     }
 };
 
 int main(int argc, char **argv) {
+    using opencmw::majordomo::BasicMdpWorker;
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::Settings;
+
+    static constexpr auto propertyStoreService = "property_store";
 
     if (argc < 2) {
         std::cerr << "Usage: majordomo_testapp <broker|client|worker|brokerworker> <options>\n\n"
@@ -131,13 +120,13 @@ int main(int argc, char **argv) {
             return 1;
         }
 
-        TestWorker worker(testSettings(), context, inprocRouter);
+        BasicMdpWorker worker(testSettings(), context, inprocRouter, propertyStoreService, TestHandler{});
 
-        auto       brokerThread = std::jthread([&broker] {
+        auto           brokerThread = std::jthread([&broker] {
             broker.run();
         });
 
-        auto       workerThread = std::jthread([&worker] {
+        auto           workerThread = std::jthread([&worker] {
             worker.run();
         });
 
@@ -154,7 +143,7 @@ int main(int argc, char **argv) {
         const std::string_view brokerAddress = argv[2];
 
         Context                context;
-        TestWorker             worker(testSettings(), context, brokerAddress);
+        BasicMdpWorker         worker(testSettings(), context, brokerAddress, propertyStoreService, TestHandler{});
 
         worker.run();
         return 0;

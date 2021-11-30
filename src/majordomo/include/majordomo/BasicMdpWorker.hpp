@@ -6,6 +6,10 @@
 #include <majordomo/Debug.hpp>
 #include <majordomo/Settings.hpp>
 
+#include <MIME.hpp>
+
+#include <fmt/format.h>
+
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -14,11 +18,29 @@
 
 namespace opencmw::majordomo {
 
+struct RequestContext {
+    MdpMessage                                   request;
+    std::optional<MdpMessage>                    reply;
+    opencmw::MIME::MimeType                      mimeType = opencmw::MIME::BINARY;
+    std::unordered_map<std::string, std::string> htmlData;
+};
+
+template<typename T>
+constexpr bool has_handleRequest_v = requires(T handler, RequestContext &context) { handler.handleRequest(context); };
+
+template<typename T>
+constexpr bool has_call_operator_v = requires(T handler, RequestContext &context) { std::invoke(handler, context); };
+
+template<typename T>
+concept HandlesRequest = has_handleRequest_v<T> || has_call_operator_v<T>;
+
+template<HandlesRequest RequestHandler>
 class BasicMdpWorker {
 public:
     using Clock     = std::chrono::steady_clock;
     using Timestamp = std::chrono::time_point<Clock>;
 
+    RequestHandler                _handler;
     const Settings                _settings;
     const std::string             _brokerAddress;
     const std::string             _serviceName;
@@ -41,14 +63,9 @@ protected:
     }
 
 public:
-    virtual ~BasicMdpWorker() = default;
-
-    explicit BasicMdpWorker(Settings settings, const Context &context, std::string_view brokerAddress, std::string_view serviceName)
-        : _settings{ std::move(settings) }, _brokerAddress{ std::move(brokerAddress) }, _serviceName{ std::move(serviceName) }, _context(context) {
+    explicit BasicMdpWorker(Settings settings, const Context &context, std::string_view brokerAddress, std::string_view serviceName, RequestHandler &&handler)
+        : _handler{ std::move(handler) }, _settings{ std::move(settings) }, _brokerAddress{ std::move(brokerAddress) }, _serviceName{ std::move(serviceName) }, _context(context) {
     }
-
-    virtual std::optional<MdpMessage> handleGet(MdpMessage &&request) = 0;
-    virtual std::optional<MdpMessage> handleSet(MdpMessage &&request) = 0;
 
     // Sets the service description
     void setServiceDescription(std::string description) {
@@ -80,12 +97,8 @@ public:
         if (message.isWorkerMessage()) {
             switch (message.command()) {
             case Command::Get:
-                if (auto reply = handleGet(std::move(message)); reply) {
-                    reply->send(*_socket).assertSuccess();
-                }
-                return;
             case Command::Set:
-                if (auto reply = handleSet(std::move(message)); reply) {
+                if (auto reply = processRequest(std::move(message))) {
                     reply->send(*_socket).assertSuccess();
                 }
                 return;
@@ -137,6 +150,41 @@ public:
     }
 
 private:
+    MdpMessage replyFromRequest(const MdpMessage &request) {
+        MdpMessage reply;
+        reply.setProtocol(request.protocol());
+        reply.setCommand(Command::Final);
+        reply.setServiceName(request.serviceName(), MessageFrame::dynamic_bytes_tag{});
+        reply.setClientSourceId(request.clientSourceId(), MessageFrame::dynamic_bytes_tag{});
+        reply.setClientRequestId(request.clientRequestId(), MessageFrame::dynamic_bytes_tag{});
+        reply.setTopic(request.topic(), MessageFrame::dynamic_bytes_tag{});
+        reply.setRbacToken(_rbacRole, MessageFrame::dynamic_bytes_tag{});
+        return reply;
+    }
+
+    std::optional<MdpMessage> processRequest(MdpMessage &&request) {
+        RequestContext context;
+        context.request = std::move(request);
+        context.reply   = replyFromRequest(context.request);
+
+        try {
+            if constexpr (has_handleRequest_v<RequestHandler>) {
+                _handler.handleRequest(context);
+            } else if constexpr (has_call_operator_v<RequestHandler>) {
+                std::invoke(_handler, context);
+            }
+            return std::move(context.reply);
+        } catch (const std::exception &e) {
+            auto errorReply = replyFromRequest(context.request);
+            errorReply.setError(fmt::format("Caught exception for service '{}'\nrequest message: {}\nexception: {}", _serviceName, context.request.body(), e.what()), MessageFrame::dynamic_bytes_tag{});
+            return errorReply;
+        } catch (...) {
+            auto errorReply = replyFromRequest(context.request);
+            errorReply.setError(fmt::format("Caught unexpected exception for service '{}'\nrequest message: {}", _serviceName, context.request.body()), MessageFrame::dynamic_bytes_tag{});
+            return errorReply;
+        }
+    }
+
     bool connectToBroker() {
         _pollerItems[0].socket = nullptr;
         _socket.emplace(_context, ZMQ_DEALER);
