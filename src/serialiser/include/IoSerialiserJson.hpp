@@ -148,6 +148,69 @@ inline void assignArray(std::array<T, N> &value, const std::vector<T> &result) {
     }
 }
 
+inline void skipValue(IoBuffer &buffer);
+
+inline void skipField(IoBuffer &buffer) {
+    std::ignore = readJsonString(buffer);
+    consumeJsonWhitespace(buffer);
+    if (buffer.get<int8_t>() != ':') {
+        std::cerr << "json malformed, no colon between key/value";
+        // exception
+    }
+    consumeJsonWhitespace(buffer);
+    skipValue(buffer);
+    consumeJsonWhitespace(buffer);
+}
+
+inline void skipObject(IoBuffer &buffer) {
+    buffer.set_position(buffer.position() + 1);
+    consumeJsonWhitespace(buffer);
+    while (buffer.at<uint8_t>(buffer.position()) != '}') {
+        skipField(buffer);
+        if (buffer.at<uint8_t>(buffer.position()) == '}') break;
+        if (buffer.get<uint8_t>() != ',') {
+            throw ProtocolException("Expected comma to separate object fields");
+        }
+        consumeJsonWhitespace(buffer);
+    }
+    buffer.set_position(buffer.position() + 1);
+    consumeJsonWhitespace(buffer);
+}
+
+inline void skipNumber(IoBuffer &buffer) {
+    while (isJsonNumberChar(buffer.get<uint8_t>())) {
+    }
+    buffer.set_position(buffer.position() - 1);
+}
+
+inline void skipArray(IoBuffer &buffer) {
+    buffer.set_position(buffer.position() + 1);
+    consumeJsonWhitespace(buffer);
+    while (buffer.at<uint8_t>(buffer.position()) != ']') {
+        skipValue(buffer);
+        if (buffer.at<uint8_t>(buffer.position()) == ']') break;
+        if (buffer.get<uint8_t>() != ',') {
+            throw ProtocolException("Expected comma to separate array entries");
+        }
+        consumeJsonWhitespace(buffer);
+    }
+    buffer.set_position(buffer.position() + 1);
+    consumeJsonWhitespace(buffer);
+}
+
+inline void skipValue(IoBuffer &buffer) {
+    const auto firstChar = buffer.at<int8_t>(buffer.position());
+    if (firstChar == '{') {
+        json::skipObject(buffer);
+    } else if (firstChar == '[') {
+        json::skipArray(buffer);
+    } else if (firstChar == '"') {
+        std::ignore = readJsonString(buffer);
+    } else { // skip number
+        json::skipNumber(buffer);
+    }
+}
+
 } // namespace json
 
 template<>
@@ -178,11 +241,6 @@ struct FieldHeader<Json> {
 };
 
 template<>
-struct IoSerialiser<Json, OTHER> { // because json does not explicitly provide the datatype, all types except nested classes provide data type OTHER
-    inline static constexpr uint8_t getDataTypeId() { return 0; }
-};
-
-template<>
 struct IoSerialiser<Json, END_MARKER> {
     inline static constexpr uint8_t getDataTypeId() { return 1; }
     constexpr static bool           serialise(IoBuffer &buffer, const ClassField & /*field*/, const END_MARKER & /*value*/) noexcept {
@@ -205,6 +263,15 @@ struct IoSerialiser<Json, START_MARKER> { // catch all template
     constexpr static bool deserialise(IoBuffer & /*buffer*/, const ClassField & /*field*/, const START_MARKER & /*value*/) {
         // do not do anything, as the end marker is of size zero and only the type byte is important
         return std::is_constant_evaluated();
+    }
+};
+
+template<>
+struct IoSerialiser<Json, OTHER> { // because json does not explicitly provide the datatype, all types except nested classes provide data type OTHER
+    inline static constexpr uint8_t getDataTypeId() { return 0; }
+    static bool                     deserialise(IoBuffer &buffer, const ClassField & /*field*/, const OTHER &) {
+        json::skipValue(buffer);
+        return false;
     }
 };
 
@@ -330,13 +397,17 @@ inline FieldDescription readFieldHeader<Json>(IoBuffer &buffer, DeserialiserInfo
     if (buffer.at<char8_t>(buffer.position()) == '{') { // start marker
         result.intDataType       = IoSerialiser<Json, START_MARKER>::getDataTypeId();
         result.dataStartPosition = buffer.position() + 1;
-        // set rest of fields
+        result.dataStartOffset   = result.dataStartPosition - result.headerStart;
+        result.dataSize          = std::numeric_limits<size_t>::max(); // not defined for non-skipable data
+        result.dataEndPosition   = std::numeric_limits<size_t>::max(); // not defined for non-skipable data
         return result;
     }
     if (buffer.at<char8_t>(buffer.position()) == '}') { // end marker
         result.intDataType       = IoSerialiser<Json, END_MARKER>::getDataTypeId();
         result.dataStartPosition = buffer.position() + 1;
-        // set rest of fields
+        result.dataStartOffset   = result.dataStartPosition - result.headerStart;
+        result.dataSize          = std::numeric_limits<size_t>::max(); // not defined for non-skipable data
+        result.dataEndPosition   = std::numeric_limits<size_t>::max(); // not defined for non-skipable data
         return result;
     }
     if (buffer.at<char8_t>(buffer.position()) == '"') { // string

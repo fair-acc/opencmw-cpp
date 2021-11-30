@@ -54,6 +54,7 @@ struct OTHER {};
 
 constexpr static START_MARKER START_MARKER_INST;
 constexpr static END_MARKER   END_MARKER_INST;
+constexpr static OTHER        OTHER_INST;
 
 namespace opencmw {
 
@@ -401,21 +402,17 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
                 }
                 continue;
             } catch (std::out_of_range &e) {
-                if constexpr (protocolCheckVariant == IGNORE) {
-                    if (field.dataEndPosition != std::numeric_limits<size_t>::max()) {
-                        buffer.set_position(field.dataEndPosition);
-                    }
-                    continue;
+                if constexpr (protocolCheckVariant != IGNORE) {
+                    handleError<protocolCheckVariant>(info, "missing field (type:{}) {}::{} at buffer[{}, size:{}]", field.intDataType, structName, field.fieldName, buffer.position(), buffer.size());
+                    info.additionalFields.emplace_back(std::make_tuple(fmt::format("{}::{}", structName, field.fieldName), field.intDataType));
                 }
-                const auto exception = fmt::format("missing field (type:{}) {}::{} at buffer[{}, size:{}]",
-                        field.intDataType, structName, field.fieldName, buffer.position(), buffer.size());
-                if constexpr (protocolCheckVariant == ALWAYS) {
-                    throw ProtocolException(exception);
-                }
-                info.exceptions.emplace_back(ProtocolException(exception));
-                info.additionalFields.emplace_back(std::make_tuple(fmt::format("{}::{}", structName, field.fieldName), field.intDataType));
                 if (field.dataEndPosition != std::numeric_limits<size_t>::max()) {
                     buffer.set_position(field.dataEndPosition);
+                } else { // use deserialise OTHER to continue parsing the data just to skip it for formats which do not include the field size in the header
+                    if constexpr (requires { IoSerialiser<protocol, OTHER>::deserialise(buffer, field.fieldName, OTHER_INST); }) {
+                        buffer.set_position(field.dataStartPosition - 1); // reset buffer position for the nested deserialiser to read again
+                        IoSerialiser<protocol, OTHER>::deserialise(buffer, field.fieldName, OTHER_INST);
+                    }
                 }
                 continue;
             }
@@ -479,21 +476,16 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
                 buffer.set_position(field.dataEndPosition);
             }
         } catch (std::out_of_range &e) {
-            if constexpr (protocolCheckVariant == IGNORE) {
-                if (field.dataEndPosition != std::numeric_limits<size_t>::max()) {
-                    buffer.set_position(field.dataEndPosition);
-                }
-                continue;
+            if constexpr (protocolCheckVariant != IGNORE) {
+                handleError<protocolCheckVariant>(info, "missing field (type:{}) {}::{} at buffer[{}, size:{}]", field.intDataType, structName, field.fieldName, buffer.position(), buffer.size());
+                info.additionalFields.emplace_back(std::make_tuple(fmt::format("{}::{}", structName, field.fieldName), field.intDataType));
             }
-            const auto exception = fmt::format("missing field (type:{}) {}::{} at buffer[{}, size:{}]",
-                    field.intDataType, structName, field.fieldName, buffer.position(), buffer.size());
-            if constexpr (protocolCheckVariant == ALWAYS) {
-                throw ProtocolException(exception);
-            }
-            info.exceptions.emplace_back(ProtocolException(exception));
-            info.additionalFields.emplace_back(std::make_tuple(fmt::format("{}::{}", structName, field.fieldName), field.intDataType));
             if (field.dataEndPosition != std::numeric_limits<size_t>::max()) {
                 buffer.set_position(field.dataEndPosition);
+            } else {
+                if constexpr (requires { IoSerialiser<protocol, OTHER>::deserialise(buffer, field.fieldName, OTHER_INST); }) {
+                    IoSerialiser<protocol, OTHER>::deserialise(buffer, field.fieldName, OTHER_INST);
+                }
             }
             continue;
         }
