@@ -619,38 +619,32 @@ TEST_CASE("pubsub example using router socket", "[broker][pubsub_router]") {
 
 using opencmw::majordomo::MdpMessage;
 
-class TestIntWorker : public opencmw::majordomo::BasicMdpWorker {
+class TestIntHandler {
     int _x = 10;
 
 public:
-    explicit TestIntWorker(Settings settings, Context &context, std::string_view brokerName, std::string_view serviceName, int initialValue)
-        : opencmw::majordomo::BasicMdpWorker(std::move(settings), context, brokerName, serviceName)
-        , _x(initialValue) {
+    explicit TestIntHandler(int initialValue)
+        : _x(initialValue) {
     }
 
-    std::optional<MdpMessage> handleGet(MdpMessage &&msg) override {
-        msg.setCommand(Command::Final);
-        msg.setBody(std::to_string(_x), MessageFrame::dynamic_bytes_tag{});
-        return std::move(msg);
-    }
+    void operator()(RequestContext &context) {
+        if (context.request.command() == Command::Get) {
+            context.reply.setBody(std::to_string(_x), MessageFrame::dynamic_bytes_tag{});
+            return;
+        }
 
-    std::optional<MdpMessage> handleSet(MdpMessage &&msg) override {
-        const auto request = msg.body();
+        assert(context.request.command() == Command::Set);
+
+        const auto request = context.request.body();
         int        value   = 0;
         const auto result  = std::from_chars(request.begin(), request.end(), value);
 
         if (result.ec == std::errc::invalid_argument) {
-            msg.setCommand(Command::Final);
-            msg.setBody("", MessageFrame::static_bytes_tag{});
-            msg.setError("Not a valid int", MessageFrame::static_bytes_tag{});
+            context.reply.setError("Not a valid int", MessageFrame::static_bytes_tag{});
         } else {
-            msg.setCommand(Command::Final);
             _x = value;
-            msg.setBody("Value set. All good!", MessageFrame::static_bytes_tag{});
-            msg.setError("", MessageFrame::static_bytes_tag{});
+            context.reply.setBody("Value set. All good!", MessageFrame::static_bytes_tag{});
         }
-
-        return std::move(msg);
     }
 };
 
@@ -665,9 +659,9 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[worker][getset_bas
 
     REQUIRE(broker.bind(address, Broker::BindOption::Router));
 
-    RunInThread   brokerRun(broker);
+    RunInThread    brokerRun(broker);
 
-    TestIntWorker worker(testSettings(), context, address, "a.service", 10);
+    BasicMdpWorker worker(testSettings(), context, address, "a.service", TestIntHandler(10));
     worker.setServiceDescription("API description");
     worker.setRbacRole("rbacToken");
 
@@ -745,7 +739,7 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[worker][getset_bas
     }
 }
 
-TEST_CASE("SET/GET example using the Client and Worker classes", "[client][getset]") {
+TEST_CASE("SET/GET example using a lambda as the worker's request handler", "[worker][lambda_handler]") {
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::Client;
     using opencmw::majordomo::MdpMessage;
@@ -757,27 +751,44 @@ TEST_CASE("SET/GET example using the Client and Worker classes", "[client][getse
 
     REQUIRE(broker.bind(address, Broker::BindOption::Router));
 
-    RunInThread   brokerRun(broker);
+    RunInThread brokerRun(broker);
 
-    TestIntWorker worker(testSettings(), context, address, "a.service", 100);
+    auto        handleInt = [](RequestContext &requestContext) {
+        static int value = 100;
+        if (requestContext.request.command() == Command::Get) {
+            requestContext.reply.setBody(std::to_string(value), MessageFrame::dynamic_bytes_tag{});
+            return;
+        }
+
+        assert(requestContext.request.command() == Command::Set);
+
+        const auto request     = requestContext.request.body();
+        int        parsedValue = 0;
+        const auto result      = std::from_chars(request.begin(), request.end(), parsedValue);
+
+        if (result.ec == std::errc::invalid_argument) {
+            requestContext.reply.setError("Not a valid int", MessageFrame::static_bytes_tag{});
+        } else {
+            value = parsedValue;
+            requestContext.reply.setBody("Value set. All good!", MessageFrame::static_bytes_tag{});
+        }
+    };
+
+    BasicMdpWorker worker(testSettings(), context, address, "a.service", std::move(handleInt));
     worker.setServiceDescription("API description");
     worker.setRbacRole("rbacToken");
 
     RunInThread workerRun(worker);
 
     Client      client(context);
-
     REQUIRE(client.connect(address));
-
-    const auto mainThreadId = std::atomic(std::this_thread::get_id());
 
     // until the worker's READY is processed by the broker, it will return
     // an "unknown service" error, retry until we get the expected reply
     bool goodReplyReceived = false;
     while (!goodReplyReceived) {
         bool anyMessageReceived = false;
-        client.get("a.service", "", [&goodReplyReceived, &anyMessageReceived, &mainThreadId](auto &&message) {
-            REQUIRE(mainThreadId == std::this_thread::get_id());
+        client.get("a.service", "", [&goodReplyReceived, &anyMessageReceived](auto &&message) {
             anyMessageReceived = true;
             if (message.error().empty()) {
                 REQUIRE(message.body() == "100");
@@ -794,8 +805,7 @@ TEST_CASE("SET/GET example using the Client and Worker classes", "[client][getse
 
     bool replyReceived = false;
 
-    client.set("a.service", "42", [&replyReceived, &mainThreadId](auto &&message) {
-        REQUIRE(mainThreadId == std::this_thread::get_id());
+    client.set("a.service", "42", [&replyReceived](auto &&message) {
         REQUIRE(message.body() == "Value set. All good!");
         REQUIRE(message.error().empty());
         replyReceived = true;
@@ -807,8 +817,7 @@ TEST_CASE("SET/GET example using the Client and Worker classes", "[client][getse
 
     replyReceived = false;
 
-    client.get("a.service", "", [&replyReceived, &mainThreadId](auto &&message) {
-        REQUIRE(mainThreadId == std::this_thread::get_id());
+    client.get("a.service", "", [&replyReceived](auto &&message) {
         REQUIRE(message.body() == "42");
         REQUIRE(message.error().empty());
         replyReceived = true;
@@ -816,5 +825,101 @@ TEST_CASE("SET/GET example using the Client and Worker classes", "[client][getse
 
     while (!replyReceived) {
         client.tryRead();
+    }
+}
+
+TEST_CASE("Worker's request handler throws an exception", "[worker][handler_exception]") {
+    using opencmw::majordomo::Broker;
+    using opencmw::majordomo::Client;
+    using opencmw::majordomo::MdpMessage;
+
+    constexpr auto address = std::string_view("inproc://testrouter");
+
+    Context        context;
+    Broker         broker(testSettings(), "testbroker", {}, context);
+
+    REQUIRE(broker.bind(address, Broker::BindOption::Router));
+
+    RunInThread brokerRun(broker);
+
+    auto        handleRequest = [](RequestContext &) {
+        throw std::runtime_error("Something went wrong!");
+    };
+
+    BasicMdpWorker worker(testSettings(), context, address, "a.service", std::move(handleRequest));
+    worker.setServiceDescription("API description");
+    worker.setRbacRole("rbacToken");
+
+    RunInThread workerRun(worker);
+
+    Client      client(context);
+    REQUIRE(client.connect(address));
+
+    // until the worker's READY is processed by the broker, it will return
+    // an "unknown service" error, retry until we get the expected reply
+    bool exceptionReplyReceived = false;
+    while (!exceptionReplyReceived) {
+        bool anyMessageReceived = false;
+        client.get("a.service", "", [&exceptionReplyReceived, &anyMessageReceived](auto &&message) {
+            anyMessageReceived = true;
+            if (message.error().starts_with("unknown service")) {
+                REQUIRE(message.error() == "unknown service (error 501): 'a.service'");
+            } else {
+                REQUIRE(message.error() == "Caught exception for service 'a.service'\nrequest message: \nexception: Something went wrong!");
+                exceptionReplyReceived = true;
+            }
+        });
+
+        while (!anyMessageReceived) {
+            client.tryRead();
+        }
+    }
+}
+
+TEST_CASE("Worker's request handler throws an unexpected exception", "[worker][handler_unexpected_exception]") {
+    using opencmw::majordomo::Broker;
+    using opencmw::majordomo::Client;
+    using opencmw::majordomo::MdpMessage;
+
+    constexpr auto address = std::string_view("inproc://testrouter");
+
+    Context        context;
+    Broker         broker(testSettings(), "testbroker", {}, context);
+
+    REQUIRE(broker.bind(address, Broker::BindOption::Router));
+
+    RunInThread brokerRun(broker);
+
+    auto        handleRequest = [](RequestContext &) {
+        throw std::string("Something went wrong!");
+    };
+
+    BasicMdpWorker worker(testSettings(), context, address, "a.service", std::move(handleRequest));
+    worker.setServiceDescription("API description");
+    worker.setRbacRole("rbacToken");
+
+    RunInThread workerRun(worker);
+
+    Client      client(context);
+    REQUIRE(client.connect(address));
+
+    // until the worker's READY is processed by the broker, it will return
+    // an "unknown service" error, retry until we get the expected reply
+    bool exceptionReplyReceived = false;
+    while (!exceptionReplyReceived) {
+        bool anyMessageReceived = false;
+        client.get("a.service", "", [&exceptionReplyReceived, &anyMessageReceived](auto &&message) {
+            anyMessageReceived = true;
+            if (message.error().starts_with("unknown service")) {
+                REQUIRE(message.error() == "unknown service (error 501): 'a.service'");
+            } else {
+                REQUIRE(message.error() == "Caught unexpected exception for service 'a.service'\nrequest message: ");
+                exceptionReplyReceived = true;
+            }
+        });
+
+        while (!anyMessageReceived) {
+            client.tryRead();
+        }
     }
 }
