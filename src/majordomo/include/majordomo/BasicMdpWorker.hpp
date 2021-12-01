@@ -53,14 +53,15 @@ private:
 
 public:
     explicit BasicMdpWorker(std::string_view serviceName, std::string_view brokerAddress, RequestHandler &&handler, const Context &context = {}, Settings settings = {})
-        : _handler{ std::move(handler) }, _settings{ std::move(settings) }, _brokerAddress{ std::move(brokerAddress) }, _serviceName{ std::move(serviceName) }, _context(context) {
+        : _handler{ std::forward<RequestHandler>(handler) }, _settings{ std::move(settings) }, _brokerAddress{ std::move(brokerAddress) }, _serviceName{ std::move(serviceName) }, _context(context) {
     }
 
     explicit BasicMdpWorker(std::string_view serviceName, std::string_view brokerAddress, RequestHandler &&handler, Settings settings)
-        : BasicMdpWorker(serviceName, brokerAddress, std::move(handler), {}, settings) {}
+        : BasicMdpWorker(serviceName, brokerAddress, std::forward<RequestHandler>(handler), {}, settings) {
+    }
 
     explicit BasicMdpWorker(std::string_view serviceName, const Broker &broker, RequestHandler &&handler)
-        : BasicMdpWorker(serviceName, INTERNAL_ADDRESS_BROKER, std::move(handler), broker.context, broker.settings) {
+        : BasicMdpWorker(serviceName, INTERNAL_ADDRESS_BROKER, std::forward<RequestHandler>(handler), broker.context, broker.settings) {
     }
 
     // Sets the service description
@@ -204,6 +205,16 @@ private:
         return true;
     }
 };
+
+template<HandlesRequest RequestHandler>
+BasicMdpWorker(std::string_view, std::string_view, RequestHandler &&, const Context &, Settings) -> BasicMdpWorker<RequestHandler>;
+
+template<HandlesRequest RequestHandler>
+BasicMdpWorker(std::string_view, std::string_view, RequestHandler &&, Settings) -> BasicMdpWorker<RequestHandler>;
+
+template<HandlesRequest RequestHandler>
+BasicMdpWorker(std::string_view, const Broker &, RequestHandler &&) -> BasicMdpWorker<RequestHandler>;
+
 } // namespace opencmw::majordomo
 
 #endif
