@@ -368,7 +368,7 @@ public:
     }
 
 private:
-    Service &                     requireService(std::string serviceName, std::string serviceDescription) {
+    Service &requireService(std::string serviceName, std::string serviceDescription) {
         // TODO handle serviceDescription differing between workers? or is "first one wins" ok?
         auto it = _services.try_emplace(serviceName, std::move(serviceName), std::move(serviceDescription));
         return it.first->second;
