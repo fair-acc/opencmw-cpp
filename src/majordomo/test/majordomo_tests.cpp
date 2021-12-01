@@ -629,28 +629,28 @@ public:
 
 class NonCopyableMovableHandler {
 public:
-    NonCopyableMovableHandler() = default;
-    ~NonCopyableMovableHandler() = default;
+    NonCopyableMovableHandler()                                  = default;
+    ~NonCopyableMovableHandler()                                 = default;
     NonCopyableMovableHandler(const NonCopyableMovableHandler &) = delete;
-    NonCopyableMovableHandler &operator=(const NonCopyableMovableHandler&) = delete;
-    NonCopyableMovableHandler(NonCopyableMovableHandler &&) noexcept = default;
-    NonCopyableMovableHandler& operator=(NonCopyableMovableHandler&&) noexcept = default;
+    NonCopyableMovableHandler &operator=(const NonCopyableMovableHandler &) = delete;
+    NonCopyableMovableHandler(NonCopyableMovableHandler &&) noexcept        = default;
+    NonCopyableMovableHandler &operator=(NonCopyableMovableHandler &&) noexcept = default;
 
-    void operator()(RequestContext &) {}
+    void                       operator()(RequestContext &) {}
 };
 
 TEST_CASE("BasicMdpWorker instantiation", "[worker][instantiation]") {
     // ensure that BasicMdpWorker can be instantiated with lvalue and rvalue handlers
     // lvalues should be used via reference, rvalues moved
-    Broker         broker("testbroker", {}, testSettings());
+    Broker                    broker("testbroker", {}, testSettings());
     NonCopyableMovableHandler handler;
 
-    BasicMdpWorker worker1("a.service", broker, NonCopyableMovableHandler());
-    BasicMdpWorker worker2("a.service", broker, handler);
-    BasicMdpWorker worker3("a.service", "no.address", NonCopyableMovableHandler(), Context(), testSettings());
-    BasicMdpWorker worker4("a.service", "no.address", handler, Context(), testSettings());
-    BasicMdpWorker worker5("a.service", "no.address", NonCopyableMovableHandler(), testSettings());
-    BasicMdpWorker worker6("a.service", "no.address", handler, testSettings());
+    BasicMdpWorker            worker1("a.service", broker, NonCopyableMovableHandler());
+    BasicMdpWorker            worker2("a.service", broker, handler);
+    BasicMdpWorker            worker3("a.service", "no.address", NonCopyableMovableHandler(), Context(), testSettings());
+    BasicMdpWorker            worker4("a.service", "no.address", handler, Context(), testSettings());
+    BasicMdpWorker            worker5("a.service", "no.address", NonCopyableMovableHandler(), testSettings());
+    BasicMdpWorker            worker6("a.service", "no.address", handler, testSettings());
 }
 
 TEST_CASE("SET/GET example using the BasicMdpWorker class", "[worker][getset_basic_worker]") {

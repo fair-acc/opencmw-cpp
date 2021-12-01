@@ -143,8 +143,7 @@ private:
         if (message.isWorkerMessage()) {
             switch (message.command()) {
             case Command::Get:
-            case Command::Set:
-            {
+            case Command::Set: {
                 auto reply = processRequest(std::move(message));
                 reply.send(*_socket).assertSuccess();
                 return;
@@ -207,14 +206,14 @@ private:
     }
 };
 
-template <HandlesRequest RequestHandler>
-BasicMdpWorker(std::string_view, std::string_view, RequestHandler&&, const Context &, Settings) -> BasicMdpWorker<RequestHandler>;
+template<HandlesRequest RequestHandler>
+BasicMdpWorker(std::string_view, std::string_view, RequestHandler &&, const Context &, Settings) -> BasicMdpWorker<RequestHandler>;
 
-template <HandlesRequest RequestHandler>
-BasicMdpWorker(std::string_view, std::string_view, RequestHandler&&, Settings) -> BasicMdpWorker<RequestHandler>;
+template<HandlesRequest RequestHandler>
+BasicMdpWorker(std::string_view, std::string_view, RequestHandler &&, Settings) -> BasicMdpWorker<RequestHandler>;
 
-template <HandlesRequest RequestHandler>
-BasicMdpWorker(std::string_view, const Broker &, RequestHandler&&) -> BasicMdpWorker<RequestHandler>;
+template<HandlesRequest RequestHandler>
+BasicMdpWorker(std::string_view, const Broker &, RequestHandler &&) -> BasicMdpWorker<RequestHandler>;
 
 } // namespace opencmw::majordomo
 
