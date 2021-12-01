@@ -11,6 +11,7 @@
 
 #include <fmt/core.h>
 
+#include <majordomo/Constants.hpp>
 #include <majordomo/Message.hpp>
 #include <majordomo/Settings.hpp>
 #include <majordomo/Utils.hpp>
@@ -20,29 +21,10 @@ using namespace std::string_literals;
 
 namespace opencmw::majordomo {
 
-// TODO: Make constexpr as std::string is not yet constexpr
-/*constexpr*/ const std::string SCHEME_TCP                 = "tcp";
-/*constexpr*/ const std::string SCHEME_MDP                 = "mdp";
-/*constexpr*/ const std::string SCHEME_MDS                 = "mds";
-/*constexpr*/ const std::string SCHEME_INPROC              = "inproc";
-/*constexpr*/ const std::string SUFFIX_ROUTER              = "/router";
-/*constexpr*/ const std::string SUFFIX_PUBLISHER           = "/publisher";
-/*constexpr*/ const std::string SUFFIX_SUBSCRIBE           = "/subscribe";
-/*constexpr*/ const std::string INPROC_BROKER              = "inproc://broker";
-/*constexpr*/ const std::string INTERNAL_ADDRESS_BROKER    = INPROC_BROKER + SUFFIX_ROUTER;
-/*constexpr*/ const std::string INTERNAL_ADDRESS_PUBLISHER = INPROC_BROKER + SUFFIX_PUBLISHER;
-/*constexpr*/ const std::string INTERNAL_ADDRESS_SUBSCRIBE = INPROC_BROKER + SUFFIX_SUBSCRIBE;
-/*constexpr*/ const std::string INTERNAL_SERVICE_NAMES     = "mmi.service";
+using BrokerMessage = BasicMdpMessage<MessageFormat::WithSourceId>;
 
-using BrokerMessage                                        = BasicMdpMessage<MessageFormat::WithSourceId>;
-
-class Broker { // TODO: rename to: MajordomoBroker -> 'nomen est omen', Q: possible class order: <state, constructors, public/protected/private->alpha-sorted functions, private sub-classes>, grouped setter/getter -> eval if needed (alt: public fields)??
+class Broker {
 private:
-    // static constexpr std::string_view SUFFIX_ROUTER    = "/router";
-    // static constexpr std::string_view SUFFIX_PUBLISHER = "/publisher";
-    // static constexpr std::string_view SUFFIX_SUBSCRIBE = "/subscribe";
-    // static constexpr std::string_view INPROC_BROKER    = "inproc://broker";
-
     // Shorten chrono names
     using Clock     = std::chrono::steady_clock;
     using Timestamp = std::chrono::time_point<Clock>;
@@ -98,8 +80,12 @@ private:
         }
     };
 
-    const Settings                                         _settings;
-    Timestamp                                              _heartbeatAt = Clock::now() + _settings.heartbeatInterval;
+public:
+    const Context  context;
+    const Settings settings;
+
+private:
+    Timestamp                                              _heartbeatAt = Clock::now() + settings.heartbeatInterval;
     std::unordered_map<std::string, std::set<std::string>> _subscribedClientsByTopic; // topic -> client IDs
     std::unordered_map<std::string, int>                   _subscribedTopics;         // topic -> subscription count
     std::unordered_map<std::string, Client>                _clients;
@@ -119,307 +105,21 @@ private:
     const Socket                  _dnsSocket;
     std::array<zmq_pollitem_t, 4> pollerItems;
 
-    Service &                     requireService(std::string serviceName, std::string serviceDescription) {
-        // TODO handle serviceDescription differing between workers? or is "first one wins" ok?
-        auto it = _services.try_emplace(serviceName, std::move(serviceName), std::move(serviceDescription));
-        return it.first->second;
-    }
-
-    Service *bestMatchingService(std::string_view serviceName) {
-        // TODO use some smart reactive filtering once available, maybe optimize or cache
-        std::vector<Service *> services;
-        services.reserve(_services.size());
-        for (auto &it : _services) {
-            services.push_back(&it.second);
-        }
-
-        auto doesNotStartWith = [&serviceName](auto service) {
-            return !service->name.starts_with(serviceName);
-        };
-
-        services.erase(std::remove_if(services.begin(), services.end(), doesNotStartWith), services.end());
-
-        if (services.empty())
-            return nullptr;
-
-        auto lessByLength = [](auto lhs, auto rhs) {
-            if (lhs->name.size() == rhs->name.size())
-                return lhs->name < rhs->name;
-            return lhs->name.size() < rhs->name.size();
-        };
-
-        return *std::min_element(services.begin(), services.end(), lessByLength);
-    }
-
-    void dispatch(Service &service) {
-        purgeWorkers();
-
-        while (!service.waiting.empty() && !service.requests.empty()) {
-            auto message = service.takeNextMessage();
-            auto worker  = service.takeNextWorker();
-            assert(worker);
-            message.setClientSourceId(message.sourceId(), MessageFrame::dynamic_bytes_tag{});
-            message.setSourceId(worker->id, MessageFrame::dynamic_bytes_tag{});
-            message.setProtocol(Protocol::Worker);
-            // TODO assert that command exists in both protocols?
-            message.send(worker->socket).assertSuccess();
-        }
-    }
-
-    void sendWithSourceId(BrokerMessage &&message, std::string_view sourceId) {
-        message.setSourceId(sourceId, MessageFrame::dynamic_bytes_tag{});
-        message.send(_routerSocket).assertSuccess();
-    }
-
-    static bool matchesSubscriptionTopic(std::string_view topic, std::string_view subscriptionTopic) {
-        // TODO check what this actually is supposed to do
-        return subscriptionTopic.starts_with(topic);
-    }
-
-    void dispatchMessageToMatchingSubscribers(BrokerMessage &&message) {
-        const auto it                     = _subscribedClientsByTopic.find(std::string(message.topic()));
-        const auto hasRouterSubscriptions = it != _subscribedClientsByTopic.end();
-
-        message.setSourceId(message.topic(), MessageFrame::dynamic_bytes_tag{});
-        std::vector<std::string> pubsubSubscriptions;
-        for (const auto &topicIt : _subscribedTopics) {
-            if (matchesSubscriptionTopic(message.topic(), topicIt.first)) {
-                pubsubSubscriptions.push_back(topicIt.first);
-            }
-        }
-
-        for (std::size_t i = 0; i < pubsubSubscriptions.size(); ++i) {
-            auto copy = message.clone();
-            copy.send(_pubSocket).assertSuccess();
-        }
-
-        if (hasRouterSubscriptions) {
-            std::size_t sent = 0;
-            for (const auto &clientId : it->second) {
-                sendWithSourceId(message.clone(), clientId);
-                ++sent;
-            }
-        }
-    }
-
-    void workerWaiting(Worker &worker) {
-        // Queue to broker and service waiting lists
-        // TODO
-        // waiting.addLast(worker);
-        auto service = _services.find(worker.serviceName);
-        assert(service != _services.end());
-        service->second.waiting.push_back(&worker);
-        worker.expiry = updatedWorkerExpiry();
-        dispatch(service->second);
-    }
-
-    void purgeWorkers() {
-        const auto now = Clock::now();
-
-        for (auto &serviceIt : _services) {
-            auto &service  = serviceIt.second;
-            auto  workerIt = service.waiting.begin();
-            while (workerIt != service.waiting.end()) {
-                if ((*workerIt)->expiry < now) {
-                    workerIt = service.waiting.erase(workerIt);
-                    _workers.erase((*workerIt)->id);
-                } else {
-                    ++workerIt;
-                }
-            }
-        }
-    }
-
-    void processClients() {
-        for (auto &clientIt : _clients) {
-            auto &client = clientIt.second;
-            if (client.requests.empty())
-                continue;
-
-            auto clientMessage = std::move(client.requests.back());
-            client.requests.pop_back();
-
-            assert(clientMessage.isValid());
-
-            if (auto service = bestMatchingService(clientMessage.serviceName())) {
-                service->putMessage(std::move(clientMessage));
-                dispatch(*service);
-                return;
-            }
-
-            // not implemented -- reply according to Majordomo Management Interface (MMI) as defined in http://rfc.zeromq.org/spec:8
-
-            auto           reply       = std::move(clientMessage);
-            constexpr auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
-            constexpr auto static_tag  = MessageFrame::static_bytes_tag{};
-            reply.setCommand(Command::Final);
-            reply.setTopic(INTERNAL_SERVICE_NAMES, static_tag);
-            reply.setBody("", static_tag);
-            reply.setError(fmt::format("unknown service (error 501): '{}'", reply.serviceName()), dynamic_tag);
-            reply.setRbacToken(_rbac, static_tag);
-
-            reply.send(client.socket).assertSuccess();
-        }
-    }
-
-    void purgeClients() {
-        if (_settings.clientTimeout.count() == 0) {
-            return;
-        }
-
-        const auto now       = Clock::now();
-
-        const auto isExpired = [&now](const auto &c) {
-            return c.second.expiry < now;
-        };
-
-        std::erase_if(_clients, isExpired);
-    }
-
-    void sendHeartbeats() {
-        if (Clock::now() < _heartbeatAt) {
-            return;
-        }
-
-        for (auto &service : _services) {
-            for (auto &worker : service.second.waiting) {
-                auto heartbeat = BrokerMessage::createWorkerMessage(Command::Heartbeat);
-                heartbeat.setSourceId(worker->id, MessageFrame::dynamic_bytes_tag{});
-                heartbeat.setServiceName(worker->serviceName, MessageFrame::dynamic_bytes_tag{});
-                heartbeat.setRbacToken(_rbac, MessageFrame::static_bytes_tag{});
-                heartbeat.send(worker->socket).assertSuccess();
-            }
-        }
-
-        _heartbeatAt = Clock::now() + _settings.heartbeatInterval;
-    }
-
-    std::string getScheme(std::string_view address) {
-        auto schemeEnd = address.find(':');
-        if (schemeEnd == std::string_view::npos)
-            return {};
-        return std::string(address.substr(0, schemeEnd));
-    }
-
-    std::string replaceScheme(std::string_view address, std::string_view replacement) {
-        auto schemeEnd = address.find(':');
-        if (utils::iequal(address.substr(0, schemeEnd), SCHEME_INPROC)) {
-            return std::string{ address };
-        }
-
-        std::string result;
-        result.append(replacement);
-        result.append(address.substr(schemeEnd));
-        return result;
-    }
-
-    void processWorker(const Socket &socket, BrokerMessage &&message) {
-        assert(message.isWorkerMessage());
-
-        const auto serviceName = std::string(message.serviceName());
-        const auto serviceId   = std::string(message.sourceId());
-        const auto knownWorker = _workers.contains(serviceId);
-        auto &     worker      = _workers.try_emplace(serviceId, socket, serviceId, serviceName, updatedWorkerExpiry()).first->second;
-
-        switch (message.command()) {
-        case Command::Ready: {
-            debug() << "log new local/external worker for service " << serviceName << " - " << message;
-            std::ignore = requireService(serviceName, std::string(message.body()));
-            workerWaiting(worker);
-
-            // notify potential listeners
-            auto       notify      = BrokerMessage::createWorkerMessage(Command::Notify);
-            const auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
-            notify.setServiceName(INTERNAL_SERVICE_NAMES, dynamic_tag);
-            notify.setTopic(INTERNAL_SERVICE_NAMES, dynamic_tag);
-            notify.setClientRequestId(_brokerName, dynamic_tag);
-            notify.setSourceId(INTERNAL_SERVICE_NAMES, dynamic_tag);
-            notify.send(_pubSocket).assertSuccess();
-            break;
-        }
-        case Command::Disconnect:
-            // deleteWorker(worker); // TODO handle? also commented out in java impl
-            break;
-        case Command::Partial:
-        case Command::Final: {
-            if (knownWorker) {
-                auto clientId = std::make_unique<std::string>(message.clientSourceId());
-                auto client   = _clients.find(*clientId);
-                if (client == _clients.end()) {
-                    return; // drop if client unknown/disappeared
-                }
-
-                message.setSourceId(clientId.release(), MessageFrame::dynamic_bytes_tag{});
-                message.setServiceName(worker.serviceName, MessageFrame::dynamic_bytes_tag{});
-                message.setProtocol(Protocol::Client);
-                message.send(client->second.socket).assertSuccess();
-                workerWaiting(worker);
-            } else {
-                disconnectWorker(worker);
-            }
-            break;
-        }
-        case Command::Notify: {
-            message.setProtocol(Protocol::Client);
-            message.setCommand(Command::Final);
-            message.setSourceId(message.serviceName(), MessageFrame::dynamic_bytes_tag{});
-            message.setServiceName(worker.serviceName, MessageFrame::dynamic_bytes_tag{});
-
-            dispatchMessageToMatchingSubscribers(std::move(message));
-            break;
-        }
-        case Command::Heartbeat:
-            if (knownWorker) {
-                worker.expiry = updatedWorkerExpiry();
-            } else {
-                disconnectWorker(worker);
-            }
-        default:
-            break;
-        }
-    }
-
-    void deleteWorker(const Worker &worker) {
-        auto serviceIt = _services.find(worker.serviceName);
-        if (serviceIt != _services.end()) {
-            auto &waiting = serviceIt->second.waiting;
-            waiting.erase(std::remove(waiting.begin(), waiting.end(), &worker), waiting.end());
-        }
-
-        _workers.erase(worker.id);
-    }
-
-    void disconnectWorker(Worker &worker) {
-        auto           disconnect  = BrokerMessage::createWorkerMessage(Command::Disconnect);
-        constexpr auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
-        constexpr auto static_tag  = MessageFrame::static_bytes_tag{};
-        disconnect.setSourceId(worker.id, dynamic_tag);
-        disconnect.setServiceName(worker.serviceName, dynamic_tag);
-        disconnect.setTopic(worker.serviceName, dynamic_tag);
-        disconnect.setBody("broker shutdown", static_tag);
-        disconnect.setRbacToken(_rbac, dynamic_tag);
-        disconnect.send(worker.socket).assertSuccess();
-        deleteWorker(worker);
-    }
-
-    [[nodiscard]] Timestamp updatedClientExpiry() const { return Clock::now() + _settings.clientTimeout; }
-    [[nodiscard]] Timestamp updatedWorkerExpiry() const { return Clock::now() + _settings.heartbeatInterval * _settings.heartbeatLiveness; }
-
 public:
-    Broker(Settings settings, std::string brokerName, std::string dnsAddress, const Context &context)
-        : _settings{ std::move(settings) }
+    Broker(std::string brokerName, std::string dnsAddress, Settings settings_ = {})
+        : settings{ std::move(settings_) }
         , _brokerName{ std::move(brokerName) }
         , _dnsAddress{ dnsAddress.empty() ? std::move(dnsAddress) : replaceScheme(std::move(dnsAddress), SCHEME_TCP) }
         , _routerSocket(context, ZMQ_ROUTER)
         , _pubSocket(context, ZMQ_XPUB)
         , _subSocket(context, ZMQ_XSUB)
         , _dnsSocket(context, ZMQ_DEALER) {
-        auto commonSocketInit = [&settings](const Socket &socket) {
-            const int heartbeatInterval = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(settings.heartbeatInterval).count());
-            const int ttl               = heartbeatInterval * settings.heartbeatLiveness;
-            const int timeout           = heartbeatInterval * settings.heartbeatLiveness;
-            return zmq_invoke(zmq_setsockopt, socket, ZMQ_SNDHWM, &settings.highWaterMark, sizeof(settings.highWaterMark))
-                && zmq_invoke(zmq_setsockopt, socket, ZMQ_RCVHWM, &settings.highWaterMark, sizeof(settings.highWaterMark))
+        auto commonSocketInit = [settings_](const Socket &socket) {
+            const int heartbeatInterval = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(settings_.heartbeatInterval).count());
+            const int ttl               = heartbeatInterval * settings_.heartbeatLiveness;
+            const int timeout           = heartbeatInterval * settings_.heartbeatLiveness;
+            return zmq_invoke(zmq_setsockopt, socket, ZMQ_SNDHWM, &settings_.highWaterMark, sizeof(settings_.highWaterMark))
+                && zmq_invoke(zmq_setsockopt, socket, ZMQ_RCVHWM, &settings_.highWaterMark, sizeof(settings_.highWaterMark))
                 && zmq_invoke(zmq_setsockopt, socket, ZMQ_HEARTBEAT_TTL, &ttl, sizeof(ttl))
                 && zmq_invoke(zmq_setsockopt, socket, ZMQ_HEARTBEAT_TIMEOUT, &timeout, sizeof(timeout))
                 && zmq_invoke(zmq_setsockopt, socket, ZMQ_HEARTBEAT_IVL, &heartbeatInterval, sizeof(heartbeatInterval))
@@ -653,7 +353,7 @@ public:
         } while (anythingReceived);
 
         // N.B. block until data arrived or for at most one heart-beat interval
-        const auto result = zmq_invoke(zmq_poll, pollerItems.data(), static_cast<int>(pollerItems.size()), _settings.heartbeatInterval.count());
+        const auto result = zmq_invoke(zmq_poll, pollerItems.data(), static_cast<int>(pollerItems.size()), settings.heartbeatInterval.count());
         return result.isValid();
     }
 
@@ -666,6 +366,293 @@ public:
             disconnectWorker(worker);
         }
     }
+
+private:
+    Service &requireService(std::string serviceName, std::string serviceDescription) {
+        // TODO handle serviceDescription differing between workers? or is "first one wins" ok?
+        auto it = _services.try_emplace(serviceName, std::move(serviceName), std::move(serviceDescription));
+        return it.first->second;
+    }
+
+    Service *bestMatchingService(std::string_view serviceName) {
+        // TODO use some smart reactive filtering once available, maybe optimize or cache
+        std::vector<Service *> services;
+        services.reserve(_services.size());
+        for (auto &it : _services) {
+            services.push_back(&it.second);
+        }
+
+        auto doesNotStartWith = [&serviceName](auto service) {
+            return !service->name.starts_with(serviceName);
+        };
+
+        services.erase(std::remove_if(services.begin(), services.end(), doesNotStartWith), services.end());
+
+        if (services.empty())
+            return nullptr;
+
+        auto lessByLength = [](auto lhs, auto rhs) {
+            if (lhs->name.size() == rhs->name.size())
+                return lhs->name < rhs->name;
+            return lhs->name.size() < rhs->name.size();
+        };
+
+        return *std::min_element(services.begin(), services.end(), lessByLength);
+    }
+
+    void dispatch(Service &service) {
+        purgeWorkers();
+
+        while (!service.waiting.empty() && !service.requests.empty()) {
+            auto message = service.takeNextMessage();
+            auto worker  = service.takeNextWorker();
+            assert(worker);
+            message.setClientSourceId(message.sourceId(), MessageFrame::dynamic_bytes_tag{});
+            message.setSourceId(worker->id, MessageFrame::dynamic_bytes_tag{});
+            message.setProtocol(Protocol::Worker);
+            // TODO assert that command exists in both protocols?
+            message.send(worker->socket).assertSuccess();
+        }
+    }
+
+    void sendWithSourceId(BrokerMessage &&message, std::string_view sourceId) {
+        message.setSourceId(sourceId, MessageFrame::dynamic_bytes_tag{});
+        message.send(_routerSocket).assertSuccess();
+    }
+
+    static bool matchesSubscriptionTopic(std::string_view topic, std::string_view subscriptionTopic) {
+        // TODO check what this actually is supposed to do
+        return subscriptionTopic.starts_with(topic);
+    }
+
+    void dispatchMessageToMatchingSubscribers(BrokerMessage &&message) {
+        const auto it                     = _subscribedClientsByTopic.find(std::string(message.topic()));
+        const auto hasRouterSubscriptions = it != _subscribedClientsByTopic.end();
+
+        message.setSourceId(message.topic(), MessageFrame::dynamic_bytes_tag{});
+        std::vector<std::string> pubsubSubscriptions;
+        for (const auto &topicIt : _subscribedTopics) {
+            if (matchesSubscriptionTopic(message.topic(), topicIt.first)) {
+                pubsubSubscriptions.push_back(topicIt.first);
+            }
+        }
+
+        for (std::size_t i = 0; i < pubsubSubscriptions.size(); ++i) {
+            auto copy = message.clone();
+            copy.send(_pubSocket).assertSuccess();
+        }
+
+        if (hasRouterSubscriptions) {
+            std::size_t sent = 0;
+            for (const auto &clientId : it->second) {
+                sendWithSourceId(message.clone(), clientId);
+                ++sent;
+            }
+        }
+    }
+
+    void workerWaiting(Worker &worker) {
+        // Queue to broker and service waiting lists
+        // TODO
+        // waiting.addLast(worker);
+        auto service = _services.find(worker.serviceName);
+        assert(service != _services.end());
+        service->second.waiting.push_back(&worker);
+        worker.expiry = updatedWorkerExpiry();
+        dispatch(service->second);
+    }
+
+    void purgeWorkers() {
+        const auto now = Clock::now();
+
+        for (auto &serviceIt : _services) {
+            auto &service  = serviceIt.second;
+            auto  workerIt = service.waiting.begin();
+            while (workerIt != service.waiting.end()) {
+                if ((*workerIt)->expiry < now) {
+                    workerIt = service.waiting.erase(workerIt);
+                    _workers.erase((*workerIt)->id);
+                } else {
+                    ++workerIt;
+                }
+            }
+        }
+    }
+
+    void processClients() {
+        for (auto &clientIt : _clients) {
+            auto &client = clientIt.second;
+            if (client.requests.empty())
+                continue;
+
+            auto clientMessage = std::move(client.requests.back());
+            client.requests.pop_back();
+
+            assert(clientMessage.isValid());
+
+            if (auto service = bestMatchingService(clientMessage.serviceName())) {
+                service->putMessage(std::move(clientMessage));
+                dispatch(*service);
+                return;
+            }
+
+            // not implemented -- reply according to Majordomo Management Interface (MMI) as defined in http://rfc.zeromq.org/spec:8
+
+            auto           reply       = std::move(clientMessage);
+            constexpr auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
+            constexpr auto static_tag  = MessageFrame::static_bytes_tag{};
+            reply.setCommand(Command::Final);
+            reply.setTopic(INTERNAL_SERVICE_NAMES, static_tag);
+            reply.setBody("", static_tag);
+            reply.setError(fmt::format("unknown service (error 501): '{}'", reply.serviceName()), dynamic_tag);
+            reply.setRbacToken(_rbac, static_tag);
+
+            reply.send(client.socket).assertSuccess();
+        }
+    }
+
+    void purgeClients() {
+        if (settings.clientTimeout.count() == 0) {
+            return;
+        }
+
+        const auto now       = Clock::now();
+
+        const auto isExpired = [&now](const auto &c) {
+            return c.second.expiry < now;
+        };
+
+        std::erase_if(_clients, isExpired);
+    }
+
+    void sendHeartbeats() {
+        if (Clock::now() < _heartbeatAt) {
+            return;
+        }
+
+        for (auto &service : _services) {
+            for (auto &worker : service.second.waiting) {
+                auto heartbeat = BrokerMessage::createWorkerMessage(Command::Heartbeat);
+                heartbeat.setSourceId(worker->id, MessageFrame::dynamic_bytes_tag{});
+                heartbeat.setServiceName(worker->serviceName, MessageFrame::dynamic_bytes_tag{});
+                heartbeat.setRbacToken(_rbac, MessageFrame::static_bytes_tag{});
+                heartbeat.send(worker->socket).assertSuccess();
+            }
+        }
+
+        _heartbeatAt = Clock::now() + settings.heartbeatInterval;
+    }
+
+    std::string getScheme(std::string_view address) {
+        auto schemeEnd = address.find(':');
+        if (schemeEnd == std::string_view::npos)
+            return {};
+        return std::string(address.substr(0, schemeEnd));
+    }
+
+    std::string replaceScheme(std::string_view address, std::string_view replacement) {
+        auto schemeEnd = address.find(':');
+        if (utils::iequal(address.substr(0, schemeEnd), SCHEME_INPROC)) {
+            return std::string{ address };
+        }
+
+        std::string result;
+        result.append(replacement);
+        result.append(address.substr(schemeEnd));
+        return result;
+    }
+
+    void processWorker(const Socket &socket, BrokerMessage &&message) {
+        assert(message.isWorkerMessage());
+
+        const auto serviceName = std::string(message.serviceName());
+        const auto serviceId   = std::string(message.sourceId());
+        const auto knownWorker = _workers.contains(serviceId);
+        auto &     worker      = _workers.try_emplace(serviceId, socket, serviceId, serviceName, updatedWorkerExpiry()).first->second;
+
+        switch (message.command()) {
+        case Command::Ready: {
+            debug() << "log new local/external worker for service " << serviceName << " - " << message;
+            std::ignore = requireService(serviceName, std::string(message.body()));
+            workerWaiting(worker);
+
+            // notify potential listeners
+            auto       notify      = BrokerMessage::createWorkerMessage(Command::Notify);
+            const auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
+            notify.setServiceName(INTERNAL_SERVICE_NAMES, dynamic_tag);
+            notify.setTopic(INTERNAL_SERVICE_NAMES, dynamic_tag);
+            notify.setClientRequestId(_brokerName, dynamic_tag);
+            notify.setSourceId(INTERNAL_SERVICE_NAMES, dynamic_tag);
+            notify.send(_pubSocket).assertSuccess();
+            break;
+        }
+        case Command::Disconnect:
+            // deleteWorker(worker); // TODO handle? also commented out in java impl
+            break;
+        case Command::Partial:
+        case Command::Final: {
+            if (knownWorker) {
+                auto clientId = std::make_unique<std::string>(message.clientSourceId());
+                auto client   = _clients.find(*clientId);
+                if (client == _clients.end()) {
+                    return; // drop if client unknown/disappeared
+                }
+
+                message.setSourceId(clientId.release(), MessageFrame::dynamic_bytes_tag{});
+                message.setServiceName(worker.serviceName, MessageFrame::dynamic_bytes_tag{});
+                message.setProtocol(Protocol::Client);
+                message.send(client->second.socket).assertSuccess();
+                workerWaiting(worker);
+            } else {
+                disconnectWorker(worker);
+            }
+            break;
+        }
+        case Command::Notify: {
+            message.setProtocol(Protocol::Client);
+            message.setCommand(Command::Final);
+            message.setSourceId(message.serviceName(), MessageFrame::dynamic_bytes_tag{});
+            message.setServiceName(worker.serviceName, MessageFrame::dynamic_bytes_tag{});
+
+            dispatchMessageToMatchingSubscribers(std::move(message));
+            break;
+        }
+        case Command::Heartbeat:
+            if (knownWorker) {
+                worker.expiry = updatedWorkerExpiry();
+            } else {
+                disconnectWorker(worker);
+            }
+        default:
+            break;
+        }
+    }
+
+    void deleteWorker(const Worker &worker) {
+        auto serviceIt = _services.find(worker.serviceName);
+        if (serviceIt != _services.end()) {
+            auto &waiting = serviceIt->second.waiting;
+            waiting.erase(std::remove(waiting.begin(), waiting.end(), &worker), waiting.end());
+        }
+
+        _workers.erase(worker.id);
+    }
+
+    void disconnectWorker(Worker &worker) {
+        auto           disconnect  = BrokerMessage::createWorkerMessage(Command::Disconnect);
+        constexpr auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
+        constexpr auto static_tag  = MessageFrame::static_bytes_tag{};
+        disconnect.setSourceId(worker.id, dynamic_tag);
+        disconnect.setServiceName(worker.serviceName, dynamic_tag);
+        disconnect.setTopic(worker.serviceName, dynamic_tag);
+        disconnect.setBody("broker shutdown", static_tag);
+        disconnect.setRbacToken(_rbac, dynamic_tag);
+        disconnect.send(worker.socket).assertSuccess();
+        deleteWorker(worker);
+    }
+
+    [[nodiscard]] Timestamp updatedClientExpiry() const { return Clock::now() + settings.clientTimeout; }
+    [[nodiscard]] Timestamp updatedWorkerExpiry() const { return Clock::now() + settings.heartbeatInterval * settings.heartbeatLiveness; }
 };
 
 } // namespace opencmw::majordomo
