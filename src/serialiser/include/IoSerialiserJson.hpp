@@ -45,7 +45,7 @@ inline bool isNumberChar(uint8_t c) {
  */
 inline std::string readString(IoBuffer &buffer) {
     if (buffer.get<uint8_t>() != '"') {
-        std::cerr << "error: expected leading quote";
+        throw ProtocolException("error: expected leading quote");
     } // buffer.set_position(buffer.position() + 1); // skip leading quote
     auto start = buffer.position();
     // std::string result;
@@ -101,8 +101,7 @@ inline void consumeWhitespace(IoBuffer &buffer) {
 
 template<Number T>
 inline T parseNumber(const std::string_view & /*num*/) {
-    std::cerr << "json parser for number type not implemented!\n";
-    return 0;
+    throw ProtocolException("json parser for number type not implemented!\n");
 };
 
 template<>
@@ -154,8 +153,7 @@ inline void skipField(IoBuffer &buffer) {
     std::ignore = readString(buffer);
     consumeWhitespace(buffer);
     if (buffer.get<int8_t>() != ':') {
-        std::cerr << "json malformed, no colon between key/value";
-        // exception
+        throw ProtocolException("json malformed, no colon between key/value");
     }
     consumeWhitespace(buffer);
     skipValue(buffer);
@@ -331,7 +329,7 @@ struct IoSerialiser<Json, T> {
     constexpr static bool deserialise(IoBuffer &buffer, const ClassField &field, T &value) {
         using MemberType = typename T::value_type;
         if (buffer.get<uint8_t>() != '[') {
-            std::cerr << "expected [\n";
+            throw ProtocolException("expected [");
         }
         std::vector<MemberType> result;
         json::consumeWhitespace(buffer);
@@ -346,7 +344,7 @@ struct IoSerialiser<Json, T> {
                     break;
                 }
                 if (next != ',') {
-                    std::cerr << "expected comma or end of array\n";
+                    throw ProtocolException("expected comma or end of array");
                 }
                 json::consumeWhitespace(buffer);
             }
@@ -409,8 +407,7 @@ struct FieldHeaderReader<Json> {
             }
             json::consumeWhitespace(buffer);
             if (buffer.get<int8_t>() != ':') {
-                std::cerr << "json malformed, no colon between key/value";
-                // exception
+                handleError<protocolCheckVariant>(info, "json malformed, no colon between key/value at buffer position {}", buffer.position());
             }
             json::consumeWhitespace(buffer);
             // read value and set type ?
@@ -424,7 +421,6 @@ struct FieldHeaderReader<Json> {
             result.dataStartOffset   = result.dataStartPosition - result.headerStart;
             result.dataSize          = std::numeric_limits<size_t>::max(); // not defined for non-skipable data
             result.dataEndPosition   = std::numeric_limits<size_t>::max(); // not defined for non-skipable data
-            // there is also no way to get unit, description and modifiers
             return result;
         }
         return result;
