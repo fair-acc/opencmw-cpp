@@ -213,9 +213,9 @@ inline void skipValue(IoBuffer &buffer) {
 } // namespace json
 
 template<>
-struct FieldHeader<Json> {
+struct FieldHeaderWriter<Json> {
     template<const bool writeMetaInfo, typename DataType>
-    constexpr std::size_t static putFieldHeader(IoBuffer &buffer, const char *fieldName, const int fieldNameSize, const DataType &data) { // todo fieldName -> string_view
+    constexpr std::size_t static put(IoBuffer &buffer, const char *fieldName, const int fieldNameSize, const DataType &data) { // todo fieldName -> string_view
         if constexpr (std::is_same_v<DataType, START_MARKER>) {
             if (fieldNameSize > 0) {
                 buffer.putRaw("\"");
@@ -365,8 +365,8 @@ struct IoSerialiser<Json, T> {
         for (uint32_t i = 0U; i < T::n_dims_; i++) {
             dims[i] = static_cast<int32_t>(value.dimensions()[i]);
         }
-        FieldHeader<Json>::template putFieldHeader<false>(buffer, "dims", 4, dims);
-        FieldHeader<Json>::template putFieldHeader<false>(buffer, "values", 6, value.elements());
+        FieldHeaderWriter<Json>::template put<false>(buffer, "dims", 4, dims);
+        FieldHeaderWriter<Json>::template put<false>(buffer, "values", 6, value.elements());
         buffer.putRaw("}");
         return std::is_constant_evaluated();
     }
@@ -379,59 +379,57 @@ struct IoSerialiser<Json, T> {
 };
 
 template<>
-inline FieldDescription readFieldHeader<Json>(IoBuffer &buffer, DeserialiserInfo &info, const ProtocolCheck &protocolCheckVariant) {
-    FieldDescription result;
-    result.headerStart = buffer.position();
-    json::consumeWhitespace(buffer);
-    if (buffer.at<char8_t>(buffer.position()) == ',') { // move to next field
-        buffer.set_position(buffer.position() + 1);
-        json::consumeWhitespace(buffer);
+struct FieldHeaderReader<Json> {
+    template<ProtocolCheck protocolCheckVariant>
+    inline static FieldDescription get(IoBuffer &buffer, DeserialiserInfo &info) {
+        FieldDescription result;
         result.headerStart = buffer.position();
-    }
-    if (buffer.at<char8_t>(buffer.position()) == '{') { // start marker
-        result.intDataType       = IoSerialiser<Json, START_MARKER>::getDataTypeId();
-        result.dataStartPosition = buffer.position() + 1;
-        // set rest of fields
-        return result;
-    }
-    if (buffer.at<char8_t>(buffer.position()) == '}') { // end marker
-        result.intDataType       = IoSerialiser<Json, END_MARKER>::getDataTypeId();
-        result.dataStartPosition = buffer.position() + 1;
-        // set rest of fields
-        return result;
-    }
-    if (buffer.at<char8_t>(buffer.position()) == '"') { // string
-        result.fieldName = json::readString(buffer);
-        if (result.fieldName.size() == 0) {
-            //handleError<protocolCheckVariant>(info, "Cannot read field name for field at buffer position {}", buffer.position());
-            const auto text = fmt::format("Cannot read field name for field at buffer position {}", buffer.position());
-            if (protocolCheckVariant == ALWAYS) {
-                throw ProtocolException(text);
-            }
-            info.exceptions.emplace_back(ProtocolException(text));
-        }
         json::consumeWhitespace(buffer);
-        if (buffer.get<int8_t>() != ':') {
-            std::cerr << "json malformed, no colon between key/value";
-            // exception
-        }
-        json::consumeWhitespace(buffer);
-        // read value and set type ?
-        if (buffer.at<char8_t>(buffer.position()) == '{') { // nested object
-            result.intDataType = IoSerialiser<Json, START_MARKER>::getDataTypeId();
+        if (buffer.at<char8_t>(buffer.position()) == ',') { // move to next field
             buffer.set_position(buffer.position() + 1);
-        } else {
-            result.intDataType = IoSerialiser<Json, OTHER>::getDataTypeId(); // value is ignored anyway
+            json::consumeWhitespace(buffer);
+            result.headerStart = buffer.position();
         }
-        result.dataStartPosition = buffer.position();
-        result.dataStartOffset   = result.dataStartPosition - result.headerStart;
-        result.dataSize          = std::numeric_limits<size_t>::max(); // not defined for non-skipable data
-        result.dataEndPosition   = std::numeric_limits<size_t>::max(); // not defined for non-skipable data
-        // there is also no way to get unit, description and modifiers
+        if (buffer.at<char8_t>(buffer.position()) == '{') { // start marker
+            result.intDataType       = IoSerialiser<Json, START_MARKER>::getDataTypeId();
+            result.dataStartPosition = buffer.position() + 1;
+            // set rest of fields
+            return result;
+        }
+        if (buffer.at<char8_t>(buffer.position()) == '}') { // end marker
+            result.intDataType       = IoSerialiser<Json, END_MARKER>::getDataTypeId();
+            result.dataStartPosition = buffer.position() + 1;
+            // set rest of fields
+            return result;
+        }
+        if (buffer.at<char8_t>(buffer.position()) == '"') { // string
+            result.fieldName = json::readString(buffer);
+            if (result.fieldName.size() == 0) {
+                handleError<protocolCheckVariant>(info, "Cannot read field name for field at buffer position {}", buffer.position());
+            }
+            json::consumeWhitespace(buffer);
+            if (buffer.get<int8_t>() != ':') {
+                std::cerr << "json malformed, no colon between key/value";
+                // exception
+            }
+            json::consumeWhitespace(buffer);
+            // read value and set type ?
+            if (buffer.at<char8_t>(buffer.position()) == '{') { // nested object
+                result.intDataType = IoSerialiser<Json, START_MARKER>::getDataTypeId();
+                buffer.set_position(buffer.position() + 1);
+            } else {
+                result.intDataType = IoSerialiser<Json, OTHER>::getDataTypeId(); // value is ignored anyway
+            }
+            result.dataStartPosition = buffer.position();
+            result.dataStartOffset   = result.dataStartPosition - result.headerStart;
+            result.dataSize          = std::numeric_limits<size_t>::max(); // not defined for non-skipable data
+            result.dataEndPosition   = std::numeric_limits<size_t>::max(); // not defined for non-skipable data
+            // there is also no way to get unit, description and modifiers
+            return result;
+        }
         return result;
     }
-    return result;
-}
+};
 } // namespace opencmw
 
 #pragma clang diagnostic pop

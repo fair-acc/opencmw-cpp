@@ -183,9 +183,9 @@ struct IoSerialiser<YaS, END_MARKER> {
 };
 
 template<>
-struct FieldHeader<YaS> {
+struct FieldHeaderWriter<YaS> {
     template<const bool writeMetaInfo, typename DataType>
-    constexpr std::size_t static putFieldHeader(IoBuffer &buffer, const char *fieldName, const int fieldNameSize, const DataType &data) { // todo fieldName -> string_view
+    constexpr std::size_t static put(IoBuffer &buffer, const char *fieldName, const int fieldNameSize, const DataType &data) { // todo fieldName -> string_view
         using StrippedDataType         = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(data)))>;
         constexpr int32_t dataTypeSize = static_cast<int32_t>(sizeof(StrippedDataType));
         buffer.reserve_spare(((static_cast<uint64_t>(fieldNameSize) + 18) * sizeof(uint8_t)) + dataTypeSize);
@@ -277,31 +277,34 @@ inline DeserialiserInfo checkHeaderInfo<YaS>(IoBuffer &buffer, DeserialiserInfo 
 }
 
 template<>
-inline FieldDescription readFieldHeader<YaS>(IoBuffer &buffer, DeserialiserInfo & /*info*/, const ProtocolCheck &protocolCheckVariant) {
-    using str_view = std::string_view;
+struct FieldHeaderReader<YaS> {
+    template<ProtocolCheck protocolCheckVariant>
+    inline static FieldDescription get(IoBuffer &buffer, DeserialiserInfo & /*info*/) {
+        using str_view = std::string_view;
 
-    FieldDescription result;
-    result.headerStart = buffer.position();
-    result.intDataType = buffer.get<uint8_t>(); // data type ID
-    //const auto        hashFieldName     =
-    buffer.get<int32_t>(); // hashed field name -> future: faster look-up/matching of fields
-    result.dataStartOffset   = static_cast<uint64_t>(buffer.get<int32_t>());
-    result.dataSize          = static_cast<uint64_t>(buffer.get<int32_t>());
-    result.fieldName         = buffer.get<std::string_view>(); // full field name
-    result.dataStartPosition = result.headerStart + result.dataStartOffset;
-    result.dataEndPosition   = result.headerStart + result.dataStartOffset + result.dataSize;
-    // the following information is optional
-    // e.g. could skip to 'headerStart + dataStartOffset' and start reading the data, or
-    // e.g. could skip to 'headerStart + dataStartOffset + dataSize' and start reading the next field header
+        FieldDescription result;
+        result.headerStart = buffer.position();
+        result.intDataType = buffer.get<uint8_t>(); // data type ID
+        //const auto        hashFieldName     =
+        buffer.get<int32_t>(); // hashed field name -> future: faster look-up/matching of fields
+        result.dataStartOffset   = static_cast<uint64_t>(buffer.get<int32_t>());
+        result.dataSize          = static_cast<uint64_t>(buffer.get<int32_t>());
+        result.fieldName         = buffer.get<std::string_view>(); // full field name
+        result.dataStartPosition = result.headerStart + result.dataStartOffset;
+        result.dataEndPosition   = result.headerStart + result.dataStartOffset + result.dataSize;
+        // the following information is optional
+        // e.g. could skip to 'headerStart + dataStartOffset' and start reading the data, or
+        // e.g. could skip to 'headerStart + dataStartOffset + dataSize' and start reading the next field header
 
-    bool ignoreChecks  = protocolCheckVariant == IGNORE; // not constexpr because protocolCheckVariant is not NTTP
-    result.unit        = ignoreChecks || (buffer.position() == result.dataStartPosition) ? "" : buffer.get<str_view>();
-    result.description = ignoreChecks || (buffer.position() == result.dataStartPosition) ? "" : buffer.get<str_view>();
-    //ignoreChecks || (buffer.position() == dataStartPosition) ? "" : buffer.get<str_view>();
-    result.modifier = ignoreChecks || (buffer.position() == result.dataStartPosition) ? RW : get_ext_modifier(buffer.get<uint8_t>());
-    // std::cout << fmt::format("parsed field {:<20} meta data: [{}] {} dir: {}\n", fieldName, unit, description, modifier);
-    return result;
-}
+        bool ignoreChecks  = protocolCheckVariant == IGNORE; // not constexpr because protocolCheckVariant is not NTTP
+        result.unit        = ignoreChecks || (buffer.position() == result.dataStartPosition) ? "" : buffer.get<str_view>();
+        result.description = ignoreChecks || (buffer.position() == result.dataStartPosition) ? "" : buffer.get<str_view>();
+        //ignoreChecks || (buffer.position() == dataStartPosition) ? "" : buffer.get<str_view>();
+        result.modifier = ignoreChecks || (buffer.position() == result.dataStartPosition) ? RW : get_ext_modifier(buffer.get<uint8_t>());
+        // std::cout << fmt::format("parsed field {:<20} meta data: [{}] {} dir: {}\n", fieldName, unit, description, modifier);
+        return result;
+    }
+};
 
 } // namespace opencmw
 
