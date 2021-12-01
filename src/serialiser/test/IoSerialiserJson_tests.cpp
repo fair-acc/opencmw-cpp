@@ -72,7 +72,7 @@ TEST_CASE("JsonDeserialisationMissingField", "[JsonSerialiser]") {
     opencmw::debug::resetStats();
     {
         opencmw::IoBuffer buffer;
-        buffer.putRaw(R"({ "float1": 2.3, "superflousField": {"p": 12, "q": [ "a", "s"]}, "test": { "intArray": [1, 2, 3], "val1":13.37e2, "val2":"bar"}, "int1": 42})");
+        buffer.putRaw(R"({ "float1": 2.3, "superfluousField": {"p": 12, "q": [ "a", "s"]}, "test": { "intArray": [1, 2, 3], "val1":13.37e2, "val2":"bar"}, "int1": 42})");
         std::cout << "Prepared json data: " << buffer.asString() << std::endl;
         Simple foo;
         auto   result = opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buffer, foo);
@@ -82,6 +82,7 @@ TEST_CASE("JsonDeserialisationMissingField", "[JsonSerialiser]") {
         REQUIRE(foo.test.get()->intArray == std::vector{ 1, 2, 3 });
         REQUIRE(foo.int1 == 42);
         REQUIRE(foo.float1 == 2.3f);
+        REQUIRE(result.additionalFields.size() == 1);
     }
     REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
     opencmw::debug::resetStats();
@@ -136,48 +137,48 @@ TEST_CASE("JsonSerialisation", "[JsonSerialiser]") {
 
 TEST_CASE("isNumber", "[JsonSerialiser]") {
     using namespace opencmw::json;
-    REQUIRE(isJsonNumberChar('0'));
-    REQUIRE(isJsonNumberChar('1'));
-    REQUIRE(isJsonNumberChar('2'));
-    REQUIRE(isJsonNumberChar('3'));
-    REQUIRE(isJsonNumberChar('4'));
-    REQUIRE(isJsonNumberChar('5'));
-    REQUIRE(isJsonNumberChar('6'));
-    REQUIRE(isJsonNumberChar('7'));
-    REQUIRE(isJsonNumberChar('8'));
-    REQUIRE(isJsonNumberChar('9'));
-    REQUIRE(isJsonNumberChar('+'));
-    REQUIRE(isJsonNumberChar('-'));
-    REQUIRE(isJsonNumberChar('e'));
-    REQUIRE(isJsonNumberChar('E'));
-    REQUIRE(isJsonNumberChar('.'));
-    REQUIRE_FALSE(isJsonNumberChar('a'));
+    REQUIRE(isNumberChar('0'));
+    REQUIRE(isNumberChar('1'));
+    REQUIRE(isNumberChar('2'));
+    REQUIRE(isNumberChar('3'));
+    REQUIRE(isNumberChar('4'));
+    REQUIRE(isNumberChar('5'));
+    REQUIRE(isNumberChar('6'));
+    REQUIRE(isNumberChar('7'));
+    REQUIRE(isNumberChar('8'));
+    REQUIRE(isNumberChar('9'));
+    REQUIRE(isNumberChar('+'));
+    REQUIRE(isNumberChar('-'));
+    REQUIRE(isNumberChar('e'));
+    REQUIRE(isNumberChar('E'));
+    REQUIRE(isNumberChar('.'));
+    REQUIRE_FALSE(isNumberChar('a'));
 }
-TEST_CASE("readJsonString", "[JsonSerialiser]") {
+TEST_CASE("readString", "[JsonSerialiser]") {
     using namespace opencmw;
     using namespace opencmw::json;
     {
         IoBuffer buffer;
         buffer.putRaw(R"""("test String 123 " sfef)""");
-        REQUIRE(readJsonString(buffer) == R"""(test String 123 )""");
+        REQUIRE(readString(buffer) == R"""(test String 123 )""");
     }
     // todo: make escape sequences work properly, we cannot return string views but have to copy into our own buffer
     // for now we focus on non escaped strings first
     // {
     //     IoBuffer buffer;
     //     buffer.putRaw("\"Hello\t\\\"special\\\"\nWorld!\"");
-    //     REQUIRE(readJsonString(buffer) == "Hello\t\"special\"\nWorld!");
+    //     REQUIRE(readString(buffer) == "Hello\t\"special\"\nWorld!");
     // }
 }
 
 TEST_CASE("isWhitespace", "[JsonSerialiser]") {
     using namespace opencmw;
     using namespace opencmw::json;
-    REQUIRE(isJsonWhitespace(' '));
-    REQUIRE(isJsonWhitespace('\t'));
-    REQUIRE(isJsonWhitespace('\n'));
-    REQUIRE(isJsonWhitespace('\r'));
-    REQUIRE_FALSE(isJsonWhitespace('a'));
+    REQUIRE(isWhitespace(' '));
+    REQUIRE(isWhitespace('\t'));
+    REQUIRE(isWhitespace('\n'));
+    REQUIRE(isWhitespace('\r'));
+    REQUIRE_FALSE(isWhitespace('a'));
 }
 
 TEST_CASE("consumeWhitespace", "[JsonSerialiser]") {
@@ -186,13 +187,13 @@ TEST_CASE("consumeWhitespace", "[JsonSerialiser]") {
     IoBuffer buffer;
     buffer.putRaw("\n \t345 \r \t\tbcdef");
     REQUIRE(buffer.position() == 0);
-    consumeJsonWhitespace(buffer);
+    consumeWhitespace(buffer);
     REQUIRE(buffer.position() == 3);
     buffer.set_position(5);
-    consumeJsonWhitespace(buffer);
+    consumeWhitespace(buffer);
     REQUIRE(buffer.position() == 5);
     buffer.set_position(6);
-    consumeJsonWhitespace(buffer);
+    consumeWhitespace(buffer);
     REQUIRE(buffer.position() == 11);
 }
 
