@@ -1,8 +1,11 @@
 #ifndef OPENCMW_MAJORDOMO_WORKER_H
 #define OPENCMW_MAJORDOMO_WORKER_H
 
+#include "Broker.hpp"
 #include "Message.hpp"
 
+#include <majordomo/Broker.hpp>
+#include <majordomo/Constants.hpp>
 #include <majordomo/Debug.hpp>
 #include <majordomo/Settings.hpp>
 
@@ -36,7 +39,7 @@ concept HandlesRequest = has_handleRequest_v<T> || has_call_operator_v<T>;
 
 template<HandlesRequest RequestHandler>
 class BasicMdpWorker {
-public:
+private:
     using Clock     = std::chrono::steady_clock;
     using Timestamp = std::chrono::time_point<Clock>;
 
@@ -54,17 +57,16 @@ public:
     std::optional<Socket>         _socket;
     std::array<zmq_pollitem_t, 1> _pollerItems;
 
-protected:
-    MdpMessage createMessage(Command command) {
-        auto message = MdpMessage::createWorkerMessage(command);
-        message.setServiceName(_serviceName, MessageFrame::dynamic_bytes_tag{});
-        message.setRbacToken(_rbacRole, MessageFrame::dynamic_bytes_tag{});
-        return message;
+public:
+    explicit BasicMdpWorker(std::string_view serviceName, std::string_view brokerAddress, RequestHandler &&handler, const Context &context = {}, Settings settings = {})
+        : _handler{ std::move(handler) }, _settings{ std::move(settings) }, _brokerAddress{ std::move(brokerAddress) }, _serviceName{ std::move(serviceName) }, _context(context) {
     }
 
-public:
-    explicit BasicMdpWorker(Settings settings, const Context &context, std::string_view brokerAddress, std::string_view serviceName, RequestHandler &&handler)
-        : _handler{ std::move(handler) }, _settings{ std::move(settings) }, _brokerAddress{ std::move(brokerAddress) }, _serviceName{ std::move(serviceName) }, _context(context) {
+    explicit BasicMdpWorker(std::string_view serviceName, std::string_view brokerAddress, RequestHandler &&handler, Settings settings)
+        : BasicMdpWorker(serviceName, brokerAddress, std::move(handler), {}, settings) {}
+
+    explicit BasicMdpWorker(std::string_view serviceName, const Broker &broker, RequestHandler &&handler)
+        : BasicMdpWorker(serviceName, INTERNAL_ADDRESS_BROKER, std::move(handler), broker.context, broker.settings) {
     }
 
     // Sets the service description
@@ -84,6 +86,55 @@ public:
         auto msg = createMessage(Command::Disconnect);
         msg.send(*_socket).assertSuccess();
         _socket.reset();
+    }
+
+    void run() {
+        if (!connectToBroker())
+            return;
+
+        assert(_socket);
+
+        const auto heartbeatIntervalMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(_settings.heartbeatInterval).count());
+
+        do {
+            while (auto message = MdpMessage::receive(*_socket)) {
+                handleMessage(std::move(*message));
+            }
+
+            if (Clock::now() > _heartbeatAt && --_liveness == 0) {
+                std::this_thread::sleep_for(_settings.workerReconnectInterval);
+                if (!connectToBroker())
+                    return;
+            }
+            assert(_socket);
+
+            if (Clock::now() > _heartbeatAt) {
+                auto heartbeat = createMessage(Command::Heartbeat);
+                heartbeat.send(*_socket).assertSuccess();
+                _heartbeatAt = Clock::now() + _settings.heartbeatInterval;
+            }
+        } while (!_shutdownRequested
+                 && zmq_invoke(zmq_poll, _pollerItems.data(), static_cast<int>(_pollerItems.size()), heartbeatIntervalMs).isValid());
+    }
+
+private:
+    MdpMessage createMessage(Command command) {
+        auto message = MdpMessage::createWorkerMessage(command);
+        message.setServiceName(_serviceName, MessageFrame::dynamic_bytes_tag{});
+        message.setRbacToken(_rbacRole, MessageFrame::dynamic_bytes_tag{});
+        return message;
+    }
+
+    MdpMessage replyFromRequest(const MdpMessage &request) {
+        MdpMessage reply;
+        reply.setProtocol(request.protocol());
+        reply.setCommand(Command::Final);
+        reply.setServiceName(request.serviceName(), MessageFrame::dynamic_bytes_tag{});
+        reply.setClientSourceId(request.clientSourceId(), MessageFrame::dynamic_bytes_tag{});
+        reply.setClientRequestId(request.clientRequestId(), MessageFrame::dynamic_bytes_tag{});
+        reply.setTopic(request.topic(), MessageFrame::dynamic_bytes_tag{});
+        reply.setRbacToken(_rbacRole, MessageFrame::dynamic_bytes_tag{});
+        return reply;
     }
 
     void handleMessage(MdpMessage &&message) {
@@ -118,48 +169,6 @@ public:
         } else {
             assert(!"not implemented");
         }
-    }
-
-    void run() {
-        if (!connectToBroker())
-            return;
-
-        assert(_socket);
-
-        const auto heartbeatIntervalMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(_settings.heartbeatInterval).count());
-
-        do {
-            while (auto message = MdpMessage::receive(*_socket)) {
-                handleMessage(std::move(*message));
-            }
-
-            if (Clock::now() > _heartbeatAt && --_liveness == 0) {
-                std::this_thread::sleep_for(_settings.workerReconnectInterval);
-                if (!connectToBroker())
-                    return;
-            }
-            assert(_socket);
-
-            if (Clock::now() > _heartbeatAt) {
-                auto heartbeat = createMessage(Command::Heartbeat);
-                heartbeat.send(*_socket).assertSuccess();
-                _heartbeatAt = Clock::now() + _settings.heartbeatInterval;
-            }
-        } while (!_shutdownRequested
-                 && zmq_invoke(zmq_poll, _pollerItems.data(), static_cast<int>(_pollerItems.size()), heartbeatIntervalMs).isValid());
-    }
-
-private:
-    MdpMessage replyFromRequest(const MdpMessage &request) {
-        MdpMessage reply;
-        reply.setProtocol(request.protocol());
-        reply.setCommand(Command::Final);
-        reply.setServiceName(request.serviceName(), MessageFrame::dynamic_bytes_tag{});
-        reply.setClientSourceId(request.clientSourceId(), MessageFrame::dynamic_bytes_tag{});
-        reply.setClientRequestId(request.clientRequestId(), MessageFrame::dynamic_bytes_tag{});
-        reply.setTopic(request.topic(), MessageFrame::dynamic_bytes_tag{});
-        reply.setRbacToken(_rbacRole, MessageFrame::dynamic_bytes_tag{});
-        return reply;
     }
 
     std::optional<MdpMessage> processRequest(MdpMessage &&request) {

@@ -90,7 +90,7 @@ int main(int argc, char **argv) {
         const std::string_view pubEndpoint    = argc > 3 ? argv[3] : "";
 
         Context                context;
-        Broker                 broker(testSettings(), "test_broker", "", context);
+        Broker                 broker("test_broker", {}, testSettings());
         const auto             routerAddress = broker.bind(routerEndpoint);
         if (!routerAddress) {
             std::cerr << fmt::format("Could not bind to '{}'\n", routerEndpoint);
@@ -114,13 +114,7 @@ int main(int argc, char **argv) {
             return 0;
         }
 
-        const auto inprocRouter = std::string_view("inproc://privaterouter");
-        if (!broker.bind(inprocRouter, Broker::BindOption::Router)) {
-            std::cerr << fmt::format("Could not bind broker to '{}'\n", inprocRouter);
-            return 1;
-        }
-
-        BasicMdpWorker worker(testSettings(), context, inprocRouter, propertyStoreService, TestHandler{});
+        BasicMdpWorker worker(propertyStoreService, broker, TestHandler{});
 
         auto           brokerThread = std::jthread([&broker] {
             broker.run();
@@ -142,8 +136,7 @@ int main(int argc, char **argv) {
         }
         const std::string_view brokerAddress = argv[2];
 
-        Context                context;
-        BasicMdpWorker         worker(testSettings(), context, brokerAddress, propertyStoreService, TestHandler{});
+        BasicMdpWorker         worker(propertyStoreService, brokerAddress, TestHandler{});
 
         worker.run();
         return 0;

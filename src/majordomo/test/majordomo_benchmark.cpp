@@ -47,7 +47,7 @@ public:
 
 class TestClient : public Client {
 public:
-    explicit TestClient(Context &context)
+    explicit TestClient(const Context &context)
         : Client(context) {
     }
 
@@ -83,19 +83,17 @@ struct Result {
 };
 
 Result simpleOneWorkerBenchmark(std::string routerAddress, Get mode, int iterations, std::size_t payloadSize) {
-    const auto workerRouter = std::string_view("inproc://for_worker");
-
-    Context    context;
-    Broker     broker(benchmarkSettings(), "benchmarkbroker", "", context);
+    Broker broker("benchmarkbroker", "", benchmarkSettings());
     REQUIRE(broker.bind(routerAddress, Broker::BindOption::Router));
-    REQUIRE(broker.bind(workerRouter, Broker::BindOption::Router));
-    RunInThread    brokerRun(broker);
 
-    BasicMdpWorker worker(benchmarkSettings(), context, workerRouter, "blob", PayloadHandler(std::string(payloadSize, '\xab')));
-    RunInThread    workerRun(worker);
+    BasicMdpWorker worker("blob", broker, PayloadHandler(std::string(payloadSize, '\xab')));
 
     Context        clientContext;
-    TestClient     client(routerAddress.starts_with("inproc") ? context : clientContext);
+    TestClient     client(routerAddress.starts_with("inproc") ? broker.context : clientContext);
+
+    RunInThread    brokerRun(broker);
+    RunInThread    workerRun(worker);
+
     REQUIRE(client.connect(routerAddress));
 
     const auto before = std::chrono::system_clock::now();
@@ -130,22 +128,18 @@ Result simpleOneWorkerBenchmark(std::string routerAddress, Get mode, int iterati
 }
 
 void simpleTwoWorkerBenchmark(std::string routerAddress, Get mode, int iterations, std::size_t payload1_size, std::size_t payload2_size) {
-    const auto workerRouter = std::string_view("inproc://for_worker");
-
-    Context    context;
-    Broker     broker(benchmarkSettings(), "benchmarkbroker", "", context);
+    Broker broker("benchmarkbroker", {}, benchmarkSettings());
     REQUIRE(broker.bind(routerAddress, Broker::BindOption::Router));
-    REQUIRE(broker.bind(workerRouter, Broker::BindOption::Router));
     RunInThread    brokerRun(broker);
 
-    BasicMdpWorker worker1(benchmarkSettings(), context, workerRouter, "blob", PayloadHandler(std::string(payload1_size, '\xab')));
+    BasicMdpWorker worker1("blob", broker, PayloadHandler(std::string(payload1_size, '\xab')));
     RunInThread    worker1_run(worker1);
 
-    BasicMdpWorker worker2(benchmarkSettings(), context, workerRouter, "blob", PayloadHandler(std::string(payload2_size, '\xab')));
+    BasicMdpWorker worker2("blob", broker, PayloadHandler(std::string(payload2_size, '\xab')));
     RunInThread    worker2_run(worker2);
 
     Context        clientContext;
-    TestClient     client(routerAddress.starts_with("inproc") ? context : clientContext);
+    TestClient     client(routerAddress.starts_with("inproc") ? broker.context : clientContext);
     REQUIRE(client.connect(routerAddress));
 
     const auto before = std::chrono::system_clock::now();
