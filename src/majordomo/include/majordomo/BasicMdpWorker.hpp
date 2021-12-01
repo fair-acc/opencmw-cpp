@@ -1,8 +1,11 @@
 #ifndef OPENCMW_MAJORDOMO_WORKER_H
 #define OPENCMW_MAJORDOMO_WORKER_H
 
+#include "Broker.hpp"
 #include "Message.hpp"
 
+#include <majordomo/Broker.hpp>
+#include <majordomo/Constants.hpp>
 #include <majordomo/Debug.hpp>
 #include <majordomo/Settings.hpp>
 
@@ -30,7 +33,7 @@ concept HandlesRequest = requires(T handler, RequestContext &context) { std::inv
 
 template<HandlesRequest RequestHandler>
 class BasicMdpWorker {
-public:
+private:
     using Clock     = std::chrono::steady_clock;
     using Timestamp = std::chrono::time_point<Clock>;
 
@@ -48,17 +51,16 @@ public:
     std::optional<Socket>         _socket;
     std::array<zmq_pollitem_t, 1> _pollerItems;
 
-protected:
-    MdpMessage createMessage(Command command) {
-        auto message = MdpMessage::createWorkerMessage(command);
-        message.setServiceName(_serviceName, MessageFrame::dynamic_bytes_tag{});
-        message.setRbacToken(_rbacRole, MessageFrame::dynamic_bytes_tag{});
-        return message;
+public:
+    explicit BasicMdpWorker(std::string_view serviceName, std::string_view brokerAddress, RequestHandler &&handler, const Context &context = {}, Settings settings = {})
+        : _handler{ std::move(handler) }, _settings{ std::move(settings) }, _brokerAddress{ std::move(brokerAddress) }, _serviceName{ std::move(serviceName) }, _context(context) {
     }
 
-public:
-    explicit BasicMdpWorker(Settings settings, const Context &context, std::string_view brokerAddress, std::string_view serviceName, RequestHandler &&handler)
-        : _handler{ std::move(handler) }, _settings{ std::move(settings) }, _brokerAddress{ std::move(brokerAddress) }, _serviceName{ std::move(serviceName) }, _context(context) {
+    explicit BasicMdpWorker(std::string_view serviceName, std::string_view brokerAddress, RequestHandler &&handler, Settings settings)
+        : BasicMdpWorker(serviceName, brokerAddress, std::move(handler), {}, settings) {}
+
+    explicit BasicMdpWorker(std::string_view serviceName, const Broker &broker, RequestHandler &&handler)
+        : BasicMdpWorker(serviceName, INTERNAL_ADDRESS_BROKER, std::move(handler), broker.context, broker.settings) {
     }
 
     // Sets the service description
@@ -110,6 +112,13 @@ public:
     }
 
 private:
+    MdpMessage createMessage(Command command) {
+        auto message = MdpMessage::createWorkerMessage(command);
+        message.setServiceName(_serviceName, MessageFrame::dynamic_bytes_tag{});
+        message.setRbacToken(_rbacRole, MessageFrame::dynamic_bytes_tag{});
+        return message;
+    }
+
     MdpMessage replyFromRequest(const MdpMessage &request) {
         MdpMessage reply;
         reply.setProtocol(request.protocol());
@@ -133,8 +142,7 @@ private:
         if (message.isWorkerMessage()) {
             switch (message.command()) {
             case Command::Get:
-            case Command::Set:
-            {
+            case Command::Set: {
                 auto reply = processRequest(std::move(message));
                 reply.send(*_socket).assertSuccess();
                 return;
