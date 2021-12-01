@@ -94,7 +94,7 @@ inline bool isWhitespace(uint8_t c) {
  * @param buffer
  */
 inline void consumeWhitespace(IoBuffer &buffer) {
-    while (isWhitespace(buffer.at<uint8_t>(buffer.position()))) {
+    while (buffer.position() < buffer.size() && isWhitespace(buffer.at<uint8_t>(buffer.position()))) {
         buffer.set_position(buffer.position() + 1);
     }
 }
@@ -150,6 +150,7 @@ inline void assignArray(std::array<T, N> &value, const std::vector<T> &result) {
 inline void skipValue(IoBuffer &buffer);
 
 inline void skipField(IoBuffer &buffer) {
+    consumeWhitespace(buffer);
     std::ignore = readString(buffer);
     consumeWhitespace(buffer);
     if (buffer.get<int8_t>() != ':') {
@@ -161,7 +162,7 @@ inline void skipField(IoBuffer &buffer) {
 }
 
 inline void skipObject(IoBuffer &buffer) {
-    buffer.set_position(buffer.position() + 1);
+    buffer.set_position(buffer.position() + 1); // skip {
     consumeWhitespace(buffer);
     while (buffer.at<uint8_t>(buffer.position()) != '}') {
         skipField(buffer);
@@ -171,7 +172,7 @@ inline void skipObject(IoBuffer &buffer) {
         }
         consumeWhitespace(buffer);
     }
-    buffer.set_position(buffer.position() + 1);
+    buffer.set_position(buffer.position() + 1); // skip }
     consumeWhitespace(buffer);
 }
 
@@ -182,7 +183,7 @@ inline void skipNumber(IoBuffer &buffer) {
 }
 
 inline void skipArray(IoBuffer &buffer) {
-    buffer.set_position(buffer.position() + 1);
+    buffer.set_position(buffer.position() + 1); // skip [
     consumeWhitespace(buffer);
     while (buffer.at<uint8_t>(buffer.position()) != ']') {
         skipValue(buffer);
@@ -192,11 +193,12 @@ inline void skipArray(IoBuffer &buffer) {
         }
         consumeWhitespace(buffer);
     }
-    buffer.set_position(buffer.position() + 1);
+    buffer.set_position(buffer.position() + 1); // skip ]
     consumeWhitespace(buffer);
 }
 
 inline void skipValue(IoBuffer &buffer) {
+    consumeWhitespace(buffer);
     const auto firstChar = buffer.at<int8_t>(buffer.position());
     if (firstChar == '{') {
         json::skipObject(buffer);

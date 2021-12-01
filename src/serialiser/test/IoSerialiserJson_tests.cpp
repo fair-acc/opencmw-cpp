@@ -34,7 +34,7 @@ struct DataX {
     bool operator==(const DataX &) const = default;
 };
 // following is the visitor-pattern-macro that allows the compile-time reflections via refl-cpp
-ENABLE_REFLECTION_FOR(DataX, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, /*stringValue,*/ doubleArray, /*floatVector,*/ nested)
+ENABLE_REFLECTION_FOR(DataX, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, /*stringValue,*/ doubleArray, /*floatVector, doubleMatrix,*/ nested)
 
 struct SimpleInner {
     double           val1;
@@ -179,6 +179,21 @@ TEST_CASE("isWhitespace", "[JsonSerialiser]") {
     REQUIRE(isWhitespace('\n'));
     REQUIRE(isWhitespace('\r'));
     REQUIRE_FALSE(isWhitespace('a'));
+}
+
+TEST_CASE("JsonSkipValue", "[JsonSerialiser]") {
+    opencmw::debug::resetStats();
+    {
+        opencmw::IoBuffer buffer;
+        buffer.putRaw(R"({ "float1": 2.3, "superfluousField": {"p": 12, "q": [ "a", "s"]}, "test": { "intArray": [1, 2, 3], "val1":13.37e2, "val2":"bar"}, "int1": 42})");
+        // skip whole object
+        opencmw::json::skipValue(buffer);
+        REQUIRE(buffer.position() == buffer.size());
+        // skip test sub-object
+        buffer.set_position(65);
+        opencmw::json::skipField(buffer);
+        REQUIRE(buffer.position() == 128);
+    }
 }
 
 TEST_CASE("consumeWhitespace", "[JsonSerialiser]") {

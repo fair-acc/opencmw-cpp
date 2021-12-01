@@ -349,7 +349,6 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
         buffer.set_position(field.dataStartPosition);
 
         if (field.intDataType == IoSerialiser<protocol, END_MARKER>::getDataTypeId()) {
-            // todo: assert name equals start marker
             // reached end of sub-structure
             try {
                 IoSerialiser<protocol, END_MARKER>::deserialise(buffer, field.fieldName, END_MARKER_INST);
