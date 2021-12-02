@@ -5,6 +5,7 @@
 #include <majordomo/Client.hpp>
 #include <majordomo/Constants.hpp>
 #include <majordomo/Message.hpp>
+#include <majordomo/Utils.hpp>
 
 #include <catch2/catch.hpp>
 #include <fmt/format.h>
@@ -15,6 +16,7 @@
 #include <thread>
 
 using namespace opencmw::majordomo;
+using URI = opencmw::URI<>;
 
 static opencmw::majordomo::Settings testSettings() {
     Settings settings;
@@ -33,8 +35,8 @@ public:
         : _socket(context, socket_type) {
     }
 
-    bool connect(std::string_view address, std::string_view subscription = "") {
-        auto result = zmq_invoke(zmq_connect, _socket, address);
+    bool connect(const URI &address, std::string_view subscription = "") {
+        auto result = zmq_invoke(zmq_connect, _socket, toZeroMQEndpoint(address).data());
         if (!result) return false;
 
         if (!subscription.empty()) {
@@ -226,9 +228,9 @@ TEST_CASE("Request answered with unknown service", "[broker][unknown_service]") 
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::MdpMessage;
 
-    constexpr auto address = std::string_view("inproc://testrouter");
+    const auto address = URI("inproc://testrouter");
 
-    Broker         broker("testbroker", "", testSettings());
+    Broker     broker("testbroker", {}, testSettings());
 
     REQUIRE(broker.bind(address, Broker::BindOption::Router));
 
@@ -345,9 +347,9 @@ TEST_CASE("Simple pubsub example using pub socket", "[broker][pubsub_pub]") {
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::MdpMessage;
 
-    constexpr auto publisherAddress = std::string_view("inproc://testpub");
+    const auto publisherAddress = URI("inproc://testpub");
 
-    Broker         broker("testbroker", {}, testSettings());
+    Broker     broker("testbroker", {}, testSettings());
 
     REQUIRE(broker.bind(publisherAddress, Broker::BindOption::Pub));
 
@@ -647,10 +649,10 @@ TEST_CASE("BasicMdpWorker instantiation", "[worker][instantiation]") {
 
     BasicMdpWorker            worker1("a.service", broker, NonCopyableMovableHandler());
     BasicMdpWorker            worker2("a.service", broker, handler);
-    BasicMdpWorker            worker3("a.service", "no.address", NonCopyableMovableHandler(), Context(), testSettings());
-    BasicMdpWorker            worker4("a.service", "no.address", handler, Context(), testSettings());
-    BasicMdpWorker            worker5("a.service", "no.address", NonCopyableMovableHandler(), testSettings());
-    BasicMdpWorker            worker6("a.service", "no.address", handler, testSettings());
+    BasicMdpWorker            worker3("a.service", INTERNAL_ADDRESS_BROKER, NonCopyableMovableHandler(), Context(), testSettings());
+    BasicMdpWorker            worker4("a.service", INTERNAL_ADDRESS_BROKER, handler, Context(), testSettings());
+    BasicMdpWorker            worker5("a.service", INTERNAL_ADDRESS_BROKER, NonCopyableMovableHandler(), testSettings());
+    BasicMdpWorker            worker6("a.service", INTERNAL_ADDRESS_BROKER, handler, testSettings());
 }
 
 TEST_CASE("SET/GET example using the BasicMdpWorker class", "[worker][getset_basic_worker]") {

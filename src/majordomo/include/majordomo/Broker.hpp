@@ -11,6 +11,8 @@
 
 #include <fmt/core.h>
 
+#include "URI.hpp"
+
 #include <majordomo/Constants.hpp>
 #include <majordomo/Message.hpp>
 #include <majordomo/Settings.hpp>
@@ -28,6 +30,8 @@ private:
     // Shorten chrono names
     using Clock     = std::chrono::steady_clock;
     using Timestamp = std::chrono::time_point<Clock>;
+
+    using URI       = opencmw::URI<>;
 
     struct Client {
         const Socket &            socket;
@@ -93,7 +97,7 @@ private:
     std::unordered_map<std::string, Service>               _services;
 
     const std::string                                      _brokerName;
-    const std::string                                      _dnsAddress;
+    const std::optional<URI>                               _dnsAddress;
     const std::string                                      _rbac              = "TODO (RBAC)";
 
     std::atomic<bool>                                      _shutdownRequested = false;
@@ -106,10 +110,10 @@ private:
     std::array<zmq_pollitem_t, 4> pollerItems;
 
 public:
-    Broker(std::string brokerName, std::string dnsAddress, Settings settings_ = {})
+    Broker(std::string brokerName, const std::optional<URI> &dnsAddress, Settings settings_ = {})
         : settings{ std::move(settings_) }
         , _brokerName{ std::move(brokerName) }
-        , _dnsAddress{ dnsAddress.empty() ? std::move(dnsAddress) : replaceScheme(std::move(dnsAddress), SCHEME_TCP) }
+        , _dnsAddress{ !dnsAddress ? std::move(dnsAddress) : std::optional<URI>(URI::factory(*dnsAddress).scheme(SCHEME_TCP).build()) }
         , _routerSocket(context, ZMQ_ROUTER)
         , _pubSocket(context, ZMQ_XPUB)
         , _subSocket(context, ZMQ_XSUB)
@@ -131,21 +135,21 @@ public:
         // socket.setHeartbeatContext(PROT_CLIENT.getData());
 
         commonSocketInit(_routerSocket).assertSuccess();
-        zmq_invoke(zmq_bind, _routerSocket, INTERNAL_ADDRESS_BROKER.data()).assertSuccess();
+        zmq_invoke(zmq_bind, _routerSocket, toZeroMQEndpoint(INTERNAL_ADDRESS_BROKER).data()).assertSuccess();
 
         commonSocketInit(_subSocket).assertSuccess();
-        zmq_invoke(zmq_bind, _subSocket, INTERNAL_ADDRESS_SUBSCRIBE.data()).assertSuccess();
+        zmq_invoke(zmq_bind, _subSocket, toZeroMQEndpoint(INTERNAL_ADDRESS_SUBSCRIBE).data()).assertSuccess();
 
         commonSocketInit(_pubSocket).assertSuccess();
         int verbose = 1;
         zmq_invoke(zmq_setsockopt, _pubSocket, ZMQ_XPUB_VERBOSE, &verbose, sizeof(verbose)).assertSuccess();
-        zmq_invoke(zmq_bind, _pubSocket, INTERNAL_ADDRESS_PUBLISHER.data()).assertSuccess();
+        zmq_invoke(zmq_bind, _pubSocket, toZeroMQEndpoint(INTERNAL_ADDRESS_PUBLISHER).data()).assertSuccess();
 
         commonSocketInit(_dnsSocket).assertSuccess();
-        if (_dnsAddress.empty()) {
-            zmq_invoke(zmq_connect, _dnsSocket, INTERNAL_ADDRESS_BROKER.data()).ignoreResult();
+        if (_dnsAddress) {
+            zmq_invoke(zmq_connect, _dnsSocket, toZeroMQEndpoint(*_dnsAddress).data()).ignoreResult();
         } else {
-            zmq_invoke(zmq_connect, _dnsSocket, _dnsAddress.data()).ignoreResult();
+            zmq_invoke(zmq_connect, _dnsSocket, toZeroMQEndpoint(INTERNAL_ADDRESS_BROKER).data()).ignoreResult();
         }
 
         pollerItems[0].socket = _routerSocket.zmq_ptr;
@@ -180,17 +184,14 @@ public:
      *
      * @return adjusted public address to use for clients/workers to connect
      */
-    std::optional<std::string> bind(std::string_view endpoint, BindOption option = BindOption::DetectFromURI) {
-        // TODO use result<std::string,Error> forwarding error details
-        assert(!endpoint.empty());
-        const auto requestedScheme = getScheme(endpoint);
-        assert(!(option == BindOption::DetectFromURI && requestedScheme == "inproc"));
-        const auto isRouterSocket = option != BindOption::Pub && (option == BindOption::Router || requestedScheme.starts_with(SCHEME_MDP) || requestedScheme.starts_with(SCHEME_TCP));
+    std::optional<URI> bind(const URI &endpoint, BindOption option = BindOption::DetectFromURI) {
+        assert(!(option == BindOption::DetectFromURI && (endpoint.scheme() == SCHEME_INPROC || endpoint.scheme() == SCHEME_TCP)));
+        const auto isRouterSocket = option != BindOption::Pub && (option == BindOption::Router || endpoint.scheme() == SCHEME_MDP || endpoint.scheme() == SCHEME_TCP);
 
         // Bind
         const auto result = [&] {
-            const auto withTcp = replaceScheme(endpoint, SCHEME_TCP);
-            return isRouterSocket ? zmq_invoke(zmq_bind, _routerSocket, withTcp.data()) : zmq_invoke(zmq_bind, _pubSocket, withTcp.data());
+            const auto zmqEndpoint = toZeroMQEndpoint(endpoint);
+            return isRouterSocket ? zmq_invoke(zmq_bind, _routerSocket, zmqEndpoint.data()) : zmq_invoke(zmq_bind, _pubSocket, zmqEndpoint.data());
         }();
 
         if (!result) {
@@ -198,11 +199,11 @@ public:
             return {};
         }
 
-        const auto endpointAdjusted      = replaceScheme(endpoint, isRouterSocket ? SCHEME_MDP : SCHEME_MDS);
+        const auto endpointAdjusted      = URI::factory(endpoint).scheme(isRouterSocket ? SCHEME_MDP : SCHEME_MDS).build();
         const auto adjustedAddressPublic = endpointAdjusted; // TODO (java) resolveHost(endpointAdjusted, getLocalHostName());
 
-        debug() << fmt::format("Majordomo broker/0.1 is active at '{}'\n", adjustedAddressPublic); // TODO do not hardcode version
-        sendHeartbeats();                                                                          // TODO check that ported correctly: sendDnsHeartbeats(true);
+        debug() << fmt::format("Majordomo broker/0.1 is active at '{}'\n", URI::factory(adjustedAddressPublic).toString()); // TODO do not hardcode version
+        // TODO port sendDnsHeartbeats(true);
         return adjustedAddressPublic;
     }
 
@@ -541,25 +542,6 @@ private:
         }
 
         _heartbeatAt = Clock::now() + settings.heartbeatInterval;
-    }
-
-    std::string getScheme(std::string_view address) {
-        auto schemeEnd = address.find(':');
-        if (schemeEnd == std::string_view::npos)
-            return {};
-        return std::string(address.substr(0, schemeEnd));
-    }
-
-    std::string replaceScheme(std::string_view address, std::string_view replacement) {
-        auto schemeEnd = address.find(':');
-        if (utils::iequal(address.substr(0, schemeEnd), SCHEME_INPROC)) {
-            return std::string{ address };
-        }
-
-        std::string result;
-        result.append(replacement);
-        result.append(address.substr(schemeEnd));
-        return result;
     }
 
     void processWorker(const Socket &socket, BrokerMessage &&message) {

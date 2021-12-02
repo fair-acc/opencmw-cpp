@@ -1,17 +1,21 @@
 #ifndef OPENCMW_MAJORDOMO_UTILS_H
 #define OPENCMW_MAJORDOMO_UTILS_H
 
-#include <cctype>
-#include <string_view>
+#include <URI.hpp>
 
-namespace utils {
+namespace opencmw::majordomo {
 
-template<typename Left, typename Right>
-bool iequal(const Left &left, const Right &right) {
-    return std::equal(std::cbegin(left), std::cend(left), std::cbegin(right), std::cend(right),
-            [](auto l, auto r) { return std::tolower(l) == std::tolower(r); });
+/**
+ * Converts an address URI to the format expected by ZeroMQ, i.e. replace mds:/ and mdp:/ by tcp:/
+ */
+std::string toZeroMQEndpoint(const opencmw::URI<> &uri) {
+    if (uri.scheme() == "mdp" || uri.scheme() == "mds") {
+        return opencmw::URI<>::factory(uri).scheme("tcp").toString();
+    }
+
+    return opencmw::URI<>::factory(uri).toString();
 }
 
-} // namespace utils
+} // namespace opencmw::majordomo
 
 #endif
