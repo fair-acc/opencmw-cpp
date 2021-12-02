@@ -107,7 +107,7 @@ inline void consumeWhitespace(IoBuffer &buffer) {
 
 template<Number T>
 inline T parseNumber(const std::string_view & /*num*/) {
-    throw ProtocolException("json parser for number type not implemented!\n");
+    throw ProtocolException(fmt::format("json parser for number type {} not implemented!\n", typeName<T>));
 };
 
 template<>
@@ -128,6 +128,11 @@ inline long parseNumber<long>(const std::string_view &num) {
 template<>
 inline int parseNumber<int>(const std::string_view &num) {
     return std::stoi(std::string{ num });
+}
+
+template<>
+inline char parseNumber<char>(const std::string_view &num) {
+    return static_cast<char>(std::stoul(std::string{ num }));
 }
 
 template<>
@@ -289,7 +294,9 @@ struct IoSerialiser<Json, T> {
     inline static constexpr uint8_t getDataTypeId() { return IoSerialiser<Json, OTHER>::getDataTypeId(); }
     /*constexpr*/ static bool       serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
         // todo: constexpr not possible because of fmt
-        if constexpr (std::is_integral_v<T>) {
+        if constexpr (std::is_same_v<T, char>) {
+            buffer.putRaw(fmt::format("{}", static_cast<uint8_t>(value)));
+        } else if constexpr (std::is_integral_v<T>) {
             buffer.putRaw(fmt::format("{}", value));
         } else {
             buffer.putRaw(fmt::format("{}", value));
