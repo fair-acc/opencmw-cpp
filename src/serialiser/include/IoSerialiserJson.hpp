@@ -46,38 +46,44 @@ inline bool isNumberChar(uint8_t c) {
 inline std::string readString(IoBuffer &buffer) {
     if (buffer.get<uint8_t>() != '"') {
         throw ProtocolException("error: expected leading quote");
-    } // buffer.set_position(buffer.position() + 1); // skip leading quote
-    auto start = buffer.position();
-    // std::string result;
-    while (buffer.get<uint8_t>() != '"') {
+    }
+    std::string result;
+    for (auto currentChar = buffer.get<uint8_t>(); currentChar != '"'; currentChar = buffer.get<uint8_t>()) {
         if (buffer.at<uint8_t>(buffer.position() - 1) == '\\') { // escape sequence detected
             switch (buffer.get<uint8_t>()) {
             case '"':
             case '\\':
             case '/':
+                result += buffer.at<char>(buffer.position() - 1);
+                break;
             case 'b':
+                result += '\b';
+                break;
             case 'f':
+                result += '\f';
+                break;
             case 'n':
+                result += '\n';
+                break;
             case 'r':
+                result += '\r';
+                break;
             case 't':
-                buffer.set_position(buffer.position() + 1); // skip escaped char
+                result += '\t';
                 break;
             case 'u':
-                buffer.set_position(buffer.position() + 5); // skip escaped unicode char
+                buffer.set_position(buffer.position() + 4); // skip escaped unicode char
+                result += '_';                              // todo: implement parsing the actual unicode characters
                 break;
             default:
                 throw ProtocolException(fmt::format("illegal escape character: \\{}", buffer.at<uint8_t>(buffer.position() - 1)));
-                // todo: lenient handling methods
+                // todo: lenient error handling methods
             }
-            // todo: correctly treat escape sequences instead of just skipping (breaks string_view usage)
+        } else {
+            result += static_cast<char>(currentChar);
         }
-        //result.append(reinterpret_cast<char *>(buffer.at<uint8_t>(buffer.position() - 1)));
     }
-    auto        end = buffer.position() - 1;
-    std::string result;
-    result.append(buffer.asString(), start, end - start);
     return result;
-    // return { reinterpret_cast<char *>(buffer.data() + start), end - start };
 }
 
 /**
@@ -142,7 +148,7 @@ inline void assignArray(std::vector<T> &value, const std::vector<T> &result) {
 template<typename T, size_t N>
 inline void assignArray(std::array<T, N> &value, const std::vector<T> &result) {
     // todo: discuss if this is the right thing to do? throw error on size mismatch? zero out additional array entries?
-    for (size_t i = 0; i <= N && i <= result.size(); ++i) {
+    for (size_t i = 0; i < N && i < result.size(); ++i) {
         value[i] = result[i];
     }
 }
@@ -162,7 +168,9 @@ inline void skipField(IoBuffer &buffer) {
 }
 
 inline void skipObject(IoBuffer &buffer) {
-    buffer.set_position(buffer.position() + 1); // skip {
+    if (buffer.get<uint8_t>() != '{') {
+        throw ProtocolException("error: expected {");
+    }
     consumeWhitespace(buffer);
     while (buffer.at<uint8_t>(buffer.position()) != '}') {
         skipField(buffer);
@@ -183,7 +191,9 @@ inline void skipNumber(IoBuffer &buffer) {
 }
 
 inline void skipArray(IoBuffer &buffer) {
-    buffer.set_position(buffer.position() + 1); // skip [
+    if (buffer.get<uint8_t>() != '[') {
+        throw ProtocolException("error: expected [");
+    }
     consumeWhitespace(buffer);
     while (buffer.at<uint8_t>(buffer.position()) != ']') {
         skipValue(buffer);
@@ -280,20 +290,19 @@ struct IoSerialiser<Json, T> {
     /*constexpr*/ static bool       serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
         // todo: constexpr not possible because of fmt
         if constexpr (std::is_integral_v<T>) {
-            // buffer.putRaw(std::to_string(value));
             buffer.putRaw(fmt::format("{}", value));
         } else {
             buffer.putRaw(fmt::format("{}", value));
         }
         return false;
     }
-    constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) {
-        auto start = buffer.position();
-        while (json::isNumberChar(buffer.get<uint8_t>())) {
+    static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) {
+        std::string string;
+        for (size_t i = buffer.position(); json::isNumberChar(buffer.at<uint8_t>(i)); ++i) {
+            string += buffer.at<char>(i);
+            buffer.set_position(i + 1);
         }
-        buffer.set_position(buffer.position() - 1);
-        auto end = buffer.position();
-        value    = json::parseNumber<T>(std::string_view(reinterpret_cast<char *>(buffer.data()) + start, end - start));
+        value = json::parseNumber<T>(string);
         return std::is_constant_evaluated();
     }
 };
@@ -319,12 +328,14 @@ struct IoSerialiser<Json, T> {
     constexpr static bool           serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &values) noexcept {
         using MemberType = typename T::value_type;
         buffer.put('[');
+        bool first = true;
         for (auto value : values) {
-            // todo: use same formatting as for non array elements
+            if (!first) {
+                buffer.putRaw(", ");
+            }
             IoSerialiser<Json, MemberType>::serialise(buffer, "", value);
-            buffer.putRaw(", ");
+            first = false;
         }
-        buffer.resize(buffer.size() - 2); // remove trailing comma and space
         buffer.put(']');
         return std::is_constant_evaluated();
     }

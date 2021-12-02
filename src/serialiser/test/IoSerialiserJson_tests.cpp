@@ -18,15 +18,15 @@ using NoUnit = units::dimensionless<units::one>;
 using namespace std::literals;
 
 struct DataX {
-    int8_t  byteValue   = 1;
-    int16_t shortValue  = 2;
-    int32_t intValue    = 3;
-    int64_t longValue   = 4;
-    float   floatValue  = 5.0F;
-    double  doubleValue = 6.0;
-    // std::string            stringValue;
+    int8_t                 byteValue   = 1;
+    int16_t                shortValue  = 2;
+    int32_t                intValue    = 3;
+    int64_t                longValue   = 4;
+    float                  floatValue  = 5.0F;
+    double                 doubleValue = 6.0;
+    std::string            stringValue = "default";
     std::array<double, 10> doubleArray = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
-    // std::vector<float>             floatVector      = { 0.1F, 1.1F, 2.1F, 3.1F, 4.1F, 5.1F, 6.1F, 8.1F, 9.1F, 9.1F };
+    std::vector<float>     floatVector = { 0.1F, 1.1F, 2.1F, 3.1F, 4.1F, 5.1F, 6.1F, 8.1F, 9.1F, 9.1F };
     // opencmw::MultiArray<double, 2> doubleMatrix{ { 1, 3, 7, 4, 2, 3 }, { 2, 3 } };
     std::shared_ptr<DataX> nested;
 
@@ -34,7 +34,7 @@ struct DataX {
     bool operator==(const DataX &) const = default;
 };
 // following is the visitor-pattern-macro that allows the compile-time reflections via refl-cpp
-ENABLE_REFLECTION_FOR(DataX, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, /*stringValue,*/ doubleArray, /*floatVector, doubleMatrix,*/ nested)
+ENABLE_REFLECTION_FOR(DataX, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, doubleArray, floatVector, /*doubleMatrix,*/ nested)
 
 struct SimpleInner {
     double           val1;
@@ -89,20 +89,31 @@ TEST_CASE("JsonDeserialisationMissingField", "[JsonSerialiser]") {
 }
 
 TEST_CASE("JsonArraySerialisation", "[JsonSerialiser]") {
-    std::vector<int>  test{ 1, 3, 3, 7 };
-    opencmw::IoBuffer buffer;
-    opencmw::IoSerialiser<opencmw::Json, std::vector<int>>::serialise(buffer, "test", test);
-    REQUIRE(buffer.asString() == "[1, 3, 3, 7]");
     {
+        std::vector<int>  test{ 1, 3, 3, 7 };
+        opencmw::IoBuffer buffer;
+        opencmw::IoSerialiser<opencmw::Json, std::vector<int>>::serialise(buffer, "test", test);
+        REQUIRE(buffer.asString() == "[1, 3, 3, 7]");
+        {
+            std::vector<int> result;
+            opencmw::IoSerialiser<opencmw::Json, std::vector<int>>::deserialise(buffer, "test", result);
+            REQUIRE(test == result);
+        }
+        buffer.set_position(0);
+        {
+            std::array<int, 4> resultArray;
+            opencmw::IoSerialiser<opencmw::Json, std::array<int, 4>>::deserialise(buffer, "test", resultArray);
+            REQUIRE(test == std::vector<int>(resultArray.begin(), resultArray.end()));
+        }
+    }
+    { // empty vector
+        std::vector<int>  test{};
+        opencmw::IoBuffer buffer;
+        opencmw::IoSerialiser<opencmw::Json, std::vector<int>>::serialise(buffer, "test", test);
+        REQUIRE(buffer.asString() == "[]");
         std::vector<int> result;
         opencmw::IoSerialiser<opencmw::Json, std::vector<int>>::deserialise(buffer, "test", result);
         REQUIRE(test == result);
-    }
-    buffer.set_position(0);
-    {
-        std::array<int, 4> resultArray;
-        opencmw::IoSerialiser<opencmw::Json, std::array<int, 4>>::deserialise(buffer, "test", resultArray);
-        REQUIRE(test == std::vector<int>(resultArray.begin(), resultArray.end()));
     }
 }
 
@@ -112,24 +123,35 @@ TEST_CASE("JsonSerialisation", "[JsonSerialiser]") {
     {
         opencmw::IoBuffer buffer;
         DataX             foo;
-        foo.doubleValue = 42.23;
-        // foo.stringValue = "test";
-        //foo.nested = std::make_shared<DataX>();
-        //foo.nested.get()->stringValue = "asdf";
+        foo.doubleValue               = 42.23;
+        foo.stringValue               = "test";
+        foo.nested                    = std::make_shared<DataX>();
+        foo.nested.get()->stringValue = "asdf";
         opencmw::serialise<opencmw::Json>(buffer, foo);
         std::cout << "serialised: " << buffer.asString() << std::endl;
         DataX bar;
         auto  result = opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buffer, bar);
-        //opencmw::utils::diffView(std::cout, foo, bar); // todo: produces SEGFAULT
+        opencmw::utils::diffView(std::cout, foo, bar);
         fmt::print(std::cout, "deserialisation finished: {}\n", result);
-        REQUIRE(foo.doubleValue == bar.doubleValue);
-        REQUIRE(foo.doubleArray == bar.doubleArray);
-        REQUIRE(foo.floatValue == bar.floatValue);
-        REQUIRE(foo.intValue == bar.intValue);
-        // REQUIRE(foo.stringValue == bar.stringValue);
         REQUIRE(foo.byteValue == bar.byteValue);
         REQUIRE(foo.shortValue == bar.shortValue);
-        // REQUIRE(foo == bar); // todo: check why this doesn't work
+        REQUIRE(foo.intValue == bar.intValue);
+        REQUIRE(foo.longValue == bar.longValue);
+        REQUIRE(foo.floatValue == bar.floatValue);
+        REQUIRE(foo.doubleValue == bar.doubleValue);
+        REQUIRE(foo.stringValue == bar.stringValue);
+        REQUIRE(foo.doubleArray == bar.doubleArray);
+        REQUIRE(foo.floatVector == bar.floatVector);
+        REQUIRE(foo.nested->byteValue == bar.nested->byteValue);
+        REQUIRE(foo.nested->shortValue == bar.nested->shortValue);
+        REQUIRE(foo.nested->intValue == bar.nested->intValue);
+        REQUIRE(foo.nested->longValue == bar.nested->longValue);
+        REQUIRE(foo.nested->floatValue == bar.nested->floatValue);
+        REQUIRE(foo.nested->doubleValue == bar.nested->doubleValue);
+        REQUIRE(foo.nested->stringValue == bar.nested->stringValue);
+        REQUIRE(foo.nested->doubleArray == bar.nested->doubleArray);
+        REQUIRE(foo.nested->floatVector == bar.nested->floatVector);
+        REQUIRE(foo.nested->nested == bar.nested->nested);
     }
     REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
     opencmw::debug::resetStats();
@@ -194,6 +216,16 @@ TEST_CASE("JsonSkipValue", "[JsonSerialiser]") {
         opencmw::json::skipField(buffer);
         REQUIRE(buffer.position() == 128);
     }
+}
+
+TEST_CASE("ParseNumber", "[JsonSerialiser]") {
+    REQUIRE(12 == opencmw::json::parseNumber<int8_t>("12"));
+    REQUIRE(12 == opencmw::json::parseNumber<int16_t>("12"));
+    REQUIRE(-12 == opencmw::json::parseNumber<int>("-12"));
+    opencmw::IoBuffer buffer;
+    buffer.putRaw(R"({ "float1": 2.3, "superfluousField": {"p": 12, "q": [ "a", "s"]}})");
+    const auto string = std::string_view(reinterpret_cast<char *>(buffer.data()) + 12, 3);
+    REQUIRE(2.3F == opencmw::json::parseNumber<float>(string));
 }
 
 TEST_CASE("consumeWhitespace", "[JsonSerialiser]") {

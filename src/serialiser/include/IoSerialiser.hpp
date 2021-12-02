@@ -137,7 +137,7 @@ struct FieldDescription {
     uint64_t         hash;
     uint64_t         dataStartOffset;
     uint64_t         dataSize;
-    std::string_view fieldName;
+    std::string      fieldName;
     std::size_t      dataStartPosition;
     std::size_t      dataEndPosition;
     std::string_view unit;
