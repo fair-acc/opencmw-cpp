@@ -8,6 +8,7 @@
 #include <majordomo/Constants.hpp>
 #include <majordomo/Debug.hpp>
 #include <majordomo/Settings.hpp>
+#include <majordomo/Utils.hpp>
 
 #include <MIME.hpp>
 
@@ -37,9 +38,11 @@ private:
     using Clock     = std::chrono::steady_clock;
     using Timestamp = std::chrono::time_point<Clock>;
 
+    using URI       = opencmw::URI<>;
+
     RequestHandler                _handler;
     const Settings                _settings;
-    const std::string             _brokerAddress;
+    const URI                     _brokerAddress;
     const std::string             _serviceName;
     std::string                   _serviceDescription;
     std::string                   _rbacRole;
@@ -52,11 +55,11 @@ private:
     std::array<zmq_pollitem_t, 1> _pollerItems;
 
 public:
-    explicit BasicMdpWorker(std::string_view serviceName, std::string_view brokerAddress, RequestHandler &&handler, const Context &context = {}, Settings settings = {})
+    explicit BasicMdpWorker(std::string_view serviceName, URI brokerAddress, RequestHandler &&handler, const Context &context = {}, Settings settings = {})
         : _handler{ std::forward<RequestHandler>(handler) }, _settings{ std::move(settings) }, _brokerAddress{ std::move(brokerAddress) }, _serviceName{ std::move(serviceName) }, _context(context) {
     }
 
-    explicit BasicMdpWorker(std::string_view serviceName, std::string_view brokerAddress, RequestHandler &&handler, Settings settings)
+    explicit BasicMdpWorker(std::string_view serviceName, URI brokerAddress, RequestHandler &&handler, Settings settings)
         : BasicMdpWorker(serviceName, brokerAddress, std::forward<RequestHandler>(handler), {}, settings) {
     }
 
@@ -187,7 +190,7 @@ private:
         _pollerItems[0].socket = nullptr;
         _socket.emplace(_context, ZMQ_DEALER);
 
-        const auto connectResult = zmq_invoke(zmq_connect, *_socket, _brokerAddress.data());
+        const auto connectResult = zmq_invoke(zmq_connect, *_socket, toZeroMQEndpoint(_brokerAddress).data());
         if (!connectResult) {
             return false;
         }
@@ -207,10 +210,10 @@ private:
 };
 
 template<HandlesRequest RequestHandler>
-BasicMdpWorker(std::string_view, std::string_view, RequestHandler &&, const Context &, Settings) -> BasicMdpWorker<RequestHandler>;
+BasicMdpWorker(std::string_view, const opencmw::URI<> &, RequestHandler &&, const Context &, Settings) -> BasicMdpWorker<RequestHandler>;
 
 template<HandlesRequest RequestHandler>
-BasicMdpWorker(std::string_view, std::string_view, RequestHandler &&, Settings) -> BasicMdpWorker<RequestHandler>;
+BasicMdpWorker(std::string_view, const opencmw::URI<> &, RequestHandler &&, Settings) -> BasicMdpWorker<RequestHandler>;
 
 template<HandlesRequest RequestHandler>
 BasicMdpWorker(std::string_view, const Broker &, RequestHandler &&) -> BasicMdpWorker<RequestHandler>;

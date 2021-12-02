@@ -3,6 +3,8 @@
 
 #include <string>
 
+#include <URI.hpp>
+
 namespace opencmw::majordomo {
 // TODO: Make constexpr as std::string is not yet constexpr
 /*constexpr*/ const std::string SCHEME_TCP                 = "tcp";
@@ -12,10 +14,10 @@ namespace opencmw::majordomo {
 /*constexpr*/ const std::string SUFFIX_ROUTER              = "/router";
 /*constexpr*/ const std::string SUFFIX_PUBLISHER           = "/publisher";
 /*constexpr*/ const std::string SUFFIX_SUBSCRIBE           = "/subscribe";
-/*constexpr*/ const std::string INPROC_BROKER              = "inproc://broker";
-/*constexpr*/ const std::string INTERNAL_ADDRESS_BROKER    = INPROC_BROKER + SUFFIX_ROUTER;
-/*constexpr*/ const std::string INTERNAL_ADDRESS_PUBLISHER = INPROC_BROKER + SUFFIX_PUBLISHER;
-/*constexpr*/ const std::string INTERNAL_ADDRESS_SUBSCRIBE = INPROC_BROKER + SUFFIX_SUBSCRIBE;
+const opencmw::URI<>            INPROC_BROKER              = opencmw::URI<>("inproc://broker");
+const opencmw::URI<>            INTERNAL_ADDRESS_BROKER    = opencmw::URI<>::factory(INPROC_BROKER).path(SUFFIX_ROUTER).build();
+const opencmw::URI<>            INTERNAL_ADDRESS_PUBLISHER = opencmw::URI<>::factory(INPROC_BROKER).path(SUFFIX_PUBLISHER).build();
+const opencmw::URI<>            INTERNAL_ADDRESS_SUBSCRIBE = opencmw::URI<>::factory(INPROC_BROKER).path(SUFFIX_SUBSCRIBE).build();
 /*constexpr*/ const std::string INTERNAL_SERVICE_NAMES     = "mmi.service";
 } // namespace opencmw::majordomo
 
