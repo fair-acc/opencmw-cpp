@@ -221,16 +221,6 @@ TEST_CASE("JsonSkipValue", "[JsonSerialiser]") {
     }
 }
 
-TEST_CASE("ParseNumber", "[JsonSerialiser]") {
-    REQUIRE(12 == opencmw::json::parseNumber<int8_t>("12"));
-    REQUIRE(12 == opencmw::json::parseNumber<int16_t>("12"));
-    REQUIRE(-12 == opencmw::json::parseNumber<int>("-12"));
-    opencmw::IoBuffer buffer;
-    buffer.putRaw(R"({ "float1": 2.3, "superfluousField": {"p": 12, "q": [ "a", "s"]}})");
-    const auto string = std::string_view(reinterpret_cast<char *>(buffer.data()) + 12, 3);
-    REQUIRE(2.3F == opencmw::json::parseNumber<float>(string));
-}
-
 TEST_CASE("consumeWhitespace", "[JsonSerialiser]") {
     using namespace opencmw;
     using namespace opencmw::json;

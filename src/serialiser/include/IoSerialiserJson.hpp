@@ -2,6 +2,7 @@
 #define OPENCMW_JSONSERIALISER_H
 
 #include "IoSerialiser.hpp"
+#include <charconv>
 #include <list>
 #include <map>
 #include <queue>
@@ -86,6 +87,22 @@ inline std::string readString(IoBuffer &buffer) {
     return result;
 }
 
+inline std::string_view readKey(IoBuffer &buffer) {
+    if (buffer.get<uint8_t>() != '"') {
+        throw ProtocolException("error: expected leading quote");
+    }
+    const auto start = buffer.position();
+    auto       i     = start;
+    while (buffer.at<uint8_t>(i) != '"') {
+        if (buffer.at<uint8_t>(i) == '\\') { // escape sequence detected
+            throw ProtocolException(fmt::format("Escape characters not allowed in key: \\{}", buffer.at<uint8_t>(buffer.position() - 1)));
+        }
+        i++;
+    }
+    buffer.set_position(i + 1);
+    return std::string_view(reinterpret_cast<const char *>(buffer.data() + start), i - start);
+}
+
 /**
  * @param c the character to test
  * @return true if the character is a whitespace character as specified by the json specification
@@ -103,46 +120,6 @@ inline void consumeWhitespace(IoBuffer &buffer) {
     while (buffer.position() < buffer.size() && isWhitespace(buffer.at<uint8_t>(buffer.position()))) {
         buffer.set_position(buffer.position() + 1);
     }
-}
-
-template<Number T>
-inline T parseNumber(const std::string_view & /*num*/) {
-    throw ProtocolException(fmt::format("json parser for number type {} not implemented!\n", typeName<T>));
-};
-
-template<>
-inline double parseNumber<double>(const std::string_view &num) {
-    return std::stod(std::string{ num });
-}
-
-template<>
-inline float parseNumber<float>(const std::string_view &num) {
-    return std::stof(std::string{ num });
-}
-
-template<>
-inline long parseNumber<long>(const std::string_view &num) {
-    return std::stol(std::string{ num });
-}
-
-template<>
-inline int parseNumber<int>(const std::string_view &num) {
-    return std::stoi(std::string{ num });
-}
-
-template<>
-inline char parseNumber<char>(const std::string_view &num) {
-    return static_cast<char>(std::stoul(std::string{ num }));
-}
-
-template<>
-inline int8_t parseNumber<int8_t>(const std::string_view &num) { // byte
-    return static_cast<int8_t>(parseNumber<int>(num));
-}
-
-template<>
-inline int16_t parseNumber<int16_t>(const std::string_view &num) { // short
-    return static_cast<int16_t>(parseNumber<int>(num));
 }
 
 template<typename T>
@@ -314,24 +291,35 @@ struct IoSerialiser<Json, bool> {
 template<Number T>
 struct IoSerialiser<Json, T> {
     inline static constexpr uint8_t getDataTypeId() { return IoSerialiser<Json, OTHER>::getDataTypeId(); }
-    /*constexpr*/ static bool       serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
-        // todo: constexpr not possible because of fmt
-        if constexpr (std::is_same_v<T, char>) {
-            buffer.putRaw(fmt::format("{}", static_cast<uint8_t>(value)));
-        } else if constexpr (std::is_integral_v<T>) {
-            buffer.putRaw(fmt::format("{}", value));
-        } else {
-            buffer.putRaw(fmt::format("{}", value));
+    /*constexpr*/ static bool       serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) {
+        buffer.reserve_spare(30); // just reserve some spare capacity and expect that all numbers are shorter
+        const auto           start = buffer.size();
+        auto                 size  = buffer.capacity();
+        auto                 data  = reinterpret_cast<char *>(buffer.data());
+        T                    val   = value;
+        std::to_chars_result result;
+        if constexpr (std::is_integral_v<T>) {
+            result = std::to_chars(data + start, data + size, val);
+        } else if (std::is_floating_point_v<T>) {
+            result = std::to_chars(data + start, data + size, val, std::chars_format::scientific);
         }
-        return false;
+        size_t new_pos = static_cast<size_t>(result.ptr - data);
+        if (result.ec != std::errc()) {
+            throw ProtocolException(fmt::format("error({}) serialising number at buffer positon: {}", result.ec, start));
+        }
+        buffer.resize(new_pos);
+        return std::is_constant_evaluated();
     }
     static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) {
-        std::string string;
-        for (size_t i = buffer.position(); json::isNumberChar(buffer.at<uint8_t>(i)); ++i) {
-            string += buffer.at<char>(i);
-            buffer.set_position(i + 1);
+        const auto             start   = buffer.position();
+        auto                   size    = buffer.size();
+        auto                   data    = reinterpret_cast<char *>(buffer.data());
+        std::from_chars_result result  = std::from_chars(data + start, data + size, value);
+        size_t                 new_pos = static_cast<size_t>(result.ptr - data);
+        if (result.ec != std::errc()) {
+            throw ProtocolException(fmt::format("error({}) parsing number at buffer positon: {}", result.ec, start));
         }
-        value = json::parseNumber<T>(string);
+        buffer.set_position(new_pos);
         return std::is_constant_evaluated();
     }
 };
@@ -354,15 +342,16 @@ template<ArrayOrVector T>
 struct IoSerialiser<Json, T> {
     // todo: arrays of objects
     inline static constexpr uint8_t getDataTypeId() { return IoSerialiser<Json, OTHER>::getDataTypeId(); }
-    constexpr static bool           serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &values) noexcept {
+    constexpr static bool           serialise(IoBuffer &buffer, const ClassField &field, const T &values) noexcept {
         using MemberType = typename T::value_type;
         buffer.put('[');
         bool first = true;
         for (auto value : values) {
             if (!first) {
-                buffer.putRaw(", ");
+                buffer.put(',');
+                buffer.put(' ');
             }
-            IoSerialiser<Json, MemberType>::serialise(buffer, "", value);
+            IoSerialiser<Json, MemberType>::serialise(buffer, field, value);
             first = false;
         }
         buffer.put(']');
@@ -445,7 +434,7 @@ struct FieldHeaderReader<Json> {
             return result;
         }
         if (buffer.at<char8_t>(buffer.position()) == '"') { // string
-            result.fieldName = json::readString(buffer);
+            result.fieldName = json::readKey(buffer);
             if (result.fieldName.size() == 0) {
                 handleError<protocolCheckVariant>(info, "Cannot read field name for field at buffer position {}", buffer.position());
             }
