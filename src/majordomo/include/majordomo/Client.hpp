@@ -10,6 +10,8 @@
 #include <majordomo/Broker.hpp>
 #include <majordomo/Message.hpp>
 
+#include <URI.hpp>
+
 namespace opencmw::majordomo {
 
 class Client {
@@ -32,9 +34,9 @@ public:
 
     virtual ~Client() = default;
 
-    [[nodiscard]] auto connect(std::string_view brokerUrl) {
+    [[nodiscard]] auto connect(const opencmw::URI<> &brokerUrl) {
         _socket.emplace(_context, ZMQ_DEALER);
-        return zmq_invoke(zmq_connect, *_socket, brokerUrl);
+        return zmq_invoke(zmq_connect, *_socket, toZeroMQEndpoint(brokerUrl).data());
     }
 
     bool disconnect() {

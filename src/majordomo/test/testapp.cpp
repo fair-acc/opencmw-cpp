@@ -56,6 +56,17 @@ public:
     }
 };
 
+using URI = opencmw::URI<>;
+
+static URI parseUriOrExit(std::string str) {
+    try {
+        return URI(str);
+    } catch (const opencmw::URISyntaxException &e) {
+        std::cerr << fmt::format("'{}' is not a valid URI: {}\n", str, e.what());
+        std::terminate();
+    }
+}
+
 int main(int argc, char **argv) {
     using opencmw::majordomo::BasicMdpWorker;
     using opencmw::majordomo::Broker;
@@ -86,21 +97,21 @@ int main(int argc, char **argv) {
             std::cerr << "Usage: majordomo_testapp broker <routerEndpoint> [<pubEndpoint>]\n";
             return 1;
         }
-        const std::string_view routerEndpoint = argv[2];
-        const std::string_view pubEndpoint    = argc > 3 ? argv[3] : "";
+        const auto routerEndpoint = parseUriOrExit(argv[2]);
+        const auto pubEndpoint    = argc > 3 ? std::optional<URI>(parseUriOrExit(argv[3])) : std::optional<URI>{};
 
-        Context                context;
-        Broker                 broker("test_broker", {}, testSettings());
-        const auto             routerAddress = broker.bind(routerEndpoint);
+        Context    context;
+        Broker     broker("test_broker", testSettings());
+        const auto routerAddress = broker.bind(routerEndpoint);
         if (!routerAddress) {
             std::cerr << fmt::format("Could not bind to '{}'\n", routerEndpoint);
             return 1;
         }
 
-        if (pubEndpoint.empty()) {
+        if (!pubEndpoint) {
             std::cout << fmt::format("Listening to '{}' (ROUTER)\n", *routerAddress);
         } else {
-            const auto pubAddress = broker.bind(pubEndpoint);
+            const auto pubAddress = broker.bind(*pubEndpoint);
             if (!pubAddress) {
                 std::cerr << fmt::format("Could not bind to '{}'\n", routerEndpoint);
                 return 1;
@@ -134,9 +145,9 @@ int main(int argc, char **argv) {
             std::cerr << "Usage: majordomo_testapp worker <brokerAddress>\n";
             return 1;
         }
-        const std::string_view brokerAddress = argv[2];
+        const auto     brokerAddress = parseUriOrExit(argv[2]);
 
-        BasicMdpWorker         worker(propertyStoreService, brokerAddress, TestHandler{});
+        BasicMdpWorker worker(propertyStoreService, brokerAddress, TestHandler{});
 
         worker.run();
         return 0;
@@ -148,7 +159,7 @@ int main(int argc, char **argv) {
             return 1;
         }
 
-        const std::string_view brokerAddress = argv[2];
+        const auto             brokerAddress = parseUriOrExit(argv[2]);
         const std::string_view command       = argv[3];
 
         if (command == "get" && argc != 5) {

@@ -3,10 +3,12 @@
 #include <majordomo/BasicMdpWorker.hpp>
 #include <majordomo/Broker.hpp>
 #include <majordomo/Client.hpp>
+#include <majordomo/Constants.hpp>
 #include <majordomo/Message.hpp>
 
 #include <fmt/format.h>
 
+using URI = opencmw::URI<>;
 using opencmw::majordomo::BasicMdpWorker;
 using opencmw::majordomo::Broker;
 using opencmw::majordomo::Client;
@@ -75,21 +77,21 @@ enum class Get {
 };
 
 struct Result {
-    std::string                   routerAddress;
+    URI                           routerAddress;
     int                           iterations;
     Get                           mode;
     std::size_t                   payloadSize;
     std::chrono::duration<double> duration;
 };
 
-Result simpleOneWorkerBenchmark(std::string routerAddress, Get mode, int iterations, std::size_t payloadSize) {
-    Broker broker("benchmarkbroker", "", benchmarkSettings());
+Result simpleOneWorkerBenchmark(const URI &routerAddress, Get mode, int iterations, std::size_t payloadSize) {
+    Broker broker("benchmarkbroker", benchmarkSettings());
     REQUIRE(broker.bind(routerAddress, Broker::BindOption::Router));
 
     BasicMdpWorker worker("blob", broker, PayloadHandler(std::string(payloadSize, '\xab')));
 
     Context        clientContext;
-    TestClient     client(routerAddress.starts_with("inproc") ? broker.context : clientContext);
+    TestClient     client(routerAddress.scheme() == opencmw::majordomo::SCHEME_INPROC ? broker.context : clientContext);
 
     RunInThread    brokerRun(broker);
     RunInThread    workerRun(worker);
@@ -118,17 +120,17 @@ Result simpleOneWorkerBenchmark(std::string routerAddress, Get mode, int iterati
     const auto                          after = std::chrono::system_clock::now();
     const std::chrono::duration<double> diff  = after - before;
 
-    Result                              r;
-    r.routerAddress = routerAddress;
-    r.mode          = mode;
-    r.payloadSize   = payloadSize;
-    r.iterations    = iterations;
-    r.duration      = diff;
-    return r;
+    return Result{
+        .routerAddress = routerAddress,
+        .iterations    = iterations,
+        .mode          = mode,
+        .payloadSize   = payloadSize,
+        .duration      = diff
+    };
 }
 
-void simpleTwoWorkerBenchmark(std::string routerAddress, Get mode, int iterations, std::size_t payload1_size, std::size_t payload2_size) {
-    Broker broker("benchmarkbroker", {}, benchmarkSettings());
+void simpleTwoWorkerBenchmark(const URI &routerAddress, Get mode, int iterations, std::size_t payload1_size, std::size_t payload2_size) {
+    Broker broker("benchmarkbroker", benchmarkSettings());
     REQUIRE(broker.bind(routerAddress, Broker::BindOption::Router));
     RunInThread    brokerRun(broker);
 
@@ -139,7 +141,7 @@ void simpleTwoWorkerBenchmark(std::string routerAddress, Get mode, int iteration
     RunInThread    worker2_run(worker2);
 
     Context        clientContext;
-    TestClient     client(routerAddress.starts_with("inproc") ? broker.context : clientContext);
+    TestClient     client(routerAddress.scheme() == opencmw::majordomo::SCHEME_INPROC ? broker.context : clientContext);
     REQUIRE(client.connect(routerAddress));
 
     const auto before = std::chrono::system_clock::now();
@@ -164,7 +166,7 @@ void simpleTwoWorkerBenchmark(std::string routerAddress, Get mode, int iteration
     const std::chrono::duration<double> diff  = after - before;
 
     std::cout << fmt::format("{}: {}. Alternating Payloads {}/{} bytes: {} iterations took {}s ({} messages/s)\n",
-            routerAddress,
+            routerAddress.str,
             mode == Get::Async ? "ASYNC" : "SYNC",
             payload1_size,
             payload2_size,
@@ -175,8 +177,8 @@ void simpleTwoWorkerBenchmark(std::string routerAddress, Get mode, int iteration
 
 int main(int argc, char **argv) {
     const auto          N      = argc > 1 ? std::atoi(argv[1]) : 100000;
-    const auto          tcp    = std::string("tcp://127.0.0.1:12346");
-    const auto          inproc = std::string("inproc://benchmark");
+    const auto          tcp    = URI("tcp://127.0.0.1:12346");
+    const auto          inproc = URI("inproc://benchmark");
 
     std::vector<Result> results;
 
@@ -190,7 +192,7 @@ int main(int argc, char **argv) {
 
     for (const auto &result : results) {
         std::cout << fmt::format("{}: {}. Payload {} bytes: {} iterations took {}s ({} messages/s)\n",
-                result.routerAddress,
+                result.routerAddress.str,
                 result.mode == Get::Async ? "ASYNC" : "SYNC",
                 result.payloadSize,
                 result.iterations,

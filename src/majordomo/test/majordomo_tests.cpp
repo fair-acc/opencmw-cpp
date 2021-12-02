@@ -5,6 +5,7 @@
 #include <majordomo/Client.hpp>
 #include <majordomo/Constants.hpp>
 #include <majordomo/Message.hpp>
+#include <majordomo/Utils.hpp>
 
 #include <catch2/catch.hpp>
 #include <fmt/format.h>
@@ -15,6 +16,7 @@
 #include <thread>
 
 using namespace opencmw::majordomo;
+using URI = opencmw::URI<>;
 
 static opencmw::majordomo::Settings testSettings() {
     Settings settings;
@@ -33,8 +35,8 @@ public:
         : _socket(context, socket_type) {
     }
 
-    bool connect(std::string_view address, std::string_view subscription = "") {
-        auto result = zmq_invoke(zmq_connect, _socket, address);
+    bool connect(const URI &address, std::string_view subscription = "") {
+        auto result = zmq_invoke(zmq_connect, _socket, toZeroMQEndpoint(address).data());
         if (!result) return false;
 
         if (!subscription.empty()) {
@@ -226,9 +228,9 @@ TEST_CASE("Request answered with unknown service", "[broker][unknown_service]") 
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::MdpMessage;
 
-    constexpr auto address = std::string_view("inproc://testrouter");
+    const auto address = URI("inproc://testrouter");
 
-    Broker         broker("testbroker", "", testSettings());
+    Broker     broker("testbroker", testSettings());
 
     REQUIRE(broker.bind(address, Broker::BindOption::Router));
 
@@ -257,11 +259,41 @@ TEST_CASE("Request answered with unknown service", "[broker][unknown_service]") 
     REQUIRE(reply.rbacToken() == "TODO (RBAC)");
 }
 
+TEST_CASE("Test toZeroMQEndpoint conversion", "[utils][toZeroMQEndpoint]") {
+    REQUIRE(toZeroMQEndpoint(URI("mdp://127.0.0.1:12345")) == "tcp://127.0.0.1:12345");
+    REQUIRE(toZeroMQEndpoint(URI("mds://127.0.0.1:12345")) == "tcp://127.0.0.1:12345");
+    REQUIRE(toZeroMQEndpoint(URI("inproc://test")) == "inproc://test");
+}
+
+TEST_CASE("Bind broker to endpoints", "[broker][bind]") {
+    // the tcp/mdp/mds test cases rely on the ports being free, use wildcards/search for free ports if this turns out to be a problem
+    static const std::array testcases = {
+        std::tuple{ URI("tcp://127.0.0.1:22345"), Broker::BindOption::Router, std::make_optional<URI>("mdp://127.0.0.1:22345") },
+        std::tuple{ URI("mdp://127.0.0.1:22346"), Broker::BindOption::Router, std::make_optional<URI>("mdp://127.0.0.1:22346") },
+        std::tuple{ URI("mdp://127.0.0.1:22347"), Broker::BindOption::DetectFromURI, std::make_optional<URI>("mdp://127.0.0.1:22347") },
+        std::tuple{ URI("mdp://127.0.0.1:22348"), Broker::BindOption::Router, std::make_optional<URI>("mdp://127.0.0.1:22348") },
+        std::tuple{ URI("mdp://127.0.0.1:22348"), Broker::BindOption::Router, std::optional<URI>{} }, // error, already bound
+        std::tuple{ URI("mds://127.0.0.1:22349"), Broker::BindOption::DetectFromURI, std::make_optional<URI>("mds://127.0.0.1:22349") },
+        std::tuple{ URI("tcp://127.0.0.1:22350"), Broker::BindOption::Pub, std::make_optional<URI>("mds://127.0.0.1:22350") },
+        std::tuple{ URI("inproc://bindtest"), Broker::BindOption::Router, std::make_optional<URI>("inproc://bindtest") },
+        std::tuple{ URI("inproc://bindtest_pub"), Broker::BindOption::Pub, std::make_optional<URI>("inproc://bindtest_pub") },
+    };
+
+    Broker broker("testbroker", testSettings());
+
+    for (const auto &testcase : testcases) {
+        const auto endpoint = std::get<0>(testcase);
+        const auto option   = std::get<1>(testcase);
+        const auto expected = std::get<2>(testcase);
+        REQUIRE(broker.bind(endpoint, option) == expected);
+    }
+}
+
 TEST_CASE("One client/one worker roundtrip", "[broker][roundtrip]") {
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::MdpMessage;
 
-    Broker               broker("testbroker", {}, testSettings());
+    Broker               broker("testbroker", testSettings());
 
     TestNode<MdpMessage> worker(broker.context);
     REQUIRE(worker.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
@@ -345,9 +377,9 @@ TEST_CASE("Simple pubsub example using pub socket", "[broker][pubsub_pub]") {
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::MdpMessage;
 
-    constexpr auto publisherAddress = std::string_view("inproc://testpub");
+    const auto publisherAddress = URI("inproc://testpub");
 
-    Broker         broker("testbroker", {}, testSettings());
+    Broker     broker("testbroker", testSettings());
 
     REQUIRE(broker.bind(publisherAddress, Broker::BindOption::Pub));
 
@@ -389,7 +421,7 @@ TEST_CASE("Broker sends heartbeats", "[broker][heartbeat]") {
 
     Settings       settings;
     settings.heartbeatInterval = heartbeatInterval;
-    Broker               broker("testbroker", {}, settings);
+    Broker               broker("testbroker", settings);
 
     TestNode<MdpMessage> worker(broker.context);
 
@@ -438,7 +470,7 @@ TEST_CASE("Broker disconnects on unexpected heartbeat", "[broker][unexpected_hea
 
     Settings       settings;
     settings.heartbeatInterval = heartbeatInterval;
-    Broker               broker("testbroker", {}, settings);
+    Broker               broker("testbroker", settings);
 
     TestNode<MdpMessage> worker(broker.context);
 
@@ -459,7 +491,7 @@ TEST_CASE("pubsub example using router socket", "[broker][pubsub_router]") {
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::MdpMessage;
 
-    Broker               broker("testbroker", {}, testSettings());
+    Broker               broker("testbroker", testSettings());
 
     TestNode<MdpMessage> subscriber(broker.context);
     REQUIRE(subscriber.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
@@ -642,22 +674,22 @@ public:
 TEST_CASE("BasicMdpWorker instantiation", "[worker][instantiation]") {
     // ensure that BasicMdpWorker can be instantiated with lvalue and rvalue handlers
     // lvalues should be used via reference, rvalues moved
-    Broker                    broker("testbroker", {}, testSettings());
+    Broker                    broker("testbroker", testSettings());
     NonCopyableMovableHandler handler;
 
     BasicMdpWorker            worker1("a.service", broker, NonCopyableMovableHandler());
     BasicMdpWorker            worker2("a.service", broker, handler);
-    BasicMdpWorker            worker3("a.service", "no.address", NonCopyableMovableHandler(), Context(), testSettings());
-    BasicMdpWorker            worker4("a.service", "no.address", handler, Context(), testSettings());
-    BasicMdpWorker            worker5("a.service", "no.address", NonCopyableMovableHandler(), testSettings());
-    BasicMdpWorker            worker6("a.service", "no.address", handler, testSettings());
+    BasicMdpWorker            worker3("a.service", INTERNAL_ADDRESS_BROKER, NonCopyableMovableHandler(), Context(), testSettings());
+    BasicMdpWorker            worker4("a.service", INTERNAL_ADDRESS_BROKER, handler, Context(), testSettings());
+    BasicMdpWorker            worker5("a.service", INTERNAL_ADDRESS_BROKER, NonCopyableMovableHandler(), testSettings());
+    BasicMdpWorker            worker6("a.service", INTERNAL_ADDRESS_BROKER, handler, testSettings());
 }
 
 TEST_CASE("SET/GET example using the BasicMdpWorker class", "[worker][getset_basic_worker]") {
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::MdpMessage;
 
-    Broker         broker("testbroker", {}, testSettings());
+    Broker         broker("testbroker", testSettings());
 
     BasicMdpWorker worker("a.service", broker, TestIntHandler(10));
     worker.setServiceDescription("API description");
@@ -743,7 +775,7 @@ TEST_CASE("SET/GET example using a lambda as the worker's request handler", "[wo
     using opencmw::majordomo::Client;
     using opencmw::majordomo::MdpMessage;
 
-    Broker broker("testbroker", {}, testSettings());
+    Broker broker("testbroker", testSettings());
 
     auto   handleInt = [](RequestContext &requestContext) {
         static int value = 100;
@@ -826,7 +858,7 @@ TEST_CASE("Worker's request handler throws an exception", "[worker][handler_exce
     using opencmw::majordomo::Client;
     using opencmw::majordomo::MdpMessage;
 
-    Broker broker("testbroker", {}, testSettings());
+    Broker broker("testbroker", testSettings());
 
     auto   handleRequest = [](RequestContext &) {
         throw std::runtime_error("Something went wrong!");
@@ -868,7 +900,7 @@ TEST_CASE("Worker's request handler throws an unexpected exception", "[worker][h
     using opencmw::majordomo::Client;
     using opencmw::majordomo::MdpMessage;
 
-    Broker broker("testbroker", {}, testSettings());
+    Broker broker("testbroker", testSettings());
 
     auto   handleRequest = [](RequestContext &) {
         throw std::string("Something went wrong!");
