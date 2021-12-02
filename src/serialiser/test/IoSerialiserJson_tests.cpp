@@ -98,12 +98,14 @@ TEST_CASE("JsonArraySerialisation", "[JsonSerialiser]") {
             std::vector<int> result;
             opencmw::IoSerialiser<opencmw::Json, std::vector<int>>::deserialise(buffer, "test", result);
             REQUIRE(test == result);
+            REQUIRE(buffer.position() == 12);
         }
         buffer.set_position(0);
         {
             std::array<int, 4> resultArray;
             opencmw::IoSerialiser<opencmw::Json, std::array<int, 4>>::deserialise(buffer, "test", resultArray);
             REQUIRE(test == std::vector<int>(resultArray.begin(), resultArray.end()));
+            REQUIRE(buffer.position() == 12);
         }
     }
     { // empty vector
@@ -114,6 +116,7 @@ TEST_CASE("JsonArraySerialisation", "[JsonSerialiser]") {
         std::vector<int> result;
         opencmw::IoSerialiser<opencmw::Json, std::vector<int>>::deserialise(buffer, "test", result);
         REQUIRE(test == result);
+        REQUIRE(buffer.position() == 2);
     }
 }
 
@@ -186,13 +189,11 @@ TEST_CASE("readString", "[JsonSerialiser]") {
         buffer.putRaw(R"""("test String 123 " sfef)""");
         REQUIRE(readString(buffer) == R"""(test String 123 )""");
     }
-    // todo: make escape sequences work properly, we cannot return string views but have to copy into our own buffer
-    // for now we focus on non escaped strings first
-    // {
-    //     IoBuffer buffer;
-    //     buffer.putRaw("\"Hello\t\\\"special\\\"\nWorld!\"");
-    //     REQUIRE(readString(buffer) == "Hello\t\"special\"\nWorld!");
-    // }
+    {
+        IoBuffer buffer;
+        buffer.putRaw("\"Hello\t\\\"special\\\"\nWorld!\"");
+        REQUIRE(readString(buffer) == "Hello\t\"special\"\nWorld!");
+    }
 }
 
 TEST_CASE("isWhitespace", "[JsonSerialiser]") {

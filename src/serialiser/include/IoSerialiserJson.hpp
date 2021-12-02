@@ -375,7 +375,8 @@ struct IoSerialiser<Json, T> {
         }
         std::vector<MemberType> result;
         json::consumeWhitespace(buffer);
-        if (buffer.at<uint8_t>(buffer.position()) != ']') { // empty array
+        if (buffer.get<uint8_t>() != ']') { // empty array
+            buffer.set_position(buffer.position() - 1);
             while (true) {
                 MemberType entry;
                 IoSerialiser<Json, MemberType>::deserialise(buffer, field, entry);
@@ -412,6 +413,7 @@ struct IoSerialiser<Json, T> {
     }
     constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) {
         // todo: implement
+        json::skipValue(buffer);
         std::ignore = value;
         std::ignore = buffer;
         return std::is_constant_evaluated();
