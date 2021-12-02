@@ -289,6 +289,28 @@ struct IoSerialiser<Json, OTHER> { // because json does not explicitly provide t
     }
 };
 
+template<>
+struct IoSerialiser<Json, bool> {
+    inline static constexpr uint8_t getDataTypeId() { return IoSerialiser<Json, OTHER>::getDataTypeId(); }
+    constexpr static bool           serialise(IoBuffer &buffer, const ClassField & /*field*/, const bool &value) noexcept {
+        buffer.putRaw(value ? "true" : "false");
+        return std::is_constant_evaluated();
+    }
+    static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, bool &value) {
+        if (buffer.size() - buffer.position() > 5 && std::string_view(reinterpret_cast<const char *>(buffer.data() + buffer.position()), 5) == "false") {
+            buffer.set_position(buffer.position() + 5);
+            value = false;
+            return std::is_constant_evaluated();
+        }
+        if (buffer.size() - buffer.position() > 4 && std::string_view(reinterpret_cast<const char *>(buffer.data() + buffer.position()), 4) == "true") {
+            buffer.set_position(buffer.position() + 4);
+            value = false;
+            value = true;
+            return std::is_constant_evaluated();
+        }
+        throw ProtocolException("unsupported boolean value");
+    }
+};
 template<Number T>
 struct IoSerialiser<Json, T> {
     inline static constexpr uint8_t getDataTypeId() { return IoSerialiser<Json, OTHER>::getDataTypeId(); }

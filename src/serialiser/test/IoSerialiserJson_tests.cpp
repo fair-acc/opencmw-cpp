@@ -18,6 +18,7 @@ using NoUnit = units::dimensionless<units::one>;
 using namespace std::literals;
 
 struct DataX {
+    bool                   boolValue   = true;
     int8_t                 byteValue   = 1;
     int16_t                shortValue  = 2;
     int32_t                intValue    = 3;
@@ -33,8 +34,7 @@ struct DataX {
     DataX()                              = default;
     bool operator==(const DataX &) const = default;
 };
-// following is the visitor-pattern-macro that allows the compile-time reflections via refl-cpp
-ENABLE_REFLECTION_FOR(DataX, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, doubleArray, floatVector, /*doubleMatrix,*/ nested)
+ENABLE_REFLECTION_FOR(DataX, boolValue, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, doubleArray, floatVector, /*doubleMatrix,*/ nested)
 
 struct SimpleInner {
     double           val1;
@@ -133,6 +133,7 @@ TEST_CASE("JsonSerialisation", "[JsonSerialiser]") {
         auto  result = opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buffer, bar);
         opencmw::utils::diffView(std::cout, foo, bar);
         fmt::print(std::cout, "deserialisation finished: {}\n", result);
+        REQUIRE(foo.boolValue == bar.boolValue);
         REQUIRE(foo.byteValue == bar.byteValue);
         REQUIRE(foo.shortValue == bar.shortValue);
         REQUIRE(foo.intValue == bar.intValue);
@@ -142,6 +143,7 @@ TEST_CASE("JsonSerialisation", "[JsonSerialiser]") {
         REQUIRE(foo.stringValue == bar.stringValue);
         REQUIRE(foo.doubleArray == bar.doubleArray);
         REQUIRE(foo.floatVector == bar.floatVector);
+        REQUIRE(foo.nested->boolValue == bar.nested->boolValue);
         REQUIRE(foo.nested->byteValue == bar.nested->byteValue);
         REQUIRE(foo.nested->shortValue == bar.nested->shortValue);
         REQUIRE(foo.nested->intValue == bar.nested->intValue);
