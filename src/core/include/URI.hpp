@@ -195,6 +195,8 @@ public:
 
     URI &              operator=(const URI &other) = delete;
 
+    bool               empty() const { return str.empty(); }
+
     static std::string encode(const std::string_view &source) noexcept {
         std::ostringstream encoded;
         encoded.fill('0');
