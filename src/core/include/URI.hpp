@@ -9,6 +9,8 @@
 #include <string>
 #include <string_view>
 
+#include <cassert>
+
 namespace opencmw {
 
 struct URISyntaxException : public std::ios_base::failure {
@@ -51,7 +53,12 @@ class URI {
     // computed on-demand
     std::unordered_map<string, std::optional<string>> _queryMap;
     // simple optional un-wrapper
-    inline const std::optional<string> returnOpt(const string_view &src) const noexcept { return src.empty() ? std::nullopt : std::optional<string>(src); };
+    inline const std::optional<string> returnOpt(const string_view &src) const noexcept {
+        if (!src.empty()) {
+            assert(src.data() >= _localCopy.data() && src.data() < _localCopy.data() + _localCopy.size());
+        }
+        return src.empty() ? std::nullopt : std::optional<string>(src);
+    };
 
 protected:
     // returns tif only RFC 3986 section 2.3 Unreserved Characters
@@ -163,6 +170,25 @@ public:
             _fragment = source.substr(fragStart, source.length() - fragStart);
         }
     }
+
+    URI(const URI &other)
+        : _localCopy(other._localCopy), _parsedAuthority(other._parsedAuthority), _queryMap(other._queryMap) {
+        auto adjustedView = [this, &other](std::string_view otherView) {
+            return std::string_view(
+                    _localCopy.data() + std::distance(other._localCopy.data(), otherView.data()),
+                    otherView.size());
+        };
+        _scheme   = adjustedView(other._scheme);
+        _userName = adjustedView(other._userName);
+        _pwd      = adjustedView(other._pwd);
+        _hostName = adjustedView(other._hostName);
+        _port     = adjustedView(other._port);
+        _path     = adjustedView(other._path);
+        _query    = adjustedView(other._query);
+        _fragment = adjustedView(other._fragment);
+    }
+
+    URI &              operator=(const URI &other) = delete;
 
     static std::string encode(const std::string_view &source) noexcept {
         std::ostringstream encoded;

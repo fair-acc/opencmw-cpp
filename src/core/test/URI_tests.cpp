@@ -175,4 +175,20 @@ TEST_CASE("helper methods", "[URI]") {
     resetStream();
 }
 
+TEST_CASE("lifetime", "[URI]") {
+    using namespace opencmw;
+    auto make_uri = [](std::string scheme) {
+        struct kill_nrvo {
+            URI<> uri;
+        };
+        auto uri = URI<>::factory().scheme(scheme).authority("authority").build();
+        return kill_nrvo{ uri }.uri;
+    };
+
+    auto uri    = make_uri("mdp");
+    std::ignore = make_uri("http");
+
+    REQUIRE(uri.scheme().value() == "mdp");
+}
+
 #pragma clang diagnostic pop
