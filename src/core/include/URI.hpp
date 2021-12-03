@@ -188,7 +188,7 @@ public:
         _fragment = adjustedView(other._fragment);
     }
 
-    URI               &operator=(const URI &other) = delete;
+    URI &              operator=(const URI &other) = delete;
 
     static std::string encode(const std::string_view &source) noexcept {
         std::ostringstream encoded;
