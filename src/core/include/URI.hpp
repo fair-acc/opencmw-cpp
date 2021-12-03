@@ -9,6 +9,8 @@
 #include <string>
 #include <string_view>
 
+#include <cassert>
+
 namespace opencmw {
 
 struct URISyntaxException : public std::ios_base::failure {
@@ -51,7 +53,12 @@ class URI {
     // computed on-demand
     std::unordered_map<string, std::optional<string>> _queryMap;
     // simple optional un-wrapper
-    inline const std::optional<string> returnOpt(const string_view &src) const noexcept { return src.empty() ? std::nullopt : std::optional<string>(src); };
+    inline const std::optional<string> returnOpt(const string_view &src) const noexcept {
+        if (!src.empty()) {
+            assert(src.data() >= _localCopy.data() && src.data() < _localCopy.data() + _localCopy.size());
+        }
+        return src.empty() ? std::nullopt : std::optional<string>(src);
+    };
 
 protected:
     // returns tif only RFC 3986 section 2.3 Unreserved Characters
