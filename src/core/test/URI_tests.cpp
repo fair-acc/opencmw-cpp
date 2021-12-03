@@ -188,7 +188,6 @@ TEST_CASE("lifetime", "[URI]") {
     auto uri    = make_uri("mdp");
     std::ignore = make_uri("http");
 
-    std::cerr << "[" << *uri.scheme() << "]\n";
     REQUIRE(uri.scheme().value() == "mdp");
 }
 

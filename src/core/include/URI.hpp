@@ -171,6 +171,25 @@ public:
         }
     }
 
+    URI(const URI &other)
+        : _localCopy(other._localCopy), _parsedAuthority(other._parsedAuthority), _queryMap(other._queryMap) {
+        auto adjustedView = [this, &other](std::string_view otherView) {
+            return std::string_view(
+                    _localCopy.data() + std::distance(other._localCopy.data(), otherView.data()),
+                    otherView.size());
+        };
+        _scheme   = adjustedView(other._scheme);
+        _userName = adjustedView(other._userName);
+        _pwd      = adjustedView(other._pwd);
+        _hostName = adjustedView(other._hostName);
+        _port     = adjustedView(other._port);
+        _path     = adjustedView(other._path);
+        _query    = adjustedView(other._query);
+        _fragment = adjustedView(other._fragment);
+    }
+
+    URI               &operator=(const URI &other) = delete;
+
     static std::string encode(const std::string_view &source) noexcept {
         std::ostringstream encoded;
         encoded.fill('0');
