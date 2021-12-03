@@ -68,7 +68,7 @@ TEST_CASE("builder-parser identity", "[URI]") {
         REQUIRE_NOTHROW(opencmw::URI<>(uri));
 
         // check identity
-        const auto src = opencmw::URI<>(validURIs[0]);
+        const auto src = opencmw::URI<>(uri);
         const auto dst = opencmw::URI<>::factory(src).toString();
         REQUIRE(src == opencmw::URI<>(dst));
     }
