@@ -36,8 +36,12 @@ template<uri_check check = STRICT>
 class URI {
     using string      = std::string;
     using string_view = std::string_view;
+
+public:
+    const string str;
+
+private:
     // need to keep a local, owning, and immutable copy of the source template
-    const string _localCopy;
     // evaluate on demand and if available
     string_view         _scheme;
     string_view         _authority;
@@ -55,7 +59,7 @@ class URI {
     // simple optional un-wrapper
     inline const std::optional<string> returnOpt(const string_view &src) const noexcept {
         if (!src.empty()) {
-            assert(src.data() >= _localCopy.data() && src.data() < _localCopy.data() + _localCopy.size());
+            assert(src.data() >= str.data() && src.data() < str.data() + str.size());
         }
         return src.empty() ? std::nullopt : std::optional<string>(src);
     };
@@ -94,8 +98,8 @@ protected:
 public:
     URI() = delete;
     explicit URI(std::string src)
-        : _localCopy(std::move(src)) {
-        string_view source(_localCopy.c_str(), _localCopy.size());
+        : str(std::move(src)) {
+        string_view source(str.c_str(), str.size());
         if constexpr (check == STRICT) {
             constexpr auto validURICharacters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/?#[]@!$&'()*+,;=%";
             unsigned long  illegalChar        = source.find_first_not_of(validURICharacters);
@@ -172,10 +176,10 @@ public:
     }
 
     URI(const URI &other)
-        : _localCopy(other._localCopy), _parsedAuthority(other._parsedAuthority), _queryMap(other._queryMap) {
+        : str(other.str), _parsedAuthority(other._parsedAuthority), _queryMap(other._queryMap) {
         auto adjustedView = [this, &other](std::string_view otherView) {
             return std::string_view(
-                    _localCopy.data() + std::distance(other._localCopy.data(), otherView.data()),
+                    str.data() + std::distance(other.str.data(), otherView.data()),
                     otherView.size());
         };
         _scheme    = adjustedView(other._scheme);
@@ -292,8 +296,8 @@ public:
 
     // default operator overloading
     auto operator<=>(const URI &) const noexcept = default; // TODO: may need to implement custom
-    bool operator!=(const URI &other) const noexcept  { return _localCopy != other._localCopy; }
-    bool operator==(const URI &other) const noexcept  { return _localCopy == other._localCopy; }
+    bool operator!=(const URI &other) const noexcept  { return str != other.str; }
+    bool operator==(const URI &other) const noexcept  { return str == other.str; }
 
     class UriFactory {
         string                  _authority;
