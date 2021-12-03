@@ -13,11 +13,26 @@ TEST_CASE("basic constructor", "[URI]") {
     opencmw::debug::resetStats();
     opencmw::debug::Timer timer("URI<>() - basic constructor", 40);
 
-    constexpr auto        testURL = "http://User:notSoSecretPwd@localhost.com:20/path1/path2/path3/file.ext?k0;k1=v1;k2=v2&k3&k4=#cFrag";
+    REQUIRE_NOTHROW(opencmw::URI<>(""));
+    opencmw::URI<> emptyURI("");
+    REQUIRE(emptyURI.empty());
+    REQUIRE(!emptyURI.scheme());
+    REQUIRE(!emptyURI.authority());
+    REQUIRE(!emptyURI.user());
+    REQUIRE(!emptyURI.password());
+    REQUIRE(!emptyURI.hostName());
+    REQUIRE(!emptyURI.port());
+    REQUIRE(!emptyURI.path());
+    REQUIRE(!emptyURI.queryParam());
+    REQUIRE(!emptyURI.fragment());
+    REQUIRE(emptyURI.queryParamMap().empty());
+
+    constexpr auto testURL = "http://User:notSoSecretPwd@localhost.com:20/path1/path2/path3/file.ext?k0;k1=v1;k2=v2&k3&k4=#cFrag";
     REQUIRE_NOTHROW(opencmw::URI<>(testURL));
     // basic tests
     opencmw::URI test(testURL);
 
+    REQUIRE(!test.empty());
     REQUIRE(test.scheme() == "http");
     REQUIRE(test.authority() == "User:notSoSecretPwd@localhost.com:20");
     REQUIRE(test.user() == "User");
@@ -58,7 +73,8 @@ TEST_CASE("basic constructor", "[URI]") {
     REQUIRE(copy.queryParamMap() == test.queryParamMap());
 }
 
-static const std::array<std::string, 18> validURIs{
+static const std::array validURIs{
+    "",
     "http://User:notSoSecretPwd@localhost.com:20/path1/path2/path3/file.ext?k0&k1=v1;k2=v2&k3#cFrag",
     "mdp://user@www.fair-acc.io/service/path/resource.format?queryString#frag",
     "mdp://www.fair-acc.io/service/path/resource.format",
@@ -114,8 +130,8 @@ TEST_CASE("factory-builder API", "[URI]") {
     REQUIRE(URI<>::factory().scheme("mdp").authority("authority").build().authority() == "authority");
 
     // parameter handling
-    REQUIRE(URI<>::factory(opencmw::URI<>(validURIs[12])).queryParam("").addQueryParameter("keyOnly").addQueryParameter("key", "value").toString() == "mdp://www.fair-acc.io?key=value&keyOnly");
-    REQUIRE(URI<>::factory(opencmw::URI<>(validURIs[12])).addQueryParameter("keyOnly").addQueryParameter("key", "value").toString() == "mdp://www.fair-acc.io?query&key=value&keyOnly");
+    REQUIRE(URI<>::factory(opencmw::URI<>(validURIs[13])).queryParam("").addQueryParameter("keyOnly").addQueryParameter("key", "value").toString() == "mdp://www.fair-acc.io?key=value&keyOnly");
+    REQUIRE(URI<>::factory(opencmw::URI<>(validURIs[13])).addQueryParameter("keyOnly").addQueryParameter("key", "value").toString() == "mdp://www.fair-acc.io?query&key=value&keyOnly");
 }
 
 TEST_CASE("helper methods", "[URI]") {
