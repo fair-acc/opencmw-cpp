@@ -311,7 +311,8 @@ public:
 
     // default operator overloading
     auto operator<=>(const URI &) const noexcept = default; // TODO: may need to implement custom
-    bool operator!=(const URI &) const noexcept  = default;
+    bool operator!=(const URI &other) const noexcept  { return _localCopy != other._localCopy; }
+    bool operator==(const URI &other) const noexcept  { return _localCopy == other._localCopy; }
 
     class UriFactory {
         string                  _authority;
