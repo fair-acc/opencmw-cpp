@@ -72,7 +72,7 @@ TEST_CASE("JsonDeserialisationMissingField", "[JsonSerialiser]") {
     opencmw::debug::resetStats();
     {
         opencmw::IoBuffer buffer;
-        buffer.putRaw(R"({ "float1": 2.3, "superfluousField": {"p": 12, "q": [ "a", "s"]}, "test": { "intArray": [1, 2, 3], "val1":13.37e2, "val2":"bar"}, "int1": 42})");
+        buffer.putRaw(R"({ "float1": 2.3, "superfluousField": { "p":12 , "a":null,"x" : false, "q": [ "a", "s"], "z": [true , false ] },  "test": { "intArray" : [ 1,2, 3], "val1":13.37e2, "val2":"bar"}, "int1": 42})");
         std::cout << "Prepared json data: " << buffer.asString() << std::endl;
         Simple foo;
         auto   result = opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buffer, foo);

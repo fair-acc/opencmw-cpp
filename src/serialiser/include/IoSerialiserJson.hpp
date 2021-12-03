@@ -179,6 +179,7 @@ inline void skipArray(IoBuffer &buffer) {
     consumeWhitespace(buffer);
     while (buffer.at<uint8_t>(buffer.position()) != ']') {
         skipValue(buffer);
+        consumeWhitespace(buffer);
         if (buffer.at<uint8_t>(buffer.position()) == ']') break;
         if (buffer.get<uint8_t>() != ',') {
             throw ProtocolException("Expected comma to separate array entries");
@@ -198,6 +199,12 @@ inline void skipValue(IoBuffer &buffer) {
         json::skipArray(buffer);
     } else if (firstChar == '"') {
         std::ignore = readString(buffer);
+    } else if (buffer.size() - buffer.position() > 5 && std::string_view(reinterpret_cast<const char *>(buffer.data() + buffer.position()), 5) == "false") {
+        buffer.set_position(buffer.position() + 5);
+    } else if (buffer.size() - buffer.position() > 4 && std::string_view(reinterpret_cast<const char *>(buffer.data() + buffer.position()), 4) == "true") {
+        buffer.set_position(buffer.position() + 4);
+    } else if (buffer.size() - buffer.position() > 4 && std::string_view(reinterpret_cast<const char *>(buffer.data() + buffer.position()), 4) == "null") {
+        buffer.set_position(buffer.position() + 4);
     } else { // skip number
         json::skipNumber(buffer);
     }
