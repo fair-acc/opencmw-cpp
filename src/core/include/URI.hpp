@@ -178,14 +178,15 @@ public:
                     _localCopy.data() + std::distance(other._localCopy.data(), otherView.data()),
                     otherView.size());
         };
-        _scheme   = adjustedView(other._scheme);
-        _userName = adjustedView(other._userName);
-        _pwd      = adjustedView(other._pwd);
-        _hostName = adjustedView(other._hostName);
-        _port     = adjustedView(other._port);
-        _path     = adjustedView(other._path);
-        _query    = adjustedView(other._query);
-        _fragment = adjustedView(other._fragment);
+        _scheme    = adjustedView(other._scheme);
+        _authority = adjustedView(other._authority);
+        _userName  = adjustedView(other._userName);
+        _pwd       = adjustedView(other._pwd);
+        _hostName  = adjustedView(other._hostName);
+        _port      = adjustedView(other._port);
+        _path      = adjustedView(other._path);
+        _query     = adjustedView(other._query);
+        _fragment  = adjustedView(other._fragment);
     }
 
     URI &              operator=(const URI &other) = delete;
@@ -291,7 +292,8 @@ public:
 
     // default operator overloading
     auto operator<=>(const URI &) const noexcept = default; // TODO: may need to implement custom
-    bool operator!=(const URI &) const noexcept  = default;
+    bool operator!=(const URI &other) const noexcept  { return _localCopy != other._localCopy; }
+    bool operator==(const URI &other) const noexcept  { return _localCopy == other._localCopy; }
 
     class UriFactory {
         string                  _authority;

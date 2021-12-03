@@ -37,6 +37,25 @@ TEST_CASE("basic constructor", "[URI]") {
     REQUIRE(parameterMap["k4"] == std::nullopt);
 
     REQUIRE(getUri().authority().value() == "User:notSoSecret@localhost.com:20");
+
+    REQUIRE(opencmw::URI(testURL) == test);
+
+    // ensure copy stays valid when original is destroyed
+    auto source = std::make_unique<opencmw::URI<>>(testURL);
+    auto copy   = *source;
+    source.reset();
+
+    REQUIRE(copy == test);
+    REQUIRE(copy.scheme() == test.scheme());
+    REQUIRE(copy.authority() == test.authority());
+    REQUIRE(copy.user() == test.user());
+    REQUIRE(copy.password() == test.password());
+    REQUIRE(copy.hostName() == test.hostName());
+    REQUIRE(copy.port() == test.port());
+    REQUIRE(copy.path() == test.path());
+    REQUIRE(copy.fragment() == test.fragment());
+    REQUIRE(copy.queryParam() == test.queryParam());
+    REQUIRE(copy.queryParamMap() == test.queryParamMap());
 }
 
 static const std::array<std::string, 18> validURIs{
