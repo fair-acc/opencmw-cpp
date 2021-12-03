@@ -36,8 +36,10 @@ template<uri_check check = STRICT>
 class URI {
     using string      = std::string;
     using string_view = std::string_view;
+
 public:
     const string str;
+
 private:
     // need to keep a local, owning, and immutable copy of the source template
     // evaluate on demand and if available
