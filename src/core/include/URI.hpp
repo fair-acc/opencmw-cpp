@@ -32,26 +32,64 @@ enum uri_check {
 // regex test: regexr.com/69hv8
 template<uri_check check = STRICT>
 class URI {
+    struct substring {
+        explicit substring(std::size_t start_ = 0, std::size_t size_ = 0)
+            : start(start_), size(size_) {
+        }
+
+        std::size_t start;
+        std::size_t size;
+
+        bool        empty() const {
+            return size == 0;
+        }
+
+        substring substr(std::size_t start_, std::size_t size_) const {
+            return substring(start + start_, size_);
+        }
+
+        template<typename T>
+        std::string_view viewOn(const T &str) const {
+            if (size == 0)
+                return {};
+            return std::string_view(str).substr(start, size);
+        }
+
+        std::optional<std::string> asOptional(const std::string &str) const {
+            if (size == 0)
+                return {};
+            return str.substr(start, size);
+        }
+
+        template<typename T>
+        std::optional<T> asOptionalInt(const std::string &str) const {
+            if (size == 0)
+                return {};
+            return stoi(str.substr(start, size));
+        }
+
+        bool operator==(const substring &) const = default;
+        bool operator!=(const substring &) const = default;
+    };
+
     using string      = std::string;
     using string_view = std::string_view;
     // need to keep a local, owning, and immutable copy of the source template
     const string _localCopy;
     // evaluate on demand and if available
-    string_view         _scheme;
-    string_view         _authority;
-    mutable bool        _parsedAuthority = false;
-    mutable string_view _userName;
-    mutable string_view _pwd;
-    mutable string_view _hostName;
-    mutable string_view _port;
-    string_view         _path;
-    string_view         _query;
-    string_view         _fragment;
+    substring         _scheme;
+    substring         _authority;
+    mutable bool      _parsedAuthority = false;
+    mutable substring _userName;
+    mutable substring _pwd;
+    mutable substring _hostName;
+    mutable substring _port;
+    substring         _path;
+    substring         _query;
+    substring         _fragment;
 
     // computed on-demand
     std::unordered_map<string, std::optional<string>> _queryMap;
-    // simple optional un-wrapper
-    inline const std::optional<string> returnOpt(const string_view &src) const noexcept { return src.empty() ? std::nullopt : std::optional<string>(src); };
 
 protected:
     // returns tif only RFC 3986 section 2.3 Unreserved Characters
@@ -61,10 +99,13 @@ protected:
             _parsedAuthority = true;
             return;
         }
-        size_t userSplit = std::min(_authority.find_first_of('@'), _authority.length());
-        if (userSplit < _authority.length()) {
+
+        const auto authorityView = _authority.viewOn(_localCopy);
+
+        size_t     userSplit     = std::min(authorityView.find_first_of('@'), authorityView.length());
+        if (userSplit < authorityView.length()) {
             // user isUnreserved defined via '[user]:[pwd]@'
-            const size_t pwdSplit = std::min(_authority.find_first_of(':'), userSplit);
+            const size_t pwdSplit = std::min(authorityView.find_first_of(':'), userSplit);
             _userName             = _authority.substr(0, pwdSplit);
             if (pwdSplit < userSplit) {
                 _pwd = _authority.substr(pwdSplit + 1, userSplit - pwdSplit - 1);
@@ -73,19 +114,20 @@ protected:
         } else {
             userSplit = 0;
         }
-        size_t portSplit = std::min(_authority.find_first_of(':', userSplit), _authority.length());
-        if (portSplit != string_view::npos && portSplit < _authority.length()) {
+        size_t portSplit = std::min(authorityView.find_first_of(':', userSplit), authorityView.length());
+        if (portSplit != string_view::npos && portSplit < authorityView.length()) {
             // port defined
             _hostName = _authority.substr(userSplit, portSplit - userSplit);
             portSplit++;
-            _port = _authority.substr(portSplit, _authority.length() - portSplit);
+            _port = _authority.substr(portSplit, authorityView.length() - portSplit);
         } else {
-            _hostName = _authority.substr(userSplit, _authority.length() - userSplit);
+            _hostName = _authority.substr(userSplit, authorityView.length() - userSplit);
         }
     }
 
 public:
     URI() = delete;
+
     explicit URI(std::string src)
         : _localCopy(std::move(src)) {
         string_view source(_localCopy.c_str(), _localCopy.size());
@@ -100,10 +142,11 @@ public:
         // check for scheme
         size_t scheme_size = source.find_first_of(':', 0);
         if (scheme_size != string::npos) {
-            _scheme = source.substr(0, scheme_size);
+            _scheme               = substring(0, scheme_size);
+            const auto schemeView = _scheme.viewOn(source);
             if constexpr (check == STRICT) {
-                if (!std::all_of(_scheme.begin(), _scheme.end(), [](char c) { return std::isalnum(c); })) {
-                    throw URISyntaxException(fmt::format("URI scheme contains illegal characters: {}", _scheme));
+                if (!std::all_of(schemeView.begin(), schemeView.end(), [](char c) { return std::isalnum(c); })) {
+                    throw URISyntaxException(fmt::format("URI scheme contains illegal characters: {}", schemeView));
                 }
             }
             scheme_size++;
@@ -121,11 +164,12 @@ public:
                 || (scheme_size == 0 && source[scheme_size] != '/' && source[scheme_size] != '?' && source[scheme_size] != '#')) {
             // authority isUnreserved defined starting with '//'
             authOffset += 2;
-            authEnd    = std::min(source.find_first_of("/?#", authOffset), source.length());
-            _authority = source.substr(authOffset, authEnd - authOffset);
+            authEnd                  = std::min(source.find_first_of("/?#", authOffset), source.length());
+            _authority               = substring(authOffset, authEnd - authOffset);
+            const auto authorityView = _authority.viewOn(source);
             if constexpr (check == STRICT) {
-                if (!std::all_of(_authority.begin(), _authority.end(), [](char c) { return std::isalnum(c) || c == '@' || c == ':' || c == '.' || c == '-' || c == '_'; })) {
-                    throw URISyntaxException(fmt::format("URI authority contains illegal characters: {}", _authority));
+                if (!std::all_of(authorityView.begin(), authorityView.end(), [](char c) { return std::isalnum(c) || c == '@' || c == ':' || c == '.' || c == '-' || c == '_'; })) {
+                    throw URISyntaxException(fmt::format("URI authority contains illegal characters: {}", authorityView));
                 }
             }
             // lazy parsing of authority in parseAuthority()
@@ -135,10 +179,11 @@ public:
 
         size_t pathEnd = std::min(source.find_first_of("?#", authEnd), source.length());
         if (pathEnd <= source.length()) {
-            _path = source.substr(authEnd, pathEnd - authEnd);
+            _path               = substring(authEnd, pathEnd - authEnd);
+            const auto pathView = _path.viewOn(source);
             if constexpr (check == STRICT) {
-                if (!std::all_of(_path.begin(), _path.end(), [](char c) { return std::isalnum(c) || c == '/' || c == '.' || c == '-' || c == '_'; })) {
-                    throw URISyntaxException(fmt::format("URI path contains illegal characters: {}", _path));
+                if (!std::all_of(pathView.begin(), pathView.end(), [](char c) { return std::isalnum(c) || c == '/' || c == '.' || c == '-' || c == '_'; })) {
+                    throw URISyntaxException(fmt::format("URI path contains illegal characters: {}", pathView));
                 }
             }
         } else {
@@ -149,7 +194,7 @@ public:
         }
         size_t queryEnd = std::min(source.find_first_of('#', pathEnd), source.length());
         if (source[pathEnd] == '?' && queryEnd != string_view::npos && queryEnd <= source.length()) {
-            _query = source.substr(pathEnd + 1, queryEnd - pathEnd - 1);
+            _query = substring(pathEnd + 1, queryEnd - pathEnd - 1);
         } else {
             // no query present
             queryEnd = pathEnd;
@@ -160,7 +205,7 @@ public:
         size_t fragStart = source.find_first_of('#', queryEnd);
         if (fragStart != string_view::npos && fragStart < source.length()) {
             fragStart++;
-            _fragment = source.substr(fragStart, source.length() - fragStart);
+            _fragment = substring(fragStart, source.length() - fragStart);
         }
     }
 
@@ -209,52 +254,53 @@ public:
     }
 
     // clang-format off
-    inline const std::optional<string> scheme() const noexcept { return returnOpt(_scheme); }
-    inline const std::optional<string> authority() const noexcept { return returnOpt(_authority); }
-    inline const std::optional<string> user() const noexcept { parseAuthority(); return returnOpt(_userName); }
-    inline const std::optional<string> password() const noexcept { parseAuthority(); return returnOpt(_pwd); }
-    inline const std::optional<string> hostName() const noexcept { parseAuthority(); return returnOpt(_hostName); }
-    inline const std::optional<uint16_t> port() const noexcept { parseAuthority(); return _port.empty() ? std::nullopt : std::optional(std::stoi(string{ _port.begin(), _port.end() }));}
-    inline const std::optional<string> path() const noexcept { return returnOpt(_path); }
-    inline const std::optional<string> queryParam() const noexcept { return returnOpt(_query); }
-    inline const std::optional<string> fragment() const noexcept { return returnOpt(_fragment); }
+    inline const std::optional<string> scheme() const noexcept { return _scheme.asOptional(_localCopy); }
+    inline const std::optional<string> authority() const noexcept { return _authority.asOptional(_localCopy); }
+    inline const std::optional<string> user() const noexcept { parseAuthority(); return _userName.asOptional(_localCopy); }
+    inline const std::optional<string> password() const noexcept { parseAuthority(); return _pwd.asOptional(_localCopy); }
+    inline const std::optional<string> hostName() const noexcept { parseAuthority(); return _hostName.asOptional(_localCopy); }
+    inline const std::optional<uint16_t> port() const noexcept { parseAuthority(); return _port.asOptionalInt<uint16_t>(_localCopy); }
+    inline const std::optional<string> path() const noexcept { return _path.asOptional(_localCopy); }
+    inline const std::optional<string> queryParam() const noexcept { return _query.asOptional(_localCopy); }
+    inline const std::optional<string> fragment() const noexcept { return _fragment.asOptional(_localCopy); }
     // clang-format om
 
     // decompose map
     inline const std::unordered_map<string, std::optional<string>> &queryParamMap() {
-        if (_query.empty() || !_queryMap.empty()) { // empty query parameter or already parsed
+        const auto queryView = _query.viewOn(_localCopy);
+        if (queryView.empty() || !_queryMap.empty()) { // empty query parameter or already parsed
             return _queryMap;
         }
         if constexpr (check == STRICT) {
-            if (!std::all_of(_query.begin(), _query.end(), [](char c) { return isUnreserved(c) || c == '&' || c == ';' || c == '=' || c == '%'; })) {
+            if (!std::all_of(queryView.begin(), queryView.end(), [](char c) { return isUnreserved(c) || c == '&' || c == ';' || c == '=' || c == '%'; })) {
                 throw std::exception(); // TODO: URIException("URI query contains illegal characters: {}")
             }
         }
         size_t readPos = 0;
-        while (readPos < _query.length()) {
-            auto keyEnd = _query.find_first_of("=;&\0", readPos);
-            if (keyEnd != string_view::npos && keyEnd < _query.length()) {
-                auto key = decode(_query.substr(readPos, keyEnd - readPos));
-                if (_query[keyEnd] != '=') {
+        while (readPos < queryView.length()) {
+            auto keyEnd = queryView.find_first_of("=;&\0", readPos);
+            if (keyEnd != string_view::npos && keyEnd < queryView.length()) {
+                auto key = decode(queryView.substr(readPos, keyEnd - readPos));
+                if (queryView[keyEnd] != '=') {
                     _queryMap[key] = std::nullopt;
                     readPos        = keyEnd + 1; //+1 for separator character
                     continue;
                 }
                 readPos = keyEnd + 1; // skip equal after '='
                 // equal sign present
-                if (readPos >= _query.length()) {
+                if (readPos >= queryView.length()) {
                     // reached parameter string end
                     break;
                 }
-                const auto valueEnd = _query.find_first_of(";&\0", readPos);
-                if (valueEnd != string_view::npos && valueEnd < _query.length()) {
-                    _queryMap[key] = std::optional(decode(_query.substr(readPos, valueEnd - readPos)));
+                const auto valueEnd = queryView.find_first_of(";&\0", readPos);
+                if (valueEnd != string_view::npos && valueEnd < queryView.length()) {
+                    _queryMap[key] = std::optional(decode(queryView.substr(readPos, valueEnd - readPos)));
                     readPos        = valueEnd + 1;
                     continue;
                 }
-                _queryMap[key] = std::optional(decode(_query.substr(readPos, _query.length() - readPos)));
+                _queryMap[key] = std::optional(decode(queryView.substr(readPos, queryView.length() - readPos)));
             } else {
-                auto key       = std::string(_query.substr(readPos, _query.length() - readPos));
+                auto key       = std::string(queryView.substr(readPos, queryView.length() - readPos));
                 _queryMap[key] = std::nullopt;
                 break;
             }
@@ -284,15 +330,15 @@ public:
         UriFactory() = default;
         // clang-format off
         explicit UriFactory(const URI &uri) {
-            if (!uri._scheme.empty())    { _scheme = uri._scheme; }
-            if (!uri._authority.empty()) { _authority = uri._authority; }
-            if (!uri._userName.empty())  { _userName = uri._userName; }
-            if (!uri._pwd.empty())       { _pwd = uri._pwd; }
-            if (!uri._hostName.empty())  { _host = uri._hostName; }
-            if (!uri._port.empty())      { _port = std::stoi(std::string(uri._port)); }
-            if (!uri._path.empty())      { _path = uri._path; }
-            if (!uri._query.empty())     { _query = uri._query; }
-            if (!uri._fragment.empty())  { _fragment = uri._fragment; }
+            if (!uri._scheme.empty())    { _scheme = std::string(uri._scheme.viewOn(uri._localCopy)); }
+            if (!uri._authority.empty()) { _authority = std::string(uri._authority.viewOn(uri._localCopy)); }
+            if (!uri._userName.empty())  { _userName = std::string(uri._userName.viewOn(uri._localCopy)); }
+            if (!uri._pwd.empty())       { _pwd = std::string(uri._pwd.viewOn(uri._localCopy)); }
+            if (!uri._hostName.empty())  { _host = std::string(uri._hostName.viewOn(uri._localCopy)); }
+            if (!uri._port.empty())      { _port = std::stoi(std::string(uri._port.viewOn(uri._localCopy))); }
+            if (!uri._path.empty())      { _path = std::string(uri._path.viewOn(uri._localCopy)); }
+            if (!uri._query.empty())     { _query = std::string(uri._query.viewOn(uri._localCopy)); }
+            if (!uri._fragment.empty())  { _fragment = std::string(uri._fragment.viewOn(uri._localCopy)); }
         }
         inline UriFactory&& scheme(const std::string_view &scheme)        && noexcept { _scheme = { scheme.begin(), scheme.end() }; return std::move(*this); }
         inline UriFactory&& authority(const std::string_view &authority)  && noexcept { _authority = { authority.begin(), authority.end() }; return std::move(*this); }
