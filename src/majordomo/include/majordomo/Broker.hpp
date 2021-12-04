@@ -16,6 +16,7 @@
 #include <majordomo/Constants.hpp>
 #include <majordomo/Message.hpp>
 #include <majordomo/Settings.hpp>
+#include <majordomo/SubscriptionMatcher.hpp>
 #include <majordomo/Utils.hpp>
 #include <majordomo/ZmqPtr.hpp>
 
@@ -28,10 +29,11 @@ using BrokerMessage = BasicMdpMessage<MessageFormat::WithSourceId>;
 class Broker {
 private:
     // Shorten chrono names
-    using Clock     = std::chrono::steady_clock;
-    using Timestamp = std::chrono::time_point<Clock>;
+    using Clock       = std::chrono::steady_clock;
+    using Timestamp   = std::chrono::time_point<Clock>;
 
-    using URI       = opencmw::URI<>;
+    using EndpointURI = opencmw::URI<>;
+    using TopicURI    = opencmw::URI<RELAXED>;
 
     struct Client {
         const Socket &            socket;
@@ -89,18 +91,18 @@ public:
     const Settings settings;
 
 private:
-    Timestamp                                              _heartbeatAt = Clock::now() + settings.heartbeatInterval;
-    std::unordered_map<std::string, std::set<std::string>> _subscribedClientsByTopic; // topic -> client IDs
-    std::unordered_map<std::string, int>                   _subscribedTopics;         // topic -> subscription count
-    std::unordered_map<std::string, Client>                _clients;
-    std::unordered_map<std::string, Worker>                _workers;
-    std::unordered_map<std::string, Service>               _services;
+    Timestamp                                           _heartbeatAt = Clock::now() + settings.heartbeatInterval;
+    std::unordered_map<TopicURI, std::set<std::string>> _subscribedClientsByTopic; // topic -> client IDs
+    std::unordered_map<TopicURI, int>                   _subscribedTopics;         // topic -> subscription count
+    std::unordered_map<std::string, Client>             _clients;
+    std::unordered_map<std::string, Worker>             _workers;
+    std::unordered_map<std::string, Service>            _services;
 
-    const std::string                                      _brokerName;
-    const std::optional<URI>                               _dnsAddress;
-    const std::string                                      _rbac              = "TODO (RBAC)";
+    const std::string                                   _brokerName;
+    const std::optional<EndpointURI>                    _dnsAddress;
+    const std::string                                   _rbac              = "TODO (RBAC)";
 
-    std::atomic<bool>                                      _shutdownRequested = false;
+    std::atomic<bool>                                   _shutdownRequested = false;
 
     // Sockets collection. The Broker class will be used as the handler
     const Socket                  _routerSocket;
@@ -115,7 +117,7 @@ public:
         , _brokerName{ std::move(brokerName) }
         , _routerSocket(context, ZMQ_ROUTER)
         , _pubSocket(context, ZMQ_XPUB)
-        , _subSocket(context, ZMQ_XSUB)
+        , _subSocket(context, ZMQ_SUB)
         , _dnsSocket(context, ZMQ_DEALER) {
         auto commonSocketInit = [settings_](const Socket &socket) {
             const int heartbeatInterval = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(settings_.heartbeatInterval).count());
@@ -183,7 +185,7 @@ public:
      *
      * @return adjusted public address to use for clients/workers to connect
      */
-    std::optional<URI> bind(const URI &endpoint, BindOption option = BindOption::DetectFromURI) {
+    std::optional<EndpointURI> bind(const EndpointURI &endpoint, BindOption option = BindOption::DetectFromURI) {
         assert(!(option == BindOption::DetectFromURI && (endpoint.scheme() == SCHEME_INPROC || endpoint.scheme() == SCHEME_TCP)));
         const auto isRouterSocket = option != BindOption::Pub && (option == BindOption::Router || endpoint.scheme() == SCHEME_MDP || endpoint.scheme() == SCHEME_TCP);
 
@@ -197,126 +199,12 @@ public:
         }
 
         const auto endpointAdjusted      = endpoint.scheme() == SCHEME_INPROC ? endpoint
-                                                                              : URI::factory(endpoint).scheme(isRouterSocket ? SCHEME_MDP : SCHEME_MDS).build();
+                                                                              : EndpointURI::factory(endpoint).scheme(isRouterSocket ? SCHEME_MDP : SCHEME_MDS).build();
         const auto adjustedAddressPublic = endpointAdjusted; // TODO (java) resolveHost(endpointAdjusted, getLocalHostName());
 
         debug() << fmt::format("Majordomo broker/0.1 is active at '{}'\n", adjustedAddressPublic.str); // TODO do not hardcode version
         // TODO port sendDnsHeartbeats(true);
         return adjustedAddressPublic;
-    }
-
-    bool receivePubMessage(const Socket &socket) {
-        // was receive plus handleSubscriptionMessage
-
-        MessageFrame frame;
-        const auto   result = frame.receive(socket, ZMQ_DONTWAIT);
-
-        if (!result) {
-            return false;
-        }
-
-        int64_t more;
-        size_t  moreSize = sizeof(more);
-
-        // We should not have more than one frame here
-        if (!zmq_invoke(zmq_getsockopt, socket, ZMQ_RCVMORE, &more, &moreSize)) {
-            return false;
-        }
-
-        if (more) {
-            assert(!"There should be no more frames here");
-            return false;
-            // TODO: Should we read all frames and then ignore the message?
-        }
-
-        std::string_view data = frame.data();
-
-        if (data.size() < 2 || !(data[0] == '\x0' || data[0] == '\x1')) {
-            debug() << "Unexpected subscribe/unsubscribe message: " << data;
-            return false;
-        }
-
-        const auto topic = std::string(data.substr(1));
-
-        if (data[0] == '\x1') {
-            auto it = _subscribedTopics.try_emplace(topic, 0);
-            it.first->second++;
-            if (it.first->second == 1) {
-                frame.send(_subSocket, ZMQ_DONTWAIT).assertSuccess();
-            }
-        } else {
-            auto it = _subscribedTopics.find(topic);
-            if (it != _subscribedTopics.end()) {
-                it->second--;
-                if (it->second == 0) {
-                    _subscribedTopics.erase(topic);
-                    frame.send(_subSocket, ZMQ_DONTWAIT).assertSuccess();
-                }
-            }
-        }
-
-        return true;
-    }
-
-    bool receiveMessage(const Socket &socket) {
-        // was receive plus handleReceivedMessage
-        auto maybeMessage = BrokerMessage::receive(socket);
-
-        if (!maybeMessage) {
-            return false;
-        }
-
-        auto &message = maybeMessage.value();
-
-        if (!message.isValid()) {
-            // TODO log properly, but not too verbose
-            return false;
-        }
-
-        if (message.isClientMessage()) {
-            switch (message.command()) {
-            // TODO handle READY (client)?
-            case Command::Subscribe: {
-                auto it = _subscribedClientsByTopic.try_emplace(std::string(message.topic()), std::set<std::string>{});
-                // TODO check for duplicate subscriptions?
-                it.first->second.emplace(message.sourceId());
-                if (it.first->second.size() == 1) {
-                    // TODO correct?
-                    MessageFrame frame(std::string("\x1") + std::string(message.topic()), MessageFrame::dynamic_bytes_tag{});
-                    frame.send(socket, ZMQ_DONTWAIT).assertSuccess();
-                }
-                return true;
-            }
-            case Command::Unsubscribe: {
-                auto it = _subscribedClientsByTopic.find(std::string(message.topic()));
-                if (it != _subscribedClientsByTopic.end()) {
-                    it->second.erase(std::string(message.sourceId()));
-                    if (it->second.empty()) {
-                        _subscribedClientsByTopic.erase(it);
-                        // TODO correct?
-                        MessageFrame frame(std::string("\x0") + std::string(message.topic()), MessageFrame::dynamic_bytes_tag{});
-                        frame.send(socket, ZMQ_DONTWAIT).assertSuccess();
-                    }
-                }
-                return true;
-            }
-            case Command::Heartbeat:
-                // TODO sendDnsHeartbeats(true)
-                break;
-            default:
-                break;
-            }
-
-            const auto senderId = std::string(message.sourceId());
-            auto       client   = _clients.try_emplace(senderId, socket, senderId, updatedClientExpiry());
-            client.first->second.requests.emplace_back(std::move(message));
-
-            return true;
-        }
-
-        assert(message.isWorkerMessage());
-        processWorker(socket, std::move(message));
-        return true;
     }
 
     void run() {
@@ -367,6 +255,135 @@ public:
     }
 
 private:
+    bool receivePubMessage(const Socket &socket) {
+        MessageFrame frame;
+        const auto   result = frame.receive(socket, ZMQ_DONTWAIT);
+
+        if (!result) {
+            return false;
+        }
+
+        std::string_view data = frame.data();
+
+        if (data.size() < 2 || !(data[0] == '\x0' || data[0] == '\x1')) {
+            debug() << "Unexpected subscribe/unsubscribe message: " << data;
+            return false;
+        }
+
+        const auto topicString = data.substr(1);
+        const auto topic       = parseTopicURI(topicString);
+        if (!topic) {
+            debug() << "Invalid topic: " << topicString;
+            return false;
+        }
+
+        if (data[0] == '\x1') {
+            auto it = _subscribedTopics.try_emplace(*topic, 0);
+            it.first->second++;
+            if (it.first->second == 1) {
+                zmq_invoke(zmq_setsockopt, _subSocket, ZMQ_SUBSCRIBE, topicString.data(), topicString.size()).assertSuccess();
+            }
+        } else {
+            auto it = _subscribedTopics.find(*topic);
+            if (it != _subscribedTopics.end()) {
+                it->second--;
+                if (it->second == 0) {
+                    zmq_invoke(zmq_setsockopt, _subSocket, ZMQ_UNSUBSCRIBE, topicString.data(), topicString.size()).assertSuccess();
+                }
+            }
+        }
+
+        return true;
+    }
+
+    bool receiveMessage(const Socket &socket) {
+        auto maybeMessage = BrokerMessage::receive(socket);
+
+        if (!maybeMessage) {
+            return false;
+        }
+
+        auto &message = maybeMessage.value();
+
+        if (!message.isValid()) {
+            // TODO log properly, but not too verbose
+            return false;
+        }
+
+        if (message.isClientMessage()) {
+            switch (message.command()) {
+            // TODO handle READY (client)?
+            case Command::Subscribe: {
+                if (message.topic().empty()) {
+                    debug() << "received SUBSCRIBE with empty topic";
+                    // TODO disconnect client?
+                    return false;
+                }
+                const auto topicURI = parseTopicURI(message.topic());
+                assert(topicURI); // TODO currently relaxed URI parsing always succeeds, handle error if this changes
+
+                auto it = _subscribedClientsByTopic.try_emplace(*topicURI, std::set<std::string>{});
+                // TODO check for duplicate subscriptions?
+                it.first->second.emplace(message.sourceId());
+                if (it.first->second.size() == 1) {
+                    // TODO correct?
+                    MessageFrame frame(std::string("\x1") + std::string(message.topic()), MessageFrame::dynamic_bytes_tag{});
+                    frame.send(socket, ZMQ_DONTWAIT).assertSuccess();
+                }
+                return true;
+            }
+            case Command::Unsubscribe: {
+                if (message.topic().empty()) {
+                    debug() << "received UNSUBSCRIBE with empty topic";
+                    // TODO disconnect client?
+                    return false;
+                }
+                const auto topicURI = parseTopicURI(message.topic());
+                assert(topicURI); // TODO currently relaxed URI parsing always succeeds, handle error if this changes
+
+                auto it = _subscribedClientsByTopic.find(*topicURI);
+                if (it != _subscribedClientsByTopic.end()) {
+                    it->second.erase(std::string(message.sourceId()));
+                    if (it->second.empty()) {
+                        _subscribedClientsByTopic.erase(it);
+                        // TODO correct?
+                        MessageFrame frame(std::string("\x0") + std::string(message.topic()), MessageFrame::dynamic_bytes_tag{});
+                        frame.send(socket, ZMQ_DONTWAIT).assertSuccess();
+                    }
+                }
+                return true;
+            }
+            case Command::Heartbeat:
+                // TODO sendDnsHeartbeats(true)
+                break;
+            default:
+                break;
+            }
+
+            const auto senderId = std::string(message.sourceId());
+            auto       client   = _clients.try_emplace(senderId, socket, senderId, updatedClientExpiry());
+            client.first->second.requests.emplace_back(std::move(message));
+
+            return true;
+        }
+
+        assert(message.isWorkerMessage());
+        processWorker(socket, std::move(message));
+        return true;
+    }
+
+    static std::optional<TopicURI> parseTopicURI(std::string_view s) {
+        if (s.empty())
+            return {};
+
+        try {
+            return TopicURI(std::string(s));
+        } catch (const URISyntaxException &e) {
+            debug() << fmt::format("Could not parse topic URI: {}", s);
+            return {};
+        }
+    }
+
     Service &requireService(std::string serviceName, std::string serviceDescription) {
         // TODO handle serviceDescription differing between workers? or is "first one wins" ok?
         auto it = _services.try_emplace(serviceName, std::move(serviceName), std::move(serviceDescription));
@@ -414,38 +431,32 @@ private:
         }
     }
 
-    void sendWithSourceId(BrokerMessage &&message, std::string_view sourceId) {
-        message.setSourceId(sourceId, MessageFrame::dynamic_bytes_tag{});
-        message.send(_routerSocket).assertSuccess();
-    }
-
-    static bool matchesSubscriptionTopic(std::string_view topic, std::string_view subscriptionTopic) {
-        // TODO check what this actually is supposed to do
-        return subscriptionTopic.starts_with(topic);
-    }
-
     void dispatchMessageToMatchingSubscribers(BrokerMessage &&message) {
-        const auto it                     = _subscribedClientsByTopic.find(std::string(message.topic()));
+        const auto topicURI = parseTopicURI(message.topic());
+        if (!topicURI) {
+            debug() << fmt::format("NOTIFY message has invalid topic: {}", message.topic());
+            return;
+        }
+
+        const auto it                     = _subscribedClientsByTopic.find(*topicURI);
         const auto hasRouterSubscriptions = it != _subscribedClientsByTopic.end();
 
-        message.setSourceId(message.topic(), MessageFrame::dynamic_bytes_tag{});
-        std::vector<std::string> pubsubSubscriptions;
+        // TODO avoid clone() for last message sent out
         for (const auto &topicIt : _subscribedTopics) {
-            if (matchesSubscriptionTopic(message.topic(), topicIt.first)) {
-                pubsubSubscriptions.push_back(topicIt.first);
+            static const SubscriptionMatcher matcher;
+            if (matcher(*topicURI, topicIt.first)) {
+                // sends notification with the topic that is expected by the client for its subscription
+                auto copy = message.clone();
+                copy.setSourceId(topicIt.first.str, MessageFrame::dynamic_bytes_tag{});
+                copy.send(_pubSocket).assertSuccess();
             }
         }
 
-        for (std::size_t i = 0; i < pubsubSubscriptions.size(); ++i) {
-            auto copy = message.clone();
-            copy.send(_pubSocket).assertSuccess();
-        }
-
         if (hasRouterSubscriptions) {
-            std::size_t sent = 0;
             for (const auto &clientId : it->second) {
-                sendWithSourceId(message.clone(), clientId);
-                ++sent;
+                auto copy = message.clone();
+                copy.setSourceId(clientId, MessageFrame::dynamic_bytes_tag{});
+                copy.send(_routerSocket).assertSuccess();
             }
         }
     }
@@ -591,7 +602,6 @@ private:
         case Command::Notify: {
             message.setProtocol(Protocol::Client);
             message.setCommand(Command::Final);
-            message.setSourceId(message.serviceName(), MessageFrame::dynamic_bytes_tag{});
             message.setServiceName(worker.serviceName, MessageFrame::dynamic_bytes_tag{});
 
             dispatchMessageToMatchingSubscribers(std::move(message));
