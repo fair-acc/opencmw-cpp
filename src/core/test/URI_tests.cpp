@@ -75,7 +75,7 @@ TEST_CASE("basic constructor", "[URI]") {
 }
 
 TEST_CASE("query parsing", "[URI][query_parsing]") {
-    using TestCase              = std::pair<std::string, std::unordered_map<std::string, std::optional<std::string>>>;
+    using TestCase                    = std::pair<std::string, std::unordered_map<std::string, std::optional<std::string>>>;
 
     static const std::array testCases = {
         TestCase{ "scheme:/host/property", {} },
