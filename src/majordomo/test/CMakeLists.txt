@@ -33,6 +33,7 @@ set (
     majordomo_tests_SRCS
     catch_main.cpp
     majordomo_tests.cpp
+    subscriptionmatcher_tests.cpp
     )
 add_executable (
     majordomo_tests
