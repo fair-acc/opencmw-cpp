@@ -5,108 +5,219 @@
 #include <iostream>
 #include <string_view>
 
-opencmw::URI<> getUri() {
-    return opencmw::URI<>(std::string{ "mdp://User:notSoSecret@localhost.com:20/path/file.ext?queryString#cFrag" });
-}
-
-TEST_CASE("basic constructor", "[URI]") {
-    opencmw::debug::resetStats();
-    opencmw::debug::Timer timer("URI<>() - basic constructor", 40);
-
-    REQUIRE_NOTHROW(opencmw::URI<>(""));
-    opencmw::URI<> emptyURI("");
-    REQUIRE(emptyURI.empty());
-    REQUIRE(!emptyURI.scheme());
-    REQUIRE(!emptyURI.authority());
-    REQUIRE(!emptyURI.user());
-    REQUIRE(!emptyURI.password());
-    REQUIRE(!emptyURI.hostName());
-    REQUIRE(!emptyURI.port());
-    REQUIRE(!emptyURI.path());
-    REQUIRE(!emptyURI.queryParam());
-    REQUIRE(!emptyURI.fragment());
-    REQUIRE(emptyURI.queryParamMap().empty());
-
-    constexpr auto testURL = "http://User:notSoSecretPwd@localhost.com:20/path1/path2/path3/file.ext?k0;k1=v1;k2=v2&k3&k4=#cFrag";
-    REQUIRE_NOTHROW(opencmw::URI<>(testURL));
-    // basic tests
-    opencmw::URI test(testURL);
-
-    REQUIRE(!test.empty());
-    REQUIRE(test.scheme() == "http");
-    REQUIRE(test.authority() == "User:notSoSecretPwd@localhost.com:20");
-    REQUIRE(test.user() == "User");
-    REQUIRE(test.password() == "notSoSecretPwd");
-    REQUIRE(test.hostName() == "localhost.com");
-    REQUIRE(test.port() == 20);
-    REQUIRE(test.path() == "/path1/path2/path3/file.ext");
-    REQUIRE(test.queryParam() == "k0;k1=v1;k2=v2&k3&k4=");
-    REQUIRE(test.fragment() == "cFrag");
-    // test parameter map interface
-    REQUIRE_NOTHROW(test.queryParamMap());
-    auto parameterMap = test.queryParamMap();
-    REQUIRE(parameterMap["k0"] == std::nullopt);
-    REQUIRE(parameterMap["k1"] == "v1");
-    REQUIRE(parameterMap["k2"] == "v2");
-    REQUIRE(parameterMap["k3"] == std::nullopt);
-    REQUIRE(parameterMap["k4"] == std::nullopt);
-
-    REQUIRE(getUri().authority().value() == "User:notSoSecret@localhost.com:20");
-
-    REQUIRE(opencmw::URI(testURL) == test);
-
-    // ensure copy stays valid when original is destroyed
-    auto source = std::make_unique<opencmw::URI<>>(testURL);
-    auto copy   = *source;
-    source.reset();
-
-    REQUIRE(copy == test);
-    REQUIRE(copy.scheme() == test.scheme());
-    REQUIRE(copy.authority() == test.authority());
-    REQUIRE(copy.user() == test.user());
-    REQUIRE(copy.password() == test.password());
-    REQUIRE(copy.hostName() == test.hostName());
-    REQUIRE(copy.port() == test.port());
-    REQUIRE(copy.path() == test.path());
-    REQUIRE(copy.fragment() == test.fragment());
-    REQUIRE(copy.queryParam() == test.queryParam());
-    REQUIRE(copy.queryParamMap() == test.queryParamMap());
-}
-
-static const std::array validURIs{
-    "",
-    "http://User:notSoSecretPwd@localhost.com:20/path1/path2/path3/file.ext?k0&k1=v1;k2=v2&k3#cFrag",
-    "mdp://user@www.fair-acc.io/service/path/resource.format?queryString#frag",
-    "mdp://www.fair-acc.io/service/path/resource.format",
-    "http://www.fair-acc.io:8080/service/path/resource.format?queryString#frag",
-    "https://www.fair-acc.io:8080/service/path/resource.format?queryString#frag",
-    "mdp://www.fair-acc.io:8080/service/path/resource.format?queryString#frag",
-    "rda3://www.fair-acc.io/service/path/resource.format?queryString#fragRda3",
-    "mdp://www.fair-acc.io/service/path/resource.format?queryString#frag",
-    "//www.fair-acc.io/service/path/resource.format?queryString#frag",
-    "mdp://user@www.fair-acc.io/service/path/resource.format?queryString",
-    "mdp://user@www.fair-acc.io/service/path/#onlyFrag",
-    "mdp://user@www.fair-acc.io#frag",
-    "mdp://www.fair-acc.io?query",
-    "mdp://www.fair-acc.io?query#frag",
-    "mdp://user:pwd@www.fair-acc.io/service/path/resource.format?format=mp4&height=360;a=2#20",
-    "mdp://www.fair-acc.io",
-    "?queryOnly",
-    "#fagmentOnly",
+struct TestCase {
+    std::string                                                 uri;
+    std::optional<std::string>                                  scheme        = {};
+    std::optional<std::string>                                  authority     = {};
+    std::optional<std::string>                                  user          = {};
+    std::optional<std::string>                                  password      = {};
+    std::optional<std::string>                                  hostname      = {};
+    std::optional<uint16_t>                                     port          = {};
+    std::optional<std::string>                                  path          = {};
+    std::optional<std::string>                                  queryParam    = {};
+    std::unordered_map<std::string, std::optional<std::string>> queryParamMap = {};
+    std::optional<std::string>                                  fragment      = {};
 };
 
-TEST_CASE("builder-parser identity", "[URI]") {
+static const std::array validURIs{
+    TestCase{ .uri = {} },
+    TestCase{ .uri = "" },
+    TestCase{
+            .uri           = "http://User:notSoSecretPwd@localhost.com:20/path1/path2/path3/file.ext?k0&k1=v1;k2=v2&k3#cFrag",
+            .scheme        = "http",
+            .authority     = "User:notSoSecretPwd@localhost.com:20",
+            .user          = "User",
+            .password      = "notSoSecretPwd",
+            .hostname      = "localhost.com",
+            .port          = 20,
+            .path          = "/path1/path2/path3/file.ext",
+            .queryParam    = "k0&k1=v1;k2=v2&k3",
+            .queryParamMap = { { "k0", std::nullopt }, { "k1", "v1" }, { "k2", "v2" }, { "k3", std::nullopt } },
+            .fragment      = "cFrag" },
+    TestCase{ .uri         = "mdp://user@www.fair-acc.io/service/path/resource.format?queryString#frag",
+            .scheme        = "mdp",
+            .authority     = "user@www.fair-acc.io",
+            .user          = "user",
+            .hostname      = "www.fair-acc.io",
+            .path          = "/service/path/resource.format",
+            .queryParam    = "queryString",
+            .queryParamMap = { { "queryString", std::nullopt } },
+            .fragment      = "frag" },
+    TestCase{ .uri         = "rda3://user@www.fair-acc.io/service/path/resource.format?queryString#frag",
+            .scheme        = "rda3",
+            .authority     = "user@www.fair-acc.io",
+            .user          = "user",
+            .hostname      = "www.fair-acc.io",
+            .path          = "/service/path/resource.format",
+            .queryParam    = "queryString",
+            .queryParamMap = { { "queryString", std::nullopt } },
+            .fragment      = "frag" },
+    TestCase{
+            .uri       = "mdp://www.fair-acc.io/service/path/resource.format",
+            .scheme    = "mdp",
+            .authority = "www.fair-acc.io",
+            .hostname  = "www.fair-acc.io",
+            .path      = "/service/path/resource.format" },
+    TestCase{
+            .uri           = "http://www.fair-acc.io:8080/service/path/resource.format?queryString#frag",
+            .scheme        = "http",
+            .authority     = "www.fair-acc.io:8080",
+            .hostname      = "www.fair-acc.io",
+            .port          = 8080,
+            .path          = "/service/path/resource.format",
+            .queryParam    = "queryString",
+            .queryParamMap = { { "queryString", std::nullopt } },
+            .fragment      = "frag" },
+    TestCase{
+            .uri           = "//www.fair-acc.io/service/path/resource.format?queryString#frag",
+            .authority     = "www.fair-acc.io",
+            .hostname      = "www.fair-acc.io",
+            .path          = "/service/path/resource.format",
+            .queryParam    = "queryString",
+            .queryParamMap = { { "queryString", std::nullopt } },
+            .fragment      = "frag" },
+    TestCase{
+            .uri           = "mdp://user@www.fair-acc.io/service/path/resource.format?queryString",
+            .scheme        = "mdp",
+            .authority     = "user@www.fair-acc.io",
+            .user          = "user",
+            .hostname      = "www.fair-acc.io",
+            .path          = "/service/path/resource.format",
+            .queryParam    = "queryString",
+            .queryParamMap = { { "queryString", std::nullopt } },
+    },
+    TestCase{
+            .uri       = "mdp://user@www.fair-acc.io/service/path/#onlyFrag",
+            .scheme    = "mdp",
+            .authority = "user@www.fair-acc.io",
+            .user      = "user",
+            .hostname  = "www.fair-acc.io",
+            .path      = "/service/path/",
+            .fragment  = "onlyFrag" },
+    TestCase{
+            .uri       = "mdp://user@www.fair-acc.io#frag",
+            .scheme    = "mdp",
+            .authority = "user@www.fair-acc.io",
+            .user      = "user",
+            .hostname  = "www.fair-acc.io",
+            .fragment  = "frag" },
+    TestCase{
+            .uri           = "mdp://www.fair-acc.io?query",
+            .scheme        = "mdp",
+            .authority     = "www.fair-acc.io",
+            .hostname      = "www.fair-acc.io",
+            .queryParam    = "query",
+            .queryParamMap = { { "query", std::nullopt } },
+    },
+    TestCase{
+            .uri           = "mdp://www.fair-acc.io?query#frag",
+            .scheme        = "mdp",
+            .authority     = "www.fair-acc.io",
+            .hostname      = "www.fair-acc.io",
+            .queryParam    = "query",
+            .queryParamMap = { { "query", std::nullopt } },
+            .fragment      = "frag" },
+    TestCase{
+            .uri           = "mdp://user:pwd@www.fair-acc.io/service/path/resource.format?format=mp4&height=360;a=2#20",
+            .scheme        = "mdp",
+            .authority     = "user:pwd@www.fair-acc.io",
+            .user          = "user",
+            .password      = "pwd",
+            .hostname      = "www.fair-acc.io",
+            .path          = "/service/path/resource.format",
+            .queryParam    = "format=mp4&height=360;a=2",
+            .queryParamMap = { { "format", "mp4" }, { "height", "360" }, { "a", "2" } },
+            .fragment      = "20" },
+    TestCase{
+            .uri       = "mdp://www.fair-acc.io",
+            .scheme    = "mdp",
+            .authority = "www.fair-acc.io",
+            .hostname  = "www.fair-acc.io",
+    },
+    TestCase{
+            .uri           = "?queryOnly",
+            .queryParam    = "queryOnly",
+            .queryParamMap = { { "queryOnly", std::nullopt } },
+    },
+    TestCase{
+            .uri           = "?k0&k1",
+            .queryParam    = "k0&k1",
+            .queryParamMap = { { "k0", std::nullopt }, { "k1", std::nullopt } },
+    },
+    TestCase{
+            .uri           = "?k0&k1=v1;k2=v2&k3=",
+            .queryParam    = "k0&k1=v1;k2=v2&k3=",
+            .queryParamMap = { { "k0", std::nullopt }, { "k1", "v1" }, { "k2", "v2" }, { "k3", std::nullopt } },
+    },
+    TestCase{
+            .uri      = "#fragmentOnly",
+            .fragment = "fragmentOnly" }
+};
+
+TEST_CASE("parsing and builder-parser identity", "[URI]") {
     opencmw::debug::resetStats();
-    opencmw::debug::Timer timer("URI<>() - builder-parser identity", 40);
+    opencmw::debug::Timer timer("URI<>() - parsing and builder-parser identity", 40);
 
-    for (auto uri : validURIs) {
-        REQUIRE_NOTHROW(opencmw::URI<>(uri));
+    for (const auto &testCase : validURIs) {
+        REQUIRE_NOTHROW(opencmw::URI<>(testCase.uri));
+        const auto uri = opencmw::URI<>(testCase.uri);
 
-        // check identity
-        const auto src = opencmw::URI<>(uri);
-        const auto dst = opencmw::URI<>::factory(src).toString();
-        REQUIRE(src == opencmw::URI<>(dst));
+        REQUIRE(uri.empty() == testCase.uri.empty());
+        REQUIRE(uri.scheme() == testCase.scheme);
+        REQUIRE(uri.authority() == testCase.authority);
+        REQUIRE(uri.user() == testCase.user);
+        REQUIRE(uri.password() == testCase.password);
+        REQUIRE(uri.hostName() == testCase.hostname);
+        REQUIRE(uri.port() == testCase.port);
+        REQUIRE(uri.path() == testCase.path);
+        REQUIRE(uri.queryParam() == testCase.queryParam);
+        REQUIRE(uri.queryParamMap() == testCase.queryParamMap);
+        REQUIRE(uri.fragment() == testCase.fragment);
+
+        // ensure operators works correctly comparing a fully parsed and a freshly created URI
+        const auto uriFresh = opencmw::URI<>(testCase.uri);
+        REQUIRE(uri == uriFresh);
+        REQUIRE_FALSE(uri != uriFresh);
+        REQUIRE((uri <=> uriFresh) == std::strong_ordering::equivalent);
+        REQUIRE_FALSE(uri < uriFresh);
+        REQUIRE_FALSE(uri > uriFresh);
+
+        // check builder-parser identity
+        const auto dst = opencmw::URI<>::factory(uri).toString();
+        REQUIRE(uri == opencmw::URI<>(dst));
+
+        // ensure copy stays valid when original is destroyed
+        auto source = std::make_unique<opencmw::URI<>>(testCase.uri);
+        auto copy   = *source;
+        source.reset();
+
+        REQUIRE(copy == uri);
+        REQUIRE((copy <=> uri) == std::strong_ordering::equivalent);
+        REQUIRE(copy.scheme() == uri.scheme());
+        REQUIRE(copy.authority() == uri.authority());
+        REQUIRE(copy.user() == uri.user());
+        REQUIRE(copy.password() == uri.password());
+        REQUIRE(copy.hostName() == uri.hostName());
+        REQUIRE(copy.port() == uri.port());
+        REQUIRE(copy.path() == uri.path());
+        REQUIRE(copy.fragment() == uri.fragment());
+        REQUIRE(copy.queryParam() == uri.queryParam());
+        REQUIRE(copy.queryParamMap() == uri.queryParamMap());
     }
+
+    // invalid URIs that throw on construction
+    REQUIRE_THROWS_AS(opencmw::URI<>(" "), opencmw::URISyntaxException);
+    REQUIRE_THROWS_AS(opencmw::URI<>("invalid}scheme://host"), opencmw::URISyntaxException);
+    REQUIRE_THROWS_AS(opencmw::URI<>("http://invalid{host"), opencmw::URISyntaxException);
+    REQUIRE_THROWS_AS(opencmw::URI<>("http://invalid/path%zz"), opencmw::URISyntaxException);
+
+    // invalid query only throws when parsed
+    opencmw::URI<> invalidQuery("/path?invalidQuery=*");
+    REQUIRE(invalidQuery.queryParam() == "invalidQuery=*");
+    REQUIRE_THROWS_AS(invalidQuery.queryParamMap(), std::exception);
+
+    opencmw::URI<> invalidQuery2("/path?invalidQuery=%zz");
+    REQUIRE_THROWS_AS(invalidQuery2.queryParamMap(), opencmw::URISyntaxException);
 }
 
 TEST_CASE("factory-builder API", "[URI]") {
@@ -130,8 +241,8 @@ TEST_CASE("factory-builder API", "[URI]") {
     REQUIRE(URI<>::factory().scheme("mdp").authority("authority").build().authority() == "authority");
 
     // parameter handling
-    REQUIRE(URI<>::factory(opencmw::URI<>(validURIs[13])).queryParam("").addQueryParameter("keyOnly").addQueryParameter("key", "value").toString() == "mdp://www.fair-acc.io?key=value&keyOnly");
-    REQUIRE(URI<>::factory(opencmw::URI<>(validURIs[13])).addQueryParameter("keyOnly").addQueryParameter("key", "value").toString() == "mdp://www.fair-acc.io?query&key=value&keyOnly");
+    REQUIRE(URI<>::factory(opencmw::URI<>(validURIs[11].uri)).queryParam("").addQueryParameter("keyOnly").addQueryParameter("key", "value").toString() == "mdp://www.fair-acc.io?key=value&keyOnly");
+    REQUIRE(URI<>::factory(opencmw::URI<>(validURIs[11].uri)).addQueryParameter("keyOnly").addQueryParameter("key", "value").toString() == "mdp://www.fair-acc.io?query&key=value&keyOnly");
 }
 
 TEST_CASE("helper methods", "[URI]") {
