@@ -45,6 +45,7 @@ TEST_CASE("basic constructor", "[URI]") {
     // test parameter map interface
     REQUIRE_NOTHROW(test.queryParamMap());
     auto parameterMap = test.queryParamMap();
+    REQUIRE(parameterMap.size() == 5);
     REQUIRE(parameterMap["k0"] == std::nullopt);
     REQUIRE(parameterMap["k1"] == "v1");
     REQUIRE(parameterMap["k2"] == "v2");
@@ -71,6 +72,22 @@ TEST_CASE("basic constructor", "[URI]") {
     REQUIRE(copy.fragment() == test.fragment());
     REQUIRE(copy.queryParam() == test.queryParam());
     REQUIRE(copy.queryParamMap() == test.queryParamMap());
+}
+
+TEST_CASE("query parsing", "[URI][query_parsing]") {
+    using TestCase              = std::pair<std::string, std::unordered_map<std::string, std::optional<std::string>>>;
+
+    static const std::array testCases = {
+        TestCase{ "scheme:/host/property", {} },
+        TestCase{ "scheme:/host/property?testKey1=42", { { "testKey1", "42" } } },
+        TestCase{ "scheme:/host/property?testKey1=42&testKey2=24", { { "testKey1", "42" }, { "testKey2", "24" } } },
+        TestCase{ "scheme:/host/property?k0;k1=v1;k2=v2&k3&k4=", { { "k0", std::nullopt }, { "k1", "v1" }, { "k2", "v2" }, { "k3", std::nullopt }, { "k4", std::nullopt } } }
+    };
+
+    for (const auto &testCase : testCases) {
+        REQUIRE_NOTHROW(opencmw::URI<>(testCase.first));
+        REQUIRE(opencmw::URI<>(testCase.first).queryParamMap() == testCase.second);
+    }
 }
 
 static const std::array validURIs{
