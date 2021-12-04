@@ -55,7 +55,7 @@ private:
     string_view         _fragment;
 
     // computed on-demand
-    std::unordered_map<string, std::optional<string>> _queryMap;
+    mutable std::unordered_map<string, std::optional<string>> _queryMap;
     // simple optional un-wrapper
     inline const std::optional<string> returnOpt(const string_view &src) const noexcept {
         if (!src.empty()) {
@@ -254,7 +254,7 @@ public:
     // clang-format om
 
     // decompose map
-    inline const std::unordered_map<string, std::optional<string>> &queryParamMap() {
+    inline const std::unordered_map<string, std::optional<string>> &queryParamMap() const {
         if (_query.empty() || !_queryMap.empty()) { // empty query parameter or already parsed
             return _queryMap;
         }
@@ -277,6 +277,7 @@ public:
                 // equal sign present
                 if (readPos >= _query.length()) {
                     // reached parameter string end
+                    _queryMap[key] = std::nullopt;
                     break;
                 }
                 const auto valueEnd = _query.find_first_of(";&\0", readPos);
@@ -285,7 +286,9 @@ public:
                     readPos        = valueEnd + 1;
                     continue;
                 }
-                _queryMap[key] = std::optional(decode(_query.substr(readPos, _query.length() - readPos)));
+                const auto value = decode(_query.substr(readPos, _query.length() - readPos));
+                _queryMap[key] = value.empty() ? std::nullopt : std::optional(value);
+                break;
             } else {
                 auto key       = std::string(_query.substr(readPos, _query.length() - readPos));
                 _queryMap[key] = std::nullopt;
