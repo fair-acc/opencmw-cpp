@@ -374,6 +374,11 @@ public:
 };
 } // namespace opencmw
 
+template<opencmw::uri_check check>
+struct std::hash<opencmw::URI<check>> {
+    std::size_t operator()(const opencmw::URI<check> &uri) const noexcept { return std::hash<std::string>{}(uri.str); }
+};
+
 // fmt::format and std::ostream helper output
 
 // fmt::format and std::ostream helper output for std::optional
