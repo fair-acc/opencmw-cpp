@@ -49,8 +49,12 @@ TEST_CASE("JsonDeserialisation", "[IoClassSerialiser]") {
         Data foo;
         auto result = opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buffer, foo);
         std::cout << "deserialised: \n";
-        for (auto e : result.exceptions) { std::cout << " ! " << e.what() << std::endl; }
-        for (auto f : result.additionalFields) { std::cout << " + " << std::get<0>(f) << std::endl; }
+        for (auto e : result.exceptions) {
+            std::cout << " ! " << e.what() << std::endl;
+        }
+        for (auto f : result.additionalFields) {
+            std::cout << " + " << std::get<0>(f) << std::endl;
+        }
     }
     REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
     opencmw::debug::resetStats();
