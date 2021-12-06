@@ -62,7 +62,7 @@ inline std::string readString(IoBuffer &buffer) {
                 break;
             case 'u': {
                 char *data = reinterpret_cast<char *>(buffer.data() + buffer.position());
-                if (!isHexNumber(data, 4) || (buffer.position() + 4) >= buffer.size()) {
+                if ((buffer.position() + 4) >= buffer.size() || !isHexNumber(data, 4)) {
                     throw ProtocolException(fmt::format("illegal hex number {} at position {} of {}", std::string{ data, 4 }, buffer.position(), buffer.size()));
                 }
                 buffer.set_position(buffer.position() + 4); // skip escaped unicode char
