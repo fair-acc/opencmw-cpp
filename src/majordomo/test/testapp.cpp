@@ -147,7 +147,8 @@ int main(int argc, char **argv) {
         }
         const auto     brokerAddress = parseUriOrExit(argv[2]);
 
-        BasicMdpWorker worker(propertyStoreService, brokerAddress, TestHandler{});
+        Context context;
+        BasicMdpWorker worker(propertyStoreService, brokerAddress, TestHandler{}, context);
 
         worker.run();
         return 0;
