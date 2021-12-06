@@ -103,7 +103,7 @@ PenaltyExcessCharacter: 50
 PenaltyReturnTypeOnItsOwnLine: 300
 PointerAlignment: Right
 ReflowComments: true
-SortIncludes: true
+SortIncludes: CaseInsensitive
 SortUsingDeclarations: true
 SpaceAfterCStyleCast: true
 SpaceAfterTemplateKeyword: false
@@ -124,8 +124,8 @@ Language: Java
 JavaImportGroups: [ 'java', 'javax', 'javafx', 'org', 'io', 'com', 'de.gsi' ]
 AccessModifierOffset: -4
 AlignAfterOpenBracket: DontAlign
-AlignConsecutiveAssignments: false
-AlignConsecutiveDeclarations: false
+AlignConsecutiveAssignments: None
+AlignConsecutiveDeclarations: None
 AlignEscapedNewlines: DontAlign
 AlignOperands: AlignAfterOperator
 AlignTrailingComments: false
@@ -206,7 +206,7 @@ PenaltyExcessCharacter: 50
 PenaltyReturnTypeOnItsOwnLine: 300
 PointerAlignment: Right
 ReflowComments: true
-SortIncludes: true
+SortIncludes: CaseInsensitive
 SortUsingDeclarations: true
 SpaceAfterCStyleCast: true
 SpaceAfterTemplateKeyword: false
