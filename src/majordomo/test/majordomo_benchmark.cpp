@@ -30,6 +30,8 @@ static Settings benchmarkSettings() {
     return Settings{}; // use defaults
 }
 
+static const auto pollIntervall = std::chrono::milliseconds(20);
+
 class PayloadHandler {
     std::string _payload;
 
@@ -66,7 +68,7 @@ public:
         });
 
         while (!receivedReply) {
-            tryRead();
+            tryRead(pollIntervall);
         }
     }
 };
@@ -109,7 +111,7 @@ Result simpleOneWorkerBenchmark(const URI &routerAddress, Get mode, int iteratio
         }
 
         while (counter < iterations) {
-            client.tryRead();
+            client.tryRead(pollIntervall);
         }
     } else {
         for (int i = 0; i < iterations; ++i) {
@@ -155,7 +157,7 @@ void simpleTwoWorkerBenchmark(const URI &routerAddress, Get mode, int iterations
         }
 
         while (counter < iterations) {
-            client.tryRead();
+            client.tryRead(pollIntervall);
         }
     } else {
         for (int i = 0; i < iterations; ++i) {
