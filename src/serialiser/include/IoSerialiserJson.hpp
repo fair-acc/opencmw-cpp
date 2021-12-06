@@ -109,11 +109,11 @@ inline constexpr void assignArray(std::vector<T> &value, const std::vector<T> &r
 
 template<typename T, size_t N>
 inline constexpr void assignArray(std::array<T, N> &value, const std::vector<T> &result) {
-    if (value.size() != result.size()) {
+    if (N != result.size()) {
         throw ProtocolException(fmt::format("vector -> array size mismatch: source<{}>[{}]={} vs. destination std::array<T,{}>", //
                 typeName<T>, result.size(), result, typeName<T>, N));
     }
-    for (size_t i = 0; i < N && i < result.size(); ++i) {
+    for (size_t i = 0; i < N; ++i) {
         value[i] = result[i];
     }
 }
@@ -405,8 +405,8 @@ struct IoSerialiser<Json, T> {
         for (uint32_t i = 0U; i < T::n_dims_; i++) {
             dims[i] = static_cast<int32_t>(value.dimensions()[i]);
         }
-        FieldHeaderWriter<Json>::template put<false>(buffer, "dims"sv, 4, dims);
-        FieldHeaderWriter<Json>::template put<false>(buffer, "values"sv, 6, value.elements());
+        FieldHeaderWriter<Json>::template put<false>(buffer, "dims"sv, dims);
+        FieldHeaderWriter<Json>::template put<false>(buffer, "values"sv, value.elements());
         buffer.putRaw("}"sv);
         return std::is_constant_evaluated();
     }
