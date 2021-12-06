@@ -296,9 +296,8 @@ public:
         return _queryMap;
     };
 
-    // default operator overloading
-    auto operator<=>(const URI &) const noexcept = default; // TODO: may need to implement custom
-    bool operator!=(const URI &other) const noexcept  { return str != other.str; }
+    // comparison operators
+    auto operator<=>(const URI &other) const noexcept { return str <=> other.str; }
     bool operator==(const URI &other) const noexcept  { return str == other.str; }
 
     class UriFactory {
