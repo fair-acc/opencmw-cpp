@@ -207,7 +207,7 @@ int main(int argc, char **argv) {
         }
 
         while (!replyReceived) {
-            client.tryRead();
+            client.tryRead(std::chrono::milliseconds(20));
         }
         return 0;
     }
