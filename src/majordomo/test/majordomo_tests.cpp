@@ -824,7 +824,7 @@ TEST_CASE("SET/GET example using a lambda as the worker's request handler", "[wo
         });
 
         while (!anyMessageReceived) {
-            client.tryRead();
+            client.tryRead(std::chrono::milliseconds(20));
         }
     }
 
@@ -837,7 +837,7 @@ TEST_CASE("SET/GET example using a lambda as the worker's request handler", "[wo
     });
 
     while (!replyReceived) {
-        client.tryRead();
+        client.tryRead(std::chrono::milliseconds(20));
     }
 
     replyReceived = false;
@@ -849,7 +849,7 @@ TEST_CASE("SET/GET example using a lambda as the worker's request handler", "[wo
     });
 
     while (!replyReceived) {
-        client.tryRead();
+        client.tryRead(std::chrono::milliseconds(20));
     }
 }
 
@@ -890,7 +890,7 @@ TEST_CASE("Worker's request handler throws an exception", "[worker][handler_exce
         });
 
         while (!anyMessageReceived) {
-            client.tryRead();
+            client.tryRead(std::chrono::milliseconds(20));
         }
     }
 }
@@ -932,7 +932,7 @@ TEST_CASE("Worker's request handler throws an unexpected exception", "[worker][h
         });
 
         while (!anyMessageReceived) {
-            client.tryRead();
+            client.tryRead(std::chrono::milliseconds(20));
         }
     }
 }

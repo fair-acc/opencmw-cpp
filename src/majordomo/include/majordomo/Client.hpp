@@ -15,10 +15,11 @@
 namespace opencmw::majordomo {
 
 class Client {
-    const Context &       _context;
-    std::optional<Socket> _socket;
-    std::string           _brokerUrl;
-    int                   _nextRequestId = 0;
+    const Context &               _context;
+    std::optional<Socket>         _socket;
+    std::string                   _brokerUrl;
+    int                           _nextRequestId = 0;
+    std::array<zmq_pollitem_t, 1> _pollerItems;
 
     // Maps request IDs to callbacks
     std::unordered_map<int, std::function<void(MdpMessage)>> _callbacks;
@@ -36,7 +37,16 @@ public:
 
     [[nodiscard]] auto connect(const opencmw::URI<> &brokerUrl) {
         _socket.emplace(_context, ZMQ_DEALER);
-        return zmq_invoke(zmq_connect, *_socket, toZeroMQEndpoint(brokerUrl).data());
+
+        const auto result = zmq_invoke(zmq_connect, *_socket, toZeroMQEndpoint(brokerUrl).data());
+        if (result.isValid()) {
+            _pollerItems[0].socket = _socket->zmq_ptr;
+            _pollerItems[0].events = ZMQ_POLLIN;
+        } else {
+            _socket.reset();
+        }
+
+        return result;
     }
 
     bool disconnect() {
@@ -105,13 +115,19 @@ public:
         return handled;
     }
 
-    bool tryRead() {
-        auto message = MdpMessage::receive(*_socket);
-        if (!message) {
+    bool tryRead(std::chrono::milliseconds timeout) {
+        assert(_socket);
+
+        const auto result = zmq_invoke(zmq_poll, _pollerItems.data(), static_cast<int>(_pollerItems.size()), timeout.count());
+        if (!result.isValid()) {
             return false;
         }
 
-        return handleMessage(*std::move(message));
+        if (auto message = MdpMessage::receive(*_socket)) {
+            return handleMessage(std::move(*message));
+        }
+
+        return false;
     }
 
 private:
