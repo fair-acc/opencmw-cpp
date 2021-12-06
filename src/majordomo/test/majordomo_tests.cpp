@@ -56,6 +56,11 @@ public:
         return zmq_invoke(zmq_setsockopt, _socket, ZMQ_UNSUBSCRIBE, subscription.data(), subscription.size()).isValid();
     }
 
+    bool sendRawFrame(std::string data) {
+        MessageFrame f(data, MessageFrame::dynamic_bytes_tag{});
+        return f.send(_socket, 0).isValid(); // blocking for simplicity
+    }
+
     MessageType readOne() {
         while (_receivedMessages.empty()) {
             auto message = MessageType::receive(_socket);
@@ -317,7 +322,7 @@ TEST_CASE("One client/one worker roundtrip", "[broker][roundtrip]") {
     ready.setRbacToken("rbacToken", static_tag);
     worker.send(ready);
 
-    broker.processOneMessage();
+    broker.processMessages();
 
     auto request = MdpMessage::createClientMessage(Command::Get);
     request.setServiceName("a.service", static_tag);
@@ -326,7 +331,7 @@ TEST_CASE("One client/one worker roundtrip", "[broker][roundtrip]") {
     request.setRbacToken("rbacToken", static_tag);
     client.send(request);
 
-    broker.processOneMessage();
+    broker.processMessages();
 
     const auto requestAtWorker = worker.readOne();
     REQUIRE(requestAtWorker.isValid());
@@ -347,7 +352,7 @@ TEST_CASE("One client/one worker roundtrip", "[broker][roundtrip]") {
     replyFromWorker.setRbacToken("rbac_worker", static_tag);
     worker.send(replyFromWorker);
 
-    broker.processOneMessage();
+    broker.processMessages();
 
     const auto reply = client.readOne();
     REQUIRE(reply.isValid());
@@ -397,7 +402,7 @@ TEST_CASE("Pubsub example using SUB client/DEALER worker", "[broker][pubsub_sub_
     REQUIRE(subscriber.connect(publisherAddress, "/a.topic"));
     REQUIRE(subscriber.subscribe("/other.*"));
 
-    broker.processOneMessage();
+    broker.processMessages();
 
     TestNode<MdpMessage> publisher(broker.context);
     REQUIRE(publisher.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
@@ -412,7 +417,7 @@ TEST_CASE("Pubsub example using SUB client/DEALER worker", "[broker][pubsub_sub_
         publisher.send(notify);
     }
 
-    broker.processOneMessage();
+    broker.processMessages();
 
     {
         auto notify = MdpMessage::createWorkerMessage(Command::Notify);
@@ -423,7 +428,7 @@ TEST_CASE("Pubsub example using SUB client/DEALER worker", "[broker][pubsub_sub_
         publisher.send(notify);
     }
 
-    broker.processOneMessage();
+    broker.processMessages();
 
     {
         auto notify = MdpMessage::createWorkerMessage(Command::Notify);
@@ -434,7 +439,7 @@ TEST_CASE("Pubsub example using SUB client/DEALER worker", "[broker][pubsub_sub_
         publisher.send(notify);
     }
 
-    broker.processOneMessage();
+    broker.processMessages();
 
     // receive only messages matching subscriptions
 
@@ -562,7 +567,7 @@ TEST_CASE("pubsub example using router socket (DEALER client)", "[broker][pubsub
         subscriber.send(subscribe);
     }
 
-    broker.processOneMessage();
+    broker.processMessages();
 
     // subscribe client to /cooking.indian
     {
@@ -573,7 +578,7 @@ TEST_CASE("pubsub example using router socket (DEALER client)", "[broker][pubsub
         subscriber.send(subscribe);
     }
 
-    broker.processOneMessage();
+    broker.processMessages();
 
     // publisher 1 sends a notification for /cooking.italian
     {
@@ -585,7 +590,7 @@ TEST_CASE("pubsub example using router socket (DEALER client)", "[broker][pubsub
         publisherOne.send(pubMsg);
     }
 
-    broker.processOneMessage();
+    broker.processMessages();
 
     // client receives notification for /cooking.italian
     {
@@ -611,7 +616,7 @@ TEST_CASE("pubsub example using router socket (DEALER client)", "[broker][pubsub
         publisherTwo.send(pubMsg);
     }
 
-    broker.processOneMessage();
+    broker.processMessages();
 
     // client receives notification for /cooking.indian
     {
@@ -635,7 +640,7 @@ TEST_CASE("pubsub example using router socket (DEALER client)", "[broker][pubsub
         subscriber.send(unsubscribe);
     }
 
-    broker.processOneMessage();
+    broker.processMessages();
 
     // publisher 1 sends a notification for /cooking.italian
     {
@@ -647,7 +652,7 @@ TEST_CASE("pubsub example using router socket (DEALER client)", "[broker][pubsub
         publisherOne.send(pubMsg);
     }
 
-    broker.processOneMessage();
+    broker.processMessages();
 
     // publisher 2 sends a notification for /cooking.indian
     {
@@ -659,7 +664,7 @@ TEST_CASE("pubsub example using router socket (DEALER client)", "[broker][pubsub
         publisherTwo.send(pubMsg);
     }
 
-    broker.processOneMessage();
+    broker.processMessages();
 
     // verify that the client receives only the notification from publisher 2
 
@@ -695,11 +700,11 @@ TEST_CASE("pubsub example using PUB socket (SUB client)", "[broker][pubsub_subcl
 
     subscriber.subscribe("/cooking.italian*");
 
-    broker.processOneMessage();
+    broker.processMessages();
 
     subscriber.subscribe("/cooking.indian*");
 
-    broker.processOneMessage();
+    broker.processMessages();
 
     // publisher 1 sends a notification for /cooking.italian.pasta
     {
@@ -711,7 +716,7 @@ TEST_CASE("pubsub example using PUB socket (SUB client)", "[broker][pubsub_subcl
         publisherOne.send(pubMsg);
     }
 
-    broker.processOneMessage();
+    broker.processMessages();
 
     // client receives notification for /cooking.italian*
     {
@@ -738,7 +743,7 @@ TEST_CASE("pubsub example using PUB socket (SUB client)", "[broker][pubsub_subcl
         publisherTwo.send(pubMsg);
     }
 
-    broker.processOneMessage();
+    broker.processMessages();
 
     // client receives notification for /cooking.indian*
     {
@@ -757,7 +762,7 @@ TEST_CASE("pubsub example using PUB socket (SUB client)", "[broker][pubsub_subcl
 
     subscriber.unsubscribe("/cooking.italian*");
 
-    broker.processOneMessage();
+    broker.processMessages();
 
     // publisher 1 sends a notification for /cooking.italian.pizza
     {
@@ -769,7 +774,7 @@ TEST_CASE("pubsub example using PUB socket (SUB client)", "[broker][pubsub_subcl
         publisherOne.send(pubMsg);
     }
 
-    broker.processOneMessage();
+    broker.processMessages();
 
     // publisher 2 sends a notification for /cooking.indian.tikkas
     {
@@ -781,7 +786,7 @@ TEST_CASE("pubsub example using PUB socket (SUB client)", "[broker][pubsub_subcl
         publisherTwo.send(pubMsg);
     }
 
-    broker.processOneMessage();
+    broker.processMessages();
 
     // verify that the client receives only the notification from publisher 2
 
@@ -852,10 +857,31 @@ TEST_CASE("BasicMdpWorker instantiation", "[worker][instantiation]") {
 
     BasicMdpWorker            worker1("a.service", broker, NonCopyableMovableHandler());
     BasicMdpWorker            worker2("a.service", broker, handler);
-    BasicMdpWorker            worker3("a.service", INTERNAL_ADDRESS_BROKER, NonCopyableMovableHandler(), Context(), testSettings());
-    BasicMdpWorker            worker4("a.service", INTERNAL_ADDRESS_BROKER, handler, Context(), testSettings());
-    BasicMdpWorker            worker5("a.service", INTERNAL_ADDRESS_BROKER, NonCopyableMovableHandler(), testSettings());
-    BasicMdpWorker            worker6("a.service", INTERNAL_ADDRESS_BROKER, handler, testSettings());
+    Context                   context;
+    BasicMdpWorker            worker5("a.service", INTERNAL_ADDRESS_BROKER, NonCopyableMovableHandler(), context, testSettings());
+    BasicMdpWorker            worker6("a.service", INTERNAL_ADDRESS_BROKER, handler, context, testSettings());
+}
+
+TEST_CASE("BasicMdpWorker connects to non-existing broker", "[worker]") {
+    const Context  context;
+    BasicMdpWorker worker("a.service", URI("inproc:/doesnotexist"), TestIntHandler(10), context);
+    worker.run(); // returns immediately on connection failure
+}
+
+TEST_CASE("BasicMdpWorker run loop quits when broker quits", "[worker]") {
+    const Context  context;
+    Broker         broker("testbroker", testSettings());
+    BasicMdpWorker worker("a.service", broker, TestIntHandler(10));
+
+    RunInThread    brokerRun(broker);
+
+    auto           quitBroker = std::jthread([&broker]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        broker.shutdown();
+    });
+
+    worker.run(); // returns when broker disappears
+    quitBroker.join();
 }
 
 TEST_CASE("SET/GET example using the BasicMdpWorker class", "[worker][getset_basic_worker]") {
@@ -941,6 +967,141 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[worker][getset_bas
         REQUIRE(reply.topic() == "/topic");
         REQUIRE(reply.body() == "42");
         REQUIRE(reply.error().empty());
+    }
+}
+
+TEST_CASE("NOTIFY example using the BasicMdpWorker class", "[worker][notify_basic_worker]") {
+    using opencmw::majordomo::Broker;
+    using opencmw::majordomo::MdpMessage;
+
+    Broker         broker("testbroker", testSettings());
+
+    BasicMdpWorker worker("beverages", broker, TestIntHandler(10));
+    worker.setServiceDescription("API description");
+    worker.setRbacRole("rbacToken");
+
+    TestNode<BrokerMessage> client(broker.context, ZMQ_XSUB);
+    REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_PUBLISHER));
+
+    RunInThread brokerRun(broker);
+    RunInThread workerRun(worker);
+
+    // send some invalid subscribe/unsubscribe messages, must be ignored
+    REQUIRE(client.sendRawFrame(""));
+    REQUIRE(client.sendRawFrame("\x1"));
+    REQUIRE(client.sendRawFrame("\x0"s));
+
+    // subscribe to /wine* and /beer*
+    REQUIRE(client.sendRawFrame("\x1/wine*"));
+    REQUIRE(client.sendRawFrame("\x1/beer*"));
+
+    bool seenNotification = false;
+
+    // we have a potential race here: the worker might not have processed the
+    // subscribe yet and thus discarding the notification. Send notifications
+    // in a loop until one gets through.
+    while (!seenNotification) {
+        {
+            MdpMessage notify;
+            notify.setTopic("/beer.time", static_tag);
+            notify.setBody("Have a beer", static_tag);
+            worker.notify(std::move(notify));
+        }
+        {
+            const auto notification = client.tryReadOne(std::chrono::milliseconds(20));
+            if (notification && notification->serviceName() != "mmi.service") {
+                seenNotification = true;
+                REQUIRE(notification->isValid());
+                REQUIRE(notification->isClientMessage());
+                REQUIRE(notification->command() == Command::Final);
+                REQUIRE(notification->sourceId() == "/beer*");
+                REQUIRE(notification->topic() == "/beer.time");
+                REQUIRE(notification->body() == "Have a beer");
+            }
+        }
+    }
+
+    {
+        MdpMessage notify;
+        notify.setTopic("/beer.error", static_tag);
+        notify.setError("Fridge empty!", static_tag);
+        worker.notify(std::move(notify));
+    }
+
+    bool seenError = false;
+    while (!seenError) {
+        const auto notification = client.tryReadOne(std::chrono::milliseconds(20));
+        if (!notification)
+            continue;
+
+        // there might be extra messages from above, ignore them
+        if (notification->topic() == "/beer.time") {
+            continue;
+        }
+
+        REQUIRE(notification->isValid());
+        REQUIRE(notification->isClientMessage());
+        REQUIRE(notification->command() == Command::Final);
+        REQUIRE(notification->sourceId() == "/beer*");
+        REQUIRE(notification->topic() == "/beer.error");
+        REQUIRE(notification->error() == "Fridge empty!");
+        seenError = true;
+    }
+
+    {
+        // as the subscribe for wine* was sent before the beer* one, this should be
+        // race-free now (as know the beer* subscribe was processed by everyone)
+        MdpMessage notify;
+        notify.setTopic("/wine.italian", static_tag);
+        notify.setBody("Try our Chianti!", static_tag);
+        worker.notify(std::move(notify));
+    }
+
+    {
+        const auto notification = client.readOne();
+        REQUIRE(notification.isValid());
+        REQUIRE(notification.isClientMessage());
+        REQUIRE(notification.command() == Command::Final);
+        REQUIRE(notification.sourceId() == "/wine*");
+        REQUIRE(notification.topic() == "/wine.italian");
+        REQUIRE(notification.body() == "Try our Chianti!");
+    }
+
+    // unsubscribe from /beer*
+    REQUIRE(client.sendRawFrame("\x0/beer*"s));
+
+    // loop until we get two consecutive messages about wine, it means that the beer unsubscribe was processed
+    while (true) {
+        {
+            MdpMessage notify;
+            notify.setTopic("/wine.portuguese", static_tag);
+            notify.setBody("New Vinho Verde arrived.", static_tag);
+            worker.notify(std::move(notify));
+        }
+        {
+            MdpMessage notify;
+            notify.setTopic("/beer.offer", static_tag);
+            notify.setBody("Get our pilsner now!", static_tag);
+            worker.notify(std::move(notify));
+        }
+        {
+            MdpMessage notify;
+            notify.setTopic("/wine.portuguese", static_tag);
+            notify.setBody("New Vinho Verde arrived.", static_tag);
+            worker.notify(std::move(notify));
+        }
+
+        const auto msg1 = client.readOne();
+        REQUIRE(msg1.sourceId() == "/wine*");
+
+        const auto msg2 = client.readOne();
+        if (msg2.sourceId() == "/wine*") {
+            break;
+        }
+
+        REQUIRE(msg2.sourceId() == "/beer*");
+        const auto msg3 = client.readOne();
+        REQUIRE(msg3.sourceId() == "/wine*");
     }
 }
 

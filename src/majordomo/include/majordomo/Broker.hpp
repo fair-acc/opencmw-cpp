@@ -209,7 +209,7 @@ public:
 
     void run() {
         do {
-        } while (processOneMessage() && !_shutdownRequested /* && thread is not interrupted */);
+        } while (processMessages() && !_shutdownRequested /* && thread is not interrupted */);
 
         cleanup();
     }
@@ -220,7 +220,7 @@ public:
 
     // test interface
 
-    bool processOneMessage() {
+    bool processMessages() {
         bool anythingReceived;
         int  loopCount = 0;
         do {
