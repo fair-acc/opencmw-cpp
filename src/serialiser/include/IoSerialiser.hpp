@@ -13,6 +13,20 @@
 
 namespace opencmw {
 
+struct START_MARKER {};
+struct END_MARKER {};
+struct OTHER {};
+
+constexpr static START_MARKER START_MARKER_INST;
+constexpr static END_MARKER   END_MARKER_INST;
+constexpr static OTHER        OTHER_INST;
+
+enum ProtocolCheck {
+    IGNORE,  // null return type
+    LENIENT, // via return type
+    ALWAYS   // via ProtocolException
+};
+
 class ProtocolException {
     const std::string errorMsg;
 
@@ -46,6 +60,21 @@ concept SerialiserProtocol = requires { T::protocolName(); }; // TODO: find neat
 using ClassField           = std::string_view; // as a place-holder for the reflected type info
 
 /// generic protocol definition -> should throw exception when used in production code
+template<SerialiserProtocol protocol>
+inline void updateSize(IoBuffer & /*buffer*/, const size_t /*posSizePositionStart*/, const size_t /*posStartDataStart*/) {}
+
+template<SerialiserProtocol protocol>
+inline void putHeaderInfo(IoBuffer & /*buffer*/) {}
+
+template<SerialiserProtocol protocol>
+struct FieldHeaderWriter { // todo: remove struct and rename to putField
+    template<const bool writeMetaInfo, typename DataType>
+    constexpr std::size_t static put(IoBuffer & /*buffer*/, const std::string_view & /*fieldName*/, const DataType & /*data*/) { return 0; }
+};
+
+template<SerialiserProtocol protocol>
+inline DeserialiserInfo checkHeaderInfo(IoBuffer & /*buffer*/, DeserialiserInfo info, const ProtocolCheck /*protocolCheckVariant*/) { return info; }
+
 template<SerialiserProtocol protocol, typename T>
 struct IoSerialiser {
     constexpr static uint8_t getDataTypeId() { return 0xFF; } // default value
@@ -65,278 +94,341 @@ struct IoSerialiser {
     }
 };
 
-template<SerialiserProtocol protocol, typename T>
-bool serialisePartial(IoBuffer &buffer, const T & /*obj*/) noexcept {
-    bool state = false;
-    // TODO: The check below is always true
-    if (std::is_constant_evaluated() || true) {
-        state |= IoSerialiser<protocol, int>::serialise(buffer, "intField", 2);
-        state |= IoSerialiser<protocol, double>::serialise(buffer, "doubleField", 2.3);
-        state |= IoSerialiser<protocol, short>::serialise(buffer, "shortField", 3);
-        state |= IoSerialiser<protocol, std::string_view>::serialise(buffer, "stringField", "Hello World!");
+struct FieldDescription {
+    uint64_t         headerStart;
+    uint64_t         dataStartOffset;
+    uint64_t         dataSize;
+    std::size_t      dataStartPosition;
+    std::size_t      dataEndPosition;
+    std::string_view fieldName;
+    std::string_view unit;
+    std::string_view description;
+    ExternalModifier modifier;
+    uint8_t          intDataType;
+};
+
+/**
+ * Helper function which handles an error depending on the selected type of error handling
+ * @tparam protocolCheckVariant Type of error handling
+ * @param info object which will be updated with error information
+ * @param formatString the format string for the error message
+ * @param arguments arguments for use in the format string
+ */
+template<ProtocolCheck protocolCheckVariant>
+inline constexpr void handleError(DeserialiserInfo &info, const char *formatString, const auto &...arguments) { // todo: guarded noexcept
+    const auto text = fmt::format(formatString, arguments...);
+    if constexpr (protocolCheckVariant == ALWAYS) {
+        throw ProtocolException(text);
     }
-    return state;
+    info.exceptions.emplace_back(ProtocolException(text));
+}
+
+template<ReflectableClass T>
+inline int32_t findMemberIndex(const std::string_view &fieldName) noexcept {
+    static constexpr auto m = ConstExprMap{ refl::util::map_to_array<std::pair<std::string_view, int32_t>>(refl::reflect<T>().members, [](auto field, auto index) {
+        return std::pair<std::string_view, int32_t>(field.name.c_str(), index);
+    }) };
+    return m.at(fieldName, -1);
+}
+
+/**
+ * Serialises an object into an IoBuffer
+ *
+ * @tparam protocol The serialisation Type to use: YaS, Json, Yaml, CMW...
+ * @tparam writeMetaInfo whether to write metadata(unit, description) if the chosen serialiser supports it
+ * @tparam T The type of the serialised object
+ * @param buffer An IoBuffer instance
+ * @param value The object to be serialised
+ */
+template<SerialiserProtocol protocol, const bool writeMetaInfo = true, ReflectableClass T>
+constexpr void serialise(IoBuffer &buffer, const T &value) {
+    putHeaderInfo<protocol>(buffer);
+    const refl::type_descriptor<T> &reflectionData = refl::reflect(value);
+    constexpr std::string_view      type_name{ reflectionData.name.c_str(), reflectionData.name.size };
+    std::size_t                     posSizePositionStart = FieldHeaderWriter<protocol>::template put<writeMetaInfo>(buffer, type_name, START_MARKER_INST);
+    std::size_t                     posStartDataStart    = buffer.size();
+    serialise<protocol, writeMetaInfo>(buffer, value, 0);
+    FieldHeaderWriter<protocol>::template put<writeMetaInfo>(buffer, type_name, END_MARKER_INST);
+    updateSize<protocol>(buffer, posSizePositionStart, posStartDataStart);
+}
+
+/**
+ * Helper function which serialises a sub-object at a given hierarchy depth
+ *
+ * @tparam protocol The serialisation Type to use: YaS, Json, Yaml, CMW...
+ * @tparam writeMetaInfo whether to write metadata(unit, description) if the chosen serialiser supports it
+ * @tparam T The type of the serialised object
+ * @param buffer An IoBuffer instance
+ * @param value The object to be serialised
+ * @param hierarchyDepth The level of nesting, zero is the root object
+ */
+template<SerialiserProtocol protocol, const bool writeMetaInfo = true, ReflectableClass T>
+constexpr void serialise(IoBuffer &buffer, const T &value, const uint8_t hierarchyDepth) {
+    for_each(refl::reflect(value).members, [&](const auto member, [[maybe_unused]] const auto index) {
+        if constexpr (is_field(member) && !is_static(member)) {
+            using UnwrappedMemberType = std::remove_reference_t<decltype(member(value))>;
+            using MemberType          = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
+            if constexpr (is_smart_pointer<std::remove_reference_t<UnwrappedMemberType>>) {
+                if (!member(value)) {
+                    return; // skip empty smart pointer
+                }
+            }
+            constexpr std::string_view fieldName{ member.name.c_str(), member.name.size };
+            if constexpr (isReflectableClass<MemberType>()) { // nested data-structure
+                std::size_t posSizePositionStart = FieldHeaderWriter<protocol>::template put<writeMetaInfo>(buffer, fieldName, START_MARKER_INST);
+                std::size_t posStartDataStart    = buffer.size();
+                serialise<protocol, writeMetaInfo>(buffer, getAnnotatedMember(unwrapPointer(member(value))), hierarchyDepth + 1); // do not inspect annotation itself
+                FieldHeaderWriter<protocol>::template put<writeMetaInfo>(buffer, fieldName, END_MARKER_INST);
+                updateSize<protocol>(buffer, posSizePositionStart, posStartDataStart);
+            } else { // primitive type
+                FieldHeaderWriter<protocol>::template put<writeMetaInfo>(buffer, fieldName, member(value));
+            }
+        }
+    });
+}
+
+template<SerialiserProtocol protocol>
+struct FieldHeaderReader {
+    template<ProtocolCheck protocolCheckVariant>
+    inline static constexpr FieldDescription get(IoBuffer & /*buffer*/, DeserialiserInfo & /*info*/, const ProtocolCheck & /*protocolCheckVariant*/) { return FieldDescription{}; }
+};
+
+/**
+ * Deserialise the contents of an IoBuffer into a given object
+ * @tparam protocol The deserialisation Type to use: YaS, Json, Yaml, CMW...
+ * @tparam protocolCheckVariant determines the error and logging behaviour of the deserialiser
+ * @tparam T The type of the deserialised object
+ * @param buffer An IoBuffer instance
+ * @param value The object to be serialised
+ * @param info Object which will get populated with information about the deserialisation
+ * @return object containing info like read fields, additional fields and errors. Depends on the protocolCheck level
+ */
+template<SerialiserProtocol protocol, const ProtocolCheck protocolCheckVariant, ReflectableClass T>
+constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserInfo info = DeserialiserInfo()) {
+    // check data header for protocol version match
+    info = checkHeaderInfo<protocol>(buffer, info, protocolCheckVariant);
+    if (protocolCheckVariant == LENIENT && !info.exceptions.empty()) {
+        return info; // do not attempt to deserialise data with wrong header
+    }
+    return deserialise<protocol, protocolCheckVariant>(buffer, value, info, "root", 0);
+}
+
+/**
+ * Deserialise the object inside of an IoBuffer into an object.
+ * Internal helper function for handling nested objects.
+ * @tparam protocol The deserialisation Type to use: YaS, Json, Yaml, CMW...
+ * @tparam protocolCheckVariant determines the error and logging behaviour of the deserialiser
+ * @tparam T The type of the deserialised object
+ * @param buffer An IoBuffer instance
+ * @param value The object to be serialised
+ * @param info Object which will get populated with information about the deserialisation
+ * @param structName Name of the (sub) object
+ * @param hierarchyDepth Hierarchy level of the (sub)object. Zero means the root object.
+ * @return object containing info like read fields, additional fields and errors. Depends on the protocolCheck level
+ */
+template<SerialiserProtocol protocol, const ProtocolCheck protocolCheckVariant, ReflectableClass T>
+constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserInfo info, const std::string &structName, const uint8_t hierarchyDepth) {
+    // todo: replace structName string by const_string
+    // initialize bitfield indicating which fields have been set
+    if constexpr (protocolCheckVariant != IGNORE) {
+        if (info.setFields.contains(structName)) {
+            std::fill(info.setFields[structName].begin(), info.setFields[structName].end(), false);
+        } else {
+            info.setFields[structName] = std::vector<bool>(refl::reflect<T>().members.size);
+        }
+    }
+
+    // read initial field header
+    const FieldDescription startMarker = FieldHeaderReader<protocol>::template get<protocolCheckVariant>(buffer, info);
+    if (hierarchyDepth == 0 && startMarker.fieldName != typeName<T> && !startMarker.fieldName.empty() && protocolCheckVariant != IGNORE) { // check if root type is matching
+        handleError<protocolCheckVariant>(info, "IoSerialiser<{}, {}>::deserialise: data is not of excepted type but of type {}", protocol::protocolName(), typeName<T>, startMarker.fieldName);
+    }
+    try {
+        IoSerialiser<protocol, START_MARKER>::deserialise(buffer, startMarker.fieldName, START_MARKER_INST);
+    } catch (ProtocolException &exception) { // protocol exception
+        if constexpr (protocolCheckVariant == IGNORE) {
+            if (startMarker.dataEndPosition != std::numeric_limits<size_t>::max()) {
+                buffer.set_position(startMarker.dataEndPosition);
+            }
+            return info;
+        }
+        handleError<protocolCheckVariant>(info, "IoSerialiser<{}, START_MARKER>::deserialise(buffer, fieldName, START_MARKER_INST) exception for class {}: position {} vs. size {} -- exception thrown: {}",
+                protocol::protocolName(), structName, buffer.position(), buffer.size(), exception.what());
+        if (startMarker.dataEndPosition != std::numeric_limits<size_t>::max()) {
+            buffer.set_position(startMarker.dataEndPosition);
+        }
+        return info;
+    } catch (...) {
+        if constexpr (protocolCheckVariant == IGNORE) {
+            if (startMarker.dataEndPosition != std::numeric_limits<size_t>::max()) {
+                buffer.set_position(startMarker.dataEndPosition);
+            }
+            return info;
+        }
+        throw ProtocolException(fmt::format("unknown exception in IoSerialiser<{}, START_MARKER>::deserialise(buffer, fieldName, START_MARKER_INST) for class {}: position {} vs. size {}",
+                protocol::protocolName(), structName, buffer.position(), buffer.size()));
+    }
+    buffer.set_position(startMarker.dataStartPosition); // skip to data start
+
+    while (buffer.position() < buffer.size()) {
+        const FieldDescription field = FieldHeaderReader<protocol>::template get<protocolCheckVariant>(buffer, info);
+        // skip to data start
+        buffer.set_position(field.dataStartPosition);
+
+        if (field.intDataType == IoSerialiser<protocol, END_MARKER>::getDataTypeId()) {
+            // reached end of sub-structure
+            try {
+                IoSerialiser<protocol, END_MARKER>::deserialise(buffer, field.fieldName, END_MARKER_INST);
+            } catch (ProtocolException &exception) { // protocol exception
+                if constexpr (protocolCheckVariant == IGNORE) {
+                    if (field.dataEndPosition != std::numeric_limits<size_t>::max()) {
+                        buffer.set_position(field.dataEndPosition);
+                    }
+                    continue;
+                }
+                const auto text = fmt::format("IoSerialiser<{}, END_MARKER>::deserialise(buffer, fieldName, END_MARKER_INST) exception for class {}: position {} vs. size {} -- exception thrown: {}",
+                        protocol::protocolName(), structName, buffer.position(), buffer.size(), exception.what());
+                if constexpr (protocolCheckVariant == ALWAYS) {
+                    throw ProtocolException(text);
+                }
+                buffer.set_position(field.dataEndPosition);
+                if (field.dataEndPosition != std::numeric_limits<size_t>::max()) {
+                    buffer.set_position(field.dataEndPosition);
+                }
+                continue;
+            } catch (...) {
+                if constexpr (protocolCheckVariant == IGNORE) {
+                    if (field.dataEndPosition != std::numeric_limits<size_t>::max()) {
+                        buffer.set_position(field.dataEndPosition);
+                    }
+                    continue;
+                }
+                throw ProtocolException(fmt::format("unknown exception in IoSerialiser<{}, START_MARKER>::deserialise(buffer, fieldName, START_MARKER_INST) for class {}: position {} vs. size {}",
+                        protocol::protocolName(), structName, buffer.position(), buffer.size()));
+            }
+            return info; // step down to previous hierarchy depth
+        }
+
+        const int searchIndex = findMemberIndex<T>(field.fieldName);
+        if (searchIndex < 0) {
+            if constexpr (protocolCheckVariant != IGNORE) {
+                handleError<protocolCheckVariant>(info, "missing field (type:{}) {}::{} at buffer[{}, size:{}]", field.intDataType, structName, field.fieldName, buffer.position(), buffer.size());
+                info.additionalFields.emplace_back(std::make_tuple(fmt::format("{}::{}", structName, field.fieldName), field.intDataType));
+            }
+            if (field.dataEndPosition != std::numeric_limits<size_t>::max()) {
+                buffer.set_position(field.dataEndPosition);
+            } else { // use deserialise OTHER to continue parsing the data just to skip it for formats which do not include the field size in the header
+                if constexpr (requires { IoSerialiser<protocol, OTHER>::deserialise(buffer, field.fieldName, OTHER_INST); }) {
+                    if (field.intDataType == IoSerialiser<protocol, START_MARKER>::getDataTypeId()) {
+                        buffer.set_position(field.dataStartPosition - 1); // reset buffer position for the nested deserialiser to read again
+                    }
+                    IoSerialiser<protocol, OTHER>::deserialise(buffer, field.fieldName, OTHER_INST);
+                }
+            }
+            continue;
+        }
+
+        if (field.intDataType == IoSerialiser<protocol, START_MARKER>::getDataTypeId()) {
+            buffer.set_position(field.headerStart); // reset buffer position for the nested deserialiser to read again
+            // reached start of sub-structure -> dive in
+            for_each(refl::reflect<T>().members, [&searchIndex, &buffer, &value, &hierarchyDepth, &info, &structName](auto member, int32_t index) {
+                if (index != searchIndex) {
+                    return; // fieldName does not match -- skip to next field
+                }
+                using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
+                if constexpr (isReflectableClass<MemberType>()) {
+                    info = deserialise<protocol, protocolCheckVariant>(buffer, unwrapPointerCreateIfAbsent(member(value)), info, fmt::format("{}.{}", structName, get_display_name(member)), hierarchyDepth + 1);
+                    if constexpr (protocolCheckVariant != IGNORE) {
+                        info.setFields[structName][static_cast<uint64_t>(searchIndex)] = true;
+                    }
+                }
+            });
+        }
+#pragma clang diagnostic push
+#pragma ide diagnostic   ignored "readability-function-cognitive-complexity"
+        for_each(refl::reflect<T>().members, [&searchIndex, &buffer, &value, &field, &info, &structName](auto member, int32_t index) {
+            if (index != searchIndex) {
+                return; // fieldName does not match -- skip to next field
+            }
+            using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
+            if constexpr (isReflectableClass<MemberType>() || !is_writable(member) || is_static(member)) {
+                handleError<protocolCheckVariant>(info, "field is not writeable or non-primitive: {}", member.name);
+                if (field.dataEndPosition != std::numeric_limits<size_t>::max()) {
+                    buffer.set_position(field.dataEndPosition);
+                }
+                return;
+            } else {
+                constexpr int requestedType = IoSerialiser<protocol, MemberType>::getDataTypeId();
+                if (requestedType != field.intDataType) { // mismatching data-type
+                    if (field.dataEndPosition != std::numeric_limits<size_t>::max()) {
+                        buffer.set_position(field.dataEndPosition);
+                    }
+                    if constexpr (protocolCheckVariant == IGNORE) {
+                        return; // don't write -> skip to next
+                    }
+                    handleError<protocolCheckVariant>(info, "mismatched field type for {}::{} - requested type: {} (typeID: {}) got: {}", member.declarator.name, member.name, typeName<MemberType>, requestedType, field.intDataType);
+                    return;
+                }
+                constexpr bool isAnnotated = is_annotated<std::remove_reference_t<decltype(unwrapPointer(member(value)))>>;
+                if constexpr (isAnnotated && protocolCheckVariant != IGNORE) {       // check for Annotation mismatch
+                    if (is_deprecated(unwrapPointer(member(value)).getModifier())) { // warn for deprecated access
+                        handleError<protocolCheckVariant>(info, "deprecated field access for {}::{} - description: {}", member.declarator.name, member.name, unwrapPointer(member(value)).getDescription());
+                    }
+                    if (is_private(unwrapPointer(member(value)).getModifier())) { // warn for private access
+                        handleError<protocolCheckVariant>(info, "private/internal field access for {}::{} - description: {}", member.declarator.name, member.name, unwrapPointer(member(value)).getDescription());
+                    }
+                    if (unwrapPointer(member(value)).getUnit().compare(field.unit)) { // error on unit mismatch
+                        handleError<protocolCheckVariant>(info, "mismatched field unit for {}::{} - requested unit '{}' received '{}'", member.declarator.name, member.name, unwrapPointer(member(value)).getUnit(), field.unit);
+                        if (field.dataEndPosition != std::numeric_limits<size_t>::max()) {
+                            buffer.set_position(field.dataEndPosition);
+                        }
+                        return;
+                    }
+                    if (is_readonly((unwrapPointer(member(value)).getModifier()))) { // should not set field via external reference
+                        handleError<protocolCheckVariant>(info, "mismatched field access modifier for {}::{} - requested '{}' received '{}'", member.declarator.name, member.name, (unwrapPointer(member(value)).getModifier()), field.modifier);
+                        if (field.dataEndPosition != std::numeric_limits<size_t>::max()) {
+                            buffer.set_position(field.dataEndPosition);
+                        }
+                        return;
+                    }
+                }
+                IoSerialiser<protocol, MemberType>::deserialise(buffer, field.fieldName, getAnnotatedMember(unwrapPointerCreateIfAbsent(member(value))));
+                if constexpr (protocolCheckVariant != IGNORE) {
+                    info.setFields[structName][static_cast<uint64_t>(searchIndex)] = true;
+                }
+            }
+        });
+#pragma clang diagnostic pop
+        // skip to data end if field header defines the end
+        if (field.dataEndPosition != std::numeric_limits<size_t>::max() && field.dataEndPosition != buffer.position()) {
+            if (protocolCheckVariant != IGNORE) {
+                handleError<protocolCheckVariant>(info, "field reader for field {} did not consume until the end ({}) of the field, buffer position: {}", field.fieldName, field.dataEndPosition, buffer.position());
+            }
+            buffer.set_position(field.dataEndPosition);
+        }
+    }
+    // check that full buffer is read. // todo: this check should be removed to allow consecutive storage of multiple objects in one buffer
+    if (hierarchyDepth == 0 && buffer.position() != buffer.size()) {
+        if constexpr (protocolCheckVariant == IGNORE) {
+            return info;
+        }
+        std::cerr << "serialise class type " << typeName<T> << " hierarchyDepth = " << static_cast<int>(hierarchyDepth) << '\n';
+        const auto exception = fmt::format("protocol exception for class type {}({}): position {} vs. size {}",
+                typeName<T>, static_cast<int>(hierarchyDepth), buffer.position(), buffer.size());
+        if constexpr (protocolCheckVariant == ALWAYS) {
+            throw ProtocolException(exception);
+        }
+        std::cout << exception << std::endl; // TODO: replace std::cerr/cout by logger?
+        info.exceptions.emplace_back(ProtocolException(exception));
+        return info;
+    }
+
+    return info;
 }
 
 } // namespace opencmw
-
-/* #################################################################################### */
-/* ### Yet-Another-Serialiser - YaS Definitions ####################################### */
-/* #################################################################################### */
-struct START_MARKER {};
-struct END_MARKER {};
-struct OTHER {};
-
-constexpr static START_MARKER START_MARKER_INST;
-constexpr static END_MARKER   END_MARKER_INST;
-
-namespace opencmw {
-struct YaS : Protocol<"YaS"> {};
-
-namespace yas {
-static const int              VERSION_MAGIC_NUMBER = -1;    // '-1' since CmwLight cannot have a negative number of entries
-static const std::string_view PROTOCOL_NAME        = "YaS"; // Yet another Serialiser implementation
-static const uint8_t          VERSION_MAJOR        = 1;
-static const uint8_t          VERSION_MINOR        = 0;
-static const uint8_t          VERSION_MICRO        = 0;
-static const uint8_t          ARRAY_TYPE_OFFSET    = 100U;
-
-// clang-format off
-template<typename T> inline constexpr uint8_t getDataTypeId() { return 0xFF; } // default value
-template<> inline constexpr uint8_t getDataTypeId<START_MARKER>() { return 0; }
-template<> inline constexpr uint8_t getDataTypeId<bool>() { return 1; }
-template<> inline constexpr uint8_t getDataTypeId<int8_t>() { return 2; }
-template<> inline constexpr uint8_t getDataTypeId<int16_t>() { return 3; }
-template<> inline constexpr uint8_t getDataTypeId<int32_t>() { return 4; }
-template<> inline constexpr uint8_t getDataTypeId<int64_t>() { return 5; }
-template<> inline constexpr uint8_t getDataTypeId<float>() { return 6; }
-template<> inline constexpr uint8_t getDataTypeId<double>() { return 7; }
-template<> inline constexpr uint8_t getDataTypeId<char>() { return 8; }
-template<> inline constexpr uint8_t getDataTypeId<std::string>() { return 9; }
-
-template<> inline constexpr uint8_t getDataTypeId<bool[]>() { return 101; }
-template<> inline constexpr uint8_t getDataTypeId<std::vector<bool>>() { return 101; }
-template<> inline constexpr uint8_t getDataTypeId<int8_t[]>() { return 102; }
-template<> inline constexpr uint8_t getDataTypeId<std::vector<int8_t>>() { return 102; }
-template<> inline constexpr uint8_t getDataTypeId<int16_t[]>() { return 103; }
-template<> inline constexpr uint8_t getDataTypeId<std::vector<int16_t>>() { return 103; }
-template<> inline constexpr uint8_t getDataTypeId<int32_t[]>() { return 104; }
-template<> inline constexpr uint8_t getDataTypeId<std::vector<int32_t>>() { return 104; }
-template<> inline constexpr uint8_t getDataTypeId<int64_t[]>() { return 105; }
-template<> inline constexpr uint8_t getDataTypeId<std::vector<int64_t>>() { return 105; }
-template<> inline constexpr uint8_t getDataTypeId<float[]>() { return 106; }
-template<> inline constexpr uint8_t getDataTypeId<std::vector<float>>() { return 106; }
-template<> inline constexpr uint8_t getDataTypeId<double[]>() { return 107; }
-template<> inline constexpr uint8_t getDataTypeId<std::vector<double>>() { return 107; }
-template<> inline constexpr uint8_t getDataTypeId<char[]>() { return 108; }
-template<> inline constexpr uint8_t getDataTypeId<std::vector<char>>() { return 108; }
-
-template<> inline constexpr uint8_t getDataTypeId<std::string[]>() { return 109; }
-template<> inline constexpr uint8_t getDataTypeId<std::string_view[]>() { return 109; }
-
-// template<> inline constexpr uint8_t getDataTypeId<START_MARKER>() { return 200; }
-// template<> inline constexpr uint8_t getDataTypeId<enum>()          { return 201; }
-// template<typename T> inline constexpr uint8_t getDataTypeId<std::list<T>>()     { return 202; }
-// template<> inline constexpr uint8_t getDataTypeId<std::unsorted_map>() { return 203; }
-// template<> inline constexpr uint8_t getDataTypeId<std::queue>()    { return 204; }
-// template<> inline constexpr uint8_t getDataTypeId<std::set>()      { return 205; }
-
-template<>
-inline constexpr uint8_t getDataTypeId<OTHER>() { return 0xFD; }
-
-template<>
-inline constexpr uint8_t getDataTypeId<END_MARKER>() { return 0xFE; }
-
-// clang-format on
-} // namespace yas
-
-template<typename T>
-struct IoSerialiser<YaS, T> {
-    inline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); } // default value
-};
-
-template<Number T> // catches all numbers
-struct IoSerialiser<YaS, T> {
-    inline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); }
-    constexpr static bool           serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
-        buffer.put(value);
-        return std::is_constant_evaluated();
-    }
-    constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) noexcept {
-        value = buffer.get<T>();
-        return std::is_constant_evaluated();
-    }
-};
-
-template<StringLike T>
-struct IoSerialiser<YaS, T> {
-    inline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); }
-    constexpr static bool           serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
-        //        std::cout << fmt::format("{} - serialise-String_like: {} {} == {} - constexpr?: {} - const {}\n",
-        //                YaS::protocolName(), typeName<T>(), field, value, std::is_constant_evaluated(), std::is_const_v<T>);
-        buffer.put<T>(value); // N.B. ensure that the wrapped value and not the annotation itself is serialised
-        return std::is_constant_evaluated();
-    }
-    constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) noexcept {
-        value = buffer.get<std::string>();
-        //        std::cout << fmt::format("{} - de-serialise-String_like: {} {} == {}  {} - constexpr?: {}\n",
-        //            YaS::protocolName(), typeName<T>(), field, value, value.size(), std::is_constant_evaluated());
-        return std::is_constant_evaluated();
-    }
-};
-
-template<ArrayOrVector T>
-struct IoSerialiser<YaS, T> {
-    inline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); }
-    constexpr static bool           serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
-        buffer.put(std::array<int32_t, 1>{ static_cast<int32_t>(value.size()) });
-        buffer.put(value);
-        return std::is_constant_evaluated();
-    }
-    constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) noexcept {
-        buffer.getArray<int32_t, 1>();
-        buffer.getArray(value);
-        return std::is_constant_evaluated();
-    }
-};
-
-template<MultiArrayType T>
-struct IoSerialiser<YaS, T> {
-    inline static constexpr uint8_t getDataTypeId() {
-        // std::cout << fmt::format("getDataTypeID<{}>() = {}\n", typeName<typename T::value_type>(), yas::getDataTypeId<typename T::value_type>());
-        return yas::ARRAY_TYPE_OFFSET + yas::getDataTypeId<typename T::value_type>();
-    }
-    constexpr static bool serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
-        std::array<int32_t, T::n_dims_> dims;
-        for (uint32_t i = 0U; i < T::n_dims_; i++) {
-            dims[i] = static_cast<int32_t>(value.dimensions()[i]);
-        }
-        buffer.put(dims);
-        buffer.put(value.elements()); // todo: account for strides and offsets (possibly use iterators?)
-        return std::is_constant_evaluated();
-    }
-    constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) noexcept {
-        const std::array<int32_t, T::n_dims_> dimWire = buffer.getArray<int32_t, T::n_dims_>();
-        for (auto i = 0U; i < T::n_dims_; i++) {
-            value.dimensions()[i] = static_cast<typename T::size_t_>(dimWire[i]);
-        }
-        value.element_count()        = value.dimensions()[T::n_dims_];
-        value.stride(T::n_dims_ - 1) = 1;
-        value.offset(T::n_dims_ - 1) = 0;
-        for (auto i = T::n_dims_ - 1; i > 0; i--) {
-            value.element_count() *= value.dimensions()[i - 1];
-            value.stride(i - 1) = value.stride(i) * value.dimensions()[i];
-            value.offset(i - 1) = 0;
-        }
-        buffer.getArray(value.elements());
-        return std::is_constant_evaluated();
-    }
-};
-
-template<>
-struct IoSerialiser<YaS, START_MARKER> {
-    inline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<START_MARKER>(); }
-
-    constexpr static bool           serialise(IoBuffer & /*buffer*/, const ClassField & /*field*/, const START_MARKER & /*value*/) noexcept {
-        // do not do anything, as the start marker is of size zero and only the type byte is important
-        return std::is_constant_evaluated();
-    }
-
-    constexpr static bool deserialise(IoBuffer & /*buffer*/, const ClassField & /*field*/, const START_MARKER &) {
-        // do not do anything, as the start marker is of size zero and only the type byte is important
-        return std::is_constant_evaluated();
-    }
-};
-
-template<>
-struct IoSerialiser<YaS, END_MARKER> {
-    inline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<END_MARKER>(); }
-    static bool                     serialise(IoBuffer & /*buffer*/, const ClassField & /*field*/, const END_MARKER & /*value*/) noexcept {
-        // do not do anything, as the end marker is of size zero and only the type byte is important
-        return std::is_constant_evaluated();
-    }
-
-    constexpr static bool deserialise(IoBuffer & /*buffer*/, const ClassField & /*field*/, const END_MARKER &) {
-        // do not do anything, as the end marker is of size zero and only the type byte is important
-        return std::is_constant_evaluated();
-    }
-};
-
-template<SerialiserProtocol protocol, const bool writeMetaInfo, typename DataType>
-std::size_t putFieldHeader(IoBuffer &buffer, const char *fieldName, const int fieldNameSize, const DataType &data) {
-    using StrippedDataType         = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(data)))>;
-    constexpr int32_t dataTypeSize = static_cast<int32_t>(sizeof(StrippedDataType));
-    buffer.reserve_spare(((static_cast<uint64_t>(fieldNameSize) + 18) * sizeof(uint8_t)) + dataTypeSize);
-
-    // -- offset 0 vs. field start
-    const std::size_t headerStart = buffer.size();
-    buffer.put(static_cast<uint8_t>(IoSerialiser<protocol, StrippedDataType>::getDataTypeId())); // data type ID
-    buffer.put(opencmw::hash(fieldName, fieldNameSize));                                         // unique hashCode identifier -- TODO: choose more performant implementation instead of java default
-    const std::size_t dataStartOffsetPosition = buffer.size();
-    buffer.put(-1); // dataStart offset
-    const int32_t     dataSize         = is_supported_number<DataType> ? dataTypeSize : -1;
-    const std::size_t dataSizePosition = buffer.size();
-    buffer.put(dataSize);                    // dataSize (N.B. 'headerStart' + 'dataStart + dataSize' == start of next field header
-    buffer.put<std::string_view>(fieldName); // full field name
-
-    if constexpr (is_annotated<DataType>) {
-        if (writeMetaInfo) {
-            buffer.put(std::string_view(data.getUnit()));
-            buffer.put(std::string_view(data.getDescription()));
-            buffer.put(static_cast<uint8_t>(data.getModifier()));
-            // TODO: write group meta data
-            //final String[] groups = fieldDescription.getFieldGroups().toArray(new String[0]); // java uses non-array string
-            //buffer.putStringArray(groups, groups.length);
-            //buffer.put<std::string[]>({""});
-        }
-    }
-
-    const std::size_t dataStartPosition         = buffer.size();
-    const std::size_t dataStartOffset           = (dataStartPosition - headerStart);     // -- offset dataStart calculations
-    buffer.at<int32_t>(dataStartOffsetPosition) = static_cast<int32_t>(dataStartOffset); // write offset to dataStart
-
-    // from hereon there are data specific structures that are written to the IoBuffer
-    IoSerialiser<protocol, StrippedDataType>::serialise(buffer, fieldName, getAnnotatedMember(unwrapPointer(data)));
-
-    // add just data-end position
-    buffer.at<int32_t>(dataSizePosition) = static_cast<int32_t>(buffer.size() - dataStartPosition); // write data size
-
-    return dataSizePosition; // N.B. exported for adjusting START_MARKER -> END_MARKER data size to be adjustable and thus skippable
-}
-
-} // namespace opencmw
-
-/* #################################################################################### */
-/* ### CmwLight Definitions ########################################################### */
-/* #################################################################################### */
-
-namespace opencmw {
-struct CmwLight : Protocol<"CmwLight"> {
-};
-
-namespace cmwlight {
-
-}
-
-template<Number T>
-struct IoSerialiser<T, CmwLight> { // catch all template
-    constexpr static bool serialise(IoBuffer &buffer, const ClassField &field, const T &value) noexcept {
-        if (std::is_constant_evaluated()) {
-            using namespace std::literals;
-            buffer.put(field);
-            buffer.template put(value);
-            return true;
-        }
-        std::cout << fmt::format("{} - serialise-catch-all: {} {} value: {} - constexpr?: {}\n",
-                CmwLight::protocolName(), typeName<T>, field, value,
-                std::is_constant_evaluated());
-        return false;
-    }
-};
-} // namespace opencmw
-
 // TODO: allow declaration of reflection within name-space
 ENABLE_REFLECTION_FOR(opencmw::DeserialiserInfo, setFields, additionalFields, exceptions)
 
 #pragma clang diagnostic pop
-#endif //OPENCMW_IOSERIALISER_H
+#endif // OPENCMW_IOSERIALISER_H

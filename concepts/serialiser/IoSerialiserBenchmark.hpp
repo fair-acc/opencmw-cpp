@@ -2,6 +2,9 @@
 #pragma ide diagnostic   ignored "cppcoreguidelines-avoid-magic-numbers"
 #ifndef OPENCMW_CPP_IOCLASSSERIALISERBENCHMARK_H
 #define OPENCMW_CPP_IOCLASSSERIALISERBENCHMARK_H
+
+#include <IoSerialiser.hpp>
+#include <Utils.hpp>
 #include <numeric>
 #include <opencmw.hpp>
 
@@ -35,8 +38,8 @@ struct TestDataClass {
     string string2;
 
     // 1-dim arrays
-    vector<uint8_t> boolArray;
-    vector<int8_t>  byteArray;
+    vector<char>   boolArray;
+    vector<int8_t> byteArray;
     // vector<int8_t> charArray;
     vector<int16_t> shortArray;
     vector<int32_t> intArray;
@@ -253,6 +256,98 @@ ENABLE_REFLECTION_FOR(TestDataClass, bool1, bool2, byte1, byte2, char1, char2, s
 )
 
 volatile bool TestDataClass::cmwCompatibilityMode = false;
+
+using namespace opencmw;
+using namespace opencmw::utils; // for operator<< and fmt::format overloading
+
+template<SerialiserProtocol protocol, ReflectableClass T>
+std::size_t checkSerialiserIdentity(IoBuffer &buffer, const T &inputObject, T &outputObject) {
+    assert(inputObject == inputObject); // tests that equal operator works correctly
+    using namespace opencmw;
+    buffer.clear();
+    //    if constexpr (requires { outputObject.clear();}) {
+    //        outputObject.clear();
+    //    }
+    opencmw::serialise<protocol>(buffer, inputObject);
+
+    std::cout << ClassInfoVerbose << "before: ";
+    diffView(std::cout, inputObject, outputObject);
+    assert(inputObject != outputObject);
+    buffer.reset();
+
+    try {
+        opencmw::deserialise<protocol, ProtocolCheck::IGNORE>(buffer, outputObject);
+    } catch (std::exception &e) {
+        std::cout << "caught exception " << typeName<std::remove_reference_t<decltype(e)>> << std::endl;
+    } catch (...) {
+        std::cout << "caught unknown exception " << std::endl;
+    }
+    std::cout << "after: " << std::flush;
+    diffView(std::cout, inputObject, outputObject);
+    assert(inputObject == outputObject);
+
+    return buffer.size();
+}
+
+std::string humanReadableByteCount(long bytes, const bool si) {
+    const int unit = si ? 1000 : 1024;
+    if (bytes < unit) {
+        return fmt::format("{} B", bytes);
+    }
+
+    const int  exp = static_cast<int>((log(static_cast<double>(bytes)) / log(unit)));
+    const char pre = (si ? "kMGTPE" : "KMGTPE")[exp - 1];
+    return fmt::format("{:.1f} {}{}B", static_cast<double>(bytes) / pow(unit, exp), pre, (si ? "" : "i"));
+}
+
+template<SerialiserProtocol protocol, ProtocolCheck protocolCheck, ReflectableClass T>
+void testPerformancePoco(IoBuffer &buffer, const T &inputObject, T &outputObject, const std::size_t iterations) {
+    bool          putFieldMetaData = true;
+
+    const clock_t startTime        = clock();
+    for (std::size_t i = 0; i < iterations; i++) {
+        if (i == 1 && protocolCheck != opencmw::ALWAYS) {
+            // only stream meta-data the first iteration
+            putFieldMetaData = false;
+        }
+        buffer.clear();
+        if (putFieldMetaData) {
+            opencmw::serialise<protocol, true>(buffer, inputObject);
+        } else {
+            opencmw::serialise<protocol, false>(buffer, inputObject);
+        }
+
+        buffer.reset();
+        try {
+            opencmw::deserialise<protocol, protocolCheck>(buffer, outputObject);
+        } catch (std::exception &e) {
+            std::cout << "caught exception " << typeName<std::remove_reference_t<decltype(e)>> << ": " << e.what() << std::endl;
+            break;
+        } catch (opencmw::ProtocolException &e) {
+            std::cout << "caught ProtocolException " << typeName<std::remove_reference_t<decltype(e)>> << ": " << e.what() << std::endl;
+            break;
+        } catch (...) {
+            std::cout << "caught unknown exception " << std::endl;
+            break;
+        }
+
+        if (inputObject.string1 != outputObject.string1) {
+            // quick check necessary so that the above is not optimised by the Java JIT compiler to NOP
+            std::cout << "deserialised object differs from input object" << std::endl;
+            throw std::exception();
+        }
+    }
+    if (iterations <= 1) {
+        // JMH use-case
+        return;
+    }
+    const clock_t stopTime       = clock();
+    const double  diffSeconds    = static_cast<double>(stopTime - startTime) / CLOCKS_PER_SEC;
+    const double  bytesPerSecond = ((static_cast<double>(iterations * buffer.size()) / diffSeconds));
+    std::cout << fmt::format("IO Serializer (POCO) throughput = {}/s for {} per test run (took {:0.1f} ms)\n",
+            humanReadableByteCount(static_cast<long>(bytesPerSecond), true),
+            humanReadableByteCount(static_cast<long>(buffer.size()), true), 1e3 * diffSeconds);
+}
 
 #endif //OPENCMW_CPP_IOCLASSSERIALISERBENCHMARK_H
 

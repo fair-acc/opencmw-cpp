@@ -10,6 +10,7 @@
 #include <array>
 #include <cassert>
 #include <numeric>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -220,6 +221,28 @@ public:
         for (std::size_t i = 0U; i < size; i++) {
             put<bool>(values[i]);
         }
+    }
+
+    /**
+     * Append a raw string at the end of the byte buffer without any meta-info header
+     */
+    constexpr void putRaw(const std::string_view string) {
+        reserve_spare(string.size());
+        std::copy(string.begin(), string.end(), data() + size());
+        _size += string.length();
+    }
+
+    /**
+     * Append a raw byte span at the end of the byte buffer without any meta-info header
+     */
+    constexpr void putRaw(const std::span<const uint8_t> bytes) {
+        reserve_spare(bytes.size());
+        std::copy(bytes.begin(), bytes.end(), data() + size());
+        _size += bytes.size();
+    }
+
+    std::string_view asString() {
+        return { reinterpret_cast<char *>(data()), _size };
     }
 
     template<Number R>

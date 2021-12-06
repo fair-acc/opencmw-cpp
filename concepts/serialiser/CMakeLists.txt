@@ -1,11 +1,17 @@
-add_executable(IoClassSerialiserBenchmark IoClassSerialiserBenchmark.cpp IoClassSerialiserBenchmark.hpp)
-target_link_libraries(IoClassSerialiserBenchmark PRIVATE serialiser project_options project_warnings)
+add_executable(IoSerialiserYaSBenchmark IoSerialiserYaSBenchmark.cpp IoSerialiserBenchmark.hpp)
+target_link_libraries(IoSerialiserYaSBenchmark PRIVATE serialiser project_options project_warnings)
+
+add_executable(IoSerialiserJsonBenchmark IoSerialiserJsonBenchmark.cpp IoSerialiserBenchmark.hpp)
+target_link_libraries(IoSerialiserJsonBenchmark PRIVATE serialiser project_options project_warnings)
 
 add_executable(SimpleReflectionExample SimpleReflectionExample.cpp)
 target_link_libraries(SimpleReflectionExample PRIVATE serialiser project_options project_warnings)
 
 add_executable(SerialisationExample SerialisationExample.cpp)
 target_link_libraries(SerialisationExample PRIVATE serialiser project_options project_warnings)
+
+add_executable(JsonExample JsonExample.cpp)
+target_link_libraries(JsonExample PRIVATE serialiser project_options project_warnings)
 
 add_executable(SerialiseToFile SerialiseToFile.cpp)
 target_link_libraries(SerialiseToFile PRIVATE serialiser project_options project_warnings)
