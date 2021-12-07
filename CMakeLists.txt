@@ -38,7 +38,7 @@ enable_doxygen()
 include(cmake/StaticAnalyzers.cmake)
 
 option(ENABLE_TESTING "Enable Test Builds" ON)
-option(ENABLE_COVERAGE "Enable Coverage for Test Builds" ON)
+option(ENABLE_COVERAGE "Enable Coverage for Test Builds" OFF)
 option(ENABLE_CONCEPTS "Enable Concepts Builds" ON)
 
 # Very basic PCH example
