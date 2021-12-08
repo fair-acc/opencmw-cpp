@@ -38,7 +38,11 @@ enable_doxygen()
 include(cmake/StaticAnalyzers.cmake)
 
 option(ENABLE_TESTING "Enable Test Builds" ON)
-option(ENABLE_COVERAGE "Enable Coverage for Test Builds" ON)
+if (CMAKE_BUILD_TYPE STREQUAL "Debug" OR GENERATOR_IS_MULTI_CONFIG)
+  option(ENABLE_COVERAGE "Enable Coverage" ON)
+else()
+  option(ENABLE_COVERAGE "Enable Coverage" OFF)
+endif()
 option(ENABLE_CONCEPTS "Enable Concepts Builds" ON)
 
 # Very basic PCH example
@@ -63,7 +67,7 @@ include(cmake/ReflCpp.cmake) # todo: switch to obtaining reflcpp from conan
 if(ENABLE_TESTING)
   enable_testing()
   message("Building Tests.")
-  if (ENABLE_COVERAGE AND (CMAKE_BUILD_TYPE STREQUAL "Debug" OR GENERATOR_IS_MULTI_CONFIG))
+  if (ENABLE_COVERAGE)
     if(UNIX AND NOT APPLE) # Linux
       message("Coverage reporting enabled")
       include(cmake/CodeCoverage.cmake) # https://github.com/bilke/cmake-modules/blob/master/CodeCoverage.cmake (License: BSL-1.0)
