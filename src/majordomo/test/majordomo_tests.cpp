@@ -859,13 +859,13 @@ TEST_CASE("BasicMdpWorker instantiation", "[worker][instantiation]") {
     BasicMdpWorker            worker2("a.service", broker, handler);
     BasicMdpWorker            worker3("a.service", INTERNAL_ADDRESS_BROKER, NonCopyableMovableHandler(), Context(), testSettings());
     BasicMdpWorker            worker4("a.service", INTERNAL_ADDRESS_BROKER, handler, Context(), testSettings());
-    Context context;
+    Context                   context;
     BasicMdpWorker            worker5("a.service", INTERNAL_ADDRESS_BROKER, NonCopyableMovableHandler(), context, testSettings());
     BasicMdpWorker            worker6("a.service", INTERNAL_ADDRESS_BROKER, handler, context, testSettings());
 }
 
 TEST_CASE("BasicMdpWorker connects to non-existing broker", "[worker]") {
-    const Context context;
+    const Context  context;
     BasicMdpWorker worker("a.service", URI("inproc:/doesnotexist"), TestIntHandler(10), context);
     worker.run(); // returns immediately on connection failure
 }
@@ -875,11 +875,11 @@ TEST_CASE("BasicMdpWorker run loop quits when broker quits", "[worker]") {
     Broker         broker("testbroker", testSettings());
     BasicMdpWorker worker("a.service", broker, TestIntHandler(10));
 
-    RunInThread brokerRun(broker);
+    RunInThread    brokerRun(broker);
 
-    auto quitBroker = std::jthread([&broker]() {
-            std::this_thread::sleep_for(std::chrono::milliseconds(250));
-            broker.shutdown();
+    auto           quitBroker = std::jthread([&broker]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        broker.shutdown();
     });
 
     worker.run(); // returns when broker disappears
@@ -1072,7 +1072,6 @@ TEST_CASE("NOTIFY example using the BasicMdpWorker class", "[worker][notify_basi
         if (msg2.sourceId() == "/wine*") {
             break;
         }
-
 
         debug() << msg1.sourceId() << msg2.body();
         REQUIRE(msg2.sourceId() == "/beer*");
