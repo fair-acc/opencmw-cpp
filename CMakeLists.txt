@@ -63,7 +63,7 @@ include(cmake/ReflCpp.cmake) # todo: switch to obtaining reflcpp from conan
 if(ENABLE_TESTING)
   enable_testing()
   message("Building Tests.")
-  if (ENABLE_COVERAGE)
+  if (ENABLE_COVERAGE AND (CMAKE_BUILD_TYPE STREQUAL "Debug" OR GENERATOR_IS_MULTI_CONFIG))
     if(UNIX AND NOT APPLE) # Linux
       message("Coverage reporting enabled")
       include(cmake/CodeCoverage.cmake) # https://github.com/bilke/cmake-modules/blob/master/CodeCoverage.cmake (License: BSL-1.0)
@@ -74,13 +74,13 @@ if(ENABLE_TESTING)
               NAME coverage
               EXECUTABLE ctest
               DEPENDENCIES serialiser_tests
-              EXCLUDE "$CMAKE_BUILD_DIR/*" "concepts/*"
+              EXCLUDE "$CMAKE_BUILD_DIR/*" "concepts/.*" ".*/test/.*"
       )
       setup_target_for_coverage_gcovr_html(
               NAME coverage_html
               EXECUTABLE ctest
               DEPENDENCIES serialiser_tests
-              EXCLUDE "$CMAKE_BUILD_DIR/*" "concepts/*"
+              EXCLUDE "$CMAKE_BUILD_DIR/*" "concepts/.*" ".*/test/.*"
       )
     else()
       message(WARNING "Coverage is only supported on linux")
