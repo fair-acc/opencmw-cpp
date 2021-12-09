@@ -87,6 +87,7 @@ public:
 
 private:
     Timestamp                                               _heartbeatAt = Clock::now() + settings.heartbeatInterval;
+    SubscriptionMatcher                                     _subscriptionMatcher;
     std::unordered_map<URI<RELAXED>, std::set<std::string>> _subscribedClientsByTopic; // topic -> client IDs
     std::unordered_map<URI<RELAXED>, int>                   _subscribedTopics;         // topic -> subscription count
     std::unordered_map<std::string, Client>                 _clients;
@@ -160,6 +161,11 @@ public:
 
     Broker(const Broker &) = delete;
     Broker &operator=(const Broker &) = delete;
+
+    template<typename Filter>
+    void addFilter(const std::string &key) {
+        _subscriptionMatcher.addFilter<Filter>(key);
+    }
 
     enum class BindOption {
         DetectFromURI, ///< detect from uri which socket is meant (@see bind)
@@ -412,8 +418,8 @@ private:
 
         // TODO avoid clone() for last message sent out
         for (const auto &topicIt : _subscribedTopics) {
-            static const SubscriptionMatcher matcher;
-            if (matcher(topicURI, topicIt.first)) {
+
+            if (_subscriptionMatcher(topicURI, topicIt.first)) {
                 // sends notification with the topic that is expected by the client for its subscription
                 auto copy = message.clone();
                 copy.setSourceId(topicIt.first.str, MessageFrame::dynamic_bytes_tag{});

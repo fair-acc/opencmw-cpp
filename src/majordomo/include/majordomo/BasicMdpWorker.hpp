@@ -75,6 +75,7 @@ private:
     std::optional<Socket>                                    _workerSocket;
     std::optional<Socket>                                    _pubSocket;
     std::array<zmq_pollitem_t, 3>                            _pollerItems;
+    SubscriptionMatcher                                      _subscriptionMatcher;
     std::set<URI<RELAXED>>                                   _activeSubscriptions;
     Socket                                                   _notifyListenerSocket;
     std::unordered_map<std::thread::id, NotificationHandler> _notificationHandlers;
@@ -98,6 +99,10 @@ public:
 
     void setRbacRole(std::string rbac) {
         _rbacRole = std::move(rbac);
+    }
+    template<typename Filter>
+    void addFilter(const std::string &key) {
+        _subscriptionMatcher.addFilter<Filter>(key);
     }
 
     void shutdown() {
@@ -232,9 +237,8 @@ private:
     bool receiveNotificationMessage() {
         if (auto message = MdpMessage::receive(_notifyListenerSocket)) {
             const auto topic                    = URI<RELAXED>(std::string(message->topic()));
-            const auto matchesNotificationTopic = [&topic](const auto &subscription) {
-                static const SubscriptionMatcher matcher;
-                return matcher(topic, subscription);
+            const auto matchesNotificationTopic = [this, &topic](const auto &subscription) {
+                return _subscriptionMatcher(topic, subscription);
             };
 
             // TODO what to do here if worker is disconnected?
