@@ -38,7 +38,11 @@ enable_doxygen()
 include(cmake/StaticAnalyzers.cmake)
 
 option(ENABLE_TESTING "Enable Test Builds" ON)
-option(ENABLE_COVERAGE "Enable Coverage for Test Builds" ON)
+if (CMAKE_BUILD_TYPE STREQUAL "Debug" OR GENERATOR_IS_MULTI_CONFIG)
+  option(ENABLE_COVERAGE "Enable Coverage" ON)
+else()
+  option(ENABLE_COVERAGE "Enable Coverage" OFF)
+endif()
 option(ENABLE_CONCEPTS "Enable Concepts Builds" ON)
 
 # Very basic PCH example
@@ -74,13 +78,13 @@ if(ENABLE_TESTING)
               NAME coverage
               EXECUTABLE ctest
               DEPENDENCIES serialiser_tests
-              EXCLUDE "$CMAKE_BUILD_DIR/*" "concepts/*"
+              EXCLUDE "$CMAKE_BUILD_DIR/*" "concepts/.*" ".*/test/.*"
       )
       setup_target_for_coverage_gcovr_html(
               NAME coverage_html
               EXECUTABLE ctest
               DEPENDENCIES serialiser_tests
-              EXCLUDE "$CMAKE_BUILD_DIR/*" "concepts/*"
+              EXCLUDE "$CMAKE_BUILD_DIR/*" "concepts/.*" ".*/test/.*"
       )
     else()
       message(WARNING "Coverage is only supported on linux")
