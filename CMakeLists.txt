@@ -77,13 +77,13 @@ if(ENABLE_TESTING)
       setup_target_for_coverage_gcovr_xml(
               NAME coverage
               EXECUTABLE ctest
-              DEPENDENCIES serialiser_tests
+              DEPENDENCIES core_tests majordomo_tests serialiser_tests
               EXCLUDE "$CMAKE_BUILD_DIR/*" "concepts/.*" ".*/test/.*"
       )
       setup_target_for_coverage_gcovr_html(
               NAME coverage_html
               EXECUTABLE ctest
-              DEPENDENCIES serialiser_tests
+              DEPENDENCIES core_tests majordomo_tests serialiser_tests
               EXCLUDE "$CMAKE_BUILD_DIR/*" "concepts/.*" ".*/test/.*"
       )
     else()
