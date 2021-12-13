@@ -15,7 +15,7 @@
 namespace opencmw::majordomo {
 
 class Client {
-    const Context &               _context;
+    const Context                &_context;
     std::optional<Socket>         _socket;
     std::string                   _brokerUrl;
     int                           _nextRequestId = 0;

@@ -193,7 +193,7 @@ public:
         _fragment  = adjustedView(other._fragment);
     }
 
-    URI &              operator=(const URI &other) = delete;
+    URI               &operator=(const URI &other) = delete;
 
     bool               empty() const { return str.empty(); }
 

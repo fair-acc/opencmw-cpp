@@ -50,7 +50,7 @@ private:
     std::atomic<bool>             _shutdownRequested = false;
     int                           _liveness          = 0;
     Timestamp                     _heartbeatAt;
-    const Context &               _context;
+    const Context                &_context;
     std::optional<Socket>         _workerSocket;
     std::optional<Socket>         _pubSocket;
     std::array<zmq_pollitem_t, 3> _pollerItems;

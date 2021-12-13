@@ -1,8 +1,8 @@
 #ifndef OPENCMW_MAJORDOMO_SETTINGS_H
 #define OPENCMW_MAJORDOMO_SETTINGS_H
 
-#include <URI.hpp>
 #include <chrono>
+#include <URI.hpp>
 
 namespace opencmw::majordomo {
 
