@@ -55,8 +55,8 @@ public:
                 throw std::invalid_argument(fmt::format("Tag has invalid format: '{}'", tag));
             }
 
-            const auto key = tag.substr(0, posEqual);
-            const auto valueString = tag.substr(posEqual + 1, tag.length() - posEqual - 1);
+            const auto         key         = tag.substr(0, posEqual);
+            const auto         valueString = tag.substr(posEqual + 1, tag.length() - posEqual - 1);
 
             std::optional<int> value;
 
