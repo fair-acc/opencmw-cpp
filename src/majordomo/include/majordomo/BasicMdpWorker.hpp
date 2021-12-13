@@ -106,8 +106,6 @@ public:
             return;
         }
 
-        assert(_workerSocket);
-
         const auto heartbeatIntervalMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(_settings.heartbeatInterval).count());
 
         do {
@@ -123,7 +121,6 @@ public:
                 if (!connectToBroker())
                     return;
             }
-            assert(_workerSocket);
 
             if (Clock::now() > _heartbeatAt) {
                 auto heartbeat = createMessage(Command::Heartbeat);
@@ -168,7 +165,6 @@ private:
     }
 
     bool receiveSubscriptionMessage() {
-        assert(_pubSocket);
         MessageFrame frame;
         const auto   result = frame.receive(*_pubSocket, ZMQ_DONTWAIT);
 
@@ -219,7 +215,6 @@ private:
     }
 
     bool receiveDealerMessage() {
-        assert(_workerSocket);
         if (auto message = MdpMessage::receive(*_workerSocket)) {
             handleDealerMessage(std::move(*message));
             return true;

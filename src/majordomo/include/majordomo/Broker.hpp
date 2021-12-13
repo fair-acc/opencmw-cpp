@@ -72,14 +72,12 @@ private:
         }
 
         BrokerMessage takeNextMessage() {
-            assert(!requests.empty());
             auto msg = std::move(requests.front());
             requests.pop_front();
             return msg;
         }
 
         Worker *takeNextWorker() {
-            assert(!waiting.empty());
             auto worker = waiting.front();
             waiting.pop_front();
             return worker;
@@ -367,7 +365,6 @@ private:
             return true;
         }
 
-        assert(message.isWorkerMessage());
         processWorker(socket, std::move(message));
         return true;
     }
@@ -422,7 +419,6 @@ private:
         while (!service.waiting.empty() && !service.requests.empty()) {
             auto message = service.takeNextMessage();
             auto worker  = service.takeNextWorker();
-            assert(worker);
             message.setClientSourceId(message.sourceId(), MessageFrame::dynamic_bytes_tag{});
             message.setSourceId(worker->id, MessageFrame::dynamic_bytes_tag{});
             message.setProtocol(Protocol::Worker);
@@ -466,7 +462,6 @@ private:
         // TODO
         // waiting.addLast(worker);
         auto service = _services.find(worker.serviceName);
-        assert(service != _services.end());
         service->second.waiting.push_back(&worker);
         worker.expiry = updatedWorkerExpiry();
         dispatch(service->second);
@@ -497,8 +492,6 @@ private:
 
             auto clientMessage = std::move(client.requests.back());
             client.requests.pop_back();
-
-            assert(clientMessage.isValid());
 
             if (auto service = bestMatchingService(clientMessage.serviceName())) {
                 service->putMessage(std::move(clientMessage));
@@ -554,8 +547,6 @@ private:
     }
 
     void processWorker(const Socket &socket, BrokerMessage &&message) {
-        assert(message.isWorkerMessage());
-
         const auto serviceName = std::string(message.serviceName());
         const auto serviceId   = std::string(message.sourceId());
         const auto knownWorker = _workers.contains(serviceId);

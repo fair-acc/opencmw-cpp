@@ -1,7 +1,6 @@
 #ifndef OPENCMW_MAJORDOMO_CLIENT_H
 #define OPENCMW_MAJORDOMO_CLIENT_H
 
-#include <cassert>
 #include <charconv>
 #include <string>
 #include <string_view>
@@ -116,8 +115,6 @@ public:
     }
 
     bool tryRead(std::chrono::milliseconds timeout) {
-        assert(_socket);
-
         const auto result = zmq_invoke(zmq_poll, _pollerItems.data(), static_cast<int>(_pollerItems.size()), timeout.count());
         if (!result.isValid()) {
             return false;
