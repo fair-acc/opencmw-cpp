@@ -880,7 +880,7 @@ TEST_CASE("BasicMdpWorker run loop quits when broker quits", "[worker]") {
     auto           quitBroker = std::jthread([&broker]() {
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
         broker.shutdown();
-    });
+              });
 
     worker.run(); // returns when broker disappears
     quitBroker.join();

@@ -36,7 +36,7 @@ private:
     using TopicURI    = opencmw::URI<RELAXED>;
 
     struct Client {
-        const Socket &            socket;
+        const Socket             &socket;
         const std::string         id;
         std::deque<BrokerMessage> requests;
         Timestamp                 expiry;
@@ -46,7 +46,7 @@ private:
     };
 
     struct Worker {
-        const Socket &    socket;
+        const Socket     &socket;
         const std::string id;
         const std::string serviceName;
         Timestamp         expiry;
@@ -559,7 +559,7 @@ private:
         const auto serviceName = std::string(message.serviceName());
         const auto serviceId   = std::string(message.sourceId());
         const auto knownWorker = _workers.contains(serviceId);
-        auto &     worker      = _workers.try_emplace(serviceId, socket, serviceId, serviceName, updatedWorkerExpiry()).first->second;
+        auto      &worker      = _workers.try_emplace(serviceId, socket, serviceId, serviceName, updatedWorkerExpiry()).first->second;
 
         switch (message.command()) {
         case Command::Ready: {
