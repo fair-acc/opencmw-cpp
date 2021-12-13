@@ -27,7 +27,7 @@ namespace opencmw::majordomo {
 struct RequestContext {
     const MdpMessage                             request;
     MdpMessage                                   reply;
-    opencmw::MIME::MimeType                      mimeType = opencmw::MIME::BINARY;
+    MIME::MimeType                               mimeType = MIME::JSON; // TODO MIME::BINARY;
     std::unordered_map<std::string, std::string> htmlData;
 };
 
@@ -62,10 +62,13 @@ private:
         }
     };
 
+protected:
+    const std::string _serviceName;
+
+private:
     RequestHandler                                           _handler;
     const Settings                                           _settings;
     const opencmw::URI<STRICT>                               _brokerAddress;
-    const std::string                                        _serviceName;
     std::string                                              _serviceDescription;
     std::string                                              _rbacRole;
     std::atomic<bool>                                        _shutdownRequested = false;
@@ -84,7 +87,7 @@ private:
 
 public:
     explicit BasicMdpWorker(std::string_view serviceName, opencmw::URI<STRICT> brokerAddress, RequestHandler &&handler, const Context &context, Settings settings = {})
-        : _handler{ std::forward<RequestHandler>(handler) }, _settings{ std::move(settings) }, _brokerAddress{ std::move(brokerAddress) }, _serviceName{ std::move(serviceName) }, _context(context), _notifyListenerSocket(_context, ZMQ_PULL), _notifyAddress(makeNotifyAddress(serviceName)) {
+        : _serviceName{ std::move(serviceName) }, _handler{ std::forward<RequestHandler>(handler) }, _settings{ std::move(settings) }, _brokerAddress{ std::move(brokerAddress) }, _context(context), _notifyListenerSocket(_context, ZMQ_PULL), _notifyAddress(makeNotifyAddress(serviceName)) {
         zmq_invoke(zmq_bind, _notifyListenerSocket, _notifyAddress.data()).assertSuccess();
     }
 

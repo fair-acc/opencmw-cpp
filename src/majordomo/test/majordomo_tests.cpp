@@ -4,7 +4,6 @@
 #include <majordomo/Broker.hpp>
 #include <majordomo/Client.hpp>
 #include <majordomo/Constants.hpp>
-#include <majordomo/Message.hpp>
 #include <majordomo/Utils.hpp>
 
 #include <catch2/catch.hpp>
@@ -12,87 +11,10 @@
 
 #include <charconv>
 #include <cstdlib>
-#include <deque>
 #include <thread>
 
 using namespace opencmw::majordomo;
 using URI = opencmw::URI<>;
-
-static opencmw::majordomo::Settings testSettings() {
-    Settings settings;
-    settings.heartbeatInterval = std::chrono::milliseconds(100);
-    return settings;
-}
-
-template<typename MessageType>
-class TestNode {
-    std::deque<MessageType> _receivedMessages;
-
-public:
-    Socket _socket;
-
-    explicit TestNode(const Context &context, int socket_type = ZMQ_DEALER)
-        : _socket(context, socket_type) {
-    }
-
-    bool connect(const URI &address, std::string_view subscription = "") {
-        auto result = zmq_invoke(zmq_connect, _socket, toZeroMQEndpoint(address).data());
-        if (!result) return false;
-
-        if (!subscription.empty()) {
-            return subscribe(subscription);
-        }
-
-        return true;
-    }
-
-    bool subscribe(std::string_view subscription) {
-        assert(!subscription.empty());
-        return zmq_invoke(zmq_setsockopt, _socket, ZMQ_SUBSCRIBE, subscription.data(), subscription.size()).isValid();
-    }
-
-    bool unsubscribe(std::string_view subscription) {
-        assert(!subscription.empty());
-        return zmq_invoke(zmq_setsockopt, _socket, ZMQ_UNSUBSCRIBE, subscription.data(), subscription.size()).isValid();
-    }
-
-    bool sendRawFrame(std::string data) {
-        MessageFrame f(data, MessageFrame::dynamic_bytes_tag{});
-        return f.send(_socket, 0).isValid(); // blocking for simplicity
-    }
-
-    MessageType readOne() {
-        while (_receivedMessages.empty()) {
-            auto message = MessageType::receive(_socket);
-            if (message) {
-                _receivedMessages.emplace_back(std::move(*message));
-            }
-        }
-
-        assert(!_receivedMessages.empty());
-        auto msg = std::move(_receivedMessages.front());
-        _receivedMessages.pop_front();
-        return msg;
-    }
-
-    std::optional<MessageType> tryReadOne(std::chrono::milliseconds timeout) {
-        assert(_receivedMessages.empty());
-
-        std::array<zmq_pollitem_t, 1> pollerItems;
-        pollerItems[0].socket = _socket.zmq_ptr;
-        pollerItems[0].events = ZMQ_POLLIN;
-
-        const auto result     = zmq_invoke(zmq_poll, pollerItems.data(), static_cast<int>(pollerItems.size()), timeout.count());
-        if (!result.isValid())
-            return {};
-
-        return MessageType::receive(_socket);
-    }
-
-    void send(MdpMessage &message) {
-        message.send(_socket).assertSuccess();
-    }
-};
 
 TEST_CASE("OpenCMW::Frame cloning", "[frame][cloning]") {
     {

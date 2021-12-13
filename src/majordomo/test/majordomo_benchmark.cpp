@@ -56,7 +56,7 @@ public:
     }
 
     void handleResponse(MdpMessage &&) override {
-        debug() << "Unexpected message not handled by callback\n";
+        opencmw::debug() << "Unexpected message not handled by callback\n";
         std::terminate();
     }
 
