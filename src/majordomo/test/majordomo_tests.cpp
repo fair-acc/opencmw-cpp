@@ -1005,7 +1005,7 @@ TEST_CASE("NOTIFY example using the BasicMdpWorker class", "[worker][notify_basi
             MdpMessage notify;
             notify.setTopic("/beer.time", static_tag);
             notify.setBody("Have a beer", static_tag);
-            worker.notify(std::move(notify));
+            REQUIRE(worker.notify(std::move(notify)));
         }
         {
             const auto notification = client.tryReadOne(std::chrono::milliseconds(20));
@@ -1025,7 +1025,7 @@ TEST_CASE("NOTIFY example using the BasicMdpWorker class", "[worker][notify_basi
         MdpMessage notify;
         notify.setTopic("/beer.error", static_tag);
         notify.setError("Fridge empty!", static_tag);
-        worker.notify(std::move(notify));
+        REQUIRE(worker.notify(std::move(notify)));
     }
 
     bool seenError = false;
@@ -1054,7 +1054,7 @@ TEST_CASE("NOTIFY example using the BasicMdpWorker class", "[worker][notify_basi
         MdpMessage notify;
         notify.setTopic("/wine.italian", static_tag);
         notify.setBody("Try our Chianti!", static_tag);
-        worker.notify(std::move(notify));
+        REQUIRE(worker.notify(std::move(notify)));
     }
 
     {
@@ -1076,19 +1076,19 @@ TEST_CASE("NOTIFY example using the BasicMdpWorker class", "[worker][notify_basi
             MdpMessage notify;
             notify.setTopic("/wine.portuguese", static_tag);
             notify.setBody("New Vinho Verde arrived.", static_tag);
-            worker.notify(std::move(notify));
+            REQUIRE(worker.notify(std::move(notify)));
         }
         {
             MdpMessage notify;
             notify.setTopic("/beer.offer", static_tag);
             notify.setBody("Get our pilsner now!", static_tag);
-            worker.notify(std::move(notify));
+            REQUIRE(worker.notify(std::move(notify)));
         }
         {
             MdpMessage notify;
             notify.setTopic("/wine.portuguese", static_tag);
             notify.setBody("New Vinho Verde arrived.", static_tag);
-            worker.notify(std::move(notify));
+            REQUIRE(worker.notify(std::move(notify)));
         }
 
         const auto msg1 = client.readOne();
