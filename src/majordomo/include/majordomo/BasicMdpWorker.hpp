@@ -173,11 +173,11 @@ private:
         const auto      expiryThreshold = Clock::now() - std::chrono::seconds(30); // cleanup unused handlers every 30 seconds -- TODO: move this to Settings
         std::lock_guard lock{ _notificationHandlersLock };
 
-        for (auto it = _notificationHandlers.begin(); it != _notificationHandlers.end(); ++it) {
-            if (it->second.lastUsed < expiryThreshold) {
-                it = _notificationHandlers.erase(it);
-            }
-        }
+        auto isExpired = [&expiryThreshold](const auto &p) {
+              return p.second.lastUsed < expiryThreshold;
+        };
+
+        std::erase_if(_notificationHandlers, isExpired);
     }
 
     MdpMessage createMessage(Command command) const noexcept {
