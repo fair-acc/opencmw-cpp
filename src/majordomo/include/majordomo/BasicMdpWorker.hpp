@@ -34,11 +34,11 @@ template<typename T>
 concept HandlesRequest = requires(T handler, RequestContext &context) { std::invoke(handler, context); };
 
 namespace detail {
-inline int nextWorkerId() {
-    static std::atomic<int> idCounter = 0;
-    return ++idCounter;
-}
-}
+    inline int nextWorkerId() {
+        static std::atomic<int> idCounter = 0;
+        return ++idCounter;
+    }
+} // namespace detail
 
 template<HandlesRequest RequestHandler>
 class BasicMdpWorker {
