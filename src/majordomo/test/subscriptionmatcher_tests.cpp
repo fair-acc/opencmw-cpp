@@ -91,7 +91,8 @@ TEST_CASE("Test timing and context type matching", "[subscription_matcher]") {
     REQUIRE_FALSE(matcher(URI("/property?ctx=FAIR.SELECTOR.ALL"), URI("/property?ctx=FAIR.SELECTOR.C=2")));
     REQUIRE(matcher(URI("/property?ctx=FAIR.SELECTOR.C=2"), URI("/property?ctx=FAIR.SELECTOR.ALL")));
     REQUIRE(matcher(URI("/property?ctx=FAIR.SELECTOR.C=2"), URI("/property?ctx=FAIR.SELECTOR.C=2")));
-    REQUIRE(matcher(URI("/property?ctx=FAIR.SELECTOR.C=2:P=1"), URI("/property?ctx=FAIR.SELECTOR.C=2:P=1")));   // notify not specific enough (missing 'P=1')
+    REQUIRE(matcher(URI("/property?ctx=FAIR.SELECTOR.C=2:P=1"), URI("/property?ctx=FAIR.SELECTOR.C=2")));
+    REQUIRE(matcher(URI("/property?ctx=FAIR.SELECTOR.C=2:P=1"), URI("/property?ctx=FAIR.SELECTOR.C=2:P=1")));
     REQUIRE_FALSE(matcher(URI("/property?ctx=FAIR.SELECTOR.C=2"), URI("/property?ctx=FAIR.SELECTOR.C=2:P=1"))); // notify not specific enough (missing 'P=1')
     REQUIRE_FALSE(matcher(URI("/property?ctx=FAIR.SELECTOR.ALL&contentType=text/html"), URI("/property?ctx=FAIR.SELECTOR.C=2&contentType=text/html")));
     REQUIRE_FALSE(matcher(URI("/property?ctx=FAIR.SELECTOR.ALL"), URI("/property?ctx=FAIR.SELECTOR.C=2&contentType=text/html")));
