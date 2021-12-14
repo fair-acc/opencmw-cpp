@@ -19,6 +19,7 @@
 #include <chrono>
 #include <concepts>
 #include <string>
+#include <thread>
 
 namespace opencmw::majordomo {
 
@@ -32,6 +33,13 @@ struct RequestContext {
 template<typename T>
 concept HandlesRequest = requires(T handler, RequestContext &context) { std::invoke(handler, context); };
 
+namespace detail {
+    inline int nextWorkerId() {
+        static std::atomic<int> idCounter = 0;
+        return ++idCounter;
+    }
+} // namespace detail
+
 template<HandlesRequest RequestHandler>
 class BasicMdpWorker {
 private:
@@ -41,32 +49,44 @@ private:
     using EndpointURI = opencmw::URI<>;
     using TopicURI    = opencmw::URI<RELAXED>;
 
-    RequestHandler                _handler;
-    const Settings                _settings;
-    const EndpointURI             _brokerAddress;
-    const std::string             _serviceName;
-    std::string                   _serviceDescription;
-    std::string                   _rbacRole;
-    std::atomic<bool>             _shutdownRequested = false;
-    int                           _liveness          = 0;
-    Timestamp                     _heartbeatAt;
-    const Context                &_context;
-    std::optional<Socket>         _workerSocket;
-    std::optional<Socket>         _pubSocket;
-    std::array<zmq_pollitem_t, 3> _pollerItems;
-    const Context                 _notifyContext;
-    Socket                        _notifySocket;
-    Socket                        _notifyListenerSocket;
-    std::set<TopicURI>            _activeSubcriptions;
+    struct NotificationHandler {
+        Socket    socket;
+        Timestamp lastUsed;
+
+        explicit NotificationHandler(const Context &context, std::string_view notifyAddress)
+            : socket(context, ZMQ_PUSH) {
+            zmq_invoke(zmq_connect, socket, notifyAddress.data()).assertSuccess();
+        }
+
+        bool send(MdpMessage &&message) {
+            lastUsed = Clock::now();
+            return message.send(socket).isValid();
+        }
+    };
+
+    RequestHandler                                           _handler;
+    const Settings                                           _settings;
+    const EndpointURI                                        _brokerAddress;
+    const std::string                                        _serviceName;
+    std::string                                              _serviceDescription;
+    std::string                                              _rbacRole;
+    std::atomic<bool>                                        _shutdownRequested = false;
+    int                                                      _liveness          = 0;
+    Timestamp                                                _heartbeatAt;
+    const Context                                           &_context;
+    std::optional<Socket>                                    _workerSocket;
+    std::optional<Socket>                                    _pubSocket;
+    std::array<zmq_pollitem_t, 3>                            _pollerItems;
+    std::set<TopicURI>                                       _activeSubcriptions;
+    Socket                                                   _notifyListenerSocket;
+    std::unordered_map<std::thread::id, NotificationHandler> _notificationHandlers;
+    std::mutex                                               _notificationHandlersLock;
+    const std::string                                        _notifyAddress;
 
 public:
     explicit BasicMdpWorker(std::string_view serviceName, EndpointURI brokerAddress, RequestHandler &&handler, const Context &context, Settings settings = {})
-        : _handler{ std::forward<RequestHandler>(handler) }, _settings{ std::move(settings) }, _brokerAddress{ std::move(brokerAddress) }, _serviceName{ std::move(serviceName) }, _context(context), _notifySocket(_notifyContext, ZMQ_PAIR), _notifyListenerSocket(_notifyContext, ZMQ_PAIR) {
-        static std::atomic<int> idCounter     = 0;
-        const auto              id            = idCounter++;
-        const auto              notifyAddress = fmt::format("inproc://notifyListener-{}-{}", serviceName, std::to_string(id));
-        zmq_invoke(zmq_bind, _notifyListenerSocket, notifyAddress.data()).assertSuccess();
-        zmq_invoke(zmq_connect, _notifySocket, notifyAddress.data()).assertSuccess();
+        : _handler{ std::forward<RequestHandler>(handler) }, _settings{ std::move(settings) }, _brokerAddress{ std::move(brokerAddress) }, _serviceName{ std::move(serviceName) }, _context(context), _notifyListenerSocket(_context, ZMQ_PULL), _notifyAddress(makeNotifyAddress(serviceName)) {
+        zmq_invoke(zmq_bind, _notifyListenerSocket, _notifyAddress.data()).assertSuccess();
     }
 
     explicit BasicMdpWorker(std::string_view serviceName, const Broker &broker, RequestHandler &&handler)
@@ -86,12 +106,12 @@ public:
         _shutdownRequested = true;
     }
 
-    void notify(MdpMessage &&message) {
+    bool notify(MdpMessage &&message) {
         message.setProtocol(Protocol::Worker);
         message.setCommand(Command::Notify);
         message.setServiceName(_serviceName, MessageFrame::dynamic_bytes_tag{});
         message.setRbacToken(_rbacRole, MessageFrame::dynamic_bytes_tag{});
-        message.send(_notifySocket).isValid();
+        return notificationHandlerForThisThread().send(std::move(message));
     }
 
     void disconnect() {
@@ -126,12 +146,43 @@ public:
                 auto heartbeat = createMessage(Command::Heartbeat);
                 heartbeat.send(*_workerSocket).assertSuccess();
                 _heartbeatAt = Clock::now() + _settings.heartbeatInterval;
+
+                cleanupNotificationHandlers();
             }
         } while (!_shutdownRequested
                  && zmq_invoke(zmq_poll, _pollerItems.data(), static_cast<int>(_pollerItems.size()), heartbeatIntervalMs).isValid());
     }
 
 private:
+    std::string makeNotifyAddress(std::string_view serviceName) {
+        const auto id = detail::nextWorkerId();
+        return fmt::format("inproc://workers/{}-{}/notify", serviceName, std::to_string(id));
+    }
+
+    NotificationHandler &notificationHandlerForThisThread() {
+        const auto      threadId = std::this_thread::get_id();
+
+        std::lock_guard lock{ _notificationHandlersLock };
+        const auto      it = _notificationHandlers.find(threadId);
+        if (it == _notificationHandlers.end()) {
+            _notificationHandlers.emplace(std::piecewise_construct, std::forward_as_tuple(threadId), std::forward_as_tuple(_context, _notifyAddress));
+        }
+
+        return _notificationHandlers.at(threadId);
+    }
+
+    void cleanupNotificationHandlers() {
+        // cleanup unused handlers every 30 seconds
+        const auto      expiryThreshold = Clock::now() - std::chrono::seconds(30);
+        std::lock_guard lock{ _notificationHandlersLock };
+
+        for (auto it = _notificationHandlers.begin(); it != _notificationHandlers.end(); ++it) {
+            if (it->second.lastUsed < expiryThreshold) {
+                it = _notificationHandlers.erase(it);
+            }
+        }
+    }
+
     MdpMessage createMessage(Command command) {
         auto message = MdpMessage::createWorkerMessage(command);
         message.setServiceName(_serviceName, MessageFrame::dynamic_bytes_tag{});
