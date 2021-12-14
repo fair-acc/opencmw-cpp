@@ -221,10 +221,7 @@ public:
         std::ostringstream decoded;
         for (size_t i = 0; i < s.size(); ++i) {
             char c = s[i];
-            if (isUnreserved(c)) {
-                // keep RFC 3986 section 2.3 Unreserved Characters i.e. [a-zA-Z0-9-_-~]
-                decoded << c;
-            } else if (c == '%') {
+            if (c == '%') {
                 // percent-encode RFC 3986 section 2.2 Reserved Characters i.e. [!#$%&'()*+,/:;=?@[]]
                 if constexpr (check == STRICT) {
                     if (!std::isxdigit(s[i + 1])) {
@@ -236,6 +233,8 @@ public:
                 iss >> std::hex >> d;
                 decoded << static_cast<uint8_t>(d);
                 i += 2;
+            } else {
+                decoded << c;
             }
         }
         return decoded.str();
