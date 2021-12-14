@@ -11,9 +11,9 @@ namespace opencmw::majordomo {
 /*constexpr*/ const std::string SCHEME_MDP                 = "mdp";
 /*constexpr*/ const std::string SCHEME_MDS                 = "mds";
 /*constexpr*/ const std::string SCHEME_INPROC              = "inproc";
-/*constexpr*/ const std::string SUFFIX_ROUTER              = "/router";
-/*constexpr*/ const std::string SUFFIX_PUBLISHER           = "/publisher";
-/*constexpr*/ const std::string SUFFIX_SUBSCRIBE           = "/subscribe";
+/*constexpr*/ const std::string SUFFIX_ROUTER              = "router";
+/*constexpr*/ const std::string SUFFIX_PUBLISHER           = "publisher";
+/*constexpr*/ const std::string SUFFIX_SUBSCRIBE           = "subscribe";
 const opencmw::URI<>            INPROC_BROKER              = opencmw::URI<>("inproc://broker");
 const opencmw::URI<>            INTERNAL_ADDRESS_BROKER    = opencmw::URI<>::factory(INPROC_BROKER).path(SUFFIX_ROUTER).build();
 const opencmw::URI<>            INTERNAL_ADDRESS_PUBLISHER = opencmw::URI<>::factory(INPROC_BROKER).path(SUFFIX_PUBLISHER).build();

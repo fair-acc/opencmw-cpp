@@ -193,7 +193,7 @@ public:
         _fragment  = adjustedView(other._fragment);
     }
 
-    URI &              operator=(const URI &other) = delete;
+    URI               &operator=(const URI &other) = delete;
 
     bool               empty() const { return str.empty(); }
 
@@ -296,9 +296,8 @@ public:
         return _queryMap;
     };
 
-    // default operator overloading
-    auto operator<=>(const URI &) const noexcept = default; // TODO: may need to implement custom
-    bool operator!=(const URI &other) const noexcept  { return str != other.str; }
+    // comparison operators
+    auto operator<=>(const URI &other) const noexcept { return str <=> other.str; }
     bool operator==(const URI &other) const noexcept  { return str == other.str; }
 
     class UriFactory {
@@ -373,6 +372,11 @@ public:
     static inline UriFactory factory(const URI &uri) noexcept { return UriFactory(uri); }
 };
 } // namespace opencmw
+
+template<opencmw::uri_check check>
+struct std::hash<opencmw::URI<check>> {
+    std::size_t operator()(const opencmw::URI<check> &uri) const noexcept { return std::hash<std::string>{}(uri.str); }
+};
 
 // fmt::format and std::ostream helper output
 

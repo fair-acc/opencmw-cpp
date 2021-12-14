@@ -129,11 +129,11 @@ int main(int argc, char **argv) {
 
         auto           brokerThread = std::jthread([&broker] {
             broker.run();
-        });
+                  });
 
         auto           workerThread = std::jthread([&worker] {
             worker.run();
-        });
+                  });
 
         brokerThread.join();
         workerThread.join();
@@ -147,7 +147,8 @@ int main(int argc, char **argv) {
         }
         const auto     brokerAddress = parseUriOrExit(argv[2]);
 
-        BasicMdpWorker worker(propertyStoreService, brokerAddress, TestHandler{});
+        Context        context;
+        BasicMdpWorker worker(propertyStoreService, brokerAddress, TestHandler{}, context);
 
         worker.run();
         return 0;
@@ -207,7 +208,7 @@ int main(int argc, char **argv) {
         }
 
         while (!replyReceived) {
-            client.tryRead();
+            client.tryRead(std::chrono::milliseconds(20));
         }
         return 0;
     }
