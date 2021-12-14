@@ -13,7 +13,7 @@ class SubscriptionMatcher {
 public:
     using URI = const opencmw::URI<RELAXED>; // relaxed because we need "*"
 
-    bool operator()(const URI &notified, const URI &subscriber) const {
+    bool operator()(const URI &notified, const URI &subscriber) const noexcept {
         if (!testPathOnly(notified, subscriber)) {
             return false;
         }
@@ -22,7 +22,7 @@ public:
     }
 
 private:
-    bool testPathOnly(const URI &notified, const URI &subscriber) const {
+    bool testPathOnly(const URI &notified, const URI &subscriber) const noexcept {
         const auto pathNotification = notified.path();
         const auto pathSubscriber   = subscriber.path();
 
