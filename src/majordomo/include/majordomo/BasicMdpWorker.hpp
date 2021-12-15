@@ -173,8 +173,8 @@ private:
         const auto      expiryThreshold = Clock::now() - std::chrono::seconds(30); // cleanup unused handlers every 30 seconds -- TODO: move this to Settings
         std::lock_guard lock{ _notificationHandlersLock };
 
-        auto isExpired = [&expiryThreshold](const auto &p) {
-              return p.second.lastUsed < expiryThreshold;
+        auto            isExpired = [&expiryThreshold](const auto &p) {
+            return p.second.lastUsed < expiryThreshold;
         };
 
         std::erase_if(_notificationHandlers, isExpired);
