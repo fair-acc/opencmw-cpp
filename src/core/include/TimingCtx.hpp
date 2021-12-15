@@ -55,10 +55,10 @@ public:
                 throw std::invalid_argument(fmt::format("Tag has invalid format: '{}'", tag));
             }
 
-            const auto         key         = tag.substr(0, posEqual);
-            const auto         valueString = tag.substr(posEqual + 1, tag.length() - posEqual - 1);
+            const auto key         = tag.substr(0, posEqual);
+            const auto valueString = tag.substr(posEqual + 1, tag.length() - posEqual - 1);
 
-            int value = -1;
+            int        value       = -1;
 
             if (!iequal(WILDCARD, valueString)) {
                 int        intValue = 0;
@@ -135,7 +135,7 @@ public:
 
 private:
     static inline std::optional<int> asOptional(int x) {
-        return x == WILDCARD_VALUE ? std::nullopt : std::optional<int>{x};
+        return x == WILDCARD_VALUE ? std::nullopt : std::optional<int>{ x };
     }
 
     static inline bool isWildcard(int x) {

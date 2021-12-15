@@ -1,9 +1,9 @@
 #pragma clang diagnostic push
-#include <Debug.hpp>
-#include <URI.hpp>
 #include <catch2/catch.hpp>
+#include <Debug.hpp>
 #include <iostream>
 #include <string_view>
+#include <URI.hpp>
 
 opencmw::URI<> getUri() {
     return opencmw::URI<>(std::string{ "mdp://User:notSoSecret@localhost.com:20/path/file.ext?queryString#cFrag" });
@@ -127,7 +127,7 @@ TEST_CASE("Show current issues", "[URI]") {
     CHECK_NOTHROW(opencmw::URI<opencmw::STRICT>("/property?contentType=text/html").queryParamMap());
 
     // last query item is dropped
-    CHECK(opencmw::URI<opencmw::STRICT>("scheme:/foo/bar.txt?k0=v0;k1=").queryParamMap() == QueryMap{ {"k0", "v0"}, {"k1", {}}}); // "k1" is missing
+    CHECK(opencmw::URI<opencmw::STRICT>("scheme:/foo/bar.txt?k0=v0;k1=").queryParamMap() == QueryMap{ { "k0", "v0" }, { "k1", {} } }); // "k1" is missing
 }
 
 TEST_CASE("builder-parser identity", "[URI]") {

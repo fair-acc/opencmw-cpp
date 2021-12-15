@@ -114,7 +114,7 @@ TEST_CASE("TimingCtx benchmark", "[TimingCtx][benchmark]") {
         "FAIR.SELECTOR.C=0:S=ALL:P=2:T=3"s,
     };
 
-    uint matchCount = 0;
+    uint           matchCount      = 0;
     constexpr auto outerIterations = 10000;
     constexpr auto totalIterations = outerIterations * selectors.size() * selectors.size();
 
@@ -122,8 +122,8 @@ TEST_CASE("TimingCtx benchmark", "[TimingCtx][benchmark]") {
         for (std::size_t dist = 0; dist < selectors.size(); ++dist) {
             for (std::size_t first = 0; first < selectors.size(); ++first) {
                 const auto second = (first + dist) % selectors.size();
-                TimingCtx ctx1(selectors[first]);
-                TimingCtx ctx2(selectors[second]);
+                TimingCtx  ctx1(selectors[first]);
+                TimingCtx  ctx2(selectors[second]);
                 if (ctx1.matches(ctx2)) {
                     matchCount++;
                 }

@@ -317,7 +317,7 @@ private:
                     return false;
                 }
                 const auto topicURI = URI<RELAXED>(std::string(message.topic()));
-                auto it = _subscribedClientsByTopic.try_emplace(topicURI, std::set<std::string>{});
+                auto       it       = _subscribedClientsByTopic.try_emplace(topicURI, std::set<std::string>{});
                 // TODO check for duplicate subscriptions?
                 it.first->second.emplace(message.sourceId());
                 if (it.first->second.size() == 1) {
@@ -335,7 +335,7 @@ private:
                 }
                 const auto topicURI = URI<RELAXED>(std::string(message.topic()));
 
-                auto it = _subscribedClientsByTopic.find(topicURI);
+                auto       it       = _subscribedClientsByTopic.find(topicURI);
                 if (it != _subscribedClientsByTopic.end()) {
                     it->second.erase(std::string(message.sourceId()));
                     if (it->second.empty()) {
@@ -412,13 +412,12 @@ private:
     }
 
     void dispatchMessageToMatchingSubscribers(BrokerMessage &&message) {
-        const auto topicURI = URI<RELAXED>(std::string(message.topic()));
+        const auto topicURI               = URI<RELAXED>(std::string(message.topic()));
         const auto it                     = _subscribedClientsByTopic.find(topicURI);
         const auto hasRouterSubscriptions = it != _subscribedClientsByTopic.end();
 
         // TODO avoid clone() for last message sent out
         for (const auto &topicIt : _subscribedTopics) {
-
             if (_subscriptionMatcher(topicURI, topicIt.first)) {
                 // sends notification with the topic that is expected by the client for its subscription
                 auto copy = message.clone();
