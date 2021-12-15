@@ -14,17 +14,17 @@ namespace opencmw {
 class TimingCtx {
 private:
     std::chrono::microseconds _bpcts;
-    std::optional<int>        _cid;
-    std::optional<int>        _sid;
-    std::optional<int>        _pid;
-    std::optional<int>        _gid;
+    int                       _cid = WILDCARD_VALUE;
+    int                       _sid = WILDCARD_VALUE;
+    int                       _pid = WILDCARD_VALUE;
+    int                       _gid = WILDCARD_VALUE;
 
 public:
     explicit TimingCtx(std::chrono::microseconds bpcts = {})
         : _bpcts(bpcts) {}
 
     explicit TimingCtx(const std::optional<int> &cid, const std::optional<int> &sid, const std::optional<int> &pid, const std::optional<int> &gid, std::chrono::microseconds bpcts = {})
-        : _bpcts(bpcts), _cid(cid), _sid(sid), _pid(pid), _gid(gid) {}
+        : _bpcts(bpcts), _cid(cid.value_or(WILDCARD_VALUE)), _sid(sid.value_or(WILDCARD_VALUE)), _pid(pid.value_or(WILDCARD_VALUE)), _gid(gid.value_or(WILDCARD_VALUE)) {}
 
     explicit TimingCtx(std::string_view selector, std::chrono::microseconds bpcts = {})
         : _bpcts(bpcts) {
@@ -58,7 +58,7 @@ public:
             const auto         key         = tag.substr(0, posEqual);
             const auto         valueString = tag.substr(posEqual + 1, tag.length() - posEqual - 1);
 
-            std::optional<int> value;
+            int value = -1;
 
             if (!iequal(WILDCARD, valueString)) {
                 int        intValue = 0;
@@ -99,10 +99,10 @@ public:
     }
 
     std::chrono::microseconds bpcts() const { return _bpcts; }
-    std::optional<int>        cid() const { return _cid; }
-    std::optional<int>        sid() const { return _sid; }
-    std::optional<int>        pid() const { return _pid; }
-    std::optional<int>        gid() const { return _gid; }
+    std::optional<int>        cid() const { return asOptional(_cid); }
+    std::optional<int>        sid() const { return asOptional(_sid); }
+    std::optional<int>        pid() const { return asOptional(_pid); }
+    std::optional<int>        gid() const { return asOptional(_gid); }
 
     // these are not commutative, and must not be confused with operator==
     bool matches(const TimingCtx &other) const {
@@ -116,25 +116,34 @@ public:
     bool        operator==(const TimingCtx &) const = default;
 
     std::string toString() const {
-        if (!_cid && !_sid && !_pid && !_gid) {
+        if (isWildcard(_cid) && isWildcard(_sid) && isWildcard(_pid) && isWildcard(_gid)) {
             auto s = std::string(SELECTOR_PREFIX);
             s.append(WILDCARD);
             return s;
         }
 
-        auto formatValue = [](const std::optional<int> &v) {
-            if (!v) {
+        auto formatValue = [](int v) {
+            if (isWildcard(v)) {
                 return std::string(WILDCARD);
             }
 
-            return std::to_string(*v);
+            return std::to_string(v);
         };
 
         return fmt::format("{}C={}:S={}:P={}:T={}", SELECTOR_PREFIX, formatValue(_cid), formatValue(_sid), formatValue(_pid), formatValue(_gid));
     }
 
 private:
+    static inline std::optional<int> asOptional(int x) {
+        return x == WILDCARD_VALUE ? std::nullopt : std::optional<int>{x};
+    }
+
+    static inline bool isWildcard(int x) {
+        return x == -1;
+    }
+
     constexpr static auto WILDCARD        = std::string_view("ALL");
+    constexpr static auto WILDCARD_VALUE  = -1;
     constexpr static auto SELECTOR_PREFIX = std::string_view("FAIR.SELECTOR.");
 
     template<typename Left, typename Right>
@@ -143,8 +152,8 @@ private:
                 [](auto l, auto r) { return std::tolower(l) == std::tolower(r); });
     }
 
-    static bool wildcardMatch(const std::optional<int> &lhs, const std::optional<int> &rhs) {
-        return !rhs || lhs == rhs;
+    static inline bool wildcardMatch(int lhs, int rhs) {
+        return isWildcard(rhs) || lhs == rhs;
     }
 };
 
