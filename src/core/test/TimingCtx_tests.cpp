@@ -1,3 +1,4 @@
+#include <Debug.hpp>
 #include <TimingCtx.hpp>
 
 #include <catch2/catch.hpp>
@@ -95,4 +96,40 @@ TEST_CASE("TimingCtx matching tests", "[TimingCtx][matches]") {
     REQUIRE(!ctx2.gid());
     REQUIRE(ctx.matches(TimingCtx(0, 1, {}, {})));
     REQUIRE(ctx.matches(TimingCtx(0, 1, {}, {}, timestamp)));
+}
+
+TEST_CASE("TimingCtx benchmark", "[TimingCtx][benchmark]") {
+    opencmw::debug::resetStats();
+    opencmw::debug::Timer timer("TimingCtx benchmark", 40);
+
+    using namespace std::literals::string_literals;
+    static const std::array selectors = {
+        ""s,
+        "ALL"s,
+        "FAIR.SELECTOR.ALL"s,
+        "FAIR.SELECTOR.C=0:S=1:P=2:T=3"s,
+        "FAIR.SELECTOR.C=0:S=1:T=3"s,
+        "FAIR.SELECTOR.C=0:T=3"s,
+        "FAIR.SELECTOR.S=1:P=2:T=3"s,
+        "FAIR.SELECTOR.C=0:S=ALL:P=2:T=3"s,
+    };
+
+    uint matchCount = 0;
+    constexpr auto outerIterations = 10000;
+    constexpr auto totalIterations = outerIterations * selectors.size() * selectors.size();
+
+    for (int i = 0; i < outerIterations; ++i) {
+        for (std::size_t dist = 0; dist < selectors.size(); ++dist) {
+            for (std::size_t first = 0; first < selectors.size(); ++first) {
+                const auto second = (first + dist) % selectors.size();
+                TimingCtx ctx1(selectors[first]);
+                TimingCtx ctx2(selectors[second]);
+                if (ctx1.matches(ctx2)) {
+                    matchCount++;
+                }
+            }
+        }
+    }
+
+    std::cout << fmt::format("Total iterations: {}; Parsed: {}, matches() calls: {}; matched: {}\n", totalIterations, totalIterations * 2, totalIterations, matchCount);
 }
