@@ -256,6 +256,24 @@ public:
     }
 
 private:
+    void subscribe(const URI<RELAXED> &topic) {
+        auto it = _subscribedTopics.try_emplace(topic, 0);
+        it.first->second++;
+        if (it.first->second == 1) {
+            zmq_invoke(zmq_setsockopt, _subSocket, ZMQ_SUBSCRIBE, topic.str.data(), topic.str.size()).assertSuccess();
+        }
+    }
+
+    void unsubscribe(const URI<RELAXED> &topic) {
+        auto it = _subscribedTopics.find(topic);
+        if (it != _subscribedTopics.end()) {
+            it->second--;
+            if (it->second == 0) {
+                zmq_invoke(zmq_setsockopt, _subSocket, ZMQ_UNSUBSCRIBE, topic.str.data(), topic.str.size()).assertSuccess();
+            }
+        }
+    }
+
     bool receivePubMessage(const Socket &socket) {
         MessageFrame frame;
         const auto   result = frame.receive(socket, ZMQ_DONTWAIT);
@@ -275,19 +293,9 @@ private:
         const auto topic       = URI<RELAXED>(std::string(topicString));
 
         if (data[0] == '\x1') {
-            auto it = _subscribedTopics.try_emplace(topic, 0);
-            it.first->second++;
-            if (it.first->second == 1) {
-                zmq_invoke(zmq_setsockopt, _subSocket, ZMQ_SUBSCRIBE, topicString.data(), topicString.size()).assertSuccess();
-            }
+            subscribe(topic);
         } else {
-            auto it = _subscribedTopics.find(topic);
-            if (it != _subscribedTopics.end()) {
-                it->second--;
-                if (it->second == 0) {
-                    zmq_invoke(zmq_setsockopt, _subSocket, ZMQ_UNSUBSCRIBE, topicString.data(), topicString.size()).assertSuccess();
-                }
-            }
+            unsubscribe(topic);
         }
 
         return true;
@@ -317,14 +325,11 @@ private:
                     return false;
                 }
                 const auto topicURI = URI<RELAXED>(std::string(message.topic()));
-                auto       it       = _subscribedClientsByTopic.try_emplace(topicURI, std::set<std::string>{});
-                // TODO check for duplicate subscriptions?
+
+                subscribe(topicURI);
+
+                auto it = _subscribedClientsByTopic.try_emplace(topicURI, std::set<std::string>{});
                 it.first->second.emplace(message.sourceId());
-                if (it.first->second.size() == 1) {
-                    // TODO correct?
-                    MessageFrame frame(std::string("\x1") + std::string(message.topic()), MessageFrame::dynamic_bytes_tag{});
-                    frame.send(socket, ZMQ_DONTWAIT).assertSuccess();
-                }
                 return true;
             }
             case Command::Unsubscribe: {
@@ -334,15 +339,13 @@ private:
                     return false;
                 }
                 const auto topicURI = URI<RELAXED>(std::string(message.topic()));
+                unsubscribe(topicURI);
 
-                auto       it       = _subscribedClientsByTopic.find(topicURI);
+                auto it = _subscribedClientsByTopic.find(topicURI);
                 if (it != _subscribedClientsByTopic.end()) {
                     it->second.erase(std::string(message.sourceId()));
                     if (it->second.empty()) {
                         _subscribedClientsByTopic.erase(it);
-                        // TODO correct?
-                        MessageFrame frame(std::string("\x0") + std::string(message.topic()), MessageFrame::dynamic_bytes_tag{});
-                        frame.send(socket, ZMQ_DONTWAIT).assertSuccess();
                     }
                 }
                 return true;

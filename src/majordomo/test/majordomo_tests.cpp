@@ -1105,6 +1105,121 @@ TEST_CASE("NOTIFY example using the BasicMdpWorker class", "[worker][notify_basi
     }
 }
 
+TEST_CASE("NOTIFY example using the BasicMdpWorker class (via ROUTER socket)", "[worker][notify_basic_worker_router]") {
+    using opencmw::majordomo::Broker;
+    using opencmw::majordomo::MdpMessage;
+
+    Broker         broker("testbroker", testSettings());
+
+    BasicMdpWorker worker("beverages", broker, TestIntHandler(10));
+    worker.setServiceDescription("API description");
+    worker.setRbacRole("rbacToken");
+
+    TestNode<MdpMessage> client(broker.context);
+    REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
+
+    RunInThread brokerRun(broker);
+    RunInThread workerRun(worker);
+
+    {
+        auto subscribe = MdpMessage::createClientMessage(Command::Subscribe);
+        subscribe.setServiceName("beverages", static_tag);
+        subscribe.setTopic("/wine", static_tag);
+        client.send(subscribe);
+    }
+    {
+        auto subscribe = MdpMessage::createClientMessage(Command::Subscribe);
+        subscribe.setServiceName("beverages", static_tag);
+        subscribe.setTopic("/beer", static_tag);
+        client.send(subscribe);
+    }
+
+    bool seenNotification = false;
+
+    // we have a potential race here: the worker might not have processed the
+    // subscribe yet and thus discarding the notification. Send notifications
+    // in a loop until one gets through.
+    while (!seenNotification) {
+        {
+            MdpMessage notify;
+            notify.setTopic("/beer", static_tag);
+            notify.setBody("Have a beer", static_tag);
+            REQUIRE(worker.notify(std::move(notify)));
+        }
+        {
+            const auto notification = client.tryReadOne(std::chrono::milliseconds(20));
+            if (notification && notification->serviceName() != "mmi.service") {
+                seenNotification = true;
+                REQUIRE(notification->isValid());
+                REQUIRE(notification->isClientMessage());
+                REQUIRE(notification->command() == Command::Final);
+                REQUIRE(notification->topic() == "/beer");
+                REQUIRE(notification->body() == "Have a beer");
+            }
+        }
+    }
+
+    {
+        // as the subscribe for /wine was sent before the /beer one, this should be
+        // race-free now (as know the /beer subscribe was processed by everyone)
+        MdpMessage notify;
+        notify.setTopic("/wine", static_tag);
+        notify.setBody("Try our Chianti!", static_tag);
+        REQUIRE(worker.notify(std::move(notify)));
+    }
+
+    {
+        const auto notification = client.readOne();
+        REQUIRE(notification.isValid());
+        REQUIRE(notification.isClientMessage());
+        REQUIRE(notification.command() == Command::Final);
+        REQUIRE(notification.topic() == "/wine");
+        REQUIRE(notification.body() == "Try our Chianti!");
+    }
+
+    // unsubscribe from /beer
+    {
+        auto unsubscribe = MdpMessage::createClientMessage(Command::Unsubscribe);
+        unsubscribe.setServiceName("beverages", static_tag);
+        unsubscribe.setTopic("/beer", static_tag);
+        client.send(unsubscribe);
+    }
+
+    // loop until we get two consecutive messages about wine, it means that the beer unsubscribe was processed
+    while (true) {
+        {
+            MdpMessage notify;
+            notify.setTopic("/wine", static_tag);
+            notify.setBody("New Vinho Verde arrived.", static_tag);
+            REQUIRE(worker.notify(std::move(notify)));
+        }
+        {
+            MdpMessage notify;
+            notify.setTopic("/beer", static_tag);
+            notify.setBody("Get our pilsner now!", static_tag);
+            REQUIRE(worker.notify(std::move(notify)));
+        }
+        {
+            MdpMessage notify;
+            notify.setTopic("/wine", static_tag);
+            notify.setBody("New Vinho Verde arrived.", static_tag);
+            REQUIRE(worker.notify(std::move(notify)));
+        }
+
+        const auto msg1 = client.readOne();
+        REQUIRE(msg1.topic() == "/wine");
+
+        const auto msg2 = client.readOne();
+        if (msg2.topic() == "/wine") {
+            break;
+        }
+
+        REQUIRE(msg2.topic() == "/beer");
+        const auto msg3 = client.readOne();
+        REQUIRE(msg3.topic() == "/wine");
+    }
+}
+
 TEST_CASE("SET/GET example using a lambda as the worker's request handler", "[worker][lambda_handler]") {
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::Client;
