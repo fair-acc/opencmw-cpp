@@ -20,10 +20,10 @@ private:
     int                       _gid = WILDCARD_VALUE;
 
 public:
-    explicit TimingCtx(std::chrono::microseconds bpcts = {})
+    constexpr explicit TimingCtx(std::chrono::microseconds bpcts = {}) noexcept
         : _bpcts(bpcts) {}
 
-    explicit TimingCtx(const std::optional<int> &cid, const std::optional<int> &sid, const std::optional<int> &pid, const std::optional<int> &gid, std::chrono::microseconds bpcts = {})
+    constexpr explicit TimingCtx(const std::optional<int> &cid, const std::optional<int> &sid, const std::optional<int> &pid, const std::optional<int> &gid, std::chrono::microseconds bpcts = {}) noexcept
         : _bpcts(bpcts), _cid(cid.value_or(WILDCARD_VALUE)), _sid(sid.value_or(WILDCARD_VALUE)), _pid(pid.value_or(WILDCARD_VALUE)), _gid(gid.value_or(WILDCARD_VALUE)) {}
 
     explicit TimingCtx(std::string_view selector, std::chrono::microseconds bpcts = {})
@@ -98,24 +98,24 @@ public:
         }
     }
 
-    std::chrono::microseconds bpcts() const { return _bpcts; }
-    std::optional<int>        cid() const { return asOptional(_cid); }
-    std::optional<int>        sid() const { return asOptional(_sid); }
-    std::optional<int>        pid() const { return asOptional(_pid); }
-    std::optional<int>        gid() const { return asOptional(_gid); }
+    constexpr std::chrono::microseconds bpcts() const { return _bpcts; }
+    constexpr std::optional<int>        cid() const { return asOptional(_cid); }
+    constexpr std::optional<int>        sid() const { return asOptional(_sid); }
+    constexpr std::optional<int>        pid() const { return asOptional(_pid); }
+    constexpr std::optional<int>        gid() const { return asOptional(_gid); }
 
     // these are not commutative, and must not be confused with operator==
-    bool matches(const TimingCtx &other) const {
+    constexpr bool matches(const TimingCtx &other) const {
         return wildcardMatch(_cid, other._cid) && wildcardMatch(_sid, other._sid) && wildcardMatch(_pid, other._pid) && wildcardMatch(_gid, other._gid);
     }
 
-    bool matchesWithBpcts(const TimingCtx &other) const {
+    constexpr bool matchesWithBpcts(const TimingCtx &other) const {
         return _bpcts == other._bpcts && matches(other);
     }
 
-    bool        operator==(const TimingCtx &) const = default;
+    constexpr bool operator==(const TimingCtx &) const = default;
 
-    std::string toString() const {
+    std::string    toString() const {
         if (isWildcard(_cid) && isWildcard(_sid) && isWildcard(_pid) && isWildcard(_gid)) {
             auto s = std::string(SELECTOR_PREFIX);
             s.append(WILDCARD);
@@ -134,11 +134,11 @@ public:
     }
 
 private:
-    static inline std::optional<int> asOptional(int x) {
+    static constexpr inline std::optional<int> asOptional(int x) {
         return x == WILDCARD_VALUE ? std::nullopt : std::optional<int>{ x };
     }
 
-    static inline bool isWildcard(int x) {
+    static inline constexpr bool isWildcard(int x) {
         return x == -1;
     }
 
@@ -147,12 +147,12 @@ private:
     constexpr static auto SELECTOR_PREFIX = std::string_view("FAIR.SELECTOR.");
 
     template<typename Left, typename Right>
-    inline bool iequal(const Left &left, const Right &right) {
+    static inline bool iequal(const Left &left, const Right &right) {
         return std::equal(std::cbegin(left), std::cend(left), std::cbegin(right), std::cend(right),
                 [](auto l, auto r) { return std::tolower(l) == std::tolower(r); });
     }
 
-    static inline bool wildcardMatch(int lhs, int rhs) {
+    static constexpr inline bool wildcardMatch(int lhs, int rhs) {
         return isWildcard(rhs) || lhs == rhs;
     }
 };

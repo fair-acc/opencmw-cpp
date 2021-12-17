@@ -35,36 +35,40 @@ TEST_CASE("Basic TimingCtx tests", "[TimingCtx][basic]") {
 }
 
 TEST_CASE("Basic TimingCtx ALL selector tests", "[TimingCtx][all_selector]") {
-    const auto timestamp = std::chrono::microseconds(1234);
+    constexpr auto timestamp = std::chrono::microseconds(1234);
 
     REQUIRE_NOTHROW(TimingCtx());
     REQUIRE_NOTHROW(TimingCtx("", timestamp));
     REQUIRE_NOTHROW(TimingCtx("ALL", timestamp));
     REQUIRE_NOTHROW(TimingCtx("FAIR.SELECTOR.ALL", timestamp));
 
-    const auto fromNoString    = TimingCtx(timestamp);
-    const auto fromEmptyString = TimingCtx("", timestamp);
-    const auto fromAll         = TimingCtx("ALL", timestamp);
-    const auto fromFSA         = TimingCtx("FAIR.SELECTOR.ALL", timestamp);
+    constexpr auto fromNoString    = TimingCtx(timestamp);
+    const auto     fromEmptyString = TimingCtx("", timestamp);
+    constexpr auto fromOptionals   = TimingCtx({}, {}, {}, {}, timestamp);
+    const auto     fromAll         = TimingCtx("ALL", timestamp);
+    const auto     fromFSA         = TimingCtx("FAIR.SELECTOR.ALL", timestamp);
 
     REQUIRE(fromNoString.toString() == "FAIR.SELECTOR.ALL");
     REQUIRE(fromEmptyString.toString() == "FAIR.SELECTOR.ALL");
+    REQUIRE(fromOptionals.toString() == "FAIR.SELECTOR.ALL");
     REQUIRE(fromAll.toString() == "FAIR.SELECTOR.ALL");
     REQUIRE(fromFSA.toString() == "FAIR.SELECTOR.ALL");
 
     REQUIRE(fromNoString == fromEmptyString);
+    STATIC_REQUIRE(fromNoString == fromOptionals);
     REQUIRE(fromNoString == fromAll);
     REQUIRE(fromNoString == fromFSA);
 
-    REQUIRE(fromNoString.bpcts() == timestamp);
+    STATIC_REQUIRE(fromNoString.bpcts() == timestamp);
     REQUIRE(fromEmptyString.bpcts() == timestamp);
+    STATIC_REQUIRE(fromOptionals.bpcts() == timestamp);
     REQUIRE(fromAll.bpcts() == timestamp);
     REQUIRE(fromFSA.bpcts() == timestamp);
 }
 
 TEST_CASE("TimingCtx equality operator", "[TimingCtx][equality]") {
-    const auto timestamp = std::chrono::microseconds(1234);
-    const auto ctx       = TimingCtx("FAIR.SELECTOR.C=0:S=1:P=2:T=3", timestamp);
+    constexpr auto timestamp = std::chrono::microseconds(1234);
+    const auto     ctx       = TimingCtx("FAIR.SELECTOR.C=0:S=1:P=2:T=3", timestamp);
     REQUIRE(ctx == ctx);
     REQUIRE(ctx == TimingCtx(ctx));
     REQUIRE(ctx == TimingCtx("FAIR.SELECTOR.C=0:S=1:P=2:T=3", timestamp));
@@ -76,8 +80,8 @@ TEST_CASE("TimingCtx equality operator", "[TimingCtx][equality]") {
 }
 
 TEST_CASE("TimingCtx matching tests", "[TimingCtx][matches]") {
-    const auto timestamp = std::chrono::microseconds(1234);
-    const auto ctx       = TimingCtx("FAIR.SELECTOR.C=0:S=1:P=2:T=3", timestamp);
+    constexpr auto timestamp = std::chrono::microseconds(1234);
+    const auto     ctx       = TimingCtx("FAIR.SELECTOR.C=0:S=1:P=2:T=3", timestamp);
     REQUIRE(ctx.matches(ctx));
     REQUIRE(ctx.matches(TimingCtx(ctx.toString())));
     REQUIRE(ctx.matches(TimingCtx("FAIR.SELECTOR.ALL")));
@@ -96,6 +100,10 @@ TEST_CASE("TimingCtx matching tests", "[TimingCtx][matches]") {
     REQUIRE(!ctx2.gid());
     REQUIRE(ctx.matches(TimingCtx(0, 1, {}, {})));
     REQUIRE(ctx.matches(TimingCtx(0, 1, {}, {}, timestamp)));
+
+    STATIC_REQUIRE(TimingCtx().matches(TimingCtx()));
+    STATIC_REQUIRE_FALSE(TimingCtx().matches(TimingCtx(0, 1, 2, {}, timestamp)));
+    STATIC_REQUIRE(TimingCtx(0, 1, 2, {}, timestamp).matches(TimingCtx()));
 }
 
 TEST_CASE("TimingCtx benchmark", "[TimingCtx][benchmark]") {
