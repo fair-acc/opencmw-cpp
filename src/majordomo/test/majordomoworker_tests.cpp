@@ -57,7 +57,7 @@ struct TestHandler {
     AddressEntry handle(opencmw::majordomo::RequestContext &, const TestContext &, const AddressRequest &request, TestContext &) {
         const auto it = _entries.find(request.id);
         if (it == _entries.end()) {
-            throw std::invalid_argument("Address entry not found"); // fmt::format("Address Entry with ID '{}' not found", request.id)
+            throw std::invalid_argument(fmt::format("Address Entry with ID '{}' not found", request.id));
         }
         return it->second;
     }
@@ -166,7 +166,7 @@ TEST_CASE("Simple MajordomoWorker test using raw messages", "[majordomo][majordo
     }
 
     {
-        auto entry = AddressEntry{
+        const auto entry = AddressEntry{
             .id           = 1,
             .name         = "Easter Bunny",
             .street       = "Carrot Road",
