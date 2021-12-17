@@ -533,4 +533,41 @@ TEST_CASE("IoClassSerialiser protocol error tests", "[IoClassSerialiser]") {
     }
 }
 
+struct SpecialData {
+    std::unordered_map<std::string, std::string> map1;
+    std::map<std::string, std::string>           map2;
+    std::map<float, int>                         map3;
+
+    bool                                         operator==(const SpecialData &) const = default;
+};
+ENABLE_REFLECTION_FOR(SpecialData, map1, map2, map3)
+
+TEST_CASE("IoClassSerialiser map & Co.", "[IoClassSerialiser]") {
+    using namespace opencmw;
+    using namespace opencmw::utils; // for operator<< and fmt::format overloading
+    IoBuffer    buffer;
+    SpecialData data;
+
+    SpecialData data2;
+    REQUIRE(data == data2);
+    data.map1["newKey1"] = "value1";
+    data.map2["newKey2"] = "value2";
+    data.map3[0.123F]    = 10;
+    REQUIRE(data != data2);
+
+    opencmw::serialise<opencmw::YaS>(buffer, data);
+
+    {
+        buffer.reset();
+        auto info = opencmw::deserialise<YaS, ProtocolCheck::LENIENT>(buffer, data2);
+        std::cout << " info1: {}\n"
+                  << info << std::endl;
+        std::cout << " info2: {}\n"
+                  << ClassInfoVerbose << info << std::endl;
+        REQUIRE(info.exceptions.size() == 0);
+    }
+    diffView(std::cout, data, data2);
+    REQUIRE(data == data2);
+}
+
 #pragma clang diagnostic pop

@@ -3,6 +3,7 @@
 #include "MultiArray.hpp" // TODO: resolve dangerous circular dependency
 #include <fmt/color.h>
 #include <fmt/format.h>
+#include <map>
 #include <refl.hpp>
 #include <set>
 #include <units/concepts.h>
@@ -64,6 +65,18 @@ concept ArithmeticType = std::is_arithmetic_v<Tp>;
 
 template<typename T>
 concept SupportedType = is_supported_number<T> || is_stringlike<T>;
+
+template<template<typename...> class Template, typename Class>
+struct is_instantiation : std::false_type {};
+
+template<template<typename...> class Template, typename... Args>
+struct is_instantiation<Template, Template<Args...>> : std::true_type {};
+
+template<typename Class, template<typename...> class Template>
+concept is_instantiation_of = is_instantiation<Template, Class>::value;
+
+template<typename T>
+concept MapLike = is_instantiation_of<T, std::map> || is_instantiation_of<T, std::unordered_map>;
 
 template<typename T>
 inline constexpr const bool is_array = false;
@@ -369,6 +382,9 @@ template<typename T, typename A> const std::string &typeName<std::vector<T,A> co
 
 template<typename T, uint32_t N> const std::string &typeName<MultiArray<T,N>> = fmt::format("MultiArray<{},{}>", opencmw::typeName<T>, N);
 template<typename T, uint32_t N> const std::string &typeName<MultiArray<T,N> const> =  fmt::format("MultiArray<{},{}> const", opencmw::typeName<T>, N);
+
+template<MapLike T> const std::string &typeName<T> =  fmt::format("map<{},{}>", opencmw::typeName<typename T::key_type>, opencmw::typeName<typename T::mapped_type>);
+template<MapLike T> const std::string &typeName<T const> =  fmt::format("map<{},{}> const", opencmw::typeName<typename T::key_type>, opencmw::typeName<typename T::mapped_type>);
 
 template<typename T, units::Quantity Q, const basic_fixed_string description, const ExternalModifier modifier, const basic_fixed_string... groups>
 const std::string &typeName<Annotated<T, Q, description, modifier, groups...>> = fmt::format("Annotated<{}>", opencmw::typeName<T>);

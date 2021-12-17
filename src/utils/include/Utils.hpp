@@ -76,7 +76,7 @@ inline std::ostream &ClassInfoIndentDec(std::ostream &os) {
 }
 
 template<ArrayOrVector T>
-//requires (!isAnnotated<T>())
+// requires (!isAnnotated<T>())
 inline std::ostream &operator<<(std::ostream &os, const T &v) {
     os << '{';
     for (std::size_t i = 0; i < v.size(); ++i) {
@@ -121,6 +121,22 @@ inline std::ostream &operator<<(std::ostream &os, const std::shared_ptr<T> &v) {
     }
 }
 
+template<MapLike T>
+inline std::ostream &operator<<(std::ostream &os, const T &map) {
+    os << '{';
+    bool first = true;
+    for (auto const &[key, val] : map) {
+        if (first) {
+            first = false;
+        } else {
+            os << ", ";
+        }
+        os << key << ':' << val;
+    }
+    os << "}";
+    return os;
+}
+
 template<ReflectableClass T>
 inline std::ostream &operator<<(std::ostream &os, const T &value) {
     const bool    verbose    = os.iword(getClassInfoVerbose());
@@ -133,7 +149,7 @@ inline std::ostream &operator<<(std::ostream &os, const T &value) {
                 refl::reflect(value).members, [&](const auto member, const auto index) constexpr {
                     using MemberType          = std::remove_reference_t<decltype(unwrapPointer(member(value)))>;
                     const auto &typeNameShort = typeName<MemberType>;
-                    //const auto& typeNameShort = refl::reflect(getAnnotatedMember(member(value))).name.data; // alt type-definition:
+                    // const auto& typeNameShort = refl::reflect(getAnnotatedMember(member(value))).name.data; // alt type-definition:
                     if (verbose) {
                         os << fmt::format("{:{}} {}: {:<25} {:<35}= ", "", indent * indentStep + 1, index, typeNameShort, get_debug_name(member));
                     } else {
@@ -204,7 +220,6 @@ inline constexpr void diffView(std::ostream &os, const T &lhs, const T &rhs) {
         if (lhsValue == rhsValue) {
             os << lhsValue;
         } else {
-            //os << fmt::format("{} vs. ", lhsValue) << rhs;
             os << fmt::format(fg(fmt::color::red), "{} vs. {}", lhsValue, rhsValue); // coloured terminal output
         }
     }
@@ -254,4 +269,4 @@ struct fmt::formatter<T> {
     }
 };
 
-#endif //OPENCMW_UTILS_H
+#endif // OPENCMW_UTILS_H
