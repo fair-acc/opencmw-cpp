@@ -2,13 +2,13 @@
 #pragma ide diagnostic   ignored "LoopDoesntUseConditionVariableInspection"
 #pragma ide diagnostic   ignored "cppcoreguidelines-avoid-magic-numbers"
 
-#include <Debug.hpp>
-#include <IoSerialiserYaS.hpp>
-#include <Utils.hpp>
 #include <algorithm>
 #include <catch2/catch.hpp>
+#include <Debug.hpp>
+#include <IoSerialiserYaS.hpp>
 #include <iostream>
 #include <string_view>
+#include <Utils.hpp>
 
 #include <units/isq/si/electric_current.h>
 #include <units/isq/si/energy.h>
@@ -151,7 +151,7 @@ struct NestedDataWithDifferences {
     Annotated<double, mass<kilogram>, "custom description for double", RO>        annDoubleValue = 16.0;                         // <- read-only specifier
     Annotated<std::string, NoUnit, "deprecation notice", RW_DEPRECATED>           annStringValue = std::string("nested string"); // <- extra deprecation specifier
     Annotated<std::array<double, 10>, NoUnit, "private field notice", RW_PRIVATE> annDoubleArray = std::array<double, 10>{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
-    //Annotated<std::vector<float>, NoUnit>                                                annFloatVector; // <- missing field
+    // Annotated<std::vector<float>, NoUnit>                                                annFloatVector; // <- missing field
     Annotated<std::string, NoUnit, "custom description for string"> annExtraValue = std::string("nested string"); // <- extra value
 
     // some default operator
@@ -361,7 +361,7 @@ TEST_CASE("IoClassSerialiser smart pointer", "[IoClassSerialiser]") {
         //        std::cout << "type B" << typeName<TypeB> << std::endl;
         //        std::cout << "Rep   " << typeName<Rep> << std::endl;
         //        std::cout << "quantity " << typeName<units::detail::common_quantity_impl<TypeA, TypeB, Rep>::type> << std::endl;
-        //data.e1        = data.e1 + data.e1;
+        // data.e1        = data.e1 + data.e1;
         *data.e2.get() = *data.e2.get() + 10;
         *data.e3.get() = *data.e3.get() + 10;
         *data.e4.get() = *data.e4.get() + 10;
@@ -407,7 +407,7 @@ TEST_CASE("IoSerialiser syntax", "[IoSerialiser]") {
         std::cout << "type name: " << opencmw::typeName<std::byte> << '\n';
         std::cout << "type name: " << opencmw::typeName<char> << '\n';
         std::cout << "type name: " << opencmw::typeName<const char> << '\n';
-        std::cout << "type name: " << opencmw::typeName<int[2]> << '\n'; //NOLINT
+        std::cout << "type name: " << opencmw::typeName<int[2]> << '\n'; // NOLINT
         const int a[2] = { 1, 2 };
         std::cout << "type name: " << opencmw::typeName<decltype(a)> << '\n';
         std::cout << "type name: " << opencmw::typeName<short *> << '\n';
@@ -500,6 +500,27 @@ TEST_CASE("IoSerialiser primitive numbers YaS", "[IoSerialiser]") {
     }
     REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
     opencmw::debug::resetStats();
+}
+
+TEST_CASE("IoClassSerialiser protocol error tests", "[IoClassSerialiser]") {
+    using namespace opencmw;
+    using namespace opencmw::utils; // for operator<< and fmt::format overloading
+    IoBuffer buffer;
+    Data     data;
+
+    Data     data2;
+    REQUIRE(data == data2);
+    data.stringValue = "changed";
+    REQUIRE(data != data2);
+
+    opencmw::serialise<opencmw::YaS>(buffer, data);
+
+    buffer.reset();
+    auto info = opencmw::deserialise<YaS, ProtocolCheck::LENIENT>(buffer, data2);
+    std::cout << " info: {}\n"
+              << info << std::endl;
+    REQUIRE(info.exceptions.size() == 0);
+    //    REQUIRE(data == data2);
 }
 
 #pragma clang diagnostic pop
