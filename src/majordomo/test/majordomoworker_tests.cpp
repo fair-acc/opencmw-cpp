@@ -16,6 +16,7 @@
 #include <unordered_map>
 
 using opencmw::majordomo::Broker;
+using opencmw::majordomo::BrokerMessage;
 using opencmw::majordomo::Command;
 using opencmw::majordomo::MajordomoWorker;
 using opencmw::majordomo::MdpMessage;
@@ -24,11 +25,10 @@ using opencmw::majordomo::Settings;
 
 struct TestContext {
     opencmw::TimingCtx      ctx;
-    std::string             testValue   = "defaultValue";
     opencmw::MIME::MimeType contentType = opencmw::MIME::UNKNOWN;
 };
 
-ENABLE_REFLECTION_FOR(TestContext, ctx, testValue, contentType)
+ENABLE_REFLECTION_FOR(TestContext, ctx, contentType)
 
 struct AddressRequest {
     int id;
@@ -57,7 +57,7 @@ struct TestHandler {
     AddressEntry handle(opencmw::majordomo::RequestContext &, const TestContext &, const AddressRequest &request, TestContext &) {
         const auto it = _entries.find(request.id);
         if (it == _entries.end()) {
-            throw std::invalid_argument(fmt::format("Address Entry with ID '{}' not found", request.id));
+            throw std::invalid_argument(fmt::format("Address entry with ID '{}' not found", request.id));
         }
         return it->second;
     }
@@ -66,21 +66,19 @@ struct TestHandler {
 constexpr auto static_tag = MessageFrame::static_bytes_tag{};
 
 TEST_CASE("Simple MajordomoWorker test using raw messages", "[majordomo][majordomoworker][simple_plain_client") {
-    Broker                                                                  broker("TestBroker", testSettings());
+    Broker broker("TestBroker", testSettings());
+    opencmw::query::registerTypes(TestContext(), broker);
+
     MajordomoWorker<TestContext, AddressRequest, AddressEntry, TestHandler> worker("addressbook", broker, TestHandler());
 
     RunInThread                                                             brokerRun(broker);
     RunInThread                                                             workerRun(worker);
 
     TestNode<MdpMessage>                                                    client(broker.context);
+    TestNode<BrokerMessage>                                                 subClient(broker.context, ZMQ_SUB);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
-
-    {
-        auto subscribe = MdpMessage::createClientMessage(Command::Subscribe);
-        subscribe.setServiceName("addressbook", static_tag);
-        subscribe.setTopic("/newAddress", static_tag);
-        client.send(subscribe);
-    }
+    REQUIRE(subClient.connect(opencmw::majordomo::INTERNAL_ADDRESS_PUBLISHER));
+    REQUIRE(subClient.subscribe("/newAddress?ctx=FAIR.SELECTOR.C=1"));
 
     bool seenReply = false;
     while (!seenReply) {
@@ -88,7 +86,7 @@ TEST_CASE("Simple MajordomoWorker test using raw messages", "[majordomo][majordo
             auto request = MdpMessage::createClientMessage(Command::Get);
             request.setServiceName("addressbook", static_tag);
             request.setClientRequestId("1", static_tag);
-            request.setTopic("/addresses?contentType=text/json", static_tag);
+            request.setTopic("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json", static_tag);
             request.setBody("{ \"id\": 42 }", static_tag);
             client.send(request);
         }
@@ -103,7 +101,7 @@ TEST_CASE("Simple MajordomoWorker test using raw messages", "[majordomo][majordo
         REQUIRE(reply.serviceName() == "addressbook");
         REQUIRE(reply.clientRequestId() == "1");
         REQUIRE(reply.error() == "");
-        REQUIRE(reply.topic() == "/addresses"); // TODO not correct topic
+        REQUIRE(reply.topic() == "/addresses?contentType=application%2Fjson&ctx=FAIR.SELECTOR.ALL");
         REQUIRE(reply.body() == "\"AddressEntry\": {\n\"name\": \"Santa Claus\",\n\"street\": \"Elf Road\",\n\"streetNumber\": 123,\n\"postalCode\": \"88888\",\n\"city\": \"North Pole\",\n}");
         seenReply = true;
     }
@@ -113,7 +111,7 @@ TEST_CASE("Simple MajordomoWorker test using raw messages", "[majordomo][majordo
         auto request = MdpMessage::createClientMessage(Command::Get);
         request.setServiceName("addressbook", static_tag);
         request.setClientRequestId("2", static_tag);
-        request.setTopic("/addresses?contentType=text/json", static_tag);
+        request.setTopic("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json", static_tag);
         request.setBody("{ \"id\": 4711 }", static_tag);
         client.send(request);
     }
@@ -124,7 +122,7 @@ TEST_CASE("Simple MajordomoWorker test using raw messages", "[majordomo][majordo
         REQUIRE(reply.command() == Command::Final);
         REQUIRE(reply.clientRequestId() == "2");
         REQUIRE(reply.body().empty());
-        REQUIRE(reply.error().find("Address entry not found") != std::string::npos);
+        REQUIRE(reply.error().find("Address entry with ID '4711' not found") != std::string::npos);
     }
 
     // send empty request
@@ -132,7 +130,7 @@ TEST_CASE("Simple MajordomoWorker test using raw messages", "[majordomo][majordo
         auto request = MdpMessage::createClientMessage(Command::Get);
         request.setServiceName("addressbook", static_tag);
         request.setClientRequestId("3", static_tag);
-        request.setTopic("/addresses?contentType=text/json", static_tag);
+        request.setTopic("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json", static_tag);
         request.setBody("", static_tag);
         client.send(request);
     }
@@ -151,7 +149,7 @@ TEST_CASE("Simple MajordomoWorker test using raw messages", "[majordomo][majordo
         auto request = MdpMessage::createClientMessage(Command::Get);
         request.setServiceName("addressbook", static_tag);
         request.setClientRequestId("4", static_tag);
-        request.setTopic("/addresses?contentType=text/json", static_tag);
+        request.setTopic("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json", static_tag);
         request.setBody("{ \"id\": 42 ]", static_tag);
         client.send(request);
     }
@@ -166,6 +164,20 @@ TEST_CASE("Simple MajordomoWorker test using raw messages", "[majordomo][majordo
     }
 
     {
+        // send a notification that's not received by the client due to the non-matching context
+        const auto entry = AddressEntry{
+            .id           = 1,
+            .name         = "Sandman",
+            .street       = "Some Dune",
+            .streetNumber = 123,
+            .postalCode   = "88888",
+            .city         = "Sahara"
+        };
+        REQUIRE(worker.notify("/newAddress", TestContext{ .ctx = opencmw::TimingCtx({}, 1, {}, {}), .contentType = opencmw::MIME::JSON }, entry));
+    }
+
+    {
+        // send a notification that's received (context matches)
         const auto entry = AddressEntry{
             .id           = 1,
             .name         = "Easter Bunny",
@@ -174,14 +186,15 @@ TEST_CASE("Simple MajordomoWorker test using raw messages", "[majordomo][majordo
             .postalCode   = "88888",
             .city         = "Easter Island"
         };
-        REQUIRE(worker.notify("/newAddress", TestContext(), entry));
+        REQUIRE(worker.notify("/newAddress", TestContext{ .ctx = opencmw::TimingCtx(1, {}, {}, {}), .contentType = opencmw::MIME::JSON }, entry));
     }
 
     {
-        const auto notify = client.readOne();
+        const auto notify = subClient.readOne();
         REQUIRE(notify.isValid());
         REQUIRE(notify.command() == Command::Final);
-        REQUIRE(notify.topic() == "/newAddress");
+        REQUIRE(notify.sourceId() == "/newAddress?ctx=FAIR.SELECTOR.C=1");
+        REQUIRE(notify.topic() == "/newAddress?contentType=application%2Fjson&ctx=FAIR.SELECTOR.C%3D1");
         REQUIRE(notify.error().empty());
         REQUIRE(notify.body() == "\"AddressEntry\": {\n\"name\": \"Easter Bunny\",\n\"street\": \"Carrot Road\",\n\"streetNumber\": 123,\n\"postalCode\": \"88888\",\n\"city\": \"Easter Island\",\n}");
     }

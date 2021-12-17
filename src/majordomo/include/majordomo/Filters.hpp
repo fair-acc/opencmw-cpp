@@ -1,10 +1,12 @@
 #ifndef OPENCMW_MAJORDOMO_FILTERS_H
 #define OPENCMW_MAJORDOMO_FILTERS_H
 
-#include <majordomo/SubscriptionMatcher.hpp>
-
+#include <opencmw.hpp>
 #include <TimingCtx.hpp>
 
+#include <majordomo/SubscriptionMatcher.hpp>
+
+#include <charconv>
 #include <concepts>
 #include <string_view>
 
@@ -31,6 +33,25 @@ public:
                 return false;
             }
         }
+    }
+};
+
+template<Number T>
+class NumberFilter : public AbstractFilter {
+public:
+    bool operator()(std::string_view notified, std::string_view subscribed) const override {
+        T          subscribedNumber = {};
+        const auto r1               = std::from_chars(subscribed.begin(), subscribed.end(), subscribedNumber);
+        if (r1.ec == std::errc::invalid_argument) {
+            return false;
+        }
+        T          notifiedNumber = {};
+        const auto r2             = std::from_chars(notified.begin(), notified.end(), notifiedNumber);
+        if (r2.ec == std::errc::invalid_argument) {
+            return false;
+        }
+
+        return subscribedNumber == notifiedNumber;
     }
 };
 

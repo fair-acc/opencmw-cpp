@@ -340,6 +340,7 @@ public:
         inline UriFactory&& fragment(const std::string_view &fragment)    && noexcept { _fragment = { fragment.begin(), fragment.end() }; return std::move(*this); }
         inline UriFactory&& addQueryParameter(const std::string &key)     && noexcept { _queryMap[key] = std::nullopt; return std::move(*this); }
         inline UriFactory&& addQueryParameter(const std::string &key, const std::string &value) && noexcept { _queryMap[key] = std::optional(value); return std::move(*this); }
+        inline UriFactory&& setQuery(std::unordered_map<std::string, std::optional<std::string>> queryMap) && noexcept { _query.clear(); _queryMap = std::move(queryMap); return std::move(*this); }
         // clang-format on
 
         std::string toString() {

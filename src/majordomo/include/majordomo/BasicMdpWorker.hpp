@@ -27,7 +27,7 @@ namespace opencmw::majordomo {
 struct RequestContext {
     const MdpMessage                             request;
     MdpMessage                                   reply;
-    MIME::MimeType                               mimeType = MIME::JSON; // TODO MIME::BINARY;
+    MIME::MimeType                               mimeType = MIME::BINARY;
     std::unordered_map<std::string, std::string> htmlData;
 };
 

@@ -2,7 +2,7 @@
 #define OPENCMW_MAJORDOMO_MAJORDOMOWORKER_H
 
 #include <majordomo/BasicMdpWorker.hpp>
-#include <majordomo/QueryParameterParser.hpp>
+#include <majordomo/QuerySerialiser.hpp>
 
 #include <IoSerialiserCmwLight.hpp>
 #include <IoSerialiserJson.hpp>
@@ -60,12 +60,12 @@ namespace detail {
     }
 
     inline void writeResult(RequestContext & rawCtx, const auto &replyContext, const auto &output) {
-        const auto replyQuery = QueryParameterParser::generateQueryParameter(replyContext);
+        auto       replyQuery = query::serialise(replyContext);
         const auto baseUri    = URI<RELAXED>(std::string(rawCtx.reply.topic().empty() ? rawCtx.request.topic() : rawCtx.reply.topic()));
-        const auto topicUri   = URI<RELAXED>::factory(baseUri).queryParam("").build(); // TODO serialise replyQuery map
+        const auto topicUri   = URI<RELAXED>::factory(baseUri).setQuery(std::move(replyQuery)).build();
 
         rawCtx.reply.setTopic(topicUri.str, MessageFrame::dynamic_bytes_tag{});
-        const auto replyMimetype = QueryParameterParser::getMimeType(replyQuery);
+        const auto replyMimetype = query::getMimeType(replyContext);
         const auto mimeType      = replyMimetype != MIME::UNKNOWN ? replyMimetype : rawCtx.mimeType;
         if (mimeType == MIME::JSON) {
             serialiseAndWriteToBody<opencmw::Json>(rawCtx, output);
@@ -90,16 +90,14 @@ namespace detail {
             : _handler(std::forward<Handler>(handler)) {}
 
         void operator()(RequestContext &rawCtx) {
-            using namespace opencmw::MIME;
+            const auto reqTopic          = opencmw::URI<RELAXED>(std::string(rawCtx.request.topic()));
+            const auto queryMap          = reqTopic.queryParamMap();
 
-            const auto reqTopic   = opencmw::URI<RELAXED>(std::string(rawCtx.request.topic()));
-            const auto queryMap   = reqTopic.queryParamMap();
-
-            C          requestCtx = QueryParameterParser::parseQueryParameter<C>(queryMap);
-            C          replyCtx   = requestCtx;
-            // const auto requestedMimeType = QueryParameterParser::getMimeType(queryMap);
+            C          requestCtx        = query::deserialise<C>(queryMap);
+            C          replyCtx          = requestCtx;
+            const auto requestedMimeType = query::getMimeType(requestCtx);
             //  no MIME type given -> map default to BINARY
-            // rawCtx.mimeType = requestedMimeType == MIME::UNKNOWN ? MIME::BINARY : requestedMimeType;
+            rawCtx.mimeType   = requestedMimeType == MIME::UNKNOWN ? MIME::BINARY : requestedMimeType;
 
             const auto input  = deserialiseRequest<I>(rawCtx);
             const auto output = _handler.handle(rawCtx, requestCtx, input, replyCtx);
@@ -113,10 +111,14 @@ template<ReflectableClass C, ReflectableClass I, ReflectableClass O, MajordomoHa
 class MajordomoWorker : public BasicMdpWorker<detail::HandlerImpl<C, I, O, UserHandler>> {
 public:
     explicit MajordomoWorker(std::string_view serviceName, URI<STRICT> brokerAddress, UserHandler userHandler, const Context &context, Settings settings = {})
-        : BasicMdpWorker<detail::HandlerImpl<C, I, O, UserHandler>>(serviceName, std::move(brokerAddress), detail::HandlerImpl<C, I, O, UserHandler>(std::forward<UserHandler>(userHandler)), context, settings) {}
+        : BasicMdpWorker<detail::HandlerImpl<C, I, O, UserHandler>>(serviceName, std::move(brokerAddress), detail::HandlerImpl<C, I, O, UserHandler>(std::forward<UserHandler>(userHandler)), context, settings) {
+        query::registerTypes(C(), *this);
+    }
 
     explicit MajordomoWorker(std::string_view serviceName, const Broker &broker, UserHandler userHandler)
-        : BasicMdpWorker<detail::HandlerImpl<C, I, O, UserHandler>>(serviceName, broker, detail::HandlerImpl<C, I, O, UserHandler>(std::forward<UserHandler>(userHandler))) {}
+        : BasicMdpWorker<detail::HandlerImpl<C, I, O, UserHandler>>(serviceName, broker, detail::HandlerImpl<C, I, O, UserHandler>(std::forward<UserHandler>(userHandler))) {
+        query::registerTypes(C(), *this);
+    }
 
     bool notify(const C &context, const O &reply) {
         return notify("", context, reply);
@@ -124,21 +126,19 @@ public:
 
     // TODO or enforce O for reply?
     bool notify(std::string_view path, const C &context, const ReflectableClass auto &reply) {
-        std::ignore = context;
-
         // Java does _serviceName + path, do we want that?
         // std::string topicString = this->_serviceName;
         // topicString.append(path);
         // auto topicURI = URI<RELAXED>(topicString);
 
-        auto topicURI = URI<RELAXED>(std::string(path));
+        auto       query    = query::serialise(context);
+        const auto topicURI = URI<RELAXED>::factory(URI<RELAXED>(std::string(path))).setQuery(std::move(query)).build();
 
         // TODO serialize context to query params
         // TODO java does subscription handling here which BasicMdpWorker does in the sender thread...
 
         RequestContext rawCtx;
         rawCtx.reply.setTopic(topicURI.str, MessageFrame::dynamic_bytes_tag{});
-        // TODO
         detail::writeResult(rawCtx, context, reply);
         return BasicMdpWorker<detail::HandlerImpl<C, I, O, UserHandler>>::notify(std::move(rawCtx.reply));
     }

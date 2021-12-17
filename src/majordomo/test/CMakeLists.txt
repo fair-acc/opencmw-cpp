@@ -34,7 +34,7 @@ set (
     catch_main.cpp
     majordomo_tests.cpp
     majordomoworker_tests.cpp
-    queryparameterparser_tests.cpp
+    queryserialiser_tests.cpp
     subscriptionmatcher_tests.cpp
     )
 add_executable (
