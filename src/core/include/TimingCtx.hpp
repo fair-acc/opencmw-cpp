@@ -98,24 +98,24 @@ public:
         }
     }
 
-    constexpr std::chrono::microseconds bpcts() const { return _bpcts; }
-    constexpr std::optional<int>        cid() const { return asOptional(_cid); }
-    constexpr std::optional<int>        sid() const { return asOptional(_sid); }
-    constexpr std::optional<int>        pid() const { return asOptional(_pid); }
-    constexpr std::optional<int>        gid() const { return asOptional(_gid); }
+    constexpr std::chrono::microseconds bpcts() const noexcept { return _bpcts; }
+    constexpr std::optional<int>        cid() const noexcept { return asOptional(_cid); }
+    constexpr std::optional<int>        sid() const noexcept { return asOptional(_sid); }
+    constexpr std::optional<int>        pid() const noexcept { return asOptional(_pid); }
+    constexpr std::optional<int>        gid() const noexcept { return asOptional(_gid); }
 
     // these are not commutative, and must not be confused with operator==
-    constexpr bool matches(const TimingCtx &other) const {
+    constexpr bool matches(const TimingCtx &other) const noexcept {
         return wildcardMatch(_cid, other._cid) && wildcardMatch(_sid, other._sid) && wildcardMatch(_pid, other._pid) && wildcardMatch(_gid, other._gid);
     }
 
-    constexpr bool matchesWithBpcts(const TimingCtx &other) const {
+    constexpr bool matchesWithBpcts(const TimingCtx &other) const noexcept {
         return _bpcts == other._bpcts && matches(other);
     }
 
-    constexpr bool operator==(const TimingCtx &) const = default;
+    constexpr bool operator==(const TimingCtx &) const noexcept = default;
 
-    std::string    toString() const {
+    std::string    toString() const noexcept {
         if (isWildcard(_cid) && isWildcard(_sid) && isWildcard(_pid) && isWildcard(_gid)) {
             auto s = std::string(SELECTOR_PREFIX);
             s.append(WILDCARD);
@@ -134,11 +134,11 @@ public:
     }
 
 private:
-    static constexpr inline std::optional<int> asOptional(int x) {
+    static constexpr inline std::optional<int> asOptional(int x) noexcept {
         return x == WILDCARD_VALUE ? std::nullopt : std::optional<int>{ x };
     }
 
-    static inline constexpr bool isWildcard(int x) {
+    static inline constexpr bool isWildcard(int x) noexcept {
         return x == -1;
     }
 
@@ -147,7 +147,7 @@ private:
     constexpr static auto SELECTOR_PREFIX = std::string_view("FAIR.SELECTOR.");
 
     template<typename Left, typename Right>
-    static inline bool iequal(const Left &left, const Right &right) {
+    static inline bool iequal(const Left &left, const Right &right) noexcept {
         return std::equal(std::cbegin(left), std::cend(left), std::cbegin(right), std::cend(right),
                 [](auto l, auto r) { return std::tolower(l) == std::tolower(r); });
     }
