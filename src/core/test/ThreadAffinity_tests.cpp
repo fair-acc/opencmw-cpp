@@ -140,11 +140,11 @@ TEST_CASE("ThreadSchedulingParameter", "[ThreadAffinity]") {
     opencmw::debug::resetStats();
     opencmw::debug::Timer timer("ThreadAffinity - ThreadSchedParameter", 40);
 
-    std::atomic<bool> run         = true;
-    auto              guard       = testTimeoutGuard(std::chrono::milliseconds(1000), run);
-    const auto        dummyAction = [&run]() { while (run) { std::this_thread::sleep_for(std::chrono::milliseconds(50)); } };
-    std::jthread      testThread(dummyAction);
-    std::jthread      bogusThread;
+    std::atomic<bool>     run         = true;
+    auto                  guard       = testTimeoutGuard(std::chrono::milliseconds(1000), run);
+    const auto            dummyAction = [&run]() { while (run) { std::this_thread::sleep_for(std::chrono::milliseconds(50)); } };
+    std::jthread          testThread(dummyAction);
+    std::jthread          bogusThread;
 
     using namespace opencmw::thread;
     struct SchedulingParameter param = getThreadSchedulingParameter(testThread);
