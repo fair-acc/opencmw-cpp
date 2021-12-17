@@ -234,11 +234,7 @@ inline void putHeaderInfo<YaS>(IoBuffer &buffer) {
 
 template<>
 inline DeserialiserInfo checkHeaderInfo<YaS>(IoBuffer &buffer, DeserialiserInfo info, const ProtocolCheck protocolCheckVariant) {
-    auto magic      = buffer.get<int>();
-    auto proto_name = buffer.get<std::string>();
-    auto ver_major  = buffer.get<int8_t>();
-    auto ver_minor  = buffer.get<int8_t>();
-    auto ver_micro  = buffer.get<int8_t>();
+    const auto magic      = buffer.get<int>();
     if (yas::VERSION_MAGIC_NUMBER != magic) {
         if (protocolCheckVariant == LENIENT) {
             info.exceptions.template emplace_back(ProtocolException(fmt::format("Wrong serialiser magic number: {} != -1", magic)));
@@ -246,7 +242,9 @@ inline DeserialiserInfo checkHeaderInfo<YaS>(IoBuffer &buffer, DeserialiserInfo 
         if (protocolCheckVariant == ALWAYS) {
             throw ProtocolException(fmt::format("Wrong serialiser magic number: {} != -1", magic));
         }
+        return info;
     }
+    auto proto_name = buffer.get<std::string>();
     if (yas::PROTOCOL_NAME != proto_name) {
         if (protocolCheckVariant == LENIENT) {
             info.exceptions.template emplace_back(ProtocolException(fmt::format("Wrong serialiser identification string: {} != YaS", proto_name)));
@@ -254,7 +252,11 @@ inline DeserialiserInfo checkHeaderInfo<YaS>(IoBuffer &buffer, DeserialiserInfo 
         if (protocolCheckVariant == ALWAYS) {
             throw ProtocolException(fmt::format("Wrong serialiser identification string: {} != YaS", proto_name));
         }
+        return info;
     }
+    auto ver_major  = buffer.get<int8_t>();
+    auto ver_minor  = buffer.get<int8_t>();
+    auto ver_micro  = buffer.get<int8_t>();
     if (yas::VERSION_MAJOR != ver_major) {
         if (protocolCheckVariant == LENIENT) {
             info.exceptions.template emplace_back(ProtocolException(fmt::format("Major versions do not match, received {}.{}.{}", ver_major, ver_minor, ver_micro)));
@@ -262,6 +264,7 @@ inline DeserialiserInfo checkHeaderInfo<YaS>(IoBuffer &buffer, DeserialiserInfo 
         if (protocolCheckVariant == ALWAYS) {
             throw ProtocolException(fmt::format("Major versions do not match, received {}.{}.{}", ver_major, ver_minor, ver_micro));
         }
+        return info;
     }
     return info;
 }

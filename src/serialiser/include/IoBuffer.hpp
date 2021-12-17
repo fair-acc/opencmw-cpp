@@ -259,7 +259,7 @@ public:
 
     template<StringLike R>
     [[nodiscard]] R get() noexcept {
-        const std::size_t bytesToCopy = static_cast<std::size_t>(get<int32_t>()) * sizeof(char);
+        const std::size_t bytesToCopy = std::min(static_cast<std::size_t>(get<int32_t>()) * sizeof(char), _size - _position);
         const std::size_t oldPosition = _position;
 #ifdef NDEBUG
         _position += bytesToCopy;
@@ -273,7 +273,7 @@ public:
 
     template<StringLike R>
     [[nodiscard]] R get(const std::size_t &index) noexcept {
-        const std::size_t bytesToCopy = static_cast<std::size_t>(get<int32_t>()) * sizeof(char);
+        const std::size_t bytesToCopy = std::min(static_cast<std::size_t>(get<int32_t>()) * sizeof(char), _size - _position);
 #ifndef NDEBUG
         _position += bytesToCopy - 1;
         const int8_t terminatingChar = get<int8_t>();
@@ -284,7 +284,7 @@ public:
 
     template<SupportedType R>
     constexpr std::vector<R> &getArray(std::vector<R> &input, const std::size_t &requestedSize = SIZE_MAX) noexcept {
-        const auto        arraySize    = static_cast<std::size_t>(get<int32_t>());
+        const auto        arraySize    = std::min(static_cast<std::size_t>(get<int32_t>()), _size - _position);
         const std::size_t minArraySize = std::min(arraySize, requestedSize);
         input.resize(minArraySize);
         if constexpr (is_stringlike<R> || is_same_v<R, bool>) {
@@ -303,7 +303,7 @@ public:
 
     template<SupportedType R, std::size_t size>
     constexpr std::array<R, size> &getArray(std::array<R, size> &input, const std::size_t &requestedSize = SIZE_MAX) noexcept {
-        const auto        arraySize    = static_cast<std::size_t>(get<int32_t>());
+        const auto        arraySize    = std::min(static_cast<std::size_t>(get<int32_t>()), _size - _position);
         const std::size_t minArraySize = std::min(arraySize, requestedSize);
         assert(size >= minArraySize && "std::array<SupportedType, size> wire-format size does not match design");
         if constexpr (is_stringlike<R> || is_same_v<R, bool>) {

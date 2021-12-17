@@ -518,8 +518,6 @@ TEST_CASE("IoClassSerialiser protocol error tests", "[IoClassSerialiser]") {
     {
         buffer.reset();
         auto info = opencmw::deserialise<YaS, ProtocolCheck::LENIENT>(buffer, data2);
-        std::cout << " info: {}\n"
-                  << info << std::endl;
         REQUIRE(info.exceptions.size() == 0);
     }
 
@@ -531,7 +529,7 @@ TEST_CASE("IoClassSerialiser protocol error tests", "[IoClassSerialiser]") {
         auto info = opencmw::deserialise<YaS, ProtocolCheck::LENIENT>(buffer, data2);
         std::cout << " info: {}\n"
                   << info << std::endl;
-        REQUIRE(info.exceptions.size() == 0);
+        REQUIRE(info.exceptions.size() == 1); // N.B. invalid protocol
     }
 }
 
