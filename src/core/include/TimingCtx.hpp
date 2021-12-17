@@ -159,4 +159,17 @@ private:
 
 } // namespace opencmw
 
+template<>
+struct fmt::formatter<opencmw::TimingCtx> {
+    template<typename ParseContext>
+    constexpr auto parse(ParseContext &ctx) {
+        return ctx.begin(); // not (yet) implemented
+    }
+
+    template<typename FormatContext>
+    auto format(const opencmw::TimingCtx &v, FormatContext &ctx) {
+        return fmt::format_to(ctx.out(), "{}", v.toString());
+    }
+};
+
 #endif
