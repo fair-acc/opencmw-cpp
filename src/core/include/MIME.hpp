@@ -14,10 +14,10 @@
 namespace opencmw::MIME {
 
 class MimeType {
-    const std::string_view                _typeName; // TODO: replace with case-insensitive constexpr std::string once fully supported by both gcc13 and clang?, see http://www.gotw.ca/gotw/029.htm
-    const std::string_view                _description;
-    const std::array<std::string_view, 3> _fileExtensions; // N.B. max number '3' of ext is hardcoded TODO: replace with constexpr std::array or std::vector once fully supported by both gcc13 and clang?
-    const size_t                          _N;
+    std::string_view                _typeName; // TODO: replace with case-insensitive constexpr std::string once fully supported by both gcc13 and clang?, see http://www.gotw.ca/gotw/029.htm
+    std::string_view                _description;
+    std::array<std::string_view, 3> _fileExtensions; // N.B. max number '3' of ext is hardcoded TODO: replace with constexpr std::array or std::vector once fully supported by both gcc13 and clang?
+    size_t                          _N;
 
 public:
     MimeType() = delete;
