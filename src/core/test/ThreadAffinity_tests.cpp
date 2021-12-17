@@ -1,7 +1,7 @@
 #include <catch2/catch.hpp>
+#include <condition_variable>
 #include <fmt/chrono.h>
 #include <ThreadAffinity.hpp>
-#include <condition_variable>
 
 #define REQUIRE_MESSAGE(cond, msg) \
     do { \
@@ -13,7 +13,7 @@ std::jthread testTimeoutGuard(const std::chrono::milliseconds &timeout, std::ato
     return std::jthread([&]() {
         int count = 100;
         while (count-- > 0 && run) {
-            std::this_thread::sleep_for(timeout/100);
+            std::this_thread::sleep_for(timeout / 100);
         }
         const bool stateAfter = run;
         run                   = false;
@@ -50,7 +50,7 @@ TEST_CASE("basic thread affinity", "[ThreadAffinity]") {
     }
     REQUIRE_MESSAGE(equal, fmt::format("set {{{}}} affinity map does not match get {{{}}} map", fmt::join(threadMap, ", "), fmt::join(affinity, ", ")));
 
-    std::jthread      bogusThread;
+    std::jthread bogusThread;
     REQUIRE_THROWS_AS(thread::getThreadAffinity(bogusThread), std::system_error);
     REQUIRE_THROWS_AS(thread::setThreadAffinity(threadMapOn, bogusThread), std::system_error);
 
