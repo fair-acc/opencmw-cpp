@@ -515,12 +515,24 @@ TEST_CASE("IoClassSerialiser protocol error tests", "[IoClassSerialiser]") {
 
     opencmw::serialise<opencmw::YaS>(buffer, data);
 
-    buffer.reset();
-    auto info = opencmw::deserialise<YaS, ProtocolCheck::LENIENT>(buffer, data2);
-    std::cout << " info: {}\n"
-              << info << std::endl;
-    REQUIRE(info.exceptions.size() == 0);
-    //    REQUIRE(data == data2);
+    {
+        buffer.reset();
+        auto info = opencmw::deserialise<YaS, ProtocolCheck::LENIENT>(buffer, data2);
+        std::cout << " info: {}\n"
+                  << info << std::endl;
+        REQUIRE(info.exceptions.size() == 0);
+    }
+
+    buffer.clear();
+    buffer.putRaw(R"({ "float1": 2.3, "test": { "intArray": [1, 2, 3], "val1":13.37e2, "val2":"bar"}, "int1": 42})");
+    std::cout << "Prepared json data: " << buffer.asString() << std::endl;
+    {
+        buffer.reset();
+        auto info = opencmw::deserialise<YaS, ProtocolCheck::LENIENT>(buffer, data2);
+        std::cout << " info: {}\n"
+                  << info << std::endl;
+        REQUIRE(info.exceptions.size() == 0);
+    }
 }
 
 #pragma clang diagnostic pop
