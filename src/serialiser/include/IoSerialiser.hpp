@@ -79,10 +79,10 @@ template<SerialiserProtocol protocol, typename T>
 struct IoSerialiser {
     constexpr static uint8_t getDataTypeId() { return 0xFF; } // default value
 
-    constexpr static bool    serialise(IoBuffer & /*buffer*/, const ClassField &field, const T &value) noexcept {
+    constexpr static bool    serialise(IoBuffer    &/*buffer*/, const ClassField &field, const T &value) noexcept {
         std::cout << fmt::format("{:<4} - serialise-generic: {} {} value: {} - constexpr?: {}\n",
-                protocol::protocolName(), typeName<T>, field, value,
-                std::is_constant_evaluated());
+                   protocol::protocolName(), typeName<T>, field, value,
+                   std::is_constant_evaluated());
         return std::is_constant_evaluated();
     }
 
@@ -352,7 +352,6 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
             }
             using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
             if constexpr (isReflectableClass<MemberType>() || !is_writable(member) || is_static(member)) {
-                handleError<protocolCheckVariant>(info, "field is not writeable or non-primitive: {}", member.name);
                 if (field.dataEndPosition != std::numeric_limits<size_t>::max()) {
                     buffer.set_position(field.dataEndPosition);
                 }
@@ -397,7 +396,7 @@ constexpr DeserialiserInfo deserialise(IoBuffer &buffer, T &value, DeserialiserI
                     info.setFields[structName][static_cast<uint64_t>(searchIndex)] = true;
                 }
             }
-        });
+          });
 #pragma clang diagnostic pop
         // skip to data end if field header defines the end
         if (field.dataEndPosition != std::numeric_limits<size_t>::max() && field.dataEndPosition != buffer.position()) {

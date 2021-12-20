@@ -24,7 +24,7 @@ private:
     mutable std::size_t _position            = 0;
     std::size_t         _size                = 0;
     std::size_t         _capacity            = 0;
-    uint8_t *           _buffer              = nullptr;
+    uint8_t            *_buffer              = nullptr;
 
     constexpr void      reallocate(const std::size_t &size) noexcept {
         if (_capacity == size && _buffer != nullptr) {
@@ -59,7 +59,7 @@ private:
                 delete[] _buffer;
             }
         } else {
-            //throw std::runtime_error("double free"); //TODO: reenable
+            // throw std::runtime_error("double free"); //TODO: reenable
         }
         _buffer = nullptr;
     }
@@ -133,15 +133,15 @@ public:
         return *this;
     }
 
-    constexpr uint8_t &                        operator[](const std::size_t i) { return _buffer[i]; }
-    constexpr const uint8_t &                  operator[](const std::size_t i) const { return _buffer[i]; }
+    constexpr uint8_t                         &operator[](const std::size_t i) { return _buffer[i]; }
+    constexpr const uint8_t                   &operator[](const std::size_t i) const { return _buffer[i]; }
     constexpr void                             reset() { _position = 0; }
     constexpr void                             set_position(size_t position) { _position = position; }
     [[nodiscard]] constexpr const std::size_t &position() const { return _position; }
     [[nodiscard]] constexpr const std::size_t &capacity() const { return _capacity; }
     [[nodiscard]] constexpr const std::size_t &size() const { return _size; }
-    [[nodiscard]] constexpr uint8_t *          data() noexcept { return _buffer; }
-    [[nodiscard]] constexpr const uint8_t *    data() const noexcept { return _buffer; }
+    [[nodiscard]] constexpr uint8_t           *data() noexcept { return _buffer; }
+    [[nodiscard]] constexpr const uint8_t     *data() const noexcept { return _buffer; }
     constexpr void                             clear() noexcept { _position = _size = 0; }
 
     template<typename R>
@@ -197,13 +197,13 @@ public:
     }
 
     template<SupportedType I, size_t size>
-    constexpr void put(I const (&values)[size]) noexcept { put(values, size); } //NOLINT int a[30]; OK <-> std::array<int, 30>
+    constexpr void put(I const (&values)[size]) noexcept { put(values, size); } // NOLINT int a[30]; OK <-> std::array<int, 30>
     template<SupportedType I>
     constexpr void put(std::vector<I> const &values) noexcept { put(values.data(), values.size()); }
     template<SupportedType I, size_t size>
     constexpr void put(std::array<I, size> const &values) noexcept { put(values.data(), size); }
 
-    void           put(std::vector<bool> const &values) noexcept { //TODO: re-enable constexpr (N.B. should be since C++20)
+    void           put(std::vector<bool> const &values) noexcept { // TODO: re-enable constexpr (N.B. should be since C++20)
         const std::size_t size       = values.size();
         const std::size_t byteToCopy = size * sizeof(bool);
         reserve_spare(byteToCopy + sizeof(int32_t) + sizeof(bool));
@@ -259,7 +259,7 @@ public:
 
     template<StringLike R>
     [[nodiscard]] R get() noexcept {
-        const std::size_t bytesToCopy = static_cast<std::size_t>(get<int32_t>()) * sizeof(char);
+        const std::size_t bytesToCopy = std::min(static_cast<std::size_t>(get<int32_t>()) * sizeof(char), _size - _position);
         const std::size_t oldPosition = _position;
 #ifdef NDEBUG
         _position += bytesToCopy;
@@ -273,7 +273,7 @@ public:
 
     template<StringLike R>
     [[nodiscard]] R get(const std::size_t &index) noexcept {
-        const std::size_t bytesToCopy = static_cast<std::size_t>(get<int32_t>()) * sizeof(char);
+        const std::size_t bytesToCopy = std::min(static_cast<std::size_t>(get<int32_t>()) * sizeof(char), _size - _position);
 #ifndef NDEBUG
         _position += bytesToCopy - 1;
         const int8_t terminatingChar = get<int8_t>();
@@ -284,7 +284,7 @@ public:
 
     template<SupportedType R>
     constexpr std::vector<R> &getArray(std::vector<R> &input, const std::size_t &requestedSize = SIZE_MAX) noexcept {
-        const auto        arraySize    = static_cast<std::size_t>(get<int32_t>());
+        const auto        arraySize    = std::min(static_cast<std::size_t>(get<int32_t>()), _size - _position);
         const std::size_t minArraySize = std::min(arraySize, requestedSize);
         input.resize(minArraySize);
         if constexpr (is_stringlike<R> || is_same_v<R, bool>) {
@@ -303,7 +303,7 @@ public:
 
     template<SupportedType R, std::size_t size>
     constexpr std::array<R, size> &getArray(std::array<R, size> &input, const std::size_t &requestedSize = SIZE_MAX) noexcept {
-        const auto        arraySize    = static_cast<std::size_t>(get<int32_t>());
+        const auto        arraySize    = std::min(static_cast<std::size_t>(get<int32_t>()), _size - _position);
         const std::size_t minArraySize = std::min(arraySize, requestedSize);
         assert(size >= minArraySize && "std::array<SupportedType, size> wire-format size does not match design");
         if constexpr (is_stringlike<R> || is_same_v<R, bool>) {
@@ -333,4 +333,4 @@ public:
 } // namespace opencmw
 
 #pragma clang diagnostic pop
-#endif //OPENCMW_IOBUFFER_H
+#endif // OPENCMW_IOBUFFER_H

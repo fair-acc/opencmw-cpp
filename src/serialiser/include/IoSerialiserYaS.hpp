@@ -57,7 +57,6 @@ template<> inline constexpr uint8_t getDataTypeId<std::string_view[]>() { return
 // template<> inline constexpr uint8_t getDataTypeId<START_MARKER>() { return 200; }
 // template<> inline constexpr uint8_t getDataTypeId<enum>()          { return 201; }
 // template<typename T> inline constexpr uint8_t getDataTypeId<std::list<T>>()     { return 202; }
-// template<> inline constexpr uint8_t getDataTypeId<std::unsorted_map>() { return 203; }
 // template<> inline constexpr uint8_t getDataTypeId<std::queue>()    { return 204; }
 // template<> inline constexpr uint8_t getDataTypeId<std::set>()      { return 205; }
 
@@ -78,7 +77,7 @@ struct IoSerialiser<YaS, T> {
 template<Number T> // catches all numbers
 struct IoSerialiser<YaS, T> {
     inline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); }
-    constexpr static bool           serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
+    constexpr static bool           serialise(IoBuffer &buffer, const ClassField           &/*field*/, const T &value) noexcept {
         buffer.put(value);
         return std::is_constant_evaluated();
     }
@@ -91,7 +90,7 @@ struct IoSerialiser<YaS, T> {
 template<StringLike T>
 struct IoSerialiser<YaS, T> {
     inline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); }
-    constexpr static bool           serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
+    constexpr static bool           serialise(IoBuffer &buffer, const ClassField           &/*field*/, const T &value) noexcept {
         buffer.put<T>(value); // N.B. ensure that the wrapped value and not the annotation itself is serialised
         return std::is_constant_evaluated();
     }
@@ -104,7 +103,7 @@ struct IoSerialiser<YaS, T> {
 template<ArrayOrVector T>
 struct IoSerialiser<YaS, T> {
     inline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); }
-    constexpr static bool           serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
+    constexpr static bool           serialise(IoBuffer &buffer, const ClassField           &/*field*/, const T &value) noexcept {
         buffer.put(std::array<int32_t, 1>{ static_cast<int32_t>(value.size()) });
         buffer.put(value);
         return std::is_constant_evaluated();
@@ -148,11 +147,110 @@ struct IoSerialiser<YaS, T> {
     }
 };
 
+template<MapLike T>
+struct IoSerialiser<YaS, T> {
+    inline static constexpr uint8_t getDataTypeId() { return 203; }
+    constexpr static bool           serialise(IoBuffer &buffer, const ClassField &field, const T &value) noexcept {
+        using K                 = typename T::key_type;
+        using V                 = typename T::mapped_type;
+        const int32_t nElements = static_cast<int32_t>(value.size());
+        buffer.put(std::array<int32_t, 1>{ nElements }); // [ndims]{size}
+        buffer.put(nElements);                           // nElements
+
+        if constexpr (is_supported_number<K> || is_stringlike<K>) {
+            constexpr int entrySize = 17; // as an initial estimate
+            buffer.reserve_spare(static_cast<size_t>(nElements * entrySize + 9));
+            buffer.put(static_cast<uint8_t>(yas::getDataTypeId<K>())); // type-id
+            buffer.put(nElements);                                     // nElements
+            for (auto &entry : value) {
+                buffer.put(entry.first);
+            }
+        } else {                                     // non-primitive or non-string-like types
+            buffer.put(yas::getDataTypeId<OTHER>()); // type-id
+            buffer.put(typeName<K>());               // primary type
+            buffer.put("");                          // secondary type (if any) TODO: add appropriate
+            buffer.put(nElements);
+            for (auto &entry : value) {
+                IoSerialiser<YaS, K>::serialise(buffer, field, entry.first);
+            }
+        }
+
+        if constexpr (is_supported_number<V> || is_stringlike<V>) {
+            constexpr int entrySize = 17; // as an initial estimate
+            buffer.reserve_spare(static_cast<size_t>(nElements * entrySize + 9));
+            buffer.put(static_cast<uint8_t>(yas::getDataTypeId<V>()));
+            buffer.put(nElements);
+            for (auto &entry : value) {
+                buffer.put(entry.second);
+            }
+        } else {                                         // non-primitive or non-string-like types
+            buffer.put(yas::getDataTypeId<OTHER>());     // type-id
+            buffer.put(typeName<V>());                   // primary type
+            buffer.put("");                              // secondary type (if any) TODO: add appropriate
+            buffer.put(static_cast<int32_t>(nElements)); // nElements
+            for (auto &entry : value) {
+                IoSerialiser<YaS, K>::serialise(buffer, field, entry.second);
+            }
+        }
+        return std::is_constant_evaluated();
+    }
+    static bool deserialise(IoBuffer &buffer, const ClassField &field, T &value) {
+        using K                  = typename T::key_type;
+        using V                  = typename T::mapped_type;
+        const auto     dimWire   = buffer.getArray<int32_t>(); // [ndims]{size}
+        const auto     nElements = static_cast<uint32_t>(buffer.get<int32_t>());
+
+        const auto     keyType   = buffer.get<uint8_t>();
+        std::vector<K> keys;
+        keys.reserve(nElements);
+        if constexpr (is_supported_number<K> || is_stringlike<K>) {
+            if (yas::getDataTypeId<K>() != keyType) {
+                throw new ProtocolException(fmt::format("key type mismatch for field {} - required {} ({}) vs. have {}", field, yas::getDataTypeId<K>(), typeid(K).name(), keyType));
+            }
+            const auto nElementsCheck = static_cast<uint32_t>(buffer.get<int32_t>());
+            if (nElements != nElementsCheck) {
+                throw new ProtocolException(fmt::format("key array length mismatch for field {} - required {} vs. have {}", field, nElements, nElementsCheck));
+            }
+            for (auto i = 0U; i < nElementsCheck; i++) {
+                keys.emplace_back(buffer.get<K>());
+            }
+        } else if (keyType == yas::getDataTypeId<OTHER>()) {
+            throw new ProtocolException(fmt::format("key type OTHER for field {} not yet implemented", field));
+        } else {
+            throw new ProtocolException(fmt::format("unsupported key type {} for field {}", keyType, field));
+        }
+
+        const auto valueType = buffer.get<uint8_t>();
+        if constexpr (is_supported_number<V> || is_stringlike<V>) {
+            if (yas::getDataTypeId<K>() != keyType) {
+                throw new ProtocolException(fmt::format("value type mismatch for field {} - required {} ({}) vs. have {}", field, yas::getDataTypeId<V>(), typeid(V).name(), valueType));
+            }
+            const auto nElementsCheck = static_cast<uint32_t>(buffer.get<int32_t>());
+            if (nElements != nElementsCheck) {
+                throw new ProtocolException(fmt::format("value array length mismatch for field {} - required {} vs. have {}", field, nElements, nElementsCheck));
+            }
+            value.clear();
+            for (auto i = 0U; i < nElementsCheck; i++) {
+                auto v         = buffer.get<V>();
+                value[keys[i]] = v;
+            }
+        } else if (keyType == yas::getDataTypeId<OTHER>()) {
+            throw new ProtocolException(fmt::format("value type OTHER for field {} not yet implemented", field));
+        } else {
+            throw new ProtocolException(fmt::format("unsupported key type {} for field {}", keyType, field));
+        }
+
+        fmt::print("keyType {} valueType {}", keyType, valueType);
+
+        return std::is_constant_evaluated();
+    }
+};
+
 template<>
 struct IoSerialiser<YaS, START_MARKER> {
     inline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<START_MARKER>(); }
 
-    constexpr static bool           serialise(IoBuffer & /*buffer*/, const ClassField & /*field*/, const START_MARKER & /*value*/) noexcept {
+    constexpr static bool           serialise(IoBuffer           &/*buffer*/, const ClassField           &/*field*/, const START_MARKER           &/*value*/) noexcept {
         // do not do anything, as the start marker is of size zero and only the type byte is important
         return std::is_constant_evaluated();
     }
@@ -166,7 +264,7 @@ struct IoSerialiser<YaS, START_MARKER> {
 template<>
 struct IoSerialiser<YaS, END_MARKER> {
     inline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<END_MARKER>(); }
-    static bool                     serialise(IoBuffer & /*buffer*/, const ClassField & /*field*/, const END_MARKER & /*value*/) noexcept {
+    static bool                     serialise(IoBuffer                     &/*buffer*/, const ClassField                     &/*field*/, const END_MARKER                     &/*value*/) noexcept {
         // do not do anything, as the end marker is of size zero and only the type byte is important
         return std::is_constant_evaluated();
     }
@@ -234,11 +332,7 @@ inline void putHeaderInfo<YaS>(IoBuffer &buffer) {
 
 template<>
 inline DeserialiserInfo checkHeaderInfo<YaS>(IoBuffer &buffer, DeserialiserInfo info, const ProtocolCheck protocolCheckVariant) {
-    auto magic      = buffer.get<int>();
-    auto proto_name = buffer.get<std::string>();
-    auto ver_major  = buffer.get<int8_t>();
-    auto ver_minor  = buffer.get<int8_t>();
-    auto ver_micro  = buffer.get<int8_t>();
+    const auto magic = buffer.get<int>();
     if (yas::VERSION_MAGIC_NUMBER != magic) {
         if (protocolCheckVariant == LENIENT) {
             info.exceptions.template emplace_back(ProtocolException(fmt::format("Wrong serialiser magic number: {} != -1", magic)));
@@ -246,7 +340,9 @@ inline DeserialiserInfo checkHeaderInfo<YaS>(IoBuffer &buffer, DeserialiserInfo 
         if (protocolCheckVariant == ALWAYS) {
             throw ProtocolException(fmt::format("Wrong serialiser magic number: {} != -1", magic));
         }
+        return info;
     }
+    auto proto_name = buffer.get<std::string>();
     if (yas::PROTOCOL_NAME != proto_name) {
         if (protocolCheckVariant == LENIENT) {
             info.exceptions.template emplace_back(ProtocolException(fmt::format("Wrong serialiser identification string: {} != YaS", proto_name)));
@@ -254,7 +350,11 @@ inline DeserialiserInfo checkHeaderInfo<YaS>(IoBuffer &buffer, DeserialiserInfo 
         if (protocolCheckVariant == ALWAYS) {
             throw ProtocolException(fmt::format("Wrong serialiser identification string: {} != YaS", proto_name));
         }
+        return info;
     }
+    auto ver_major = buffer.get<int8_t>();
+    auto ver_minor = buffer.get<int8_t>();
+    auto ver_micro = buffer.get<int8_t>();
     if (yas::VERSION_MAJOR != ver_major) {
         if (protocolCheckVariant == LENIENT) {
             info.exceptions.template emplace_back(ProtocolException(fmt::format("Major versions do not match, received {}.{}.{}", ver_major, ver_minor, ver_micro)));
@@ -262,6 +362,7 @@ inline DeserialiserInfo checkHeaderInfo<YaS>(IoBuffer &buffer, DeserialiserInfo 
         if (protocolCheckVariant == ALWAYS) {
             throw ProtocolException(fmt::format("Major versions do not match, received {}.{}.{}", ver_major, ver_minor, ver_micro));
         }
+        return info;
     }
     return info;
 }
