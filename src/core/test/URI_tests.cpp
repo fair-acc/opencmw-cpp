@@ -112,24 +112,26 @@ static const std::array validURIs{
     "#fagmentOnly",
 };
 
-TEST_CASE("Show current issues", "[URI]") {
+TEST_CASE("Test for some previous issues", "[URI]") {
+    using namespace opencmw;
     using QueryMap = std::unordered_map<std::string, std::optional<std::string>>;
 
-    // parsing is confused by ":" in the query param
+    // parsing qas confused by ":" in the query param
     // TODO fix or insist on percent-escaped ":"
-    // CHECK(opencmw::URI<opencmw::RELAXED>("/property?ctx=FAIR.SELECTOR.C=2:P=1").path() == "/property"); // path() == "P=1"
+    CHECK(URI<RELAXED>("/property?ctx=FAIR.SELECTOR.C=2:P=1").path() == "/property"); // path() == "P=1"
 
-    // /, = (and others) are dropped when decoding query param values
-    CHECK(opencmw::URI<opencmw::RELAXED>("/property?ctx=FAIR.SELECTOR.C=2").queryParamMap().at("ctx") == "FAIR.SELECTOR.C=2"); // FAIR.SELECTOR.C2
-    CHECK(opencmw::URI<opencmw::RELAXED>("/property?contentType=text/html").queryParamMap().at("contentType") == "text/html"); // "texthtml"
+    // /, = (and others) were dropped when decoding query param values
+    CHECK(URI<RELAXED>("/property?ctx=FAIR.SELECTOR.C=2").queryParamMap().at("ctx") == "FAIR.SELECTOR.C=2"); // FAIR.SELECTOR.C2
+    CHECK(URI<RELAXED>("/property?contentType=text/html").queryParamMap().at("contentType") == "text/html"); // "texthtml"
 
-    // STRICT parsing throws on these (valid?) URIs
-    // TODO fix or assert that the throwing is wanted
-    // CHECK_NOTHROW(opencmw::URI<opencmw::STRICT>("/property?ctx=FAIR.SELECTOR.C=2:P=1"));
-    // CHECK_NOTHROW(opencmw::URI<opencmw::STRICT>("/property?contentType=text/html").queryParamMap());
+    // STRICT parsing threw on these (valid?) URIs
+    CHECK_NOTHROW(URI<STRICT>("/property?ctx=FAIR.SELECTOR.C=2:P=1"));
+    CHECK_NOTHROW(URI<STRICT>("/property?contentType=text/html").queryParamMap());
 
-    // last query item is dropped
-    CHECK(opencmw::URI<opencmw::STRICT>("scheme:/foo/bar.txt?k0=v0;k1=").queryParamMap() == QueryMap{ { "k0", "v0" }, { "k1", {} } }); // "k1" is missing
+    // last query item was dropped
+    CHECK(URI<STRICT>("scheme:/foo/bar.txt?k0=v0;k1=").queryParamMap() == QueryMap{ { "k0", "v0" }, { "k1", {} } }); // "k1" is missing
+
+    // TODO test the odd ducks "aa#:" and "aa?:" (and decide what should be returned)
 }
 
 TEST_CASE("builder-parser identity", "[URI]") {
@@ -195,7 +197,7 @@ TEST_CASE("helper methods", "[URI]") {
         // implicitly tests URI<>::isUnreserved(c) for scheme
         REQUIRE_NOTHROW_MESSAGE(URI<STRICT>(fmt::format("aa{}:", c)), fmt::format("test character in scheme: '{}'", c));
     }
-    for (auto c : std::string("-._~/?#[]@!$&'()*+,;=")) { // N.B. special case for delimiter ':' -- "::" failure case not covered
+    for (auto c : std::string("-._~/[]@!$&'()*+,;=")) { // N.B. special case for delimiter ':' -- "::" failure case not covered
         // implicitly tests URI<>::isUnreserved(c)/invalid characters  for scheme
         REQUIRE_THROWS_AS_MESSAGE(URI<STRICT>(fmt::format("aa{}:", c)), std::ios_base::failure, fmt::format("test character in scheme: '{}'", c));
     }

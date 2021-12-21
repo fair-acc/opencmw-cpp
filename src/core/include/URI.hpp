@@ -110,9 +110,10 @@ public:
 
         // check for scheme
         size_t scheme_size = source.find_first_of(':', 0);
-        if (scheme_size != string::npos) {
+        const size_t nextSeparator = source.find_first_of("/?#", 0);
+        if (scheme_size < nextSeparator && scheme_size != string::npos) {
             _scheme = source.substr(0, scheme_size);
-            if constexpr (check == STRICT) {
+            if (check == STRICT) {
                 if (!std::all_of(_scheme.begin(), _scheme.end(), [](char c) { return std::isalnum(c); })) {
                     throw URISyntaxException(fmt::format("URI scheme contains illegal characters: {}", _scheme));
                 }
@@ -258,8 +259,8 @@ public:
             return _queryMap;
         }
         if constexpr (check == STRICT) {
-            if (!std::all_of(_query.begin(), _query.end(), [](char c) { return isUnreserved(c) || c == '&' || c == ';' || c == '=' || c == '%'; })) {
-                throw std::exception(); // TODO: URIException("URI query contains illegal characters: {}")
+            if (!std::all_of(_query.begin(), _query.end(), [](char c) { return isUnreserved(c) || c == '&' || c == ';' || c == '=' || c == '%' || c == ':' || c == '/'; })) {
+                throw URISyntaxException(fmt::format("URI query contains illegal characters: {}", _query));
             }
         }
         size_t readPos = 0;

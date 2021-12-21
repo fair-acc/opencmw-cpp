@@ -88,13 +88,12 @@ TEST_CASE("Test timing and context type matching", "[subscription_matcher]") {
     matcher.addFilter<opencmw::majordomo::TimingCtxFilter>("ctx");
     matcher.addFilter<opencmw::majordomo::ContentTypeFilter>("contentType");
 
-    // TODO Defensively percent-encoding ":" as "%3a" to avoid URI parsing getting confused by it
     REQUIRE_FALSE(matcher(URI("/property?ctx=FAIR.SELECTOR.ALL"), URI("/property?ctx=FAIR.SELECTOR.C=2")));
     REQUIRE(matcher(URI("/property?ctx=FAIR.SELECTOR.C=2"), URI("/property?ctx=FAIR.SELECTOR.ALL")));
     REQUIRE(matcher(URI("/property?ctx=FAIR.SELECTOR.C=2"), URI("/property?ctx=FAIR.SELECTOR.C=2")));
-    REQUIRE(matcher(URI("/property?ctx=FAIR.SELECTOR.C=2%3aP=1"), URI("/property?ctx=FAIR.SELECTOR.C=2")));
-    REQUIRE(matcher(URI("/property?ctx=FAIR.SELECTOR.C=2%3aP=1"), URI("/property?ctx=FAIR.SELECTOR.C=2%3aP=1")));
-    REQUIRE_FALSE(matcher(URI("/property?ctx=FAIR.SELECTOR.C=2"), URI("/property?ctx=FAIR.SELECTOR.C=2%3aP=1"))); // notify not specific enough (missing 'P=1')
+    REQUIRE(matcher(URI("/property?ctx=FAIR.SELECTOR.C=2:P=1"), URI("/property?ctx=FAIR.SELECTOR.C=2")));
+    REQUIRE(matcher(URI("/property?ctx=FAIR.SELECTOR.C=2:P=1"), URI("/property?ctx=FAIR.SELECTOR.C=2:P=1")));
+    REQUIRE_FALSE(matcher(URI("/property?ctx=FAIR.SELECTOR.C=2"), URI("/property?ctx=FAIR.SELECTOR.C=2:P=1"))); // notify not specific enough (missing 'P=1')
     REQUIRE_FALSE(matcher(URI("/property?ctx=FAIR.SELECTOR.ALL&contentType=text/html"), URI("/property?ctx=FAIR.SELECTOR.C=2&contentType=text/html")));
     REQUIRE_FALSE(matcher(URI("/property?ctx=FAIR.SELECTOR.ALL"), URI("/property?ctx=FAIR.SELECTOR.C=2&contentType=text/html")));
 }
