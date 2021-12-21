@@ -22,10 +22,10 @@ public:
         if constexpr (std::is_same_v<T, std::string_view>) {
             return MatchFunctor()(notified, subscribed);
         } else {
-            const auto notifiedObj   = T(notified);
-            const auto subscribedObj = T(subscribed);
-            // TODO here (optional) caching of domain objects, or even (notified, subscribed) results could be implemented
             try {
+                const auto notifiedObj   = T(notified);
+                const auto subscribedObj = T(subscribed);
+                // TODO here (optional) caching of domain objects, or even (notified, subscribed) results could be implemented
                 return MatchFunctor()(notifiedObj, subscribedObj);
             } catch (...) {
                 return false;
