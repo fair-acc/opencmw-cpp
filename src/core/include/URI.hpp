@@ -109,7 +109,7 @@ public:
         }
 
         // check for scheme
-        size_t scheme_size = source.find_first_of(':', 0);
+        size_t       scheme_size   = source.find_first_of(':', 0);
         const size_t nextSeparator = source.find_first_of("/?#", 0);
         if (scheme_size < nextSeparator && scheme_size != string::npos) {
             _scheme = source.substr(0, scheme_size);
