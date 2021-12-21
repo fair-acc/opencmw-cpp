@@ -27,7 +27,7 @@ namespace opencmw::majordomo {
 struct RequestContext {
     const MdpMessage                             request;
     MdpMessage                                   reply;
-    opencmw::MIME::MimeType                      mimeType = opencmw::MIME::BINARY;
+    MIME::MimeType                               mimeType = MIME::BINARY;
     std::unordered_map<std::string, std::string> htmlData;
 };
 
@@ -62,10 +62,13 @@ private:
         }
     };
 
+protected:
+    const std::string _serviceName;
+
+private:
     RequestHandler                                           _handler;
     const Settings                                           _settings;
     const opencmw::URI<STRICT>                               _brokerAddress;
-    const std::string                                        _serviceName;
     std::string                                              _serviceDescription;
     std::string                                              _rbacRole;
     std::atomic<bool>                                        _shutdownRequested = false;
@@ -75,6 +78,7 @@ private:
     std::optional<Socket>                                    _workerSocket;
     std::optional<Socket>                                    _pubSocket;
     std::array<zmq_pollitem_t, 3>                            _pollerItems;
+    SubscriptionMatcher                                      _subscriptionMatcher;
     std::set<URI<RELAXED>>                                   _activeSubscriptions;
     Socket                                                   _notifyListenerSocket;
     std::unordered_map<std::thread::id, NotificationHandler> _notificationHandlers;
@@ -83,7 +87,7 @@ private:
 
 public:
     explicit BasicMdpWorker(std::string_view serviceName, opencmw::URI<STRICT> brokerAddress, RequestHandler &&handler, const Context &context, Settings settings = {})
-        : _handler{ std::forward<RequestHandler>(handler) }, _settings{ std::move(settings) }, _brokerAddress{ std::move(brokerAddress) }, _serviceName{ std::move(serviceName) }, _context(context), _notifyListenerSocket(_context, ZMQ_PULL), _notifyAddress(makeNotifyAddress(serviceName)) {
+        : _serviceName{ std::move(serviceName) }, _handler{ std::forward<RequestHandler>(handler) }, _settings{ std::move(settings) }, _brokerAddress{ std::move(brokerAddress) }, _context(context), _notifyListenerSocket(_context, ZMQ_PULL), _notifyAddress(makeNotifyAddress(serviceName)) {
         zmq_invoke(zmq_bind, _notifyListenerSocket, _notifyAddress.data()).assertSuccess();
     }
 
@@ -98,6 +102,10 @@ public:
 
     void setRbacRole(std::string rbac) {
         _rbacRole = std::move(rbac);
+    }
+    template<typename Filter>
+    void addFilter(const std::string &key) {
+        _subscriptionMatcher.addFilter<Filter>(key);
     }
 
     void shutdown() {
@@ -173,11 +181,11 @@ private:
         const auto      expiryThreshold = Clock::now() - std::chrono::seconds(30); // cleanup unused handlers every 30 seconds -- TODO: move this to Settings
         std::lock_guard lock{ _notificationHandlersLock };
 
-        for (auto it = _notificationHandlers.begin(); it != _notificationHandlers.end(); ++it) {
-            if (it->second.lastUsed < expiryThreshold) {
-                it = _notificationHandlers.erase(it);
-            }
-        }
+        auto            isExpired = [&expiryThreshold](const auto &p) {
+            return p.second.lastUsed < expiryThreshold;
+        };
+
+        std::erase_if(_notificationHandlers, isExpired);
     }
 
     MdpMessage createMessage(Command command) const noexcept {
@@ -232,9 +240,8 @@ private:
     bool receiveNotificationMessage() {
         if (auto message = MdpMessage::receive(_notifyListenerSocket)) {
             const auto topic                    = URI<RELAXED>(std::string(message->topic()));
-            const auto matchesNotificationTopic = [&topic](const auto &subscription) {
-                static const SubscriptionMatcher matcher;
-                return matcher(topic, subscription);
+            const auto matchesNotificationTopic = [this, &topic](const auto &subscription) {
+                return _subscriptionMatcher(topic, subscription);
             };
 
             // TODO what to do here if worker is disconnected?

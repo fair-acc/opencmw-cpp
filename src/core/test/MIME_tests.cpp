@@ -1,7 +1,7 @@
-#include <Debug.hpp>
-#include <MIME.hpp>
 #include <catch2/catch.hpp>
+#include <Debug.hpp>
 #include <iostream>
+#include <MIME.hpp>
 #include <sstream>
 #include <string_view>
 

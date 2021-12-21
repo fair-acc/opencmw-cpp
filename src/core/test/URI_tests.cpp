@@ -1,9 +1,9 @@
 #pragma clang diagnostic push
-#include <Debug.hpp>
-#include <URI.hpp>
 #include <catch2/catch.hpp>
+#include <Debug.hpp>
 #include <iostream>
 #include <string_view>
+#include <URI.hpp>
 
 opencmw::URI<> getUri() {
     return opencmw::URI<>(std::string{ "mdp://User:notSoSecret@localhost.com:20/path/file.ext?queryString#cFrag" });
@@ -45,6 +45,7 @@ TEST_CASE("basic constructor", "[URI]") {
     // test parameter map interface
     REQUIRE_NOTHROW(test.queryParamMap());
     auto parameterMap = test.queryParamMap();
+    REQUIRE(parameterMap.size() == 5);
     REQUIRE(parameterMap["k0"] == std::nullopt);
     REQUIRE(parameterMap["k1"] == "v1");
     REQUIRE(parameterMap["k2"] == "v2");
@@ -73,6 +74,22 @@ TEST_CASE("basic constructor", "[URI]") {
     REQUIRE(copy.queryParamMap() == test.queryParamMap());
 }
 
+TEST_CASE("query parsing", "[URI][query_parsing]") {
+    using TestCase                    = std::pair<std::string, std::unordered_map<std::string, std::optional<std::string>>>;
+
+    static const std::array testCases = {
+        TestCase{ "scheme:/host/property", {} },
+        TestCase{ "scheme:/host/property?testKey1=42", { { "testKey1", "42" } } },
+        TestCase{ "scheme:/host/property?testKey1=42&testKey2=24", { { "testKey1", "42" }, { "testKey2", "24" } } },
+        TestCase{ "scheme:/host/property?k0;k1=v1;k2=v2&k3&k4=", { { "k0", std::nullopt }, { "k1", "v1" }, { "k2", "v2" }, { "k3", std::nullopt }, { "k4", std::nullopt } } }
+    };
+
+    for (const auto &testCase : testCases) {
+        REQUIRE_NOTHROW(opencmw::URI<>(testCase.first));
+        REQUIRE(opencmw::URI<>(testCase.first).queryParamMap() == testCase.second);
+    }
+}
+
 static const std::array validURIs{
     "",
     "http://User:notSoSecretPwd@localhost.com:20/path1/path2/path3/file.ext?k0&k1=v1;k2=v2&k3#cFrag",
@@ -94,6 +111,27 @@ static const std::array validURIs{
     "?queryOnly",
     "#fagmentOnly",
 };
+
+TEST_CASE("Test for some previous issues", "[URI]") {
+    using namespace opencmw;
+    using QueryMap = std::unordered_map<std::string, std::optional<std::string>>;
+
+    // parsing qas confused by ":" in the query param
+    CHECK(URI<RELAXED>("/property?ctx=FAIR.SELECTOR.C=2:P=1").path() == "/property"); // path() == "P=1"
+
+    // /, = (and others) were dropped when decoding query param values
+    CHECK(URI<RELAXED>("/property?ctx=FAIR.SELECTOR.C=2").queryParamMap().at("ctx") == "FAIR.SELECTOR.C=2"); // FAIR.SELECTOR.C2
+    CHECK(URI<RELAXED>("/property?contentType=text/html").queryParamMap().at("contentType") == "text/html"); // "texthtml"
+
+    // STRICT parsing threw on these (valid?) URIs
+    CHECK_NOTHROW(URI<STRICT>("/property?ctx=FAIR.SELECTOR.C=2:P=1"));
+    CHECK_NOTHROW(URI<STRICT>("/property?contentType=text/html").queryParamMap());
+
+    // last query item was dropped
+    CHECK(URI<STRICT>("scheme:/foo/bar.txt?k0=v0;k1=").queryParamMap() == QueryMap{ { "k0", "v0" }, { "k1", {} } }); // "k1" is missing
+
+    // TODO test the odd ducks "aa#:" and "aa?:" (and decide what should be returned)
+}
 
 TEST_CASE("builder-parser identity", "[URI]") {
     opencmw::debug::resetStats();
@@ -158,7 +196,7 @@ TEST_CASE("helper methods", "[URI]") {
         // implicitly tests URI<>::isUnreserved(c) for scheme
         REQUIRE_NOTHROW_MESSAGE(URI<STRICT>(fmt::format("aa{}:", c)), fmt::format("test character in scheme: '{}'", c));
     }
-    for (auto c : std::string("-._~/?#[]@!$&'()*+,;=")) { // N.B. special case for delimiter ':' -- "::" failure case not covered
+    for (auto c : std::string("-._~/[]@!$&'()*+,;=")) { // N.B. special case for delimiter ':' -- "::" failure case not covered
         // implicitly tests URI<>::isUnreserved(c)/invalid characters  for scheme
         REQUIRE_THROWS_AS_MESSAGE(URI<STRICT>(fmt::format("aa{}:", c)), std::ios_base::failure, fmt::format("test character in scheme: '{}'", c));
     }

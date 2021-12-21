@@ -6,6 +6,8 @@
 #include <mutex>
 #include <source_location>
 
+namespace opencmw {
+
 struct DebugImpl {
     bool _breakLineOnEnd = true;
 
@@ -42,5 +44,7 @@ debug() {
 inline auto debugWithLocation(const std::source_location location = std::source_location::current()) {
     return debug() << location.file_name() << ":" << location.line() << " in " << location.function_name() << " --> ";
 }
+
+} // namespace opencmw
 
 #endif // include guard

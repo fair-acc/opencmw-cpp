@@ -4,7 +4,6 @@
 #include <majordomo/Broker.hpp>
 #include <majordomo/Client.hpp>
 #include <majordomo/Constants.hpp>
-#include <majordomo/Message.hpp>
 #include <majordomo/Utils.hpp>
 
 #include <catch2/catch.hpp>
@@ -12,87 +11,10 @@
 
 #include <charconv>
 #include <cstdlib>
-#include <deque>
 #include <thread>
 
 using namespace opencmw::majordomo;
 using URI = opencmw::URI<>;
-
-static opencmw::majordomo::Settings testSettings() {
-    Settings settings;
-    settings.heartbeatInterval = std::chrono::milliseconds(100);
-    return settings;
-}
-
-template<typename MessageType>
-class TestNode {
-    std::deque<MessageType> _receivedMessages;
-
-public:
-    Socket _socket;
-
-    explicit TestNode(const Context &context, int socket_type = ZMQ_DEALER)
-        : _socket(context, socket_type) {
-    }
-
-    bool connect(const URI &address, std::string_view subscription = "") {
-        auto result = zmq_invoke(zmq_connect, _socket, toZeroMQEndpoint(address).data());
-        if (!result) return false;
-
-        if (!subscription.empty()) {
-            return subscribe(subscription);
-        }
-
-        return true;
-    }
-
-    bool subscribe(std::string_view subscription) {
-        assert(!subscription.empty());
-        return zmq_invoke(zmq_setsockopt, _socket, ZMQ_SUBSCRIBE, subscription.data(), subscription.size()).isValid();
-    }
-
-    bool unsubscribe(std::string_view subscription) {
-        assert(!subscription.empty());
-        return zmq_invoke(zmq_setsockopt, _socket, ZMQ_UNSUBSCRIBE, subscription.data(), subscription.size()).isValid();
-    }
-
-    bool sendRawFrame(std::string data) {
-        MessageFrame f(data, MessageFrame::dynamic_bytes_tag{});
-        return f.send(_socket, 0).isValid(); // blocking for simplicity
-    }
-
-    MessageType readOne() {
-        while (_receivedMessages.empty()) {
-            auto message = MessageType::receive(_socket);
-            if (message) {
-                _receivedMessages.emplace_back(std::move(*message));
-            }
-        }
-
-        assert(!_receivedMessages.empty());
-        auto msg = std::move(_receivedMessages.front());
-        _receivedMessages.pop_front();
-        return msg;
-    }
-
-    std::optional<MessageType> tryReadOne(std::chrono::milliseconds timeout) {
-        assert(_receivedMessages.empty());
-
-        std::array<zmq_pollitem_t, 1> pollerItems;
-        pollerItems[0].socket = _socket.zmq_ptr;
-        pollerItems[0].events = ZMQ_POLLIN;
-
-        const auto result     = zmq_invoke(zmq_poll, pollerItems.data(), static_cast<int>(pollerItems.size()), timeout.count());
-        if (!result.isValid())
-            return {};
-
-        return MessageType::receive(_socket);
-    }
-
-    void send(MdpMessage &message) {
-        message.send(_socket).assertSuccess();
-    }
-};
 
 TEST_CASE("OpenCMW::Frame cloning", "[frame][cloning]") {
     {
@@ -1102,6 +1024,121 @@ TEST_CASE("NOTIFY example using the BasicMdpWorker class", "[worker][notify_basi
         REQUIRE(msg2.sourceId() == "/beer*");
         const auto msg3 = client.readOne();
         REQUIRE(msg3.sourceId() == "/wine*");
+    }
+}
+
+TEST_CASE("NOTIFY example using the BasicMdpWorker class (via ROUTER socket)", "[worker][notify_basic_worker_router]") {
+    using opencmw::majordomo::Broker;
+    using opencmw::majordomo::MdpMessage;
+
+    Broker         broker("testbroker", testSettings());
+
+    BasicMdpWorker worker("beverages", broker, TestIntHandler(10));
+    worker.setServiceDescription("API description");
+    worker.setRbacRole("rbacToken");
+
+    TestNode<MdpMessage> client(broker.context);
+    REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
+
+    RunInThread brokerRun(broker);
+    RunInThread workerRun(worker);
+
+    {
+        auto subscribe = MdpMessage::createClientMessage(Command::Subscribe);
+        subscribe.setServiceName("beverages", static_tag);
+        subscribe.setTopic("/wine", static_tag);
+        client.send(subscribe);
+    }
+    {
+        auto subscribe = MdpMessage::createClientMessage(Command::Subscribe);
+        subscribe.setServiceName("beverages", static_tag);
+        subscribe.setTopic("/beer", static_tag);
+        client.send(subscribe);
+    }
+
+    bool seenNotification = false;
+
+    // we have a potential race here: the worker might not have processed the
+    // subscribe yet and thus discarding the notification. Send notifications
+    // in a loop until one gets through.
+    while (!seenNotification) {
+        {
+            MdpMessage notify;
+            notify.setTopic("/beer", static_tag);
+            notify.setBody("Have a beer", static_tag);
+            REQUIRE(worker.notify(std::move(notify)));
+        }
+        {
+            const auto notification = client.tryReadOne(std::chrono::milliseconds(20));
+            if (notification && notification->serviceName() != "mmi.service") {
+                seenNotification = true;
+                REQUIRE(notification->isValid());
+                REQUIRE(notification->isClientMessage());
+                REQUIRE(notification->command() == Command::Final);
+                REQUIRE(notification->topic() == "/beer");
+                REQUIRE(notification->body() == "Have a beer");
+            }
+        }
+    }
+
+    {
+        // as the subscribe for /wine was sent before the /beer one, this should be
+        // race-free now (as know the /beer subscribe was processed by everyone)
+        MdpMessage notify;
+        notify.setTopic("/wine", static_tag);
+        notify.setBody("Try our Chianti!", static_tag);
+        REQUIRE(worker.notify(std::move(notify)));
+    }
+
+    {
+        const auto notification = client.readOne();
+        REQUIRE(notification.isValid());
+        REQUIRE(notification.isClientMessage());
+        REQUIRE(notification.command() == Command::Final);
+        REQUIRE(notification.topic() == "/wine");
+        REQUIRE(notification.body() == "Try our Chianti!");
+    }
+
+    // unsubscribe from /beer
+    {
+        auto unsubscribe = MdpMessage::createClientMessage(Command::Unsubscribe);
+        unsubscribe.setServiceName("beverages", static_tag);
+        unsubscribe.setTopic("/beer", static_tag);
+        client.send(unsubscribe);
+    }
+
+    // loop until we get two consecutive messages about wine, it means that the beer unsubscribe was processed
+    while (true) {
+        {
+            MdpMessage notify;
+            notify.setTopic("/wine", static_tag);
+            notify.setBody("New Vinho Verde arrived.", static_tag);
+            REQUIRE(worker.notify(std::move(notify)));
+        }
+        {
+            MdpMessage notify;
+            notify.setTopic("/beer", static_tag);
+            notify.setBody("Get our pilsner now!", static_tag);
+            REQUIRE(worker.notify(std::move(notify)));
+        }
+        {
+            MdpMessage notify;
+            notify.setTopic("/wine", static_tag);
+            notify.setBody("New Vinho Verde arrived.", static_tag);
+            REQUIRE(worker.notify(std::move(notify)));
+        }
+
+        const auto msg1 = client.readOne();
+        REQUIRE(msg1.topic() == "/wine");
+
+        const auto msg2 = client.readOne();
+        if (msg2.topic() == "/wine") {
+            break;
+        }
+
+        REQUIRE(msg2.topic() == "/beer");
+        const auto msg3 = client.readOne();
+        REQUIRE(msg3.topic() == "/wine");
     }
 }
 

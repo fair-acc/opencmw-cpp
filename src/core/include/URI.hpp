@@ -55,7 +55,7 @@ private:
     string_view         _fragment;
 
     // computed on-demand
-    std::unordered_map<string, std::optional<string>> _queryMap;
+    mutable std::unordered_map<string, std::optional<string>> _queryMap;
     // simple optional un-wrapper
     inline const std::optional<string> returnOpt(const string_view &src) const noexcept {
         if (!src.empty()) {
@@ -109,8 +109,9 @@ public:
         }
 
         // check for scheme
-        size_t scheme_size = source.find_first_of(':', 0);
-        if (scheme_size != string::npos) {
+        size_t       scheme_size   = source.find_first_of(':', 0);
+        const size_t nextSeparator = source.find_first_of("/?#", 0);
+        if (scheme_size < nextSeparator && scheme_size != string::npos) {
             _scheme = source.substr(0, scheme_size);
             if constexpr (check == STRICT) {
                 if (!std::all_of(_scheme.begin(), _scheme.end(), [](char c) { return std::isalnum(c); })) {
@@ -221,10 +222,7 @@ public:
         std::ostringstream decoded;
         for (size_t i = 0; i < s.size(); ++i) {
             char c = s[i];
-            if (isUnreserved(c)) {
-                // keep RFC 3986 section 2.3 Unreserved Characters i.e. [a-zA-Z0-9-_-~]
-                decoded << c;
-            } else if (c == '%') {
+            if (c == '%') {
                 // percent-encode RFC 3986 section 2.2 Reserved Characters i.e. [!#$%&'()*+,/:;=?@[]]
                 if constexpr (check == STRICT) {
                     if (!std::isxdigit(s[i + 1])) {
@@ -236,6 +234,8 @@ public:
                 iss >> std::hex >> d;
                 decoded << static_cast<uint8_t>(d);
                 i += 2;
+            } else {
+                decoded << c;
             }
         }
         return decoded.str();
@@ -254,13 +254,13 @@ public:
     // clang-format om
 
     // decompose map
-    inline const std::unordered_map<string, std::optional<string>> &queryParamMap() {
+    inline const std::unordered_map<string, std::optional<string>> &queryParamMap() const {
         if (_query.empty() || !_queryMap.empty()) { // empty query parameter or already parsed
             return _queryMap;
         }
         if constexpr (check == STRICT) {
-            if (!std::all_of(_query.begin(), _query.end(), [](char c) { return isUnreserved(c) || c == '&' || c == ';' || c == '=' || c == '%'; })) {
-                throw std::exception(); // TODO: URIException("URI query contains illegal characters: {}")
+            if (!std::all_of(_query.begin(), _query.end(), [](char c) { return isUnreserved(c) || c == '&' || c == ';' || c == '=' || c == '%' || c == ':' || c == '/'; })) {
+                throw URISyntaxException(fmt::format("URI query contains illegal characters: {}", _query));
             }
         }
         size_t readPos = 0;
@@ -277,6 +277,7 @@ public:
                 // equal sign present
                 if (readPos >= _query.length()) {
                     // reached parameter string end
+                    _queryMap[key] = std::nullopt;
                     break;
                 }
                 const auto valueEnd = _query.find_first_of(";&\0", readPos);
@@ -285,7 +286,9 @@ public:
                     readPos        = valueEnd + 1;
                     continue;
                 }
-                _queryMap[key] = std::optional(decode(_query.substr(readPos, _query.length() - readPos)));
+                const auto value = decode(_query.substr(readPos, _query.length() - readPos));
+                _queryMap[key] = value.empty() ? std::nullopt : std::optional(value);
+                break;
             } else {
                 auto key       = std::string(_query.substr(readPos, _query.length() - readPos));
                 _queryMap[key] = std::nullopt;
@@ -338,6 +341,7 @@ public:
         inline UriFactory&& fragment(const std::string_view &fragment)    && noexcept { _fragment = { fragment.begin(), fragment.end() }; return std::move(*this); }
         inline UriFactory&& addQueryParameter(const std::string &key)     && noexcept { _queryMap[key] = std::nullopt; return std::move(*this); }
         inline UriFactory&& addQueryParameter(const std::string &key, const std::string &value) && noexcept { _queryMap[key] = std::optional(value); return std::move(*this); }
+        inline UriFactory&& setQuery(std::unordered_map<std::string, std::optional<std::string>> queryMap) && noexcept { _query.clear(); _queryMap = std::move(queryMap); return std::move(*this); }
         // clang-format on
 
         std::string toString() {
