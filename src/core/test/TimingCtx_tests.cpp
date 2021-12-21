@@ -31,7 +31,7 @@ TEST_CASE("Basic TimingCtx tests", "[TimingCtx][basic]") {
     REQUIRE(!ctx.gid());
     REQUIRE(ctx.bpcts() == timestamp);
 
-    REQUIRE(TimingCtx("FAIR.SELECTOR.C=0:S=1").toString() == "FAIR.SELECTOR.C=0:S=1:P=ALL:T=ALL");
+    REQUIRE(TimingCtx("FAIR.SELECTOR.C=0:S=1").toString() == "FAIR.SELECTOR.C=0:S=1");
 }
 
 TEST_CASE("Basic TimingCtx ALL selector tests", "[TimingCtx][all_selector]") {

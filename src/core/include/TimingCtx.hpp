@@ -122,15 +122,21 @@ public:
             return s;
         }
 
-        auto formatValue = [](int v) {
-            if (isWildcard(v)) {
-                return std::string(WILDCARD);
-            }
-
-            return std::to_string(v);
-        };
-
-        return fmt::format("{}C={}:S={}:P={}:T={}", SELECTOR_PREFIX, formatValue(_cid), formatValue(_sid), formatValue(_pid), formatValue(_gid));
+        std::vector<std::string> segments;
+        segments.reserve(4);
+        if (!isWildcard(_cid)) {
+            segments.emplace_back(fmt::format("C={}", _cid));
+        }
+        if (!isWildcard(_sid)) {
+            segments.emplace_back(fmt::format("S={}", _sid));
+        }
+        if (!isWildcard(_pid)) {
+            segments.emplace_back(fmt::format("P={}", _pid));
+        }
+        if (!isWildcard(_gid)) {
+            segments.emplace_back(fmt::format("T={}", _gid));
+        }
+        return fmt::format("{}{}", SELECTOR_PREFIX, fmt::join(segments, ":"));
     }
 
 private:
