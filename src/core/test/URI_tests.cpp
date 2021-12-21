@@ -117,7 +117,6 @@ TEST_CASE("Test for some previous issues", "[URI]") {
     using QueryMap = std::unordered_map<std::string, std::optional<std::string>>;
 
     // parsing qas confused by ":" in the query param
-    // TODO fix or insist on percent-escaped ":"
     CHECK(URI<RELAXED>("/property?ctx=FAIR.SELECTOR.C=2:P=1").path() == "/property"); // path() == "P=1"
 
     // /, = (and others) were dropped when decoding query param values

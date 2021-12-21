@@ -113,7 +113,7 @@ public:
         const size_t nextSeparator = source.find_first_of("/?#", 0);
         if (scheme_size < nextSeparator && scheme_size != string::npos) {
             _scheme = source.substr(0, scheme_size);
-            if (check == STRICT) {
+            if constexpr (check == STRICT) {
                 if (!std::all_of(_scheme.begin(), _scheme.end(), [](char c) { return std::isalnum(c); })) {
                     throw URISyntaxException(fmt::format("URI scheme contains illegal characters: {}", _scheme));
                 }
