@@ -109,6 +109,7 @@ namespace detail {
 
 } // namespace detail
 
+// TODO docs, see majordomoworker_tests.cpp for a documented example
 template<ReflectableClass ContextType, ReflectableClass InputType, ReflectableClass OutputType, MajordomoHandler<ContextType, InputType, OutputType> UserHandler>
 class MajordomoWorker : public BasicMdpWorker<detail::HandlerImpl<ContextType, InputType, OutputType, UserHandler>> {
 public:
@@ -135,8 +136,7 @@ public:
         auto       query    = query::serialise(context);
         const auto topicURI = URI<RELAXED>::factory(URI<RELAXED>(std::string(path))).setQuery(std::move(query)).build();
 
-        // TODO serialize context to query params
-        // TODO java does subscription handling here which BasicMdpWorker does in the sender thread...
+        // TODO java does subscription handling here which BasicMdpWorker does in the sender thread. check what we need there.
 
         RequestContext rawCtx;
         rawCtx.reply.setTopic(topicURI.str, MessageFrame::dynamic_bytes_tag{});
