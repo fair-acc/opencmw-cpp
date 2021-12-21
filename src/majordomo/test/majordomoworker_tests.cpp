@@ -54,12 +54,12 @@ struct TestHandler {
         _entries.emplace(42, AddressEntry{ 42, "Santa Claus", "Elf Road", 123, "88888", "North Pole" });
     }
 
-    AddressEntry handle(opencmw::majordomo::RequestContext &, const TestContext &, const AddressRequest &request, TestContext &) {
+    void handle(opencmw::majordomo::RequestContext &, const TestContext &, const AddressRequest &request, TestContext &, AddressEntry &output) {
         const auto it = _entries.find(request.id);
         if (it == _entries.end()) {
             throw std::invalid_argument(fmt::format("Address entry with ID '{}' not found", request.id));
         }
-        return it->second;
+        output = it->second;
     }
 };
 

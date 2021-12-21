@@ -15,9 +15,9 @@
 
 namespace opencmw::majordomo {
 
-template<typename T, typename C, typename I, typename O>
-concept MajordomoHandler = requires(T t, opencmw::majordomo::RequestContext ctx, C requestCtx, I request, C replyCtx, O reply) {
-    { t.handle(ctx, requestCtx, request, replyCtx) } -> std::convertible_to<O>;
+template<typename T, typename ContextType, typename InputType, typename OutputType>
+concept MajordomoHandler = isReflectableClass<ContextType>() && isReflectableClass<InputType>() && isReflectableClass<OutputType>() && requires(T t, opencmw::majordomo::RequestContext ctx, const ContextType &requestCtx, const InputType &request, ContextType &replyCtx, OutputType &reply) {
+    t.handle(ctx, requestCtx, request, replyCtx, reply);
 };
 
 namespace detail {
@@ -81,7 +81,7 @@ namespace detail {
         throw std::runtime_error(fmt::format("MIME type '{}' not supported", mimeType.typeName()));
     }
 
-    template<ReflectableClass C, ReflectableClass I, ReflectableClass O, MajordomoHandler<C, I, O> Handler>
+    template<ReflectableClass ContextType, ReflectableClass InputType, ReflectableClass OutputType, MajordomoHandler<ContextType, InputType, OutputType> Handler>
     class HandlerImpl {
         Handler _handler;
 
@@ -90,42 +90,43 @@ namespace detail {
             : _handler(std::forward<Handler>(handler)) {}
 
         void operator()(RequestContext &rawCtx) {
-            const auto reqTopic          = opencmw::URI<RELAXED>(std::string(rawCtx.request.topic()));
-            const auto queryMap          = reqTopic.queryParamMap();
+            const auto  reqTopic          = opencmw::URI<RELAXED>(std::string(rawCtx.request.topic()));
+            const auto  queryMap          = reqTopic.queryParamMap();
 
-            C          requestCtx        = query::deserialise<C>(queryMap);
-            C          replyCtx          = requestCtx;
-            const auto requestedMimeType = query::getMimeType(requestCtx);
+            ContextType requestCtx        = query::deserialise<ContextType>(queryMap);
+            ContextType replyCtx          = requestCtx;
+            const auto  requestedMimeType = query::getMimeType(requestCtx);
             //  no MIME type given -> map default to BINARY
-            rawCtx.mimeType   = requestedMimeType == MIME::UNKNOWN ? MIME::BINARY : requestedMimeType;
+            rawCtx.mimeType  = requestedMimeType == MIME::UNKNOWN ? MIME::BINARY : requestedMimeType;
 
-            const auto input  = deserialiseRequest<I>(rawCtx);
-            const auto output = _handler.handle(rawCtx, requestCtx, input, replyCtx);
+            const auto input = deserialiseRequest<InputType>(rawCtx);
+
+            OutputType output;
+            _handler.handle(rawCtx, requestCtx, input, replyCtx, output);
             writeResult(rawCtx, replyCtx, output);
         }
     };
 
 } // namespace detail
 
-template<ReflectableClass C, ReflectableClass I, ReflectableClass O, MajordomoHandler<C, I, O> UserHandler>
-class MajordomoWorker : public BasicMdpWorker<detail::HandlerImpl<C, I, O, UserHandler>> {
+template<ReflectableClass ContextType, ReflectableClass InputType, ReflectableClass OutputType, MajordomoHandler<ContextType, InputType, OutputType> UserHandler>
+class MajordomoWorker : public BasicMdpWorker<detail::HandlerImpl<ContextType, InputType, OutputType, UserHandler>> {
 public:
     explicit MajordomoWorker(std::string_view serviceName, URI<STRICT> brokerAddress, UserHandler userHandler, const Context &context, Settings settings = {})
-        : BasicMdpWorker<detail::HandlerImpl<C, I, O, UserHandler>>(serviceName, std::move(brokerAddress), detail::HandlerImpl<C, I, O, UserHandler>(std::forward<UserHandler>(userHandler)), context, settings) {
-        query::registerTypes(C(), *this);
+        : BasicMdpWorker<detail::HandlerImpl<ContextType, InputType, OutputType, UserHandler>>(serviceName, std::move(brokerAddress), detail::HandlerImpl<ContextType, InputType, OutputType, UserHandler>(std::forward<UserHandler>(userHandler)), context, settings) {
+        query::registerTypes(ContextType(), *this);
     }
 
     explicit MajordomoWorker(std::string_view serviceName, const Broker &broker, UserHandler userHandler)
-        : BasicMdpWorker<detail::HandlerImpl<C, I, O, UserHandler>>(serviceName, broker, detail::HandlerImpl<C, I, O, UserHandler>(std::forward<UserHandler>(userHandler))) {
-        query::registerTypes(C(), *this);
+        : BasicMdpWorker<detail::HandlerImpl<ContextType, InputType, OutputType, UserHandler>>(serviceName, broker, detail::HandlerImpl<ContextType, InputType, OutputType, UserHandler>(std::forward<UserHandler>(userHandler))) {
+        query::registerTypes(ContextType(), *this);
     }
 
-    bool notify(const C &context, const O &reply) {
+    bool notify(const ContextType &context, const OutputType &reply) {
         return notify("", context, reply);
     }
 
-    // TODO or enforce O for reply?
-    bool notify(std::string_view path, const C &context, const ReflectableClass auto &reply) {
+    bool notify(std::string_view path, const ContextType &context, const OutputType &reply) {
         // Java does _serviceName + path, do we want that?
         // std::string topicString = this->_serviceName;
         // topicString.append(path);
@@ -140,7 +141,7 @@ public:
         RequestContext rawCtx;
         rawCtx.reply.setTopic(topicURI.str, MessageFrame::dynamic_bytes_tag{});
         detail::writeResult(rawCtx, context, reply);
-        return BasicMdpWorker<detail::HandlerImpl<C, I, O, UserHandler>>::notify(std::move(rawCtx.reply));
+        return BasicMdpWorker<detail::HandlerImpl<ContextType, InputType, OutputType, UserHandler>>::notify(std::move(rawCtx.reply));
     }
 };
 
