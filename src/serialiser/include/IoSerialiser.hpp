@@ -115,7 +115,7 @@ struct FieldDescription {
  * @param arguments arguments for use in the format string
  */
 template<ProtocolCheck protocolCheckVariant>
-inline constexpr void handleError(DeserialiserInfo &info, const char *formatString, const auto &...arguments) { // todo: guarded noexcept
+neverinline constexpr void handleError(DeserialiserInfo &info, const char *formatString, const auto &...arguments) noexcept(protocolCheckVariant != ALWAYS) {
     const auto text = fmt::format(formatString, arguments...);
     if constexpr (protocolCheckVariant == ALWAYS) {
         throw ProtocolException(text);
@@ -124,7 +124,7 @@ inline constexpr void handleError(DeserialiserInfo &info, const char *formatStri
 }
 
 template<ReflectableClass T>
-inline int32_t findMemberIndex(const std::string_view &fieldName) noexcept {
+forceinline int32_t findMemberIndex(const std::string_view &fieldName) noexcept {
     static constexpr auto m = ConstExprMap{ refl::util::map_to_array<std::pair<std::string_view, int32_t>>(refl::reflect<T>().members, [](auto field, auto index) {
         return std::pair<std::string_view, int32_t>(field.name.c_str(), index);
     }) };

@@ -10,6 +10,9 @@
 #include <units/quantity.h>
 #include <units/quantity_io.h>
 
+#define forceinline inline __attribute__((always_inline)) // use this for hot-spots only <-> may bloat code size, not fit into cache and consequently slow down execution
+#define neverinline __attribute__((noinline))             // primarily used to avoid inlining (rare) exception handling code
+
 #define ENABLE_REFLECTION_FOR(TypeName, ...) \
     REFL_TYPE(TypeName) \
     REFL_DETAIL_FOR_EACH(REFL_DETAIL_EX_1_field, __VA_ARGS__) \
