@@ -522,7 +522,7 @@ TEST_CASE("IoClassSerialiser protocol error tests", "[IoClassSerialiser]") {
     }
 
     buffer.clear();
-    buffer.putRaw(R"({ "float1": 2.3, "test": { "intArray": [1, 2, 3], "val1":13.37e2, "val2":"bar"}, "int1": 42})");
+    buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>(R"({ "float1": 2.3, "test": { "intArray": [1, 2, 3], "val1":13.37e2, "val2":"bar"}, "int1": 42})"sv);
     std::cout << "Prepared json data: " << buffer.asString() << std::endl;
     {
         buffer.reset();

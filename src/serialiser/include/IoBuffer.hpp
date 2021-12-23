@@ -133,21 +133,28 @@ public:
         return *this;
     }
 
-    forceinline constexpr uint8_t                         &operator[](const std::size_t i) { return _buffer[i]; }
-    forceinline constexpr const uint8_t                   &operator[](const std::size_t i) const { return _buffer[i]; }
-    forceinline constexpr void                             reset() { _position = 0; }
-    forceinline constexpr void                             set_position(size_t position) { _position = position; }
-    [[nodiscard]] forceinline constexpr const std::size_t &position() const { return _position; }
-    [[nodiscard]] forceinline constexpr const std::size_t &capacity() const { return _capacity; }
-    [[nodiscard]] forceinline constexpr const std::size_t &size() const { return _size; }
+    enum MetaInfo {
+        WITH,
+        WITHOUT
+    };
+
+    forceinline constexpr uint8_t                         &operator[](const std::size_t i) noexcept { return _buffer[i]; }
+    forceinline constexpr const uint8_t                   &operator[](const std::size_t i) const noexcept { return _buffer[i]; }
+    forceinline constexpr void                             reset() noexcept { _position = 0; }
+    forceinline constexpr void                             set_position(size_t position) noexcept { _position = position; }
+    [[nodiscard]] forceinline constexpr const std::size_t &position() const noexcept { return _position; }
+    [[nodiscard]] forceinline constexpr const std::size_t &capacity() const noexcept { return _capacity; }
+    [[nodiscard]] forceinline constexpr const std::size_t &size() const noexcept { return _size; }
     [[nodiscard]] forceinline constexpr uint8_t           *data() noexcept { return _buffer; }
     [[nodiscard]] forceinline constexpr const uint8_t     *data() const noexcept { return _buffer; }
     constexpr void                                         clear() noexcept { _position = _size = 0; }
 
-    template<typename R>
-    forceinline constexpr R &at(const size_t &index) {
-        if (index >= _size) {
-            throw std::out_of_range(fmt::format("requested index {} is out-of-range [0,{}]", index, _size));
+    template<typename R, bool checkRange = true>
+    forceinline constexpr R &at(const size_t &index) noexcept(!checkRange) {
+        if constexpr (checkRange) {
+            if (index >= _size) {
+                throw std::out_of_range(fmt::format("requested index {} is out-of-range [0,{}]", index, _size));
+            }
         }
         return *(reinterpret_cast<R *>(_buffer + index));
     }
@@ -178,22 +185,28 @@ public:
         reserve(size);
     }
 
-    template<Number I>
+    template<MetaInfo meta = WITHOUT, Number I>
     forceinline constexpr void put(const I &value) noexcept {
-        const std::size_t byteToCopy = sizeof(I);
+        constexpr std::size_t byteToCopy = sizeof(I);
         reserve_spare(byteToCopy);
         *(reinterpret_cast<I *>(_buffer + _size)) = value;
         _size += byteToCopy;
     }
 
-    template<StringLike I>
-    forceinline void put(const I &value) noexcept {
+    template<MetaInfo meta = WITH, StringLike I>
+    forceinline constexpr void put(const I &value) noexcept {
         const std::size_t bytesToCopy = value.size() * sizeof(char);
-        reserve_spare(bytesToCopy + sizeof(int32_t) + sizeof(char)); // educated guess
-        put(static_cast<int32_t>(value.size() + 1));                 // size of vector plus string termination
-        std::memmove((_buffer + _size), value.data(), bytesToCopy);
-        _size += bytesToCopy;
-        put(static_cast<uint8_t>('\0')); // zero terminating byte
+        if constexpr (meta == WITH) {
+            reserve_spare(bytesToCopy + sizeof(int32_t) + sizeof(char)); // educated guess
+            put(static_cast<int32_t>(value.size() + 1));                 // size of vector plus string termination
+            std::memmove((_buffer + _size), value.data(), bytesToCopy);
+            _size += bytesToCopy;
+            put(static_cast<uint8_t>('\0')); // zero terminating byte
+        } else {
+            reserve_spare(bytesToCopy);
+            std::memmove((_buffer + _size), value.data(), bytesToCopy);
+            _size += bytesToCopy;
+        }
     }
 
     template<SupportedType I, size_t size>
@@ -203,57 +216,44 @@ public:
     template<SupportedType I, size_t size>
     forceinline constexpr void put(std::array<I, size> const &values) noexcept { put(values.data(), size); }
 
-    forceinline void           put(std::vector<bool> const &values) noexcept { // TODO: re-enable constexpr (N.B. should be since C++20)
+    template<MetaInfo meta = WITH>
+    forceinline void put(std::vector<bool> const &values) noexcept { // TODO: re-enable constexpr (N.B. should be since C++20)
         const std::size_t size       = values.size();
         const std::size_t byteToCopy = size * sizeof(bool);
-        reserve_spare(byteToCopy + sizeof(int32_t) + sizeof(bool));
-        put(static_cast<int32_t>(size)); // size of vector
-        for (std::size_t i = 0U; i < size; i++) {
-            put<bool>(values[i]);
+        if constexpr (meta == WITH) {
+            reserve_spare(byteToCopy + sizeof(int32_t));
+            put(static_cast<int32_t>(size)); // size of vector
+        } else {
+            reserve_spare(byteToCopy);
         }
+        std::for_each(values.begin(), values.end(), [&](const auto& v){ put<meta, bool>(v); });
     }
 
-    template<size_t size>
+    template<MetaInfo meta = WITH, size_t size>
     forceinline constexpr void put(std::array<bool, size> const &values) noexcept {
-        const std::size_t byteToCopy = size * sizeof(bool);
-        reserve_spare(byteToCopy + sizeof(int32_t) + sizeof(bool));
-        put(static_cast<int32_t>(size)); // size of vector
-        for (std::size_t i = 0U; i < size; i++) {
-            put<bool>(values[i]);
+        constexpr std::size_t byteToCopy = size * sizeof(bool);
+        if constexpr (meta == WITH) {
+            reserve_spare(byteToCopy + sizeof(int32_t));
+            put(static_cast<int32_t>(size)); // size of vector
+        } else {
+            reserve_spare(byteToCopy);
         }
+        std::for_each(values.begin(), values.end(), [&](const auto& v){ put<meta, bool>(v); });
     }
 
-    /**
-     * Append a raw string at the end of the byte buffer without any meta-info header
-     */
-    forceinline constexpr void putRaw(const std::string_view string) {
-        reserve_spare(string.size());
-        std::copy(string.begin(), string.end(), data() + size());
-        _size += string.length();
-    }
-
-    /**
-     * Append a raw byte span at the end of the byte buffer without any meta-info header
-     */
-    forceinline constexpr void putRaw(const std::span<const uint8_t> bytes) {
-        reserve_spare(bytes.size());
-        std::copy(bytes.begin(), bytes.end(), data() + size());
-        _size += bytes.size();
-    }
-
-    forceinline std::string_view asString() {
+    [[nodiscard]] forceinline std::string_view asString() noexcept {
         return { reinterpret_cast<char *>(data()), _size };
     }
 
     template<Number R>
-    forceinline constexpr R get() noexcept {
+    [[maybe_unused]] forceinline constexpr R get() noexcept {
         const std::size_t localPosition = _position;
         _position += sizeof(R);
         return get<R>(localPosition);
     }
 
     template<SupportedType R>
-    forceinline constexpr R get(const std::size_t &index) noexcept {
+    [[maybe_unused]] forceinline constexpr R get(const std::size_t &index) noexcept {
         return *(reinterpret_cast<R *>(_buffer + index));
     }
 
@@ -261,24 +261,15 @@ public:
     [[nodiscard]] forceinline R get() noexcept {
         const std::size_t bytesToCopy = std::min(static_cast<std::size_t>(get<int32_t>()) * sizeof(char), _size - _position);
         const std::size_t oldPosition = _position;
-#ifdef NDEBUG
         _position += bytesToCopy;
-#else
-        _position += bytesToCopy - 1;
-        const int8_t terminatingChar = get<int8_t>();
-        assert(terminatingChar == '\0'); // check for terminating character
-#endif
         return R((reinterpret_cast<const char *>(_buffer + oldPosition)), bytesToCopy - 1);
     }
 
     template<StringLike R>
     [[nodiscard]] forceinline R get(const std::size_t &index) noexcept {
         const std::size_t bytesToCopy = std::min(static_cast<std::size_t>(get<int32_t>()) * sizeof(char), _size - _position);
-#ifndef NDEBUG
         _position += bytesToCopy - 1;
-        const int8_t terminatingChar = get<int8_t>();
-        assert(terminatingChar == '\0'); // check for terminating character
-#endif
+        get<int8_t>();
         return R((reinterpret_cast<const char *>(_buffer + index + sizeof(int32_t))), bytesToCopy);
     }
 

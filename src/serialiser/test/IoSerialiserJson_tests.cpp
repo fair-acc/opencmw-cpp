@@ -2,12 +2,12 @@
 #pragma ide diagnostic   ignored "LoopDoesntUseConditionVariableInspection"
 #pragma ide diagnostic   ignored "cppcoreguidelines-avoid-magic-numbers"
 
+#include <catch2/catch.hpp>
 #include <Debug.hpp>
 #include <IoSerialiserJson.hpp>
-#include <Utils.hpp>
-#include <catch2/catch.hpp>
 #include <iostream>
 #include <string_view>
+#include <Utils.hpp>
 
 #include <units/isq/si/length.h>
 #include <units/isq/si/speed.h>
@@ -16,6 +16,7 @@ using namespace units::isq;
 using namespace units::isq::si;
 using NoUnit = units::dimensionless<units::one>;
 using namespace std::literals;
+using namespace std::string_view_literals;
 
 struct DataX {
     bool                   boolValue   = true;
@@ -53,7 +54,7 @@ TEST_CASE("JsonDeserialisation", "[JsonSerialiser]") {
     opencmw::debug::resetStats();
     {
         opencmw::IoBuffer buffer;
-        buffer.putRaw(R"({ "float1": 2.3, "test": { "intArray": [1, 2, 3], "val1":13.37e2, "val2":"bar"}, "int1": 42})");
+        buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>(R"({ "float1": 2.3, "test": { "intArray": [1, 2, 3], "val1":13.37e2, "val2":"bar"}, "int1": 42})"sv);
         std::cout << "Prepared json data: " << buffer.asString() << std::endl;
         Simple foo;
         auto   result = opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buffer, foo);
@@ -72,7 +73,7 @@ TEST_CASE("JsonDeserialisationMissingField", "[JsonSerialiser]") {
     opencmw::debug::resetStats();
     {
         opencmw::IoBuffer buffer;
-        buffer.putRaw(R"({ "float1": 2.3, "superfluousField": { "p":12 , "a":null,"x" : false, "q": [ "a", "s"], "z": [true , false ] },  "test": { "intArray" : [ 1,2, 3], "val1":13.37e2, "val2":"bar"}, "int1": 42})");
+        buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>(R"({ "float1": 2.3, "superfluousField": { "p":12 , "a":null,"x" : false, "q": [ "a", "s"], "z": [true , false ] },  "test": { "intArray" : [ 1,2, 3], "val1":13.37e2, "val2":"bar"}, "int1": 42})"sv);
         std::cout << "Prepared json data: " << buffer.asString() << std::endl;
         Simple foo;
         auto   result = opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buffer, foo);
@@ -186,12 +187,12 @@ TEST_CASE("readString", "[JsonSerialiser]") {
     using namespace opencmw::json;
     {
         IoBuffer buffer;
-        buffer.putRaw(R"""("test String 123 " sfef)""");
+        buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>(R"""("test String 123 " sfef)"""sv);
         REQUIRE(readString(buffer) == R"""(test String 123 )""");
     }
     {
         IoBuffer buffer;
-        buffer.putRaw("\"Hello\t\\\"special\\\"\nWorld!\"");
+        buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>("\"Hello\t\\\"special\\\"\nWorld!\""sv);
         REQUIRE(readString(buffer) == "Hello\t\"special\"\nWorld!");
     }
 }
@@ -210,7 +211,7 @@ TEST_CASE("JsonSkipValue", "[JsonSerialiser]") {
     opencmw::debug::resetStats();
     {
         opencmw::IoBuffer buffer;
-        buffer.putRaw(R"({ "float1": 2.3, "superfluousField": {"p": 12, "q": [ "a", "s"]}, "test": { "intArray": [1, 2, 3], "val1":13.37e2, "val2":"bar"}, "int1": 42})");
+        buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>(R"({ "float1": 2.3, "superfluousField": {"p": 12, "q": [ "a", "s"]}, "test": { "intArray": [1, 2, 3], "val1":13.37e2, "val2":"bar"}, "int1": 42})"sv);
         // skip whole object
         opencmw::json::skipValue(buffer);
         REQUIRE(buffer.position() == buffer.size()); // check that the whole object was skipped
@@ -225,7 +226,7 @@ TEST_CASE("consumeWhitespace", "[JsonSerialiser]") {
     using namespace opencmw;
     using namespace opencmw::json;
     IoBuffer buffer;
-    buffer.putRaw("\n \t345 \r \t\tbcdef");
+    buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>("\n \t345 \r \t\tbcdef"sv);
     REQUIRE(buffer.position() == 0);
     consumeWhitespace(buffer);
     REQUIRE(buffer.position() == 3);
