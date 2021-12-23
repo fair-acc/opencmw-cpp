@@ -133,19 +133,19 @@ public:
         return *this;
     }
 
-    constexpr uint8_t                         &operator[](const std::size_t i) { return _buffer[i]; }
-    constexpr const uint8_t                   &operator[](const std::size_t i) const { return _buffer[i]; }
-    constexpr void                             reset() { _position = 0; }
-    constexpr void                             set_position(size_t position) { _position = position; }
-    [[nodiscard]] constexpr const std::size_t &position() const { return _position; }
-    [[nodiscard]] constexpr const std::size_t &capacity() const { return _capacity; }
-    [[nodiscard]] constexpr const std::size_t &size() const { return _size; }
-    [[nodiscard]] constexpr uint8_t           *data() noexcept { return _buffer; }
-    [[nodiscard]] constexpr const uint8_t     *data() const noexcept { return _buffer; }
-    constexpr void                             clear() noexcept { _position = _size = 0; }
+    forceinline constexpr uint8_t                         &operator[](const std::size_t i) { return _buffer[i]; }
+    forceinline constexpr const uint8_t                   &operator[](const std::size_t i) const { return _buffer[i]; }
+    forceinline constexpr void                             reset() { _position = 0; }
+    forceinline constexpr void                             set_position(size_t position) { _position = position; }
+    [[nodiscard]] forceinline constexpr const std::size_t &position() const { return _position; }
+    [[nodiscard]] forceinline constexpr const std::size_t &capacity() const { return _capacity; }
+    [[nodiscard]] forceinline constexpr const std::size_t &size() const { return _size; }
+    [[nodiscard]] forceinline constexpr uint8_t           *data() noexcept { return _buffer; }
+    [[nodiscard]] forceinline constexpr const uint8_t     *data() const noexcept { return _buffer; }
+    constexpr void                                         clear() noexcept { _position = _size = 0; }
 
     template<typename R>
-    constexpr R &at(const size_t &index) {
+    forceinline constexpr R &at(const size_t &index) {
         if (index >= _size) {
             throw std::out_of_range(fmt::format("requested index {} is out-of-range [0,{}]", index, _size));
         }
@@ -179,7 +179,7 @@ public:
     }
 
     template<Number I>
-    constexpr void put(const I &value) noexcept {
+    forceinline constexpr void put(const I &value) noexcept {
         const std::size_t byteToCopy = sizeof(I);
         reserve_spare(byteToCopy);
         *(reinterpret_cast<I *>(_buffer + _size)) = value;
@@ -187,7 +187,7 @@ public:
     }
 
     template<StringLike I>
-    void put(const I &value) noexcept {
+    forceinline void put(const I &value) noexcept {
         const std::size_t bytesToCopy = value.size() * sizeof(char);
         reserve_spare(bytesToCopy + sizeof(int32_t) + sizeof(char)); // educated guess
         put(static_cast<int32_t>(value.size() + 1));                 // size of vector plus string termination
@@ -197,13 +197,13 @@ public:
     }
 
     template<SupportedType I, size_t size>
-    constexpr void put(I const (&values)[size]) noexcept { put(values, size); } // NOLINT int a[30]; OK <-> std::array<int, 30>
+    forceinline constexpr void put(I const (&values)[size]) noexcept { put(values, size); } // NOLINT int a[30]; OK <-> std::array<int, 30>
     template<SupportedType I>
-    constexpr void put(std::vector<I> const &values) noexcept { put(values.data(), values.size()); }
+    forceinline constexpr void put(std::vector<I> const &values) noexcept { put(values.data(), values.size()); }
     template<SupportedType I, size_t size>
-    constexpr void put(std::array<I, size> const &values) noexcept { put(values.data(), size); }
+    forceinline constexpr void put(std::array<I, size> const &values) noexcept { put(values.data(), size); }
 
-    void           put(std::vector<bool> const &values) noexcept { // TODO: re-enable constexpr (N.B. should be since C++20)
+    forceinline void           put(std::vector<bool> const &values) noexcept { // TODO: re-enable constexpr (N.B. should be since C++20)
         const std::size_t size       = values.size();
         const std::size_t byteToCopy = size * sizeof(bool);
         reserve_spare(byteToCopy + sizeof(int32_t) + sizeof(bool));
@@ -214,7 +214,7 @@ public:
     }
 
     template<size_t size>
-    constexpr void put(std::array<bool, size> const &values) noexcept {
+    forceinline constexpr void put(std::array<bool, size> const &values) noexcept {
         const std::size_t byteToCopy = size * sizeof(bool);
         reserve_spare(byteToCopy + sizeof(int32_t) + sizeof(bool));
         put(static_cast<int32_t>(size)); // size of vector
@@ -226,7 +226,7 @@ public:
     /**
      * Append a raw string at the end of the byte buffer without any meta-info header
      */
-    constexpr void putRaw(const std::string_view string) {
+    forceinline constexpr void putRaw(const std::string_view string) {
         reserve_spare(string.size());
         std::copy(string.begin(), string.end(), data() + size());
         _size += string.length();
@@ -235,30 +235,30 @@ public:
     /**
      * Append a raw byte span at the end of the byte buffer without any meta-info header
      */
-    constexpr void putRaw(const std::span<const uint8_t> bytes) {
+    forceinline constexpr void putRaw(const std::span<const uint8_t> bytes) {
         reserve_spare(bytes.size());
         std::copy(bytes.begin(), bytes.end(), data() + size());
         _size += bytes.size();
     }
 
-    std::string_view asString() {
+    forceinline std::string_view asString() {
         return { reinterpret_cast<char *>(data()), _size };
     }
 
     template<Number R>
-    constexpr R get() noexcept {
+    forceinline constexpr R get() noexcept {
         const std::size_t localPosition = _position;
         _position += sizeof(R);
         return get<R>(localPosition);
     }
 
     template<SupportedType R>
-    constexpr R get(const std::size_t &index) noexcept {
+    forceinline constexpr R get(const std::size_t &index) noexcept {
         return *(reinterpret_cast<R *>(_buffer + index));
     }
 
     template<StringLike R>
-    [[nodiscard]] R get() noexcept {
+    [[nodiscard]] forceinline R get() noexcept {
         const std::size_t bytesToCopy = std::min(static_cast<std::size_t>(get<int32_t>()) * sizeof(char), _size - _position);
         const std::size_t oldPosition = _position;
 #ifdef NDEBUG
@@ -272,7 +272,7 @@ public:
     }
 
     template<StringLike R>
-    [[nodiscard]] R get(const std::size_t &index) noexcept {
+    [[nodiscard]] forceinline R get(const std::size_t &index) noexcept {
         const std::size_t bytesToCopy = std::min(static_cast<std::size_t>(get<int32_t>()) * sizeof(char), _size - _position);
 #ifndef NDEBUG
         _position += bytesToCopy - 1;
@@ -283,7 +283,7 @@ public:
     }
 
     template<SupportedType R>
-    constexpr std::vector<R> &getArray(std::vector<R> &input, const std::size_t &requestedSize = SIZE_MAX) noexcept {
+    forceinline constexpr std::vector<R> &getArray(std::vector<R> &input, const std::size_t &requestedSize = SIZE_MAX) noexcept {
         const auto        arraySize    = std::min(static_cast<std::size_t>(get<int32_t>()), _size - _position);
         const std::size_t minArraySize = std::min(arraySize, requestedSize);
         input.resize(minArraySize);
@@ -299,10 +299,10 @@ public:
     }
 
     template<SupportedType R>
-    constexpr std::vector<R> &getArray(std::vector<R> &&input = std::vector<R>(), const std::size_t &requestedSize = SIZE_MAX) noexcept { return getArray<R>(input, requestedSize); }
+    forceinline constexpr std::vector<R> &getArray(std::vector<R> &&input = std::vector<R>(), const std::size_t &requestedSize = SIZE_MAX) noexcept { return getArray<R>(input, requestedSize); }
 
     template<SupportedType R, std::size_t size>
-    constexpr std::array<R, size> &getArray(std::array<R, size> &input, const std::size_t &requestedSize = SIZE_MAX) noexcept {
+    forceinline constexpr std::array<R, size> &getArray(std::array<R, size> &input, const std::size_t &requestedSize = SIZE_MAX) noexcept {
         const auto        arraySize    = std::min(static_cast<std::size_t>(get<int32_t>()), _size - _position);
         const std::size_t minArraySize = std::min(arraySize, requestedSize);
         assert(size >= minArraySize && "std::array<SupportedType, size> wire-format size does not match design");
@@ -318,16 +318,16 @@ public:
     }
 
     template<SupportedType R, std::size_t size>
-    constexpr std::array<R, size> &getArray(std::array<R, size> &&input = std::array<R, size>(), const std::size_t &requestedSize = size) noexcept { return getArray<R, size>(input, requestedSize); }
+    [[maybe_unused]] forceinline constexpr std::array<R, size> &getArray(std::array<R, size> &&input = std::array<R, size>(), const std::size_t &requestedSize = size) noexcept { return getArray<R, size>(input, requestedSize); }
 
     template<StringArray R, typename T = typename R::value_type>
-    [[nodiscard]] constexpr R &get(R &input, const std::size_t &requestedSize = SIZE_MAX) noexcept { return getArray<T>(input, requestedSize); }
+    [[nodiscard]] forceinline constexpr R &get(R &input, const std::size_t &requestedSize = SIZE_MAX) noexcept { return getArray<T>(input, requestedSize); }
     template<StringArray R, typename T = typename R::value_type>
-    [[nodiscard]] constexpr R &get(R &&input = R(), const std::size_t &requestedSize = SIZE_MAX) noexcept { return getArray<T>(input, requestedSize); }
+    [[nodiscard]] forceinline constexpr R &get(R &&input = R(), const std::size_t &requestedSize = SIZE_MAX) noexcept { return getArray<T>(input, requestedSize); }
     template<StringArray R, typename T = typename R::value_type, std::size_t size>
-    [[nodiscard]] constexpr R &get(R &input, const std::size_t &requestedSize = size) noexcept { return getArray<T, size>(input, requestedSize); }
+    [[nodiscard]] forceinline constexpr R &get(R &input, const std::size_t &requestedSize = size) noexcept { return getArray<T, size>(input, requestedSize); }
     template<StringArray R, typename T = typename R::value_type, std::size_t size>
-    [[nodiscard]] constexpr R &get(R &&input = R(), const std::size_t &requestedSize = size) noexcept { return getArray<T, size>(input, requestedSize); }
+    [[nodiscard]] forceinline constexpr R &get(R &&input = R(), const std::size_t &requestedSize = size) noexcept { return getArray<T, size>(input, requestedSize); }
 };
 
 } // namespace opencmw

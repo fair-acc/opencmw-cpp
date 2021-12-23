@@ -22,43 +22,43 @@ static const uint8_t          VERSION_MICRO        = 0;
 static const uint8_t          ARRAY_TYPE_OFFSET    = 100U;
 
 // clang-format off
-template<typename T> inline constexpr uint8_t getDataTypeId() { return 0xFF; } // default value
-template<> inline constexpr uint8_t getDataTypeId<START_MARKER>() { return 0; }
-template<> inline constexpr uint8_t getDataTypeId<bool>() { return 1; }
-template<> inline constexpr uint8_t getDataTypeId<int8_t>() { return 2; }
-template<> inline constexpr uint8_t getDataTypeId<int16_t>() { return 3; }
-template<> inline constexpr uint8_t getDataTypeId<int32_t>() { return 4; }
-template<> inline constexpr uint8_t getDataTypeId<int64_t>() { return 5; }
-template<> inline constexpr uint8_t getDataTypeId<float>() { return 6; }
-template<> inline constexpr uint8_t getDataTypeId<double>() { return 7; }
-template<> inline constexpr uint8_t getDataTypeId<char>() { return 8; }
-template<> inline constexpr uint8_t getDataTypeId<std::string>() { return 9; }
+template<typename T> forceinline constexpr uint8_t getDataTypeId() { return 0xFF; } // default value
+template<> forceinline constexpr uint8_t getDataTypeId<START_MARKER>() { return 0; }
+template<> forceinline constexpr uint8_t getDataTypeId<bool>() { return 1; }
+template<> forceinline constexpr uint8_t getDataTypeId<int8_t>() { return 2; }
+template<> forceinline constexpr uint8_t getDataTypeId<int16_t>() { return 3; }
+template<> forceinline constexpr uint8_t getDataTypeId<int32_t>() { return 4; }
+template<> forceinline constexpr uint8_t getDataTypeId<int64_t>() { return 5; }
+template<> forceinline constexpr uint8_t getDataTypeId<float>() { return 6; }
+template<> forceinline constexpr uint8_t getDataTypeId<double>() { return 7; }
+template<> forceinline constexpr uint8_t getDataTypeId<char>() { return 8; }
+template<> forceinline constexpr uint8_t getDataTypeId<std::string>() { return 9; }
 
-template<> inline constexpr uint8_t getDataTypeId<bool[]>() { return 101; }
-template<> inline constexpr uint8_t getDataTypeId<std::vector<bool>>() { return 101; }
-template<> inline constexpr uint8_t getDataTypeId<int8_t[]>() { return 102; }
-template<> inline constexpr uint8_t getDataTypeId<std::vector<int8_t>>() { return 102; }
-template<> inline constexpr uint8_t getDataTypeId<int16_t[]>() { return 103; }
-template<> inline constexpr uint8_t getDataTypeId<std::vector<int16_t>>() { return 103; }
-template<> inline constexpr uint8_t getDataTypeId<int32_t[]>() { return 104; }
-template<> inline constexpr uint8_t getDataTypeId<std::vector<int32_t>>() { return 104; }
-template<> inline constexpr uint8_t getDataTypeId<int64_t[]>() { return 105; }
-template<> inline constexpr uint8_t getDataTypeId<std::vector<int64_t>>() { return 105; }
-template<> inline constexpr uint8_t getDataTypeId<float[]>() { return 106; }
-template<> inline constexpr uint8_t getDataTypeId<std::vector<float>>() { return 106; }
-template<> inline constexpr uint8_t getDataTypeId<double[]>() { return 107; }
-template<> inline constexpr uint8_t getDataTypeId<std::vector<double>>() { return 107; }
-template<> inline constexpr uint8_t getDataTypeId<char[]>() { return 108; }
-template<> inline constexpr uint8_t getDataTypeId<std::vector<char>>() { return 108; }
+template<> forceinline constexpr uint8_t getDataTypeId<bool[]>() { return 101; }
+template<> forceinline constexpr uint8_t getDataTypeId<std::vector<bool>>() { return 101; }
+template<> forceinline constexpr uint8_t getDataTypeId<int8_t[]>() { return 102; }
+template<> forceinline constexpr uint8_t getDataTypeId<std::vector<int8_t>>() { return 102; }
+template<> forceinline constexpr uint8_t getDataTypeId<int16_t[]>() { return 103; }
+template<> forceinline constexpr uint8_t getDataTypeId<std::vector<int16_t>>() { return 103; }
+template<> forceinline constexpr uint8_t getDataTypeId<int32_t[]>() { return 104; }
+template<> forceinline constexpr uint8_t getDataTypeId<std::vector<int32_t>>() { return 104; }
+template<> forceinline constexpr uint8_t getDataTypeId<int64_t[]>() { return 105; }
+template<> forceinline constexpr uint8_t getDataTypeId<std::vector<int64_t>>() { return 105; }
+template<> forceinline constexpr uint8_t getDataTypeId<float[]>() { return 106; }
+template<> forceinline constexpr uint8_t getDataTypeId<std::vector<float>>() { return 106; }
+template<> forceinline constexpr uint8_t getDataTypeId<double[]>() { return 107; }
+template<> forceinline constexpr uint8_t getDataTypeId<std::vector<double>>() { return 107; }
+template<> forceinline constexpr uint8_t getDataTypeId<char[]>() { return 108; }
+template<> forceinline constexpr uint8_t getDataTypeId<std::vector<char>>() { return 108; }
 
-template<> inline constexpr uint8_t getDataTypeId<std::string[]>() { return 109; }
-template<> inline constexpr uint8_t getDataTypeId<std::string_view[]>() { return 109; }
+template<> forceinline constexpr uint8_t getDataTypeId<std::string[]>() { return 109; }
+template<> forceinline constexpr uint8_t getDataTypeId<std::string_view[]>() { return 109; }
 
-// template<> inline constexpr uint8_t getDataTypeId<START_MARKER>() { return 200; }
-// template<> inline constexpr uint8_t getDataTypeId<enum>()          { return 201; }
-// template<typename T> inline constexpr uint8_t getDataTypeId<std::list<T>>()     { return 202; }
-// template<> inline constexpr uint8_t getDataTypeId<std::queue>()    { return 204; }
-// template<> inline constexpr uint8_t getDataTypeId<std::set>()      { return 205; }
+// template<> forceinline constexpr uint8_t getDataTypeId<START_MARKER>() { return 200; }
+// template<> forceinline constexpr uint8_t getDataTypeId<enum>()          { return 201; }
+// template<typename T> forceinline constexpr uint8_t getDataTypeId<std::list<T>>()     { return 202; }
+// template<> forceinline constexpr uint8_t getDataTypeId<std::queue>()    { return 204; }
+// template<> forceinline constexpr uint8_t getDataTypeId<std::set>()      { return 205; }
 
 template<>
 inline constexpr uint8_t getDataTypeId<OTHER>() { return 0xFD; }
@@ -71,17 +71,17 @@ inline constexpr uint8_t getDataTypeId<END_MARKER>() { return 0xFE; }
 
 template<typename T>
 struct IoSerialiser<YaS, T> {
-    inline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); } // default value
+    forceinline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); } // default value
 };
 
 template<Number T> // catches all numbers
 struct IoSerialiser<YaS, T> {
-    inline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); }
-    constexpr static bool           serialise(IoBuffer &buffer, const ClassField           &/*field*/, const T &value) noexcept {
+    forceinline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); }
+    forceinline constexpr static bool    serialise(IoBuffer &buffer, const ClassField    &/*field*/, const T &value) noexcept {
         buffer.put(value);
         return std::is_constant_evaluated();
     }
-    constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) noexcept {
+    forceinline constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) noexcept {
         value = buffer.get<T>();
         return std::is_constant_evaluated();
     }
@@ -89,12 +89,12 @@ struct IoSerialiser<YaS, T> {
 
 template<StringLike T>
 struct IoSerialiser<YaS, T> {
-    inline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); }
-    constexpr static bool           serialise(IoBuffer &buffer, const ClassField           &/*field*/, const T &value) noexcept {
+    forceinline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); }
+    forceinline constexpr static bool    serialise(IoBuffer &buffer, const ClassField    &/*field*/, const T &value) noexcept {
         buffer.put<T>(value); // N.B. ensure that the wrapped value and not the annotation itself is serialised
         return std::is_constant_evaluated();
     }
-    constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) noexcept {
+    forceinline constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) noexcept {
         value = buffer.get<std::string>();
         return std::is_constant_evaluated();
     }
@@ -102,13 +102,13 @@ struct IoSerialiser<YaS, T> {
 
 template<ArrayOrVector T>
 struct IoSerialiser<YaS, T> {
-    inline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); }
-    constexpr static bool           serialise(IoBuffer &buffer, const ClassField           &/*field*/, const T &value) noexcept {
+    forceinline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); }
+    forceinline constexpr static bool    serialise(IoBuffer &buffer, const ClassField    &/*field*/, const T &value) noexcept {
         buffer.put(std::array<int32_t, 1>{ static_cast<int32_t>(value.size()) });
         buffer.put(value);
         return std::is_constant_evaluated();
     }
-    constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) noexcept {
+    forceinline constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) noexcept {
         buffer.getArray<int32_t, 1>();
         buffer.getArray(value);
         return std::is_constant_evaluated();
@@ -117,7 +117,7 @@ struct IoSerialiser<YaS, T> {
 
 template<MultiArrayType T>
 struct IoSerialiser<YaS, T> {
-    inline static constexpr uint8_t getDataTypeId() {
+    forceinline static constexpr uint8_t getDataTypeId() {
         return yas::ARRAY_TYPE_OFFSET + yas::getDataTypeId<typename T::value_type>();
     }
     constexpr static bool serialise(IoBuffer &buffer, const ClassField & /*field*/, const T &value) noexcept {
@@ -149,8 +149,8 @@ struct IoSerialiser<YaS, T> {
 
 template<MapLike T>
 struct IoSerialiser<YaS, T> {
-    inline static constexpr uint8_t getDataTypeId() { return 203; }
-    constexpr static bool           serialise(IoBuffer &buffer, const ClassField &field, const T &value) noexcept {
+    forceinline static constexpr uint8_t getDataTypeId() { return 203; }
+    constexpr static bool                serialise(IoBuffer &buffer, const ClassField &field, const T &value) noexcept {
         using K                 = typename T::key_type;
         using V                 = typename T::mapped_type;
         const int32_t nElements = static_cast<int32_t>(value.size());
@@ -248,9 +248,9 @@ struct IoSerialiser<YaS, T> {
 
 template<>
 struct IoSerialiser<YaS, START_MARKER> {
-    inline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<START_MARKER>(); }
+    forceinline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<START_MARKER>(); }
 
-    constexpr static bool           serialise(IoBuffer           &/*buffer*/, const ClassField           &/*field*/, const START_MARKER           &/*value*/) noexcept {
+    constexpr static bool                serialise(IoBuffer                &/*buffer*/, const ClassField                &/*field*/, const START_MARKER                &/*value*/) noexcept {
         // do not do anything, as the start marker is of size zero and only the type byte is important
         return std::is_constant_evaluated();
     }
@@ -263,8 +263,8 @@ struct IoSerialiser<YaS, START_MARKER> {
 
 template<>
 struct IoSerialiser<YaS, END_MARKER> {
-    inline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<END_MARKER>(); }
-    static bool                     serialise(IoBuffer                     &/*buffer*/, const ClassField                     &/*field*/, const END_MARKER                     &/*value*/) noexcept {
+    forceinline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<END_MARKER>(); }
+    static bool                          serialise(IoBuffer                          &/*buffer*/, const ClassField                          &/*field*/, const END_MARKER                          &/*value*/) noexcept {
         // do not do anything, as the end marker is of size zero and only the type byte is important
         return std::is_constant_evaluated();
     }
