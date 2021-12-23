@@ -91,7 +91,7 @@ template<StringLike T>
 struct IoSerialiser<YaS, T> {
     forceinline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); }
     forceinline constexpr static bool    serialise(IoBuffer &buffer, const ClassField    &/*field*/, const T &value) noexcept {
-        buffer.put<T>(value); // N.B. ensure that the wrapped value and not the annotation itself is serialised
+        buffer.put<opencmw::IoBuffer::MetaInfo::WITH, T>(value); // N.B. ensure that the wrapped value and not the annotation itself is serialised
         return std::is_constant_evaluated();
     }
     forceinline constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) noexcept {
@@ -291,8 +291,8 @@ struct FieldHeaderWriter<YaS> {
         buffer.put(-1); // dataStart offset
         constexpr int32_t dataSize         = is_supported_number<StrippedDataType> ? dataTypeSize : -1;
         const std::size_t dataSizePosition = buffer.size();
-        buffer.put(dataSize);                    // dataSize (N.B. 'headerStart' + 'dataStart + dataSize' == start of next field header
-        buffer.put<std::string_view>(fieldName); // full field name
+        buffer.put(dataSize);  // dataSize (N.B. 'headerStart' + 'dataStart + dataSize' == start of next field header
+        buffer.put(fieldName); // full field name
 
         if constexpr (writeMetaInfo && is_annotated<DataType>) {
             buffer.put(std::string_view(data.getUnit()));
@@ -301,15 +301,15 @@ struct FieldHeaderWriter<YaS> {
             // TODO: write group meta data
         }
 
-        const std::size_t dataStartPosition         = buffer.size();
-        const std::size_t dataStartOffset           = (dataStartPosition - headerStart);     // -- offset dataStart calculations
-        buffer.at<int32_t>(dataStartOffsetPosition) = static_cast<int32_t>(dataStartOffset); // write offset to dataStart
+        const std::size_t dataStartPosition                = buffer.size();
+        const std::size_t dataStartOffset                  = (dataStartPosition - headerStart);     // -- offset dataStart calculations
+        buffer.at<int32_t, false>(dataStartOffsetPosition) = static_cast<int32_t>(dataStartOffset); // write offset to dataStart
 
         // from hereon there are data specific structures that are written to the IoBuffer
         IoSerialiser<YaS, StrippedDataType>::serialise(buffer, fieldName, getAnnotatedMember(unwrapPointer(data)));
 
         // add just data-end position
-        buffer.at<int32_t>(dataSizePosition) = static_cast<int32_t>(buffer.size() - dataStartPosition); // write data size
+        buffer.at<int32_t, false>(dataSizePosition) = static_cast<int32_t>(buffer.size() - dataStartPosition); // write data size
 
         return dataSizePosition; // N.B. exported for adjusting START_MARKER -> END_MARKER data size to be adjustable and thus skippable
     }
@@ -317,7 +317,7 @@ struct FieldHeaderWriter<YaS> {
 
 template<>
 inline void updateSize<YaS>(IoBuffer &buffer, const size_t posSizePositionStart, const size_t posStartDataStart) {
-    buffer.at<int32_t>(posSizePositionStart) = static_cast<int32_t>(buffer.size() - posStartDataStart); // write data size
+    buffer.at<int32_t, false>(posSizePositionStart) = static_cast<int32_t>(buffer.size() - posStartDataStart); // write data size
 }
 
 template<>
