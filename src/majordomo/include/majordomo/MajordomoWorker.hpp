@@ -24,7 +24,7 @@ namespace detail {
     template<ReflectableClass I, typename Protocol>
     inline I deserialiseRequest(const MdpMessage &request) {
         IoBuffer buffer;
-        buffer.putRaw(request.body());
+        buffer.put<IoBuffer::MetaInfo::WITHOUT>(request.body());
         I          input;
         const auto result = opencmw::deserialise<Protocol, opencmw::ProtocolCheck::ALWAYS>(buffer, input);
         if (!result.exceptions.empty()) {
