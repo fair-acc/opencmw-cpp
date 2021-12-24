@@ -197,13 +197,13 @@ inline constexpr void skipValue(IoBuffer &buffer) {
 template<>
 struct FieldHeaderWriter<Json> {
     template<const bool writeMetaInfo, typename DataType>
-    constexpr std::size_t static put(IoBuffer &buffer, const std::string_view &fieldName, const DataType &data) {
+    constexpr std::size_t static put(IoBuffer &buffer, FieldDescription auto &&field, const DataType &data) {
         using namespace std::string_view_literals;
         constexpr auto WITHOUT = opencmw::IoBuffer::MetaInfo::WITHOUT;
         if constexpr (std::is_same_v<DataType, START_MARKER>) {
-            if (fieldName.size() > 0) {
+            if (field.fieldName.size() > 0) {
                 buffer.put<WITHOUT>("\""sv);
-                buffer.put<WITHOUT>(fieldName);
+                buffer.put<WITHOUT>(field.fieldName);
                 buffer.put<WITHOUT>("\": "sv);
             }
             buffer.put<WITHOUT>("{\n"sv); // use string put instead of other put // call serialise with the start marker instead?
@@ -214,10 +214,10 @@ struct FieldHeaderWriter<Json> {
             return 0;
         }
         buffer.put<WITHOUT>("\""sv);
-        buffer.put<WITHOUT>(fieldName);
+        buffer.put<WITHOUT>(field.fieldName);
         buffer.put<WITHOUT>("\": "sv);
         using StrippedDataType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(data)))>;
-        IoSerialiser<Json, StrippedDataType>::serialise(buffer, fieldName, getAnnotatedMember(unwrapPointer(data)));
+        IoSerialiser<Json, StrippedDataType>::serialise(buffer, field, getAnnotatedMember(unwrapPointer(data)));
         buffer.put<WITHOUT>(",\n"sv);
         return 0; // return value is irrelevant for Json
     }
@@ -226,60 +226,54 @@ struct FieldHeaderWriter<Json> {
 template<>
 struct IoSerialiser<Json, END_MARKER> {
     inline static constexpr uint8_t getDataTypeId() { return 1; }
-    static bool                     serialise(IoBuffer &buffer, const ClassField                     &/*field*/, const END_MARKER                     &/*value*/) noexcept {
+    constexpr static void           serialise(IoBuffer &buffer, FieldDescription auto const           &/*field*/, const END_MARKER           &/*value*/) noexcept {
         using namespace std::string_view_literals;
         buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>("}"sv);
-        return false;
     }
-    constexpr static bool deserialise(IoBuffer & /*buffer*/, const ClassField & /*field*/, const END_MARKER &) {
+    constexpr static void deserialise(IoBuffer & /*buffer*/, FieldDescription auto const & /*field*/, const END_MARKER &) {
         // do not do anything, as the end marker is of size zero and only the type byte is important
-        return std::is_constant_evaluated();
     }
 };
 
 template<>
 struct IoSerialiser<Json, START_MARKER> { // catch all template
     inline static constexpr uint8_t getDataTypeId() { return 2; }
-    static bool                     serialise(IoBuffer &buffer, const ClassField                     &/*field*/, const START_MARKER                     &/*value*/) noexcept {
+    constexpr static void           serialise(IoBuffer &buffer, FieldDescription auto const           &/*field*/, const START_MARKER           &/*value*/) noexcept {
         using namespace std::string_view_literals;
         buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>("{"sv);
-        return false;
     }
-    constexpr static bool deserialise(IoBuffer & /*buffer*/, const ClassField & /*field*/, const START_MARKER & /*value*/) {
+    constexpr static void deserialise(IoBuffer & /*buffer*/, FieldDescription auto const & /*field*/, const START_MARKER & /*value*/) {
         // do not do anything, as the end marker is of size zero and only the type byte is important
-        return std::is_constant_evaluated();
     }
 };
 
 template<>
 struct IoSerialiser<Json, OTHER> { // because json does not explicitly provide the datatype, all types except nested classes provide data type OTHER
     inline static constexpr uint8_t getDataTypeId() { return 0; }
-    static bool                     deserialise(IoBuffer &buffer, const ClassField                     &/*field*/, const OTHER &) {
+    constexpr static void           deserialise(IoBuffer &buffer, FieldDescription auto const           &/*field*/, const OTHER &) {
         json::skipValue(buffer);
-        return false;
     }
 };
 
 template<>
 struct IoSerialiser<Json, bool> {
     inline static constexpr uint8_t getDataTypeId() { return IoSerialiser<Json, OTHER>::getDataTypeId(); }
-    static bool                     serialise(IoBuffer &buffer, const ClassField                     &/*field*/, const bool &value) noexcept {
+    constexpr static void           serialise(IoBuffer &buffer, FieldDescription auto const           &/*field*/, const bool &value) noexcept {
         using namespace std::string_view_literals;
         buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>(value ? "true"sv : "false"sv);
-        return std::is_constant_evaluated();
     }
-    static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, bool &value) {
+    constexpr static void deserialise(IoBuffer &buffer, FieldDescription auto const & /*field*/, bool &value) {
         using namespace std::string_view_literals;
         if (buffer.size() - buffer.position() > 5 && std::string_view(reinterpret_cast<const char *>(buffer.data() + buffer.position()), 5) == "false"sv) {
             buffer.set_position(buffer.position() + 5);
             value = false;
-            return std::is_constant_evaluated();
+            return;
         }
         if (buffer.size() - buffer.position() > 4 && std::string_view(reinterpret_cast<const char *>(buffer.data() + buffer.position()), 4) == "true"sv) {
             buffer.set_position(buffer.position() + 4);
             value = false;
             value = true;
-            return std::is_constant_evaluated();
+            return;
         }
         throw ProtocolException("unsupported boolean value");
     }
@@ -288,7 +282,7 @@ struct IoSerialiser<Json, bool> {
 template<Number T>
 struct IoSerialiser<Json, T> {
     inline static constexpr uint8_t getDataTypeId() { return IoSerialiser<Json, OTHER>::getDataTypeId(); }
-    constexpr static bool           serialise(IoBuffer &buffer, const ClassField           &/*field*/, const T &value) {
+    constexpr static void           serialise(IoBuffer &buffer, FieldDescription auto const           &/*field*/, const T &value) {
         buffer.reserve_spare(30); // just reserve some spare capacity and expect that all numbers are shorter
         const auto           start = buffer.size();
         auto                 size  = buffer.capacity();
@@ -303,9 +297,8 @@ struct IoSerialiser<Json, T> {
             throw ProtocolException(fmt::format("error({}) serialising number at buffer position: {}", result.ec, start));
         }
         buffer.resize(static_cast<size_t>(result.ptr - data)); // new position
-        return std::is_constant_evaluated();
     }
-    static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) {
+    constexpr static void deserialise(IoBuffer &buffer, FieldDescription auto const & /*field*/, T &value) {
         const auto start = buffer.position();
         const auto data  = reinterpret_cast<const char *>(buffer.data());
         // N.B. assumes that any reasonable number representation has a maximum of 30 characters
@@ -324,7 +317,7 @@ struct IoSerialiser<Json, T> {
                 throw ProtocolException(fmt::format("error({}) parsing number at buffer position: {}", result.ec, start));
             }
             buffer.set_position(static_cast<size_t>(result.ptr - data)); // new position
-            return std::is_constant_evaluated();
+            return;
         }
         // fall-back
         const auto result = std::from_chars(data + start, data + stop, value);
@@ -332,21 +325,18 @@ struct IoSerialiser<Json, T> {
             throw ProtocolException(fmt::format("error({}) parsing number at buffer position: {}", result.ec, start));
         }
         buffer.set_position(static_cast<size_t>(result.ptr - data)); // new position
-        return std::is_constant_evaluated();
     }
 };
 template<StringLike T>
 struct IoSerialiser<Json, T> { // catch all template
     inline static constexpr uint8_t getDataTypeId() { return IoSerialiser<Json, OTHER>::getDataTypeId(); }
-    constexpr static bool           serialise(IoBuffer &buffer, const ClassField           &/*field*/, const T &value) noexcept {
+    constexpr static void           serialise(IoBuffer &buffer, FieldDescription auto const           &/*field*/, const T &value) noexcept {
         buffer.put('"');
         buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>(value);
         buffer.put('"');
-        return false;
     }
-    constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) {
+    constexpr static void deserialise(IoBuffer &buffer, FieldDescription auto const & /*field*/, T &value) {
         value = json::readString(buffer);
-        return std::is_constant_evaluated();
     }
 };
 
@@ -354,7 +344,7 @@ template<ArrayOrVector T>
 struct IoSerialiser<Json, T> {
     // todo: arrays of objects
     inline static constexpr uint8_t getDataTypeId() { return IoSerialiser<Json, OTHER>::getDataTypeId(); }
-    constexpr static bool           serialise(IoBuffer &buffer, const ClassField &field, const T &values) noexcept {
+    inline constexpr static void    serialise(IoBuffer &buffer, FieldDescription auto const &field, const T &values) noexcept {
         using MemberType = typename T::value_type;
         buffer.put('[');
         bool first = true;
@@ -367,9 +357,8 @@ struct IoSerialiser<Json, T> {
             first = false;
         }
         buffer.put(']');
-        return std::is_constant_evaluated();
     }
-    constexpr static bool deserialise(IoBuffer &buffer, const ClassField &field, T &value) {
+    constexpr static void deserialise(IoBuffer &buffer, FieldDescription auto const &field, T &value) {
         using MemberType = typename T::value_type;
         if (buffer.get<uint8_t>() != '[') {
             throw ProtocolException("expected [");
@@ -394,14 +383,13 @@ struct IoSerialiser<Json, T> {
             }
         }
         json::assignArray(value, result);
-        return std::is_constant_evaluated();
     }
 };
 
 template<MultiArrayType T>
 struct IoSerialiser<Json, T> {
     inline static constexpr uint8_t getDataTypeId() { return IoSerialiser<Json, OTHER>::getDataTypeId(); }
-    constexpr static bool           serialise(IoBuffer &buffer, const ClassField           &/*field*/, const T &value) noexcept {
+    constexpr static void           serialise(IoBuffer &buffer, FieldDescription auto const           &/*field*/, const T &value) noexcept {
         using namespace std::string_view_literals;
         constexpr auto WITHOUT = opencmw::IoBuffer::MetaInfo::WITHOUT;
         buffer.put<WITHOUT>("{\n"sv);
@@ -412,22 +400,19 @@ struct IoSerialiser<Json, T> {
         FieldHeaderWriter<Json>::template put<WITHOUT>(buffer, "dims"sv, dims);
         FieldHeaderWriter<Json>::template put<WITHOUT>(buffer, "values"sv, value.elements());
         buffer.put<WITHOUT>("}"sv);
-        return std::is_constant_evaluated();
     }
-    constexpr static bool deserialise(IoBuffer &buffer, const ClassField & /*field*/, T &value) {
+    constexpr static void deserialise(IoBuffer &buffer, FieldDescription auto const & /*field*/, T &value) {
         // todo: implement
         json::skipValue(buffer);
         std::ignore = value;
         std::ignore = buffer;
-        return std::is_constant_evaluated();
     }
 };
 
 template<>
 struct FieldHeaderReader<Json> {
     template<ProtocolCheck protocolCheckVariant>
-    inline constexpr static FieldDescription get(IoBuffer &buffer, DeserialiserInfo &info) {
-        FieldDescription result;
+    constexpr static void get(IoBuffer &buffer, DeserialiserInfo &info, FieldDescription auto &result) {
         result.headerStart = buffer.position();
         json::consumeWhitespace(buffer);
         if (buffer.at<char8_t>(buffer.position()) == ',') { // move to next field
@@ -439,13 +424,13 @@ struct FieldHeaderReader<Json> {
             result.intDataType       = IoSerialiser<Json, START_MARKER>::getDataTypeId();
             result.dataStartPosition = buffer.position() + 1;
             // set rest of fields
-            return result;
+            return;
         }
         if (buffer.at<char8_t>(buffer.position()) == '}') { // end marker
             result.intDataType       = IoSerialiser<Json, END_MARKER>::getDataTypeId();
             result.dataStartPosition = buffer.position() + 1;
             // set rest of fields
-            return result;
+            return;
         }
         if (buffer.at<char8_t>(buffer.position()) == '"') { // string
             result.fieldName = json::readKey(buffer);
@@ -465,12 +450,10 @@ struct FieldHeaderReader<Json> {
                 result.intDataType = IoSerialiser<Json, OTHER>::getDataTypeId(); // value is ignored anyway
             }
             result.dataStartPosition = buffer.position();
-            result.dataStartOffset   = result.dataStartPosition - result.headerStart;
-            result.dataSize          = std::numeric_limits<size_t>::max(); // not defined for non-skippable data
             result.dataEndPosition   = std::numeric_limits<size_t>::max(); // not defined for non-skippable data
-            return result;
+            return;
         }
-        return result;
+        return;
     }
 };
 } // namespace opencmw

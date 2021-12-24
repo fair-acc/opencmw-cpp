@@ -12,6 +12,7 @@
 
 #define forceinline inline __attribute__((always_inline)) // use this for hot-spots only <-> may bloat code size, not fit into cache and consequently slow down execution
 #define neverinline __attribute__((noinline))             // primarily used to avoid inlining (rare) exception handling code
+#define FWD(...) ::std::forward<decltype(__VA_ARGS__)>(__VA_ARGS__)
 
 #define ENABLE_REFLECTION_FOR(TypeName, ...) \
     REFL_TYPE(TypeName) \
@@ -31,6 +32,8 @@ inline constexpr const bool is_quantity<T> = true;
 namespace opencmw {
 using units::basic_fixed_string;
 using units::is_same_v;
+
+auto &unmove(auto &&t) { return t; } // opposite of std::move(...)
 
 template<typename T, typename Type = typename std::decay<T>::type>
 inline constexpr const bool isStdType = get_name(refl::reflect<Type>()).template substr<0, 5>() == "std::";
