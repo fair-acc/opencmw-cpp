@@ -20,7 +20,7 @@ namespace cmwlight {
 
 template<Number T>
 struct IoSerialiser<T, CmwLight> { // catch all template
-    constexpr static bool serialise(IoBuffer &buffer, const ClassField &field, const T &value) noexcept {
+    constexpr static bool serialise(IoBuffer &buffer, FieldDescription auto &field, const T &value) noexcept {
         if (std::is_constant_evaluated()) {
             using namespace std::literals;
             buffer.put(field);
@@ -28,7 +28,7 @@ struct IoSerialiser<T, CmwLight> { // catch all template
             return true;
         }
         std::cout << fmt::format("{} - serialise-catch-all: {} {} value: {} - constexpr?: {}\n",
-                CmwLight::protocolName(), typeName<T>, field, value,
+                CmwLight::protocolName(), typeName<T>, field.fieldName, value,
                 std::is_constant_evaluated());
         return false;
     }
@@ -36,4 +36,4 @@ struct IoSerialiser<T, CmwLight> { // catch all template
 } // namespace opencmw
 
 #pragma clang diagnostic pop
-#endif //OPENCMW_CMWLIGHTSERIALISER_H
+#endif // OPENCMW_CMWLIGHTSERIALISER_H

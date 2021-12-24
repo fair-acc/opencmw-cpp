@@ -32,6 +32,9 @@ namespace opencmw {
 using units::basic_fixed_string;
 using units::is_same_v;
 
+auto fwd(auto&& a) -> decltype(std::forward<decltype(a)>(a)) { return std::forward<decltype(a)>(a); } // short-hand notation
+auto &unmove(auto &&t) { return t; } // opposite of std::move(...)
+
 template<typename T, typename Type = typename std::decay<T>::type>
 inline constexpr const bool isStdType = get_name(refl::reflect<Type>()).template substr<0, 5>() == "std::";
 
