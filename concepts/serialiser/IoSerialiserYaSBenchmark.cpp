@@ -26,14 +26,14 @@ int main() {
     const int     nIterations = 100000; // 100000
     fmt::print("YaS performance with strong checks (exceptions if necessary):\n");
     for (int i = 0; i < 10; i++) {
-        testPerformancePoco<YaS, ALWAYS>(buffer, testData, data2, nIterations);
+        testPerformancePoco<YaS, ProtocolCheck::ALWAYS>(buffer, testData, data2, nIterations);
     }
     fmt::print("YaS performance with lenient checks (collect exceptions);\n");
     for (int i = 0; i < 10; i++) {
-        testPerformancePoco<YaS, LENIENT>(buffer, testData, data2, nIterations);
+        testPerformancePoco<YaS, ProtocolCheck::LENIENT>(buffer, testData, data2, nIterations);
     }
     fmt::print("YaS performance without checks:\n");
     for (int i = 0; i < 10; i++) {
-        testPerformancePoco<YaS, IGNORE>(buffer, testData, data2, nIterations);
+        testPerformancePoco<YaS, ProtocolCheck::IGNORE>(buffer, testData, data2, nIterations);
     }
 }

@@ -26,14 +26,14 @@ int main() {
     const int     nIterations = 1000; // 100000
     fmt::print("Json performance with strong checks (exceptions if necessary):\n");
     for (int i = 0; i < 10; i++) {
-        testPerformancePoco<Json, ALWAYS>(buffer, testData, data2, nIterations);
+        testPerformancePoco<Json, ProtocolCheck::ALWAYS>(buffer, testData, data2, nIterations);
     }
     fmt::print("Json performance with lenient checks (collect exceptions);\n");
     for (int i = 0; i < 10; i++) {
-        testPerformancePoco<Json, LENIENT>(buffer, testData, data2, nIterations);
+        testPerformancePoco<Json, ProtocolCheck::LENIENT>(buffer, testData, data2, nIterations);
     }
     fmt::print("Json performance without checks:\n");
     for (int i = 0; i < 10; i++) {
-        testPerformancePoco<Json, IGNORE>(buffer, testData, data2, nIterations);
+        testPerformancePoco<Json, ProtocolCheck::IGNORE>(buffer, testData, data2, nIterations);
     }
 }

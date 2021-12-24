@@ -12,6 +12,7 @@
 #include <units/isq/si/length.h>
 #include <units/isq/si/speed.h>
 
+using namespace opencmw;
 using namespace units::isq;
 using namespace units::isq::si;
 using NoUnit = units::dimensionless<units::one>;
@@ -69,6 +70,32 @@ TEST_CASE("JsonDeserialisation", "[JsonSerialiser]") {
     opencmw::debug::resetStats();
 }
 
+struct SimpleId {
+    int id;
+};
+ENABLE_REFLECTION_FOR(SimpleId, id)
+
+TEST_CASE("JsonDeserialisationInvalidJson", "[JsonSerialiser]") {
+    opencmw::debug::resetStats();
+
+    constexpr std::array testCases = {
+        ""sv,
+        R"({ "id" : 42 ])"sv,
+        // R"({ "id" : 42)"sv, // TODO currently doesn't throw, ok or not?
+        R"(}{)"
+        ")"sv
+    };
+
+    for (const auto &testCase : testCases) {
+        opencmw::IoBuffer buffer;
+        std::cout << "Prepared json data: " << buffer.asString() << std::endl;
+        buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>(testCase);
+        SimpleId foo;
+        foo.id = 0;
+        REQUIRE_THROWS((opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::ALWAYS>(buffer, foo)));
+    }
+}
+
 TEST_CASE("JsonDeserialisationMissingField", "[JsonSerialiser]") {
     opencmw::debug::resetStats();
     {
@@ -93,18 +120,18 @@ TEST_CASE("JsonArraySerialisation", "[JsonSerialiser]") {
     {
         std::vector<int>  test{ 1, 3, 3, 7 };
         opencmw::IoBuffer buffer;
-        opencmw::IoSerialiser<opencmw::Json, std::vector<int>>::serialise(buffer, "test", test);
+        opencmw::IoSerialiser<opencmw::Json, std::vector<int>>::serialise(buffer, detail::newFieldHeader<opencmw::Json>(buffer, "test", 0, test), test);
         REQUIRE(buffer.asString() == "[1, 3, 3, 7]");
         {
             std::vector<int> result;
-            opencmw::IoSerialiser<opencmw::Json, std::vector<int>>::deserialise(buffer, "test", result);
+            opencmw::IoSerialiser<opencmw::Json, std::vector<int>>::deserialise(buffer, detail::newFieldHeader<opencmw::Json>(buffer, "test", 0, result), result);
             REQUIRE(test == result);
             REQUIRE(buffer.position() == 12);
         }
         buffer.set_position(0);
         {
             std::array<int, 4> resultArray;
-            opencmw::IoSerialiser<opencmw::Json, std::array<int, 4>>::deserialise(buffer, "test", resultArray);
+            opencmw::IoSerialiser<opencmw::Json, std::array<int, 4>>::deserialise(buffer, detail::newFieldHeader<opencmw::Json>(buffer, "test", 0, resultArray), resultArray);
             REQUIRE(test == std::vector<int>(resultArray.begin(), resultArray.end()));
             REQUIRE(buffer.position() == 12);
         }
@@ -112,10 +139,10 @@ TEST_CASE("JsonArraySerialisation", "[JsonSerialiser]") {
     { // empty vector
         std::vector<int>  test{};
         opencmw::IoBuffer buffer;
-        opencmw::IoSerialiser<opencmw::Json, std::vector<int>>::serialise(buffer, "test", test);
+        opencmw::IoSerialiser<opencmw::Json, std::vector<int>>::serialise(buffer, detail::newFieldHeader<opencmw::Json>(buffer, "test", 0, test), test);
         REQUIRE(buffer.asString() == "[]");
         std::vector<int> result;
-        opencmw::IoSerialiser<opencmw::Json, std::vector<int>>::deserialise(buffer, "test", result);
+        opencmw::IoSerialiser<opencmw::Json, std::vector<int>>::deserialise(buffer, detail::newFieldHeader<opencmw::Json>(buffer, "test", 0, result), result);
         REQUIRE(test == result);
         REQUIRE(buffer.position() == 2);
     }
