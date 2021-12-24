@@ -450,11 +450,11 @@ struct FieldHeaderReader<Json> {
         if (buffer.at<char8_t>(buffer.position()) == '"') { // string
             result.fieldName = json::readKey(buffer);
             if (result.fieldName.size() == 0) {
-                handleError<protocolCheckVariant>(info, "Cannot read field name for field at buffer position {}", buffer.position());
+                detail::handleDeserialisationError<protocolCheckVariant>(info, "Cannot read field name for field at buffer position {}", buffer.position());
             }
             json::consumeWhitespace(buffer);
             if (buffer.get<int8_t>() != ':') {
-                handleError<protocolCheckVariant>(info, "json malformed, no colon between key/value at buffer position {}", buffer.position());
+                detail::handleDeserialisationError<protocolCheckVariant>(info, "json malformed, no colon between key/value at buffer position {}", buffer.position());
             }
             json::consumeWhitespace(buffer);
             // read value and set type ?
