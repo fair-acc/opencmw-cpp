@@ -32,6 +32,8 @@ namespace opencmw {
 using units::basic_fixed_string;
 using units::is_same_v;
 
+auto &unmove(auto &&t) { return t; } // opposite of std::move(...)
+
 template<typename T, typename Type = typename std::decay<T>::type>
 inline constexpr const bool isStdType = get_name(refl::reflect<Type>()).template substr<0, 5>() == "std::";
 
@@ -216,7 +218,7 @@ struct Annotated<Rep, Q, description, modifier, groups...> : public units::quant
     using unit = typename Q::unit;
     using rep = Rep;
     using R = units::quantity<dimension, unit, rep>;
-    using String = std::string_view;
+    static constexpr basic_fixed_string unitStr = units::detail::unit_text<dimension, unit>().ascii();
 
     constexpr Annotated() : R() {};
     constexpr explicit (!std::is_trivial_v<Rep>) Annotated(const rep &initValue) noexcept : R(initValue) {}
@@ -226,9 +228,8 @@ struct Annotated<Rep, Q, description, modifier, groups...> : public units::quant
     constexpr Annotated &operator=(const R& t) {  R::operator= (t); return *this; }
     constexpr Annotated &operator=(R&& t) { R::operator= (std::move(t)); return *this; }
 
-    //[[nodiscard]] constexpr String getUnit() const noexcept { return String(units::detail::unit_text<dimension, unit>().ascii().c_str()); }
-    [[nodiscard]] /*constexpr*/ const std::string getUnit() const noexcept { return std::string(units::detail::unit_text<dimension, unit>().ascii().c_str()); }
-    [[nodiscard]] constexpr String getDescription() const noexcept { return String(description.data_); }
+    [[nodiscard]] constexpr const char* getUnit() const noexcept { return unitStr.c_str(); }
+    [[nodiscard]] constexpr const char* getDescription() const noexcept { return description.c_str(); }
     [[nodiscard]] constexpr ExternalModifier getModifier() const noexcept { return modifier; }
    // constexpr                      operator rep &() { return this->number(); } // TODO: check if this is safe and/or whether we want this (by-passes type safety)
 
@@ -250,7 +251,7 @@ struct Annotated<T, Q, description, modifier, groups...> : public T { // inherit
     using dimension = typename Q::dimension;
     using unit = typename Q::unit;
     using rep = T;
-    using String = std::string_view;
+    static constexpr basic_fixed_string unitStr = units::detail::unit_text<dimension, unit>().ascii();
     constexpr Annotated(): T() {}
     explicit (!std::is_trivial_v<T>) constexpr Annotated(const T& t) : T(t) {}
     explicit (!std::is_trivial_v<T>) constexpr Annotated(T&& t) : T(std::move(t)) {}
@@ -269,9 +270,8 @@ struct Annotated<T, Q, description, modifier, groups...> : public T { // inherit
     requires (std::is_assignable<T, U>::value)
     Annotated(U&& u) : T(std::move(u)) {}
 
-    //[[nodiscard]] constexpr String getUnit() const noexcept { return String(units::detail::unit_text<dimension, unit>().ascii().c_str()); }
-    [[nodiscard]] /*constexpr*/ const std::string getUnit() const noexcept { return std::string(units::detail::unit_text<dimension, unit>().ascii().c_str()); }
-    [[nodiscard]] constexpr String getDescription() const noexcept { return String(description.data_); }
+    [[nodiscard]] constexpr const char* getUnit() const noexcept { return unitStr.c_str(); }
+    [[nodiscard]] constexpr const char* getDescription() const noexcept { return description.c_str(); }
     [[nodiscard]] constexpr ExternalModifier getModifier() const noexcept { return modifier; }
 
     auto           operator<=>(const Annotated &) const noexcept = default;
@@ -389,12 +389,12 @@ struct ConstExprMap {
     const std::array<std::pair<Key, Value>, size> data;
 
     [[nodiscard]] constexpr Value           at(const Key &key) const {
-        const auto itr = std::find_if(begin(data), end(data), [&key](const auto &v) { return v.first == key; });
+        const auto itr = std::ranges::find_if(begin(data), end(data), [&key](const auto &v) { return v.first == key; });
         return (itr != end(data)) ? itr->second : throw std::out_of_range(fmt::format("key '{}' not found", key));
     }
 
     [[nodiscard]] constexpr Value           at(const Key &key, const Value &defaultValue) const noexcept {
-        auto itr = std::find_if(begin(data), end(data), [&key](const auto &v) { return v.first == key; });
+        auto itr = std::ranges::find_if(begin(data), end(data), [&key](const auto &v) { return v.first == key; });
         return (itr != end(data)) ? itr->second : defaultValue;
     }
 };
@@ -407,8 +407,8 @@ struct ConstExprMap {
  */
 inline constexpr int hash(const std::string_view &string) noexcept {
     int h = 0;
-    for (size_t i = 0; i < string.length(); i++) {
-        h = h * 31 + static_cast<int>(string[i]);
+    for (char c : string) {
+        h = h * 31 + static_cast<int>(c);
     }
     return h;
 }
