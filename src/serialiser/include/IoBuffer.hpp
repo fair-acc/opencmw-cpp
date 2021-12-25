@@ -226,7 +226,7 @@ public:
         } else {
             reserve_spare(byteToCopy);
         }
-        std::for_each(values.begin(), values.end(), [&](const auto& v){ put<meta, bool>(v); });
+        std::for_each(values.begin(), values.end(), [&](const auto &v) { put<meta, bool>(v); });
     }
 
     template<MetaInfo meta = WITH, size_t size>
@@ -238,7 +238,7 @@ public:
         } else {
             reserve_spare(byteToCopy);
         }
-        std::for_each(values.begin(), values.end(), [&](const auto& v){ put<meta, bool>(v); });
+        std::for_each(values.begin(), values.end(), [&](const auto &v) { put<meta, bool>(v); });
     }
 
     [[nodiscard]] forceinline std::string_view asString() noexcept {
