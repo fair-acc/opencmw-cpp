@@ -187,10 +187,12 @@ public:
 
     template<MetaInfo meta = WITH, Number I>
     forceinline constexpr void put(const I &value) noexcept {
-        static_assert(!is_stringlike<I>);
         constexpr std::size_t byteToCopy = sizeof(I);
         reserve_spare(byteToCopy);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic warning "-Wstringop-overflow"
         *(reinterpret_cast<I *>(_buffer + _size)) = value;
+#pragma GCC diagnostic pop
         _size += byteToCopy;
     }
 
