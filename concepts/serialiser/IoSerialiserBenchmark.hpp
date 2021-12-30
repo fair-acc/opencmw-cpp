@@ -265,31 +265,24 @@ std::size_t checkSerialiserIdentity(IoBuffer &buffer, const T &inputObject, T &o
     assert(inputObject == inputObject); // tests that equal operator works correctly
     using namespace opencmw;
     buffer.clear();
-    //    if constexpr (requires { outputObject.clear();}) {
-    //        outputObject.clear();
-    //    }
     opencmw::serialise<protocol>(buffer, inputObject);
 
-    std::cout << ClassInfoVerbose << "before: ";
-    diffView(std::cout, inputObject, outputObject);
     assert(inputObject != outputObject);
     buffer.reset();
 
     try {
         opencmw::deserialise<protocol, ProtocolCheck::IGNORE>(buffer, outputObject);
-    } catch (std::exception &e) {
+    } catch (const std::exception &e) {
         std::cout << "caught exception " << typeName<std::remove_reference_t<decltype(e)>> << std::endl;
     } catch (...) {
         std::cout << "caught unknown exception " << std::endl;
     }
-    std::cout << "after: " << std::flush;
-    diffView(std::cout, inputObject, outputObject);
     assert(inputObject == outputObject);
 
     return buffer.size();
 }
 
-std::string humanReadableByteCount(long bytes, const bool si) {
+std::string humanReadableByteCount(long bytes, const bool si = true) {
     const int unit = si ? 1000 : 1024;
     if (bytes < unit) {
         return fmt::format("{} B", bytes);
@@ -301,7 +294,7 @@ std::string humanReadableByteCount(long bytes, const bool si) {
 }
 
 template<SerialiserProtocol protocol, ProtocolCheck protocolCheck, ReflectableClass T>
-void testPerformancePoco(IoBuffer &buffer, const T &inputObject, T &outputObject, const std::size_t iterations) {
+[[nodiscard]] long testPerformancePoco(IoBuffer &buffer, const T &inputObject, T &outputObject, const std::size_t iterations) {
     bool          putFieldMetaData = true;
 
     const clock_t startTime        = clock();
@@ -337,16 +330,18 @@ void testPerformancePoco(IoBuffer &buffer, const T &inputObject, T &outputObject
             throw std::exception();
         }
     }
-    if (iterations <= 1) {
-        // JMH use-case
-        return;
-    }
     const clock_t stopTime       = clock();
     const double  diffSeconds    = static_cast<double>(stopTime - startTime) / CLOCKS_PER_SEC;
     const double  bytesPerSecond = ((static_cast<double>(iterations * buffer.size()) / diffSeconds));
-    std::cout << fmt::format("IO Serializer (POCO) throughput = {}/s for {} per test run (took {:0.1f} ms)\n",
+    if (iterations <= 1) {
+        // JMH use-case
+        return static_cast<long>(bytesPerSecond);
+    }
+    std::cout << fmt::format("IO Serializer (POCO, {}, {}) throughput = {}/s for {} per test run (took {:0.1f} ms)\n",
+            protocol::protocolName(), protocolCheck,
             humanReadableByteCount(static_cast<long>(bytesPerSecond), true),
             humanReadableByteCount(static_cast<long>(buffer.size()), true), 1e3 * diffSeconds);
+    return static_cast<long>(bytesPerSecond);
 }
 
 #endif // OPENCMW_CPP_IOCLASSSERIALISERBENCHMARK_H
