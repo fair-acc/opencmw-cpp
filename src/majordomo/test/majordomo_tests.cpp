@@ -1,5 +1,4 @@
 #include "helpers.hpp"
-#include "runinthread.hpp"
 
 #include <majordomo/BasicMdpWorker.hpp>
 #include <majordomo/Broker.hpp>
@@ -184,17 +183,18 @@ TEST_CASE("Request answered with unknown service", "[broker][unknown_service]") 
     request.setRbacToken("rbacToken", static_tag);
     client.send(request);
 
-    const auto reply = client.readOne();
+    const auto reply = client.tryReadOne();
 
-    REQUIRE(reply.isValid());
-    REQUIRE(reply.isClientMessage());
-    REQUIRE(reply.command() == Command::Final);
-    REQUIRE(reply.serviceName() == "no.service");
-    REQUIRE(reply.clientRequestId() == "1");
-    REQUIRE(reply.topic() == "mmi.service");
-    REQUIRE(reply.body().empty());
-    REQUIRE(reply.error() == "unknown service (error 501): 'no.service'");
-    REQUIRE(reply.rbacToken() == "TODO (RBAC)");
+    REQUIRE(reply.has_value());
+    REQUIRE(reply->isValid());
+    REQUIRE(reply->isClientMessage());
+    REQUIRE(reply->command() == Command::Final);
+    REQUIRE(reply->serviceName() == "no.service");
+    REQUIRE(reply->clientRequestId() == "1");
+    REQUIRE(reply->topic() == "mmi.service");
+    REQUIRE(reply->body().empty());
+    REQUIRE(reply->error() == "unknown service (error 501): 'no.service'");
+    REQUIRE(reply->rbacToken() == "TODO (RBAC)");
 }
 
 TEST_CASE("Test toZeroMQEndpoint conversion", "[utils][toZeroMQEndpoint]") {
@@ -256,19 +256,20 @@ TEST_CASE("One client/one worker roundtrip", "[broker][roundtrip]") {
 
     broker.processMessages();
 
-    const auto requestAtWorker = worker.readOne();
-    REQUIRE(requestAtWorker.isValid());
-    REQUIRE(requestAtWorker.isWorkerMessage());
-    REQUIRE(requestAtWorker.command() == Command::Get);
-    REQUIRE(!requestAtWorker.clientSourceId().empty());
-    REQUIRE(requestAtWorker.clientRequestId() == "1");
-    REQUIRE(requestAtWorker.topic() == "/topic");
-    REQUIRE(requestAtWorker.body().empty());
-    REQUIRE(requestAtWorker.error().empty());
-    REQUIRE(requestAtWorker.rbacToken() == "rbacToken");
+    const auto requestAtWorker = worker.tryReadOne();
+    REQUIRE(requestAtWorker.has_value());
+    REQUIRE(requestAtWorker->isValid());
+    REQUIRE(requestAtWorker->isWorkerMessage());
+    REQUIRE(requestAtWorker->command() == Command::Get);
+    REQUIRE(!requestAtWorker->clientSourceId().empty());
+    REQUIRE(requestAtWorker->clientRequestId() == "1");
+    REQUIRE(requestAtWorker->topic() == "/topic");
+    REQUIRE(requestAtWorker->body().empty());
+    REQUIRE(requestAtWorker->error().empty());
+    REQUIRE(requestAtWorker->rbacToken() == "rbacToken");
 
     auto replyFromWorker = MdpMessage::createWorkerMessage(Command::Final);
-    replyFromWorker.setClientSourceId(requestAtWorker.clientSourceId(), dynamic_tag);
+    replyFromWorker.setClientSourceId(requestAtWorker->clientSourceId(), dynamic_tag);
     replyFromWorker.setClientRequestId("1", static_tag);
     replyFromWorker.setTopic("/topic", static_tag);
     replyFromWorker.setBody("reply body", static_tag);
@@ -277,38 +278,41 @@ TEST_CASE("One client/one worker roundtrip", "[broker][roundtrip]") {
 
     broker.processMessages();
 
-    const auto reply = client.readOne();
-    REQUIRE(reply.isValid());
-    REQUIRE(reply.isClientMessage());
-    REQUIRE(reply.command() == Command::Final);
-    REQUIRE(reply.serviceName() == "a.service");
-    REQUIRE(reply.clientRequestId() == "1");
-    REQUIRE(reply.topic() == "/topic");
-    REQUIRE(reply.body() == "reply body");
-    REQUIRE(reply.error().empty());
-    REQUIRE(reply.rbacToken() == "rbac_worker");
+    const auto reply = client.tryReadOne();
+    REQUIRE(reply.has_value());
+    REQUIRE(reply->isValid());
+    REQUIRE(reply->isClientMessage());
+    REQUIRE(reply->command() == Command::Final);
+    REQUIRE(reply->serviceName() == "a.service");
+    REQUIRE(reply->clientRequestId() == "1");
+    REQUIRE(reply->topic() == "/topic");
+    REQUIRE(reply->body() == "reply body");
+    REQUIRE(reply->error().empty());
+    REQUIRE(reply->rbacToken() == "rbac_worker");
 
     broker.cleanup();
 
     {
-        const auto heartbeat = worker.readOne();
-        REQUIRE(heartbeat.isValid());
-        REQUIRE(heartbeat.isWorkerMessage());
-        REQUIRE(heartbeat.command() == Command::Heartbeat);
-        REQUIRE(heartbeat.serviceName() == "a.service");
-        REQUIRE(heartbeat.rbacToken() == "TODO (RBAC)");
+        const auto heartbeat = worker.tryReadOne();
+        REQUIRE(heartbeat.has_value());
+        REQUIRE(heartbeat->isValid());
+        REQUIRE(heartbeat->isWorkerMessage());
+        REQUIRE(heartbeat->command() == Command::Heartbeat);
+        REQUIRE(heartbeat->serviceName() == "a.service");
+        REQUIRE(heartbeat->rbacToken() == "TODO (RBAC)");
     }
 
-    const auto disconnect = worker.readOne();
-    REQUIRE(disconnect.isValid());
-    REQUIRE(disconnect.isWorkerMessage());
-    REQUIRE(disconnect.command() == Command::Disconnect);
-    REQUIRE(disconnect.serviceName() == "a.service");
-    REQUIRE(disconnect.clientRequestId().empty());
-    REQUIRE(disconnect.topic() == "a.service");
-    REQUIRE(disconnect.body() == "broker shutdown");
-    REQUIRE(disconnect.error().empty());
-    REQUIRE(disconnect.rbacToken() == "TODO (RBAC)");
+    const auto disconnect = worker.tryReadOne();
+    REQUIRE(disconnect.has_value());
+    REQUIRE(disconnect->isValid());
+    REQUIRE(disconnect->isWorkerMessage());
+    REQUIRE(disconnect->command() == Command::Disconnect);
+    REQUIRE(disconnect->serviceName() == "a.service");
+    REQUIRE(disconnect->clientRequestId().empty());
+    REQUIRE(disconnect->topic() == "a.service");
+    REQUIRE(disconnect->body() == "broker shutdown");
+    REQUIRE(disconnect->error().empty());
+    REQUIRE(disconnect->rbacToken() == "TODO (RBAC)");
 }
 
 TEST_CASE("Pubsub example using SUB client/DEALER worker", "[broker][pubsub_sub_dealer]") {
@@ -367,27 +371,29 @@ TEST_CASE("Pubsub example using SUB client/DEALER worker", "[broker][pubsub_sub_
     // receive only messages matching subscriptions
 
     {
-        const auto reply = subscriber.readOne();
-        REQUIRE(reply.isValid());
-        REQUIRE(reply.isClientMessage());
-        REQUIRE(reply.sourceId() == "/a.topic");
-        REQUIRE(reply.serviceName() == "a.service");
-        REQUIRE(reply.clientRequestId().empty());
-        REQUIRE(reply.body() == "Notification about /a.topic");
-        REQUIRE(reply.error().empty());
-        REQUIRE(reply.rbacToken() == "rbac_worker");
+        const auto reply = subscriber.tryReadOne();
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->isClientMessage());
+        REQUIRE(reply->sourceId() == "/a.topic");
+        REQUIRE(reply->serviceName() == "a.service");
+        REQUIRE(reply->clientRequestId().empty());
+        REQUIRE(reply->body() == "Notification about /a.topic");
+        REQUIRE(reply->error().empty());
+        REQUIRE(reply->rbacToken() == "rbac_worker");
     }
 
     {
-        const auto reply = subscriber.readOne();
-        REQUIRE(reply.isValid());
-        REQUIRE(reply.isClientMessage());
-        REQUIRE(reply.sourceId() == "/other.*");
-        REQUIRE(reply.serviceName() == "a.service");
-        REQUIRE(reply.clientRequestId().empty());
-        REQUIRE(reply.body() == "Notification about /other.topic");
-        REQUIRE(reply.error().empty());
-        REQUIRE(reply.rbacToken() == "rbac_worker");
+        const auto reply = subscriber.tryReadOne();
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->isClientMessage());
+        REQUIRE(reply->sourceId() == "/other.*");
+        REQUIRE(reply->serviceName() == "a.service");
+        REQUIRE(reply->clientRequestId().empty());
+        REQUIRE(reply->body() == "Notification about /other.topic");
+        REQUIRE(reply->error().empty());
+        REQUIRE(reply->rbacToken() == "rbac_worker");
     }
 }
 
@@ -427,8 +433,9 @@ TEST_CASE("Broker sends heartbeats", "[broker][heartbeat]") {
         worker.send(heartbeat);
     }
 
-    const auto heartbeat = worker.readOne();
-    REQUIRE(heartbeat.command() == Command::Heartbeat);
+    const auto heartbeat = worker.tryReadOne();
+    REQUIRE(heartbeat.has_value());
+    REQUIRE(heartbeat->command() == Command::Heartbeat);
 
     const auto afterHeartbeat = Clock::now();
 
@@ -473,8 +480,9 @@ TEST_CASE("Broker disconnects on unexpected heartbeat", "[broker][unexpected_hea
     heartbeat.setRbacToken("rbac_worker", static_tag);
     worker.send(heartbeat);
 
-    const auto disconnect = worker.readOne();
-    REQUIRE(disconnect.command() == Command::Disconnect);
+    const auto disconnect = worker.tryReadOne();
+    REQUIRE(disconnect.has_value());
+    REQUIRE(disconnect->command() == Command::Disconnect);
 }
 
 TEST_CASE("pubsub example using router socket (DEALER client)", "[broker][pubsub_router]") {
@@ -528,16 +536,17 @@ TEST_CASE("pubsub example using router socket (DEALER client)", "[broker][pubsub
 
     // client receives notification for /cooking.italian
     {
-        const auto reply = subscriber.readOne();
-        REQUIRE(reply.isValid());
-        REQUIRE(reply.isClientMessage());
-        REQUIRE(reply.command() == Command::Final);
-        REQUIRE(reply.serviceName() == "first.service");
-        REQUIRE(reply.clientRequestId().empty());
-        REQUIRE(reply.topic() == "/cooking.italian");
-        REQUIRE(reply.body() == "Original carbonara recipe here!");
-        REQUIRE(reply.error().empty());
-        REQUIRE(reply.rbacToken() == "rbac_worker_1");
+        const auto reply = subscriber.tryReadOne();
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->isClientMessage());
+        REQUIRE(reply->command() == Command::Final);
+        REQUIRE(reply->serviceName() == "first.service");
+        REQUIRE(reply->clientRequestId().empty());
+        REQUIRE(reply->topic() == "/cooking.italian");
+        REQUIRE(reply->body() == "Original carbonara recipe here!");
+        REQUIRE(reply->error().empty());
+        REQUIRE(reply->rbacToken() == "rbac_worker_1");
     }
 
     // publisher 2 sends a notification for /cooking.indian
@@ -554,16 +563,17 @@ TEST_CASE("pubsub example using router socket (DEALER client)", "[broker][pubsub
 
     // client receives notification for /cooking.indian
     {
-        const auto reply = subscriber.readOne();
-        REQUIRE(reply.isValid());
-        REQUIRE(reply.isClientMessage());
-        REQUIRE(reply.command() == Command::Final);
-        REQUIRE(reply.serviceName() == "second.service");
-        REQUIRE(reply.clientRequestId().empty());
-        REQUIRE(reply.topic() == "/cooking.indian");
-        REQUIRE(reply.body() == "Try our Chicken Korma!");
-        REQUIRE(reply.error().empty());
-        REQUIRE(reply.rbacToken() == "rbac_worker_2");
+        const auto reply = subscriber.tryReadOne();
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->isClientMessage());
+        REQUIRE(reply->command() == Command::Final);
+        REQUIRE(reply->serviceName() == "second.service");
+        REQUIRE(reply->clientRequestId().empty());
+        REQUIRE(reply->topic() == "/cooking.indian");
+        REQUIRE(reply->body() == "Try our Chicken Korma!");
+        REQUIRE(reply->error().empty());
+        REQUIRE(reply->rbacToken() == "rbac_worker_2");
     }
 
     // unsubscribe client from /cooking.italian
@@ -603,17 +613,18 @@ TEST_CASE("pubsub example using router socket (DEALER client)", "[broker][pubsub
     // verify that the client receives only the notification from publisher 2
 
     {
-        const auto reply = subscriber.readOne();
+        const auto reply = subscriber.tryReadOne();
 
-        REQUIRE(reply.isValid());
-        REQUIRE(reply.isClientMessage());
-        REQUIRE(reply.command() == Command::Final);
-        REQUIRE(reply.serviceName() == "second.service");
-        REQUIRE(reply.clientRequestId().empty());
-        REQUIRE(reply.topic() == "/cooking.indian");
-        REQUIRE(reply.body() == "Sizzling tikkas in our Restaurant!");
-        REQUIRE(reply.error().empty());
-        REQUIRE(reply.rbacToken() == "rbac_worker_2");
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->isClientMessage());
+        REQUIRE(reply->command() == Command::Final);
+        REQUIRE(reply->serviceName() == "second.service");
+        REQUIRE(reply->clientRequestId().empty());
+        REQUIRE(reply->topic() == "/cooking.indian");
+        REQUIRE(reply->body() == "Sizzling tikkas in our Restaurant!");
+        REQUIRE(reply->error().empty());
+        REQUIRE(reply->rbacToken() == "rbac_worker_2");
     }
 }
 
@@ -654,17 +665,18 @@ TEST_CASE("pubsub example using PUB socket (SUB client)", "[broker][pubsub_subcl
 
     // client receives notification for /cooking.italian*
     {
-        const auto reply = subscriber.readOne();
-        REQUIRE(reply.isValid());
-        REQUIRE(reply.isClientMessage());
-        REQUIRE(reply.sourceId() == "/cooking.italian*");
-        REQUIRE(reply.command() == Command::Final);
-        REQUIRE(reply.serviceName() == "first.service");
-        REQUIRE(reply.clientRequestId().empty());
-        REQUIRE(reply.topic() == "/cooking.italian.pasta");
-        REQUIRE(reply.body() == "Original carbonara recipe here!");
-        REQUIRE(reply.error().empty());
-        REQUIRE(reply.rbacToken() == "rbac_worker_1");
+        const auto reply = subscriber.tryReadOne();
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->isClientMessage());
+        REQUIRE(reply->sourceId() == "/cooking.italian*");
+        REQUIRE(reply->command() == Command::Final);
+        REQUIRE(reply->serviceName() == "first.service");
+        REQUIRE(reply->clientRequestId().empty());
+        REQUIRE(reply->topic() == "/cooking.italian.pasta");
+        REQUIRE(reply->body() == "Original carbonara recipe here!");
+        REQUIRE(reply->error().empty());
+        REQUIRE(reply->rbacToken() == "rbac_worker_1");
     }
 
     // publisher 2 sends a notification for /cooking.indian.chicken
@@ -681,17 +693,18 @@ TEST_CASE("pubsub example using PUB socket (SUB client)", "[broker][pubsub_subcl
 
     // client receives notification for /cooking.indian*
     {
-        const auto reply = subscriber.readOne();
-        REQUIRE(reply.isValid());
-        REQUIRE(reply.isClientMessage());
-        REQUIRE(reply.sourceId() == "/cooking.indian*");
-        REQUIRE(reply.command() == Command::Final);
-        REQUIRE(reply.serviceName() == "second.service");
-        REQUIRE(reply.clientRequestId().empty());
-        REQUIRE(reply.topic() == "/cooking.indian.chicken");
-        REQUIRE(reply.body() == "Try our Chicken Korma!");
-        REQUIRE(reply.error().empty());
-        REQUIRE(reply.rbacToken() == "rbac_worker_2");
+        const auto reply = subscriber.tryReadOne();
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->isClientMessage());
+        REQUIRE(reply->sourceId() == "/cooking.indian*");
+        REQUIRE(reply->command() == Command::Final);
+        REQUIRE(reply->serviceName() == "second.service");
+        REQUIRE(reply->clientRequestId().empty());
+        REQUIRE(reply->topic() == "/cooking.indian.chicken");
+        REQUIRE(reply->body() == "Try our Chicken Korma!");
+        REQUIRE(reply->error().empty());
+        REQUIRE(reply->rbacToken() == "rbac_worker_2");
     }
 
     subscriber.unsubscribe("/cooking.italian*");
@@ -725,18 +738,18 @@ TEST_CASE("pubsub example using PUB socket (SUB client)", "[broker][pubsub_subcl
     // verify that the client receives only the notification from publisher 2
 
     {
-        const auto reply = subscriber.readOne();
-
-        REQUIRE(reply.isValid());
-        REQUIRE(reply.isClientMessage());
-        REQUIRE(reply.sourceId() == "/cooking.indian*");
-        REQUIRE(reply.command() == Command::Final);
-        REQUIRE(reply.serviceName() == "second.service");
-        REQUIRE(reply.clientRequestId().empty());
-        REQUIRE(reply.topic() == "/cooking.indian.tikkas");
-        REQUIRE(reply.body() == "Sizzling tikkas in our Restaurant!");
-        REQUIRE(reply.error().empty());
-        REQUIRE(reply.rbacToken() == "rbac_worker_2");
+        const auto reply = subscriber.tryReadOne();
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->isClientMessage());
+        REQUIRE(reply->sourceId() == "/cooking.indian*");
+        REQUIRE(reply->command() == Command::Final);
+        REQUIRE(reply->serviceName() == "second.service");
+        REQUIRE(reply->clientRequestId().empty());
+        REQUIRE(reply->topic() == "/cooking.indian.tikkas");
+        REQUIRE(reply->body() == "Sizzling tikkas in our Restaurant!");
+        REQUIRE(reply->error().empty());
+        REQUIRE(reply->rbacToken() == "rbac_worker_2");
     }
 }
 
@@ -840,11 +853,12 @@ TEST_CASE("BasicMdpWorker connection basics", "[worker][basic_worker_connection]
 
     // worker sends initial READY message
     {
-        const auto ready = brokerRouter.readOne();
-        REQUIRE(ready.isValid());
-        REQUIRE(ready.command() == Command::Ready);
-        REQUIRE(ready.serviceName() == "a.service");
-        workerId = ready.sourceId();
+        const auto ready = brokerRouter.tryReadOne();
+        REQUIRE(ready.has_value());
+        REQUIRE(ready->isValid());
+        REQUIRE(ready->command() == Command::Ready);
+        REQUIRE(ready->serviceName() == "a.service");
+        workerId = ready->sourceId();
     }
 
     // worker must send a heartbeat
@@ -878,11 +892,12 @@ TEST_CASE("BasicMdpWorker connection basics", "[worker][basic_worker_connection]
 
     // worker sends a DISCONNECT on shutdown
     {
-        const auto disconnect = brokerRouter.readOne();
-        REQUIRE(disconnect.isValid());
-        REQUIRE(disconnect.command() == Command::Disconnect);
-        REQUIRE(disconnect.serviceName() == "a.service");
-        REQUIRE(disconnect.sourceId() == workerId);
+        const auto disconnect = brokerRouter.tryReadOne();
+        REQUIRE(disconnect.has_value());
+        REQUIRE(disconnect->isValid());
+        REQUIRE(disconnect->command() == Command::Disconnect);
+        REQUIRE(disconnect->serviceName() == "a.service");
+        REQUIRE(disconnect->sourceId() == workerId);
     }
 }
 
@@ -913,21 +928,22 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[worker][getset_bas
         request.setRbacToken("rbacToken", static_tag);
         client.send(request);
 
-        const auto reply = client.readOne();
+        const auto reply = client.tryReadOne();
 
-        REQUIRE(reply.isValid());
-        REQUIRE(reply.isClientMessage());
-        REQUIRE(reply.command() == Command::Final);
-        REQUIRE(reply.clientRequestId() == "1");
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->isClientMessage());
+        REQUIRE(reply->command() == Command::Final);
+        REQUIRE(reply->clientRequestId() == "1");
 
-        if (!reply.error().empty()) {
-            REQUIRE(reply.error().find("error 501") != std::string_view::npos);
+        if (!reply->error().empty()) {
+            REQUIRE(reply->error().find("error 501") != std::string_view::npos);
         } else {
-            REQUIRE(reply.serviceName() == "a.service");
-            REQUIRE(reply.topic() == "/topic");
-            REQUIRE(reply.body() == "10");
-            REQUIRE(reply.error().empty());
-            REQUIRE(reply.rbacToken() == "rbacToken");
+            REQUIRE(reply->serviceName() == "a.service");
+            REQUIRE(reply->topic() == "/topic");
+            REQUIRE(reply->body() == "10");
+            REQUIRE(reply->error().empty());
+            REQUIRE(reply->rbacToken() == "rbacToken");
             replyReceived = true;
         }
     }
@@ -942,14 +958,15 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[worker][getset_bas
 
         client.send(request);
 
-        const auto reply = client.readOne();
+        const auto reply = client.tryReadOne();
 
-        REQUIRE(reply.isValid());
-        REQUIRE(reply.isClientMessage());
-        REQUIRE(reply.command() == Command::Final);
-        REQUIRE(reply.clientRequestId() == "2");
-        REQUIRE(reply.body() == "Value set. All good!");
-        REQUIRE(reply.error().empty());
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->isClientMessage());
+        REQUIRE(reply->command() == Command::Final);
+        REQUIRE(reply->clientRequestId() == "2");
+        REQUIRE(reply->body() == "Value set. All good!");
+        REQUIRE(reply->error().empty());
     }
 
     {
@@ -960,15 +977,16 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[worker][getset_bas
         request.setRbacToken("rbacToken", static_tag);
         client.send(request);
 
-        const auto reply = client.readOne();
+        const auto reply = client.tryReadOne();
 
-        REQUIRE(reply.isValid());
-        REQUIRE(reply.isClientMessage());
-        REQUIRE(reply.command() == Command::Final);
-        REQUIRE(reply.clientRequestId() == "3");
-        REQUIRE(reply.topic() == "/topic");
-        REQUIRE(reply.body() == "42");
-        REQUIRE(reply.error().empty());
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->isClientMessage());
+        REQUIRE(reply->command() == Command::Final);
+        REQUIRE(reply->clientRequestId() == "3");
+        REQUIRE(reply->topic() == "/topic");
+        REQUIRE(reply->body() == "42");
+        REQUIRE(reply->error().empty());
     }
 }
 
@@ -1060,13 +1078,14 @@ TEST_CASE("NOTIFY example using the BasicMdpWorker class", "[worker][notify_basi
     }
 
     {
-        const auto notification = client.readOne();
-        REQUIRE(notification.isValid());
-        REQUIRE(notification.isClientMessage());
-        REQUIRE(notification.command() == Command::Final);
-        REQUIRE(notification.sourceId() == "/wine*");
-        REQUIRE(notification.topic() == "/wine.italian");
-        REQUIRE(notification.body() == "Try our Chianti!");
+        const auto notification = client.tryReadOne();
+        REQUIRE(notification.has_value());
+        REQUIRE(notification->isValid());
+        REQUIRE(notification->isClientMessage());
+        REQUIRE(notification->command() == Command::Final);
+        REQUIRE(notification->sourceId() == "/wine*");
+        REQUIRE(notification->topic() == "/wine.italian");
+        REQUIRE(notification->body() == "Try our Chianti!");
     }
 
     // unsubscribe from /beer*
@@ -1093,17 +1112,21 @@ TEST_CASE("NOTIFY example using the BasicMdpWorker class", "[worker][notify_basi
             REQUIRE(worker.notify(std::move(notify)));
         }
 
-        const auto msg1 = client.readOne();
-        REQUIRE(msg1.sourceId() == "/wine*");
+        const auto msg1 = client.tryReadOne();
+        REQUIRE(msg1.has_value());
+        REQUIRE(msg1->sourceId() == "/wine*");
 
-        const auto msg2 = client.readOne();
-        if (msg2.sourceId() == "/wine*") {
+        const auto msg2 = client.tryReadOne();
+        REQUIRE(msg2.has_value());
+        if (msg2->sourceId() == "/wine*") {
             break;
         }
 
-        REQUIRE(msg2.sourceId() == "/beer*");
-        const auto msg3 = client.readOne();
-        REQUIRE(msg3.sourceId() == "/wine*");
+        REQUIRE(msg2->sourceId() == "/beer*");
+
+        const auto msg3 = client.tryReadOne();
+        REQUIRE(msg3.has_value());
+        REQUIRE(msg3->sourceId() == "/wine*");
     }
 }
 
@@ -1171,12 +1194,13 @@ TEST_CASE("NOTIFY example using the BasicMdpWorker class (via ROUTER socket)", "
     }
 
     {
-        const auto notification = client.readOne();
-        REQUIRE(notification.isValid());
-        REQUIRE(notification.isClientMessage());
-        REQUIRE(notification.command() == Command::Final);
-        REQUIRE(notification.topic() == "/wine");
-        REQUIRE(notification.body() == "Try our Chianti!");
+        const auto notification = client.tryReadOne();
+        REQUIRE(notification.has_value());
+        REQUIRE(notification->isValid());
+        REQUIRE(notification->isClientMessage());
+        REQUIRE(notification->command() == Command::Final);
+        REQUIRE(notification->topic() == "/wine");
+        REQUIRE(notification->body() == "Try our Chianti!");
     }
 
     // unsubscribe from /beer
@@ -1208,17 +1232,20 @@ TEST_CASE("NOTIFY example using the BasicMdpWorker class (via ROUTER socket)", "
             REQUIRE(worker.notify(std::move(notify)));
         }
 
-        const auto msg1 = client.readOne();
-        REQUIRE(msg1.topic() == "/wine");
+        const auto msg1 = client.tryReadOne();
+        REQUIRE(msg1.has_value());
+        REQUIRE(msg1->topic() == "/wine");
 
-        const auto msg2 = client.readOne();
-        if (msg2.topic() == "/wine") {
+        const auto msg2 = client.tryReadOne();
+        REQUIRE(msg2.has_value());
+        if (msg2->topic() == "/wine") {
             break;
         }
 
-        REQUIRE(msg2.topic() == "/beer");
-        const auto msg3 = client.readOne();
-        REQUIRE(msg3.topic() == "/wine");
+        REQUIRE(msg2->topic() == "/beer");
+        const auto msg3 = client.tryReadOne();
+        REQUIRE(msg3.has_value());
+        REQUIRE(msg3->topic() == "/wine");
     }
 }
 

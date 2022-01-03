@@ -8,13 +8,34 @@
 
 #include <URI.hpp>
 
-#include <catch2/catch.hpp>
-
 #include <chrono>
+#include <thread>
+
+template<typename T>
+concept Shutdownable = requires(T s) {
+    s.run();
+    s.shutdown();
+};
+
+template<Shutdownable T>
+struct RunInThread {
+    T           &_toRun;
+    std::jthread _thread;
+
+    explicit RunInThread(T &toRun)
+        : _toRun(toRun)
+        , _thread([this] { _toRun.run(); }) {
+    }
+
+    ~RunInThread() {
+        _toRun.shutdown();
+        _thread.join();
+    }
+};
 
 inline opencmw::majordomo::Settings testSettings() {
     opencmw::majordomo::Settings settings;
-    settings.heartbeatInterval = std::chrono::milliseconds(250);
+    settings.heartbeatInterval = std::chrono::milliseconds(100);
     return settings;
 }
 
@@ -57,13 +78,7 @@ public:
         return f.send(_socket, 0).isValid(); // blocking for simplicity
     }
 
-    MessageType readOne() {
-        auto maybeMessage = tryReadOne(std::chrono::seconds(3));
-        REQUIRE(maybeMessage.has_value());
-        return std::move(*maybeMessage);
-    }
-
-    std::optional<MessageType> tryReadOne(std::chrono::milliseconds timeout) {
+    std::optional<MessageType> tryReadOne(std::chrono::milliseconds timeout = std::chrono::milliseconds(3000)) {
         std::array<zmq_pollitem_t, 1> pollerItems;
         pollerItems[0].socket = _socket.zmq_ptr;
         pollerItems[0].events = ZMQ_POLLIN;
