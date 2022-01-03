@@ -400,6 +400,7 @@ TEST_CASE("Broker sends heartbeats", "[broker][heartbeat]") {
 
     Settings       settings;
     settings.heartbeatInterval = heartbeatInterval;
+    settings.heartbeatLiveness = 3;
     Broker               broker("testbroker", settings);
 
     TestNode<MdpMessage> worker(broker.context);
@@ -432,12 +433,22 @@ TEST_CASE("Broker sends heartbeats", "[broker][heartbeat]") {
     const auto afterHeartbeat = Clock::now();
 
     // Ensure that the broker sends a heartbeat after a "reasonable time"
-    REQUIRE(afterHeartbeat - afterReady < heartbeatInterval * 2);
+    // (which is a bit more than two hb intervals, if the broker goes into polling
+    // (1 hb interval duration) shortly before heartbeats would be due; plus some slack
+    // for other delays
+    REQUIRE(afterHeartbeat - afterReady < heartbeatInterval * 2.3);
 
     // As the worker is sending no more heartbeats, ensure that the broker also stops sending them,
-    // i.e. that it purged us (silently). We allow one more heartbeat.
-    const auto maybeHeartbeat = worker.tryReadOne(heartbeatInterval * 2);
-    REQUIRE((maybeHeartbeat.has_value() || maybeHeartbeat->command() == Command::Heartbeat));
+    // i.e. that it purged us (silently). We allow two more heartbeats (liveness - 1).
+
+    if (const auto maybeHeartbeat = worker.tryReadOne(heartbeatInterval * 2)) {
+        REQUIRE(maybeHeartbeat->command() == Command::Heartbeat);
+
+        if (const auto maybeHeartbeat2 = worker.tryReadOne(heartbeatInterval * 2)) {
+            REQUIRE(maybeHeartbeat2->command() == Command::Heartbeat);
+        }
+    }
+
     REQUIRE(!worker.tryReadOne(heartbeatInterval * 2).has_value());
 }
 
