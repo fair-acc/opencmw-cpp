@@ -1,4 +1,4 @@
-#include "helpers.hpp"
+#include "runinthread.hpp"
 
 #include <majordomo/BasicMdpWorker.hpp>
 #include <majordomo/Broker.hpp>

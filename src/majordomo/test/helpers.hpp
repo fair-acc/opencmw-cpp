@@ -8,42 +8,18 @@
 
 #include <URI.hpp>
 
+#include <catch2/catch.hpp>
+
 #include <chrono>
-#include <deque>
-#include <thread>
-
-template<typename T>
-concept Shutdownable = requires(T s) {
-    s.run();
-    s.shutdown();
-};
-
-template<Shutdownable T>
-struct RunInThread {
-    T           &_toRun;
-    std::jthread _thread;
-
-    explicit RunInThread(T &toRun)
-        : _toRun(toRun)
-        , _thread([this] { _toRun.run(); }) {
-    }
-
-    ~RunInThread() {
-        _toRun.shutdown();
-        _thread.join();
-    }
-};
 
 inline opencmw::majordomo::Settings testSettings() {
     opencmw::majordomo::Settings settings;
-    settings.heartbeatInterval = std::chrono::milliseconds(100);
+    settings.heartbeatInterval = std::chrono::milliseconds(250);
     return settings;
 }
 
 template<typename MessageType>
 class TestNode {
-    std::deque<MessageType> _receivedMessages;
-
 public:
     opencmw::majordomo::Socket _socket;
 
@@ -78,22 +54,12 @@ public:
     }
 
     MessageType readOne() {
-        while (_receivedMessages.empty()) {
-            auto message = MessageType::receive(_socket);
-            if (message) {
-                _receivedMessages.emplace_back(std::move(*message));
-            }
-        }
-
-        assert(!_receivedMessages.empty());
-        auto msg = std::move(_receivedMessages.front());
-        _receivedMessages.pop_front();
-        return msg;
+        auto maybeMessage = tryReadOne(std::chrono::seconds(3));
+        REQUIRE(maybeMessage.has_value());
+        return std::move(*maybeMessage);
     }
 
     std::optional<MessageType> tryReadOne(std::chrono::milliseconds timeout) {
-        assert(_receivedMessages.empty());
-
         std::array<zmq_pollitem_t, 1> pollerItems;
         pollerItems[0].socket = _socket.zmq_ptr;
         pollerItems[0].events = ZMQ_POLLIN;
