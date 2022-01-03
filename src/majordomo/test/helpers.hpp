@@ -27,6 +27,10 @@ public:
         : _socket(context, socket_type) {
     }
 
+    bool bind(const opencmw::URI<opencmw::STRICT> &address) {
+        return zmq_invoke(zmq_bind, _socket, opencmw::majordomo::toZeroMQEndpoint(address).data()).isValid();
+    }
+
     bool connect(const opencmw::URI<opencmw::STRICT> &address, std::string_view subscription = "") {
         auto result = zmq_invoke(zmq_connect, _socket, opencmw::majordomo::toZeroMQEndpoint(address).data());
         if (!result) return false;

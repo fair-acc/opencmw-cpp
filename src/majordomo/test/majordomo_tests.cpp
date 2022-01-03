@@ -818,6 +818,51 @@ TEST_CASE("BasicMdpWorker run loop quits when broker quits", "[worker]") {
     quitBroker.join();
 }
 
+TEST_CASE("BasicMdpWorker reconnects", "[worker][worker_reconnect]") {
+    const Context           context;
+    TestNode<BrokerMessage> brokerRouter(context, ZMQ_ROUTER);
+    TestNode<BrokerMessage> brokerPub(context, ZMQ_PUB);
+    const auto              brokerAddress = opencmw::URI<opencmw::STRICT>("inproc://test/");
+    const auto              routerAddress = opencmw::URI<opencmw::STRICT>::factory(brokerAddress).path(opencmw::majordomo::SUFFIX_ROUTER).build();
+    const auto              pubAddress    = opencmw::URI<opencmw::STRICT>::factory(brokerAddress).path(opencmw::majordomo::SUFFIX_SUBSCRIBE).build();
+    REQUIRE(brokerRouter.bind(routerAddress));
+    REQUIRE(brokerPub.bind(pubAddress));
+    Settings settings;
+    settings.heartbeatInterval       = std::chrono::milliseconds(200);
+    settings.heartbeatLiveness       = 2;
+    settings.workerReconnectInterval = std::chrono::milliseconds(200);
+
+    BasicMdpWorker worker(
+            "a.service", routerAddress, [](RequestContext &) {}, context, settings);
+    RunInThread workerRun(worker);
+
+    // worker sends initial READY message
+    {
+        const auto ready = brokerRouter.readOne();
+        REQUIRE(ready.isValid());
+        REQUIRE(ready.command() == Command::Ready);
+        REQUIRE(ready.serviceName() == "a.service");
+    }
+
+    // worker must send a heartbeat
+    {
+        const auto heartbeat = brokerRouter.tryReadOne(settings.heartbeatInterval * 23 / 10);
+        REQUIRE(heartbeat.has_value());
+        REQUIRE(heartbeat->isValid());
+        REQUIRE(heartbeat->command() == Command::Heartbeat);
+        REQUIRE(heartbeat->serviceName() == "a.service");
+    }
+
+    // not receiving heartbeats, the worker reconnects and sends a new READY message
+    {
+        const auto ready = brokerRouter.tryReadOne(settings.heartbeatInterval * (settings.heartbeatLiveness + 1) + settings.workerReconnectInterval);
+        REQUIRE(ready.has_value());
+        REQUIRE(ready->isValid());
+        REQUIRE(ready->command() == Command::Ready);
+        REQUIRE(ready->serviceName() == "a.service");
+    }
+}
+
 TEST_CASE("SET/GET example using the BasicMdpWorker class", "[worker][getset_basic_worker]") {
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::MdpMessage;
