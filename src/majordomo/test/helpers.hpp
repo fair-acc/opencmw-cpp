@@ -75,7 +75,7 @@ public:
         return MessageType::receive(_socket);
     }
 
-    void send(opencmw::majordomo::MdpMessage &message) {
+    void send(MessageType &message) {
         message.send(_socket).assertSuccess();
     }
 };

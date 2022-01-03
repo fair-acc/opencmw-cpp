@@ -157,6 +157,8 @@ public:
             }
         } while (!_shutdownRequested
                  && zmq_invoke(zmq_poll, _pollerItems.data(), static_cast<int>(_pollerItems.size()), heartbeatIntervalMs).isValid());
+
+        disconnect();
     }
 
 private:

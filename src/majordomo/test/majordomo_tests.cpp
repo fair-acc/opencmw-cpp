@@ -818,7 +818,7 @@ TEST_CASE("BasicMdpWorker run loop quits when broker quits", "[worker]") {
     quitBroker.join();
 }
 
-TEST_CASE("BasicMdpWorker reconnects", "[worker][worker_reconnect]") {
+TEST_CASE("BasicMdpWorker connection basics", "[worker][basic_worker_connection]") {
     const Context           context;
     TestNode<BrokerMessage> brokerRouter(context, ZMQ_ROUTER);
     TestNode<BrokerMessage> brokerPub(context, ZMQ_PUB);
@@ -836,12 +836,15 @@ TEST_CASE("BasicMdpWorker reconnects", "[worker][worker_reconnect]") {
             "a.service", routerAddress, [](RequestContext &) {}, context, settings);
     RunInThread workerRun(worker);
 
+    std::string workerId;
+
     // worker sends initial READY message
     {
         const auto ready = brokerRouter.readOne();
         REQUIRE(ready.isValid());
         REQUIRE(ready.command() == Command::Ready);
         REQUIRE(ready.serviceName() == "a.service");
+        workerId = ready.sourceId();
     }
 
     // worker must send a heartbeat
@@ -851,6 +854,7 @@ TEST_CASE("BasicMdpWorker reconnects", "[worker][worker_reconnect]") {
         REQUIRE(heartbeat->isValid());
         REQUIRE(heartbeat->command() == Command::Heartbeat);
         REQUIRE(heartbeat->serviceName() == "a.service");
+        REQUIRE(heartbeat->sourceId() == workerId);
     }
 
     // not receiving heartbeats, the worker reconnects and sends a new READY message
@@ -860,6 +864,25 @@ TEST_CASE("BasicMdpWorker reconnects", "[worker][worker_reconnect]") {
         REQUIRE(ready->isValid());
         REQUIRE(ready->command() == Command::Ready);
         REQUIRE(ready->serviceName() == "a.service");
+        workerId = ready->sourceId();
+    }
+
+    // send heartbeat to worker
+    {
+        auto heartbeat = BrokerMessage::createWorkerMessage(Command::Heartbeat);
+        heartbeat.setSourceId(workerId, dynamic_tag);
+        brokerRouter.send(heartbeat);
+    }
+
+    worker.shutdown();
+
+    // worker sends a DISCONNECT on shutdown
+    {
+        const auto disconnect = brokerRouter.readOne();
+        REQUIRE(disconnect.isValid());
+        REQUIRE(disconnect.command() == Command::Disconnect);
+        REQUIRE(disconnect.serviceName() == "a.service");
+        REQUIRE(disconnect.sourceId() == workerId);
     }
 }
 
