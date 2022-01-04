@@ -453,6 +453,8 @@ struct FieldHeaderReader<Json> {
             result.dataEndPosition   = std::numeric_limits<size_t>::max(); // not defined for non-skippable data
             return;
         }
+
+        detail::handleDeserialisationError<protocolCheckVariant>(info, "json malformed, unexpected '{}' at buffer position {}", buffer.at<char>(buffer.position()), buffer.position());
         return;
     }
 };

@@ -70,6 +70,31 @@ TEST_CASE("JsonDeserialisation", "[JsonSerialiser]") {
     opencmw::debug::resetStats();
 }
 
+struct SimpleId {
+    int id;
+};
+
+ENABLE_REFLECTION_FOR(SimpleId, id)
+
+TEST_CASE("JsonDeserialisationInvalidJson", "[JsonSerialiser]") {
+    opencmw::debug::resetStats();
+
+    constexpr std::array testCases = {
+        ""sv,
+        R"({ "id" : 42 ])"sv,
+        // R"({ "id" : 42)"sv, // TODO currently doesn't throw, ok or not?
+        R"(}{)"")"sv
+    };
+
+    for (const auto &testCase : testCases) {
+        opencmw::IoBuffer buffer;
+        std::cout << "Prepared json data: " << buffer.asString() << std::endl;
+        buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>(testCase);
+        SimpleId foo;
+        REQUIRE_THROWS((opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::ALWAYS>(buffer, foo)));
+    }
+}
+
 TEST_CASE("JsonDeserialisationMissingField", "[JsonSerialiser]") {
     opencmw::debug::resetStats();
     {
