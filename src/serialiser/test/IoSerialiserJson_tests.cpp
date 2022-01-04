@@ -83,7 +83,8 @@ TEST_CASE("JsonDeserialisationInvalidJson", "[JsonSerialiser]") {
         ""sv,
         R"({ "id" : 42 ])"sv,
         // R"({ "id" : 42)"sv, // TODO currently doesn't throw, ok or not?
-        R"(}{)"")"sv
+        R"(}{)"
+        ")"sv
     };
 
     for (const auto &testCase : testCases) {
