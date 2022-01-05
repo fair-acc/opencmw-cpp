@@ -105,7 +105,7 @@ inline bool waitUntilServiceAvailable(const opencmw::majordomo::Context &context
     constexpr auto timeout   = std::chrono::seconds(3);
     const auto     startTime = std::chrono::system_clock::now();
 
-    while (true) {
+    while (std::chrono::system_clock::now() - startTime < timeout) {
         auto request = opencmw::majordomo::MdpMessage::createClientMessage(opencmw::majordomo::Command::Get);
         request.setServiceName("mmi.service", opencmw::majordomo::MessageFrame::static_bytes_tag{});
         request.setBody(serviceName, opencmw::majordomo::MessageFrame::dynamic_bytes_tag{});
@@ -119,11 +119,9 @@ inline bool waitUntilServiceAvailable(const opencmw::majordomo::Context &context
         if (reply->body() == "200") {
             return true;
         }
-
-        if (std::chrono::system_clock::now() - startTime >= timeout) {
-            return false;
-        }
     }
+
+    return false;
 }
 
 #endif
