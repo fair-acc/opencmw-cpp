@@ -226,7 +226,96 @@ TEST_CASE("Test mmi.service", "[broker][mmi_service]") {
         REQUIRE(reply->isValid());
         REQUIRE(reply->command() == Command::Final);
         REQUIRE(reply->serviceName() == "mmi.service");
-        REQUIRE(reply->body() == "a.service,mmi.service");
+        REQUIRE(reply->body() == "a.service,mmi.echo,mmi.openapi,mmi.service");
+    }
+}
+
+TEST_CASE("Test mmi.echo", "[broker][mmi_echo]") {
+    using opencmw::majordomo::Broker;
+    using opencmw::majordomo::MdpMessage;
+
+    Broker               broker("testbroker", testSettings());
+    RunInThread          brokerRun(broker);
+
+    TestNode<MdpMessage> client(broker.context);
+    REQUIRE(client.connect(INTERNAL_ADDRESS_BROKER));
+
+    auto request = MdpMessage::createClientMessage(Command::Get);
+    request.setServiceName("mmi.echo", static_tag);
+    request.setBody("Wie heisst der Buergermeister von Wesel", static_tag);
+    request.setRbacToken("rbac", static_tag);
+
+    auto toSend = request.clone();
+    client.send(toSend);
+
+    const auto reply = client.tryReadOne();
+
+    REQUIRE(reply.has_value());
+    REQUIRE(reply->isValid());
+    REQUIRE(reply->isClientMessage());
+    REQUIRE(reply->command() == Command::Get);
+    REQUIRE(reply->serviceName() == request.serviceName());
+    REQUIRE(reply->clientRequestId() == request.clientRequestId());
+    REQUIRE(reply->topic() == request.topic());
+    REQUIRE(reply->body() == request.body());
+    REQUIRE(reply->error() == request.error());
+    REQUIRE(reply->rbacToken() == request.rbacToken());
+}
+
+TEST_CASE("Test mmi.openapi", "[broker][mmi_openapi]") {
+    using opencmw::majordomo::Broker;
+    using opencmw::majordomo::MdpMessage;
+
+    Broker               broker("testbroker", testSettings());
+    RunInThread          brokerRun(broker);
+
+    TestNode<MdpMessage> client(broker.context);
+    REQUIRE(client.connect(INTERNAL_ADDRESS_BROKER));
+
+    { // request API of not yet existing service
+        auto request = MdpMessage::createClientMessage(Command::Get);
+        request.setServiceName("mmi.openapi", static_tag);
+        request.setBody("a.service", static_tag);
+        client.send(request);
+
+        const auto reply = client.tryReadOne();
+
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->isClientMessage());
+        REQUIRE(reply->command() == Command::Final);
+        REQUIRE(reply->serviceName() == "mmi.openapi");
+        REQUIRE(reply->body() == "");
+        REQUIRE(reply->error() == "Requested invalid service 'a.service'");
+    }
+
+    // register worker as a.service
+    TestNode<MdpMessage> worker(broker.context);
+    REQUIRE(worker.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
+
+    auto ready = MdpMessage::createWorkerMessage(Command::Ready);
+    ready.setServiceName("a.service", static_tag);
+    ready.setBody("API description", static_tag);
+    ready.setRbacToken("rbacToken", static_tag);
+    worker.send(ready);
+
+    REQUIRE(waitUntilServiceAvailable(broker.context, "a.service"));
+
+    { // service now exists, API description is returned
+        auto request = MdpMessage::createClientMessage(Command::Get);
+        request.setServiceName("mmi.openapi", static_tag);
+        request.setBody("a.service", static_tag);
+        client.send(request);
+
+        const auto reply = client.tryReadOne();
+
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->isClientMessage());
+        REQUIRE(reply->command() == Command::Final);
+        REQUIRE(reply->serviceName() == "mmi.openapi");
+        REQUIRE(reply->body() == "API description");
+        REQUIRE(reply->error() == "");
     }
 }
 

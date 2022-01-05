@@ -92,6 +92,11 @@ private:
         }
     };
 
+    struct MmiEcho : public InternalService {
+        explicit MmiEcho(Broker *) {}
+        BrokerMessage processRequest(BrokerMessage &&message) override { return message; }
+    };
+
     struct MmiService : public InternalService {
         Broker *const parent;
 
@@ -111,6 +116,27 @@ private:
 
             const auto exists = parent->_services.contains(std::string(message.body()));
             message.setBody(exists ? "200" : "404", MessageFrame::static_bytes_tag{});
+            return message;
+        }
+    };
+
+    struct MmiOpenApi : public InternalService {
+        Broker *const parent;
+
+        explicit MmiOpenApi(Broker *parent_)
+            : parent(parent_) {}
+
+        BrokerMessage processRequest(BrokerMessage &&message) override {
+            message.setCommand(Command::Final);
+            const auto serviceName = std::string(message.body());
+            const auto serviceIt = parent->_services.find(serviceName);
+            if (serviceIt != parent->_services.end()) {
+                message.setBody(serviceIt->second.description, MessageFrame::dynamic_bytes_tag{});
+                message.setError("", MessageFrame::static_bytes_tag{});
+            } else {
+                message.setBody("", MessageFrame::static_bytes_tag{});
+                message.setError(fmt::format("Requested invalid service '{}'", serviceName), MessageFrame::dynamic_bytes_tag{});
+            }
             return message;
         }
     };
@@ -149,7 +175,9 @@ public:
         , _pubSocket(context, ZMQ_XPUB)
         , _subSocket(context, ZMQ_SUB)
         , _dnsSocket(context, ZMQ_DEALER) {
+        addInternalService<MmiEcho>("mmi.echo");
         addInternalService<MmiService>("mmi.service");
+        addInternalService<MmiOpenApi>("mmi.openapi");
 
         auto commonSocketInit = [settings_](const Socket &socket) {
             const int heartbeatInterval = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(settings_.heartbeatInterval).count());
