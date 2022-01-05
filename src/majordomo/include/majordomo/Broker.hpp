@@ -52,15 +52,26 @@ private:
             : socket(s), id{ std::move(id_) }, serviceName{ std::move(serviceName_) }, expiry{ std::move(expiry_) } {}
     };
 
+    struct InternalService {
+        virtual ~InternalService()                                    = default;
+        virtual BrokerMessage processRequest(BrokerMessage &&request) = 0;
+    };
+
     struct Service {
-        std::string               name;
-        std::string               description;
-        std::deque<Worker *>      waiting;
-        std::deque<BrokerMessage> requests;
+        std::unique_ptr<InternalService> internalService;
+        std::string                      name;
+        std::string                      description;
+        std::deque<Worker *>             waiting;
+        std::deque<BrokerMessage>        requests;
 
         explicit Service(std::string name_, std::string description_)
             : name(std::move(name_))
             , description(std::move(description_)) {
+        }
+
+        explicit Service(std::string name_, std::unique_ptr<InternalService> internalService_)
+            : internalService{ std::move(internalService_) }
+            , name{ std::move(name_) } {
         }
 
         void putMessage(BrokerMessage &&message) {
@@ -78,6 +89,29 @@ private:
             auto worker = waiting.front();
             waiting.pop_front();
             return worker;
+        }
+    };
+
+    struct MmiService : public InternalService {
+        Broker *const parent;
+
+        explicit MmiService(Broker *parent_)
+            : parent(parent_) {}
+
+        BrokerMessage processRequest(BrokerMessage &&message) override {
+            message.setCommand(Command::Final);
+            if (message.body().empty()) {
+                std::vector<std::string> names(parent->_services.size());
+                std::transform(parent->_services.begin(), parent->_services.end(), names.begin(), [](const auto &it) { return it.first; });
+                std::sort(names.begin(), names.end());
+
+                message.setBody(fmt::format("{}", fmt::join(names, ",")), MessageFrame::dynamic_bytes_tag{});
+                return message;
+            }
+
+            const auto exists = parent->_services.contains(std::string(message.body()));
+            message.setBody(exists ? "200" : "404", MessageFrame::static_bytes_tag{});
+            return message;
         }
     };
 
@@ -115,6 +149,8 @@ public:
         , _pubSocket(context, ZMQ_XPUB)
         , _subSocket(context, ZMQ_SUB)
         , _dnsSocket(context, ZMQ_DEALER) {
+        addInternalService<MmiService>("mmi.service");
+
         auto commonSocketInit = [settings_](const Socket &socket) {
             const int heartbeatInterval = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(settings_.heartbeatInterval).count());
             const int ttl               = heartbeatInterval * settings_.heartbeatLiveness;
@@ -374,6 +410,11 @@ private:
         return it.first->second;
     }
 
+    template<typename T>
+    void addInternalService(std::string serviceName) {
+        _services.try_emplace(serviceName, std::move(serviceName), std::make_unique<T>(this));
+    }
+
     Service *bestMatchingService(std::string_view serviceName) {
         // TODO use some smart reactive filtering once available, maybe optimize or cache
         std::vector<Service *> services;
@@ -475,8 +516,13 @@ private:
             client.requests.pop_back();
 
             if (auto service = bestMatchingService(clientMessage.serviceName())) {
-                service->putMessage(std::move(clientMessage));
-                dispatch(*service);
+                if (service->internalService) {
+                    auto reply = service->internalService->processRequest(std::move(clientMessage));
+                    reply.send(client.socket).assertSuccess();
+                } else {
+                    service->putMessage(std::move(clientMessage));
+                    dispatch(*service);
+                }
                 return;
             }
 

@@ -132,40 +132,33 @@ TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][major
     RunInThread brokerRun(broker);
     RunInThread workerRun(worker);
 
+    REQUIRE(waitUntilServiceAvailable(broker.context, "addressbook"));
+
     // The client used here is a simple test client, operating on raw messages.
     // Later, a client class analog to MajordomoWorker, sending AddressRequest, and receiving AddressEntry, could be used.
     TestNode<MdpMessage> client(broker.context);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
-    bool seenReply = false;
-    while (!seenReply) {
-        {
-            // Send a request for address with ID 42
-            auto request = MdpMessage::createClientMessage(Command::Get);
-            request.setServiceName("addressbook", static_tag);
-            request.setClientRequestId("1", static_tag);
-            request.setTopic("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json", static_tag);
-            request.setBody("{ \"id\": 42 }", static_tag);
-            client.send(request);
-        }
+    {
+        // Send a request for address with ID 42
+        auto request = MdpMessage::createClientMessage(Command::Get);
+        request.setServiceName("addressbook", static_tag);
+        request.setClientRequestId("1", static_tag);
+        request.setTopic("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json", static_tag);
+        request.setBody("{ \"id\": 42 }", static_tag);
+        client.send(request);
 
-        // if the worker isn't registered at the broker yet, we might receive an error, thus we loop here until
-        // we get the correct reply.
-        const auto reply = client.readOne();
-        if (reply.topic() == "mmi.service") {
-            continue;
-        }
+        const auto reply = client.tryReadOne();
+        REQUIRE(reply.has_value());
 
-        // A reply that is not the "service not found" message is received. Assert that it is the
-        // proper reply, containing the serialised Address Entry return by TestHandler.
-        REQUIRE(reply.isValid());
-        REQUIRE(reply.command() == Command::Final);
-        REQUIRE(reply.serviceName() == "addressbook");
-        REQUIRE(reply.clientRequestId() == "1");
-        REQUIRE(reply.error() == "");
-        REQUIRE(reply.topic() == "/addresses?contentType=application%2Fjson&ctx=FAIR.SELECTOR.ALL");
-        REQUIRE(reply.body() == "\"AddressEntry\": {\n\"name\": \"Santa Claus\",\n\"street\": \"Elf Road\",\n\"streetNumber\": 123,\n\"postalCode\": \"88888\",\n\"city\": \"North Pole\",\n}");
-        seenReply = true;
+        // Assert that the correct reply is received, containing the serialised Address Entry return by TestHandler.
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->command() == Command::Final);
+        REQUIRE(reply->serviceName() == "addressbook");
+        REQUIRE(reply->clientRequestId() == "1");
+        REQUIRE(reply->error() == "");
+        REQUIRE(reply->topic() == "/addresses?contentType=application%2Fjson&ctx=FAIR.SELECTOR.ALL");
+        REQUIRE(reply->body() == "\"AddressEntry\": {\n\"name\": \"Santa Claus\",\n\"street\": \"Elf Road\",\n\"streetNumber\": 123,\n\"postalCode\": \"88888\",\n\"city\": \"North Pole\",\n}");
     }
 }
 
@@ -178,36 +171,31 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
     RunInThread                                                             brokerRun(broker);
     RunInThread                                                             workerRun(worker);
 
-    TestNode<MdpMessage>                                                    client(broker.context);
-    TestNode<BrokerMessage>                                                 subClient(broker.context, ZMQ_SUB);
+    REQUIRE(waitUntilServiceAvailable(broker.context, "addressbook"));
+
+    TestNode<MdpMessage>    client(broker.context);
+    TestNode<BrokerMessage> subClient(broker.context, ZMQ_SUB);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
     REQUIRE(subClient.connect(opencmw::majordomo::INTERNAL_ADDRESS_PUBLISHER));
     REQUIRE(subClient.subscribe("/newAddress?ctx=FAIR.SELECTOR.C=1"));
 
-    bool seenReply = false;
-    while (!seenReply) {
-        {
-            auto request = MdpMessage::createClientMessage(Command::Get);
-            request.setServiceName("addressbook", static_tag);
-            request.setClientRequestId("1", static_tag);
-            request.setTopic("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json", static_tag);
-            request.setBody("{ \"id\": 42 }", static_tag);
-            client.send(request);
-        }
+    {
+        auto request = MdpMessage::createClientMessage(Command::Get);
+        request.setServiceName("addressbook", static_tag);
+        request.setClientRequestId("1", static_tag);
+        request.setTopic("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json", static_tag);
+        request.setBody("{ \"id\": 42 }", static_tag);
+        client.send(request);
 
-        const auto reply = client.readOne();
-        if (reply.topic() == "mmi.service") {
-            continue;
-        }
-
-        REQUIRE(reply.isValid());
-        REQUIRE(reply.command() == Command::Final);
-        REQUIRE(reply.serviceName() == "addressbook");
-        REQUIRE(reply.clientRequestId() == "1");
-        REQUIRE(reply.error() == "");
-        REQUIRE(reply.topic() == "/addresses?contentType=application%2Fjson&ctx=FAIR.SELECTOR.ALL");
-        REQUIRE(reply.body() == "\"AddressEntry\": {\n\"name\": \"Santa Claus\",\n\"street\": \"Elf Road\",\n\"streetNumber\": 123,\n\"postalCode\": \"88888\",\n\"city\": \"North Pole\",\n}");
-        seenReply = true;
+        const auto reply = client.tryReadOne();
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->command() == Command::Final);
+        REQUIRE(reply->serviceName() == "addressbook");
+        REQUIRE(reply->clientRequestId() == "1");
+        REQUIRE(reply->error() == "");
+        REQUIRE(reply->topic() == "/addresses?contentType=application%2Fjson&ctx=FAIR.SELECTOR.ALL");
+        REQUIRE(reply->body() == "\"AddressEntry\": {\n\"name\": \"Santa Claus\",\n\"street\": \"Elf Road\",\n\"streetNumber\": 123,\n\"postalCode\": \"88888\",\n\"city\": \"North Pole\",\n}");
     }
 
     // request non-existing entry
@@ -221,12 +209,13 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
     }
 
     {
-        const auto reply = client.readOne();
-        REQUIRE(reply.isValid());
-        REQUIRE(reply.command() == Command::Final);
-        REQUIRE(reply.clientRequestId() == "2");
-        REQUIRE(reply.body().empty());
-        REQUIRE(reply.error().find("Address entry with ID '4711' not found") != std::string::npos);
+        const auto reply = client.tryReadOne();
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->command() == Command::Final);
+        REQUIRE(reply->clientRequestId() == "2");
+        REQUIRE(reply->body().empty());
+        REQUIRE(reply->error().find("Address entry with ID '4711' not found") != std::string::npos);
     }
 
     // send empty request
@@ -240,12 +229,13 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
     }
 
     {
-        const auto reply = client.readOne();
-        REQUIRE(reply.isValid());
-        REQUIRE(reply.command() == Command::Final);
-        REQUIRE(reply.clientRequestId() == "3");
-        REQUIRE(reply.body().empty());
-        REQUIRE(!reply.error().empty());
+        const auto reply = client.tryReadOne();
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->command() == Command::Final);
+        REQUIRE(reply->clientRequestId() == "3");
+        REQUIRE(reply->body().empty());
+        REQUIRE(!reply->error().empty());
     }
 
     // send request with invalid JSON
@@ -259,12 +249,13 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
     }
 
     {
-        const auto reply = client.readOne();
-        REQUIRE(reply.isValid());
-        REQUIRE(reply.command() == Command::Final);
-        REQUIRE(reply.clientRequestId() == "4");
-        REQUIRE(reply.body().empty());
-        REQUIRE(!reply.error().empty());
+        const auto reply = client.tryReadOne();
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->command() == Command::Final);
+        REQUIRE(reply->clientRequestId() == "4");
+        REQUIRE(reply->body().empty());
+        REQUIRE(!reply->error().empty());
     }
 
     {
@@ -294,12 +285,13 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
     }
 
     {
-        const auto notify = subClient.readOne();
-        REQUIRE(notify.isValid());
-        REQUIRE(notify.command() == Command::Final);
-        REQUIRE(notify.sourceId() == "/newAddress?ctx=FAIR.SELECTOR.C=1");
-        REQUIRE(notify.topic() == "/newAddress?contentType=application%2Fjson&ctx=FAIR.SELECTOR.C%3D1");
-        REQUIRE(notify.error().empty());
-        REQUIRE(notify.body() == "\"AddressEntry\": {\n\"name\": \"Easter Bunny\",\n\"street\": \"Carrot Road\",\n\"streetNumber\": 123,\n\"postalCode\": \"88888\",\n\"city\": \"Easter Island\",\n}");
+        const auto notify = subClient.tryReadOne();
+        REQUIRE(notify.has_value());
+        REQUIRE(notify->isValid());
+        REQUIRE(notify->command() == Command::Final);
+        REQUIRE(notify->sourceId() == "/newAddress?ctx=FAIR.SELECTOR.C=1");
+        REQUIRE(notify->topic() == "/newAddress?contentType=application%2Fjson&ctx=FAIR.SELECTOR.C%3D1");
+        REQUIRE(notify->error().empty());
+        REQUIRE(notify->body() == "\"AddressEntry\": {\n\"name\": \"Easter Bunny\",\n\"street\": \"Carrot Road\",\n\"streetNumber\": 123,\n\"postalCode\": \"88888\",\n\"city\": \"Easter Island\",\n}");
     }
 }

@@ -1,6 +1,7 @@
 #ifndef MAJORDOMO_TESTS_HELPERS_H
 #define MAJORDOMO_TESTS_HELPERS_H
 
+#include <majordomo/Client.hpp>
 #include <majordomo/Message.hpp>
 #include <majordomo/Settings.hpp>
 #include <majordomo/Utils.hpp>
@@ -9,7 +10,6 @@
 #include <URI.hpp>
 
 #include <chrono>
-#include <deque>
 #include <thread>
 
 template<typename T>
@@ -42,13 +42,15 @@ inline opencmw::majordomo::Settings testSettings() {
 
 template<typename MessageType>
 class TestNode {
-    std::deque<MessageType> _receivedMessages;
-
 public:
     opencmw::majordomo::Socket _socket;
 
     explicit TestNode(const opencmw::majordomo::Context &context, int socket_type = ZMQ_DEALER)
         : _socket(context, socket_type) {
+    }
+
+    bool bind(const opencmw::URI<opencmw::STRICT> &address) {
+        return zmq_invoke(zmq_bind, _socket, opencmw::majordomo::toZeroMQEndpoint(address).data()).isValid();
     }
 
     bool connect(const opencmw::URI<opencmw::STRICT> &address, std::string_view subscription = "") {
@@ -77,23 +79,7 @@ public:
         return f.send(_socket, 0).isValid(); // blocking for simplicity
     }
 
-    MessageType readOne() {
-        while (_receivedMessages.empty()) {
-            auto message = MessageType::receive(_socket);
-            if (message) {
-                _receivedMessages.emplace_back(std::move(*message));
-            }
-        }
-
-        assert(!_receivedMessages.empty());
-        auto msg = std::move(_receivedMessages.front());
-        _receivedMessages.pop_front();
-        return msg;
-    }
-
-    std::optional<MessageType> tryReadOne(std::chrono::milliseconds timeout) {
-        assert(_receivedMessages.empty());
-
+    std::optional<MessageType> tryReadOne(std::chrono::milliseconds timeout = std::chrono::milliseconds(3000)) {
         std::array<zmq_pollitem_t, 1> pollerItems;
         pollerItems[0].socket = _socket.zmq_ptr;
         pollerItems[0].events = ZMQ_POLLIN;
@@ -105,9 +91,37 @@ public:
         return MessageType::receive(_socket);
     }
 
-    void send(opencmw::majordomo::MdpMessage &message) {
+    void send(MessageType &message) {
         message.send(_socket).assertSuccess();
     }
 };
+
+inline bool waitUntilServiceAvailable(const opencmw::majordomo::Context &context, std::string_view serviceName, const opencmw::URI<opencmw::STRICT> &brokerAddress = opencmw::majordomo::INTERNAL_ADDRESS_BROKER) {
+    TestNode<opencmw::majordomo::MdpMessage> client(context);
+    if (!client.connect(brokerAddress)) {
+        return false;
+    }
+
+    constexpr auto timeout   = std::chrono::seconds(3);
+    const auto     startTime = std::chrono::system_clock::now();
+
+    while (std::chrono::system_clock::now() - startTime < timeout) {
+        auto request = opencmw::majordomo::MdpMessage::createClientMessage(opencmw::majordomo::Command::Get);
+        request.setServiceName("mmi.service", opencmw::majordomo::MessageFrame::static_bytes_tag{});
+        request.setBody(serviceName, opencmw::majordomo::MessageFrame::dynamic_bytes_tag{});
+        client.send(request);
+
+        auto reply = client.tryReadOne();
+        if (!reply) { // no reply at all? something went seriously wrong
+            return false;
+        }
+
+        if (reply->body() == "200") {
+            return true;
+        }
+    }
+
+    return false;
+}
 
 #endif
