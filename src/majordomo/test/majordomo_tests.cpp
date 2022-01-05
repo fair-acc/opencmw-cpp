@@ -161,6 +161,75 @@ TEST_CASE("OpenCMW::Message basics", "[message]") {
     }
 }
 
+TEST_CASE("Test mmi.service", "[broker][mmi_service]") {
+    using opencmw::majordomo::Broker;
+    using opencmw::majordomo::MdpMessage;
+
+    Broker               broker("testbroker", testSettings());
+    RunInThread          brokerRun(broker);
+
+    TestNode<MdpMessage> client(broker.context);
+    REQUIRE(client.connect(INTERNAL_ADDRESS_BROKER));
+
+    { // ask for not yet existing service
+        auto request = MdpMessage::createClientMessage(Command::Get);
+        request.setServiceName("mmi.service", static_tag);
+        request.setBody("a.service", static_tag);
+        client.send(request);
+
+        const auto reply = client.tryReadOne();
+
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->isClientMessage());
+        REQUIRE(reply->command() == Command::Final);
+        REQUIRE(reply->serviceName() == "mmi.service");
+        REQUIRE(reply->body() == "404");
+    }
+
+    // register worker as a.service
+    TestNode<MdpMessage> worker(broker.context);
+    REQUIRE(worker.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
+
+    auto ready = MdpMessage::createWorkerMessage(Command::Ready);
+    ready.setServiceName("a.service", static_tag);
+    ready.setBody("API description", static_tag);
+    ready.setRbacToken("rbacToken", static_tag);
+    worker.send(ready);
+
+    REQUIRE(waitUntilServiceAvailable(broker.context, "a.service"));
+
+    { // service now exists
+        auto request = MdpMessage::createClientMessage(Command::Get);
+        request.setServiceName("mmi.service", static_tag);
+        request.setBody("a.service", static_tag);
+        client.send(request);
+
+        const auto reply = client.tryReadOne();
+
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->isClientMessage());
+        REQUIRE(reply->command() == Command::Final);
+        REQUIRE(reply->serviceName() == "mmi.service");
+        REQUIRE(reply->body() == "200");
+    }
+
+    { // list services
+        auto request = MdpMessage::createClientMessage(Command::Get);
+        request.setServiceName("mmi.service", static_tag);
+        client.send(request);
+
+        const auto reply = client.tryReadOne();
+
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->command() == Command::Final);
+        REQUIRE(reply->serviceName() == "mmi.service");
+        REQUIRE(reply->body() == "a.service,mmi.service");
+    }
+}
+
 TEST_CASE("Request answered with unknown service", "[broker][unknown_service]") {
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::MdpMessage;
@@ -1287,49 +1356,27 @@ TEST_CASE("SET/GET example using a lambda as the worker's request handler", "[wo
     RunInThread brokerRun(broker);
     RunInThread workerRun(worker);
 
-    // until the worker's READY is processed by the broker, it will return
-    // an "unknown service" error, retry until we get the expected reply
-    bool goodReplyReceived = false;
-    while (!goodReplyReceived) {
-        bool anyMessageReceived = false;
-        client.get("a.service", "", [&goodReplyReceived, &anyMessageReceived](auto &&message) {
-            anyMessageReceived = true;
-            if (message.error().empty()) {
-                REQUIRE(message.body() == "100");
-                goodReplyReceived = true;
-            } else {
-                REQUIRE(message.error() == "unknown service (error 501): 'a.service'");
-            }
-        });
+    REQUIRE(waitUntilServiceAvailable(broker.context, "a.service"));
 
-        while (!anyMessageReceived) {
-            client.tryRead(std::chrono::milliseconds(20));
-        }
-    }
+    client.get("a.service", "", [](auto &&message) {
+        REQUIRE(message.body() == "100");
+    });
 
-    bool replyReceived = false;
+    REQUIRE(client.tryRead(std::chrono::seconds(3)));
 
-    client.set("a.service", "42", [&replyReceived](auto &&message) {
+    client.set("a.service", "42", [](auto &&message) {
         REQUIRE(message.body() == "Value set. All good!");
         REQUIRE(message.error().empty());
-        replyReceived = true;
     });
 
-    while (!replyReceived) {
-        client.tryRead(std::chrono::milliseconds(20));
-    }
+    REQUIRE(client.tryRead(std::chrono::seconds(3)));
 
-    replyReceived = false;
-
-    client.get("a.service", "", [&replyReceived](auto &&message) {
+    client.get("a.service", "", [](auto &&message) {
         REQUIRE(message.body() == "42");
         REQUIRE(message.error().empty());
-        replyReceived = true;
     });
 
-    while (!replyReceived) {
-        client.tryRead(std::chrono::milliseconds(20));
-    }
+    REQUIRE(client.tryRead(std::chrono::seconds(3)));
 }
 
 TEST_CASE("Worker's request handler throws an exception", "[worker][handler_exception]") {
@@ -1353,25 +1400,13 @@ TEST_CASE("Worker's request handler throws an exception", "[worker][handler_exce
     RunInThread brokerRun(broker);
     RunInThread workerRun(worker);
 
-    // until the worker's READY is processed by the broker, it will return
-    // an "unknown service" error, retry until we get the expected reply
-    bool exceptionReplyReceived = false;
-    while (!exceptionReplyReceived) {
-        bool anyMessageReceived = false;
-        client.get("a.service", "", [&exceptionReplyReceived, &anyMessageReceived](auto &&message) {
-            anyMessageReceived = true;
-            if (message.error().starts_with("unknown service")) {
-                REQUIRE(message.error() == "unknown service (error 501): 'a.service'");
-            } else {
-                REQUIRE(message.error() == "Caught exception for service 'a.service'\nrequest message: \nexception: Something went wrong!");
-                exceptionReplyReceived = true;
-            }
-        });
+    REQUIRE(waitUntilServiceAvailable(broker.context, "a.service"));
 
-        while (!anyMessageReceived) {
-            client.tryRead(std::chrono::milliseconds(20));
-        }
-    }
+    client.get("a.service", "", [](auto &&message) {
+        REQUIRE(message.error() == "Caught exception for service 'a.service'\nrequest message: \nexception: Something went wrong!");
+    });
+
+    REQUIRE(client.tryRead(std::chrono::seconds(3)));
 }
 
 TEST_CASE("Worker's request handler throws an unexpected exception", "[worker][handler_unexpected_exception]") {
@@ -1395,23 +1430,11 @@ TEST_CASE("Worker's request handler throws an unexpected exception", "[worker][h
     RunInThread brokerRun(broker);
     RunInThread workerRun(worker);
 
-    // until the worker's READY is processed by the broker, it will return
-    // an "unknown service" error, retry until we get the expected reply
-    bool exceptionReplyReceived = false;
-    while (!exceptionReplyReceived) {
-        bool anyMessageReceived = false;
-        client.get("a.service", "", [&exceptionReplyReceived, &anyMessageReceived](auto &&message) {
-            anyMessageReceived = true;
-            if (message.error().starts_with("unknown service")) {
-                REQUIRE(message.error() == "unknown service (error 501): 'a.service'");
-            } else {
-                REQUIRE(message.error() == "Caught unexpected exception for service 'a.service'\nrequest message: ");
-                exceptionReplyReceived = true;
-            }
-        });
+    REQUIRE(waitUntilServiceAvailable(broker.context, "a.service"));
 
-        while (!anyMessageReceived) {
-            client.tryRead(std::chrono::milliseconds(20));
-        }
-    }
+    client.get("a.service", "", [](auto &&message) {
+        REQUIRE(message.error() == "Caught unexpected exception for service 'a.service'\nrequest message: ");
+    });
+
+    REQUIRE(client.tryRead(std::chrono::seconds(3)));
 }

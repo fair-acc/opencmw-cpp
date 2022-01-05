@@ -1,6 +1,7 @@
 #ifndef MAJORDOMO_TESTS_HELPERS_H
 #define MAJORDOMO_TESTS_HELPERS_H
 
+#include <majordomo/Client.hpp>
 #include <majordomo/Message.hpp>
 #include <majordomo/Settings.hpp>
 #include <majordomo/Utils.hpp>
@@ -94,5 +95,35 @@ public:
         message.send(_socket).assertSuccess();
     }
 };
+
+inline bool waitUntilServiceAvailable(const opencmw::majordomo::Context &context, std::string_view serviceName, const opencmw::URI<opencmw::STRICT> &brokerAddress = opencmw::majordomo::INTERNAL_ADDRESS_BROKER) {
+    TestNode<opencmw::majordomo::MdpMessage> client(context);
+    if (!client.connect(brokerAddress)) {
+        return false;
+    }
+
+    constexpr auto timeout   = std::chrono::seconds(3);
+    const auto     startTime = std::chrono::system_clock::now();
+
+    while (true) {
+        auto request = opencmw::majordomo::MdpMessage::createClientMessage(opencmw::majordomo::Command::Get);
+        request.setServiceName("mmi.service", opencmw::majordomo::MessageFrame::static_bytes_tag{});
+        request.setBody(serviceName, opencmw::majordomo::MessageFrame::dynamic_bytes_tag{});
+        client.send(request);
+
+        auto reply = client.tryReadOne();
+        if (!reply) { // no reply at all? something went seriously wrong
+            return false;
+        }
+
+        if (reply->body() == "200") {
+            return true;
+        }
+
+        if (std::chrono::system_clock::now() - startTime >= timeout) {
+            return false;
+        }
+    }
+}
 
 #endif
