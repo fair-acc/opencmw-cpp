@@ -129,7 +129,7 @@ private:
         BrokerMessage processRequest(BrokerMessage &&message) override {
             message.setCommand(Command::Final);
             const auto serviceName = std::string(message.body());
-            const auto serviceIt = parent->_services.find(serviceName);
+            const auto serviceIt   = parent->_services.find(serviceName);
             if (serviceIt != parent->_services.end()) {
                 message.setBody(serviceIt->second.description, MessageFrame::dynamic_bytes_tag{});
                 message.setError("", MessageFrame::static_bytes_tag{});
