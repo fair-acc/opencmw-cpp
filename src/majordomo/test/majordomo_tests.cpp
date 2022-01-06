@@ -161,7 +161,68 @@ TEST_CASE("OpenCMW::Message basics", "[message]") {
     }
 }
 
-TEST_CASE("Test mmi.service", "[broker][mmi_service]") {
+TEST_CASE("Test mmi.dns", "[broker][mmi][mmi_dns]") {
+    using opencmw::majordomo::Broker;
+    using opencmw::majordomo::MdpMessage;
+
+    Broker               broker("testbroker", testSettings());
+    REQUIRE(broker.bind(opencmw::URI<opencmw::STRICT>("mds://127.0.0.1:22345")));
+
+    RunInThread          brokerRun(broker);
+
+    TestNode<MdpMessage> client(broker.context);
+    REQUIRE(client.connect(INTERNAL_ADDRESS_BROKER));
+
+    // register worker as a.service
+    TestNode<MdpMessage> worker(broker.context);
+    REQUIRE(worker.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
+
+    auto ready = MdpMessage::createWorkerMessage(Command::Ready);
+    ready.setServiceName("a.service", static_tag);
+    ready.setTopic("http://a.service", static_tag);
+    ready.setBody("API description", static_tag);
+    ready.setRbacToken("rbacToken", static_tag);
+    worker.send(ready);
+
+    REQUIRE(waitUntilServiceAvailable(broker.context, "a.service"));
+
+    { // list all entries
+        auto request = MdpMessage::createClientMessage(Command::Set);
+        request.setServiceName("mmi.dns", static_tag);
+        request.setBody("Hello World!", static_tag);
+        client.send(request);
+
+        const auto reply = client.tryReadOne();
+
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->isClientMessage());
+        REQUIRE(reply->command() == Command::Final);
+        REQUIRE(reply->serviceName() == "mmi.dns");
+        REQUIRE(reply->body() == "[testbroker: http://a.service,mds://127.0.0.1:22345,mds://127.0.0.1:22345/a.service,mds://127.0.0.1:22345/mmi.dns,mds://127.0.0.1:22345/mmi.echo,mds://127.0.0.1:22345/mmi.openapi,mds://127.0.0.1:22345/mmi.service]");
+    }
+
+    {
+        auto request = MdpMessage::createClientMessage(Command::Set);
+        request.setServiceName("mmi.dns", static_tag);
+
+        // atm services must be prepended by "/" to form URIs that opencmw::URI can parse
+        // send query with some crazy whitespace
+        request.setBody(" /mmi.dns  , /a.service", static_tag);
+        client.send(request);
+
+        const auto reply = client.tryReadOne();
+
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->isClientMessage());
+        REQUIRE(reply->command() == Command::Final);
+        REQUIRE(reply->serviceName() == "mmi.dns");
+        REQUIRE(reply->body() == "[/mmi.dns: mds://127.0.0.1:22345/mmi.dns],[/a.service: mds://127.0.0.1:22345/a.service]");
+    }
+}
+
+TEST_CASE("Test mmi.service", "[broker][mmi][mmi_service]") {
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::MdpMessage;
 
@@ -226,11 +287,11 @@ TEST_CASE("Test mmi.service", "[broker][mmi_service]") {
         REQUIRE(reply->isValid());
         REQUIRE(reply->command() == Command::Final);
         REQUIRE(reply->serviceName() == "mmi.service");
-        REQUIRE(reply->body() == "a.service,mmi.echo,mmi.openapi,mmi.service");
+        REQUIRE(reply->body() == "a.service,mmi.dns,mmi.echo,mmi.openapi,mmi.service");
     }
 }
 
-TEST_CASE("Test mmi.echo", "[broker][mmi_echo]") {
+TEST_CASE("Test mmi.echo", "[broker][mmi][mmi_echo]") {
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::MdpMessage;
 
@@ -262,7 +323,7 @@ TEST_CASE("Test mmi.echo", "[broker][mmi_echo]") {
     REQUIRE(reply->rbacToken() == request.rbacToken());
 }
 
-TEST_CASE("Test mmi.openapi", "[broker][mmi_openapi]") {
+TEST_CASE("Test mmi.openapi", "[broker][mmi][mmi_openapi]") {
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::MdpMessage;
 
@@ -349,7 +410,7 @@ TEST_CASE("Request answered with unknown service", "[broker][unknown_service]") 
     REQUIRE(reply->command() == Command::Final);
     REQUIRE(reply->serviceName() == "no.service");
     REQUIRE(reply->clientRequestId() == "1");
-    REQUIRE(reply->topic() == "mmi.service");
+    REQUIRE(reply->topic() == "/mmi.service");
     REQUIRE(reply->body().empty());
     REQUIRE(reply->error() == "unknown service (error 501): 'no.service'");
     REQUIRE(reply->rbacToken() == "RBAC=ADMIN,abcdef12345");
@@ -467,7 +528,7 @@ TEST_CASE("One client/one worker roundtrip", "[broker][roundtrip]") {
     REQUIRE(disconnect->command() == Command::Disconnect);
     REQUIRE(disconnect->serviceName() == "a.service");
     REQUIRE(disconnect->clientRequestId().empty());
-    REQUIRE(disconnect->topic() == "a.service");
+    REQUIRE(disconnect->topic() == "/a.service");
     REQUIRE(disconnect->body() == "broker shutdown");
     REQUIRE(disconnect->error().empty());
     REQUIRE(disconnect->rbacToken() == "RBAC=ADMIN,abcdef12345");
