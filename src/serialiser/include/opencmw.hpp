@@ -11,8 +11,8 @@
 #include <units/quantity_io.h>
 
 #define ENABLE_REFLECTION_FOR(TypeName, ...) \
-    REFL_TYPE(TypeName) \
-    REFL_DETAIL_FOR_EACH(REFL_DETAIL_EX_1_field, __VA_ARGS__) \
+    REFL_TYPE(TypeName __VA_OPT__(, )) \
+    REFL_DETAIL_FOR_EACH(REFL_DETAIL_EX_1_field __VA_OPT__(, ) __VA_ARGS__) \
     REFL_END
 
 namespace units::detail { // TODO: temporary -> remove with next mp-units release
@@ -32,11 +32,10 @@ using units::is_same_v;
 template<typename T, typename Type = typename std::decay<T>::type>
 inline constexpr const bool isStdType = get_name(refl::reflect<Type>()).template substr<0, 5>() == "std::";
 
-template<class T>
-constexpr bool isReflectableClass() {
-    using Type = typename std::decay<T>::type;
-    if constexpr (std::is_class<Type>::value && refl::is_reflectable<Type>() && !std::is_fundamental<Type>::value && !std::is_array<Type>::value) {
-        return !isStdType<Type>; // N.B. check this locally since this is not constexpr (yet)
+template<class T, typename RawType = typename std::decay<T>::type>
+inline constexpr bool isReflectableClass() {
+    if constexpr (std::is_class<RawType>::value && refl::is_reflectable<RawType>() && !std::is_fundamental<RawType>::value && !std::is_array<RawType>::value) {
+        return !isStdType<RawType>; // N.B. check this locally since this is not constexpr (yet)
     }
     return false;
 }
@@ -44,15 +43,14 @@ template<class T>
 concept ReflectableClass = isReflectableClass<T>();
 
 #ifndef OPENCMW_ENABLE_UNSIGNED_SUPPORT
-template<typename T, typename Tp = typename std::decay<T>::type>
-inline constexpr const bool is_supported_number = is_same_v<Tp, bool> || is_same_v<Tp, char> || is_same_v<Tp, uint8_t> || is_same_v<Tp, int8_t> || is_same_v<Tp, int8_t> || is_same_v<Tp, int16_t> //
-                                               || is_same_v<Tp, int32_t> || is_same_v<Tp, int64_t> || is_same_v<Tp, float> || is_same_v<Tp, double>;
+template<typename T, typename RawType = typename std::decay<T>::type>
+inline constexpr bool is_supported_number = std::is_signed_v<RawType> || is_same_v<RawType, bool> || is_same_v<RawType, uint8_t>; // int[8, 64]_t || float || double || bool || uint8_t;
 #else
 inline constexpr bool is_supported_number = std::is_arithmetic<Tp>;
 #endif
 
-template<typename T, typename Tp = typename std::decay<T>::type>
-inline constexpr const bool is_stringlike = units::is_derived_from_specialization_of<Tp, std::basic_string> || units::is_derived_from_specialization_of<Tp, std::basic_string_view>;
+template<typename T, typename RawType = typename std::decay<T>::type>
+inline constexpr bool is_stringlike = units::is_derived_from_specialization_of<RawType, std::basic_string> || units::is_derived_from_specialization_of<RawType, std::basic_string_view>;
 
 template<typename T>
 concept StringLike = is_stringlike<T>;
@@ -66,17 +64,8 @@ concept ArithmeticType = std::is_arithmetic_v<Tp>;
 template<typename T>
 concept SupportedType = is_supported_number<T> || is_stringlike<T>;
 
-template<template<typename...> class Template, typename Class>
-struct is_instantiation : std::false_type {};
-
-template<template<typename...> class Template, typename... Args>
-struct is_instantiation<Template, Template<Args...>> : std::true_type {};
-
-template<typename Class, template<typename...> class Template>
-concept is_instantiation_of = is_instantiation<Template, Class>::value;
-
 template<typename T>
-concept MapLike = is_instantiation_of<T, std::map> || is_instantiation_of<T, std::unordered_map>;
+concept MapLike = units::is_derived_from_specialization_of<T, std::map> || units::is_derived_from_specialization_of<T, std::unordered_map>;
 
 template<typename T>
 inline constexpr const bool is_array = false;
@@ -85,21 +74,14 @@ inline constexpr const bool is_array<std::array<T, N>> = true;
 template<typename T, std::size_t N>
 inline constexpr const bool is_array<const std::array<T, N>> = true;
 
-template<typename T>
-inline constexpr const bool is_vector = false;
-template<typename T, typename A>
-inline constexpr const bool is_vector<std::vector<T, A>> = true;
-template<typename T, typename A>
-inline constexpr const bool is_vector<const std::vector<T, A>> = true;
+template<typename T, typename Tp = typename std::remove_const<T>::type>
+inline constexpr bool is_vector = units::is_derived_from_specialization_of<Tp, std::vector>;
 
 template<typename T>
 concept ArrayOrVector = is_vector<T> || is_array<T>;
 
 template<typename C, typename T = typename C::value_type, std::size_t size = 0>
 concept StringArray = (is_array<C> || is_vector<C>) &&is_stringlike<T>;
-
-template<typename T>
-concept NumberArray = std::is_bounded_array<T>::value; // && is_supported_number<T[]>::value;
 
 template<typename T, class Deleter = std::default_delete<T>>
 inline constexpr const bool is_smart_pointer = false;
@@ -168,45 +150,49 @@ RO_PRIVATE = 5, // read-only access -- private/non-production API
 UNKNOWN = 255
 };
 
-constexpr bool is_readonly(const ExternalModifier mod) {
-    return mod % 2 == 1;
-}
-
-constexpr bool is_deprecated(const ExternalModifier mod) {
-    return (mod & 2) > 0;
-}
-
-constexpr bool is_private(const ExternalModifier mod) {
-    return (mod & 4) > 0;
-}
+constexpr bool is_readonly(const ExternalModifier mod) { return mod % 2 == 1; }
+constexpr bool is_deprecated(const ExternalModifier mod) { return (mod & 2) > 0; }
+constexpr bool is_private(const ExternalModifier mod) { return (mod & 4) > 0; }
 
 constexpr ExternalModifier get_ext_modifier(const uint8_t byteValue) {
     switch(byteValue) {
+    [[likely]] case RW: return RW;
     case RO: return RO;
-    case RW: return RW;
-    case RO_DEPRECATED: return RO_DEPRECATED;
     case RW_DEPRECATED: return RW_DEPRECATED;
-    case RO_PRIVATE: return RO_PRIVATE;
+    case RO_DEPRECATED: return RO_DEPRECATED;
     case RW_PRIVATE: return RW_PRIVATE;
-    }
-    return UNKNOWN;
-}
-
-inline std::ostream &operator<<(std::ostream &os, const ExternalModifier &v) {
-    switch (v) {
-    case RO: return os << "RO";
-    case RW: return os << "RW";
-    case RO_DEPRECATED: return os << "RO_DEPRECATED";
-    case RW_DEPRECATED: return os << "RW_DEPRECATED";
-    case RO_PRIVATE: return os << "RO_PRIVATE";
-    case RW_PRIVATE: return os << "RW_PRIVATE";
-    case UNKNOWN:
-        [[fallthrough]];
-    default:
-        throw std::logic_error("unknown ExternalModifier state");
+    case RO_PRIVATE: return RO_PRIVATE;
+    default: return UNKNOWN;
     }
 }
+} // namespace opencmw
 
+template<>
+struct fmt::formatter<opencmw::ExternalModifier> {
+    template<typename ParseContext>
+    constexpr auto parse(ParseContext &ctx) { return ctx.begin(); }
+    template<typename FormatContext>
+    constexpr auto format(const opencmw::ExternalModifier &state, FormatContext &ctx) {
+        using namespace opencmw;
+        switch (state) {
+        case RW: return fmt::format_to(ctx.out(), "RW");
+        case RO: return fmt::format_to(ctx.out(), "RO");
+        case RW_DEPRECATED: return fmt::format_to(ctx.out(), "RW_DEPRECATED");
+        case RO_DEPRECATED: return fmt::format_to(ctx.out(), "RO_DEPRECATED");
+        case RW_PRIVATE: return fmt::format_to(ctx.out(), "RW_PRIVATE");
+        case RO_PRIVATE: return fmt::format_to(ctx.out(), "RO_PRIVATE");
+        case UNKNOWN: [[fallthrough]];
+            default:
+                throw std::logic_error("unknown ExternalModifier state");
+        }
+    }
+};
+
+inline std::ostream &operator<<(std::ostream &os, const opencmw::ExternalModifier &v) {
+    return os << fmt::format("{}", v);
+}
+
+namespace opencmw {
 template<typename Rep, units::Quantity Q = NoUnit, const basic_fixed_string description = "" , const ExternalModifier modifier = RW, const basic_fixed_string... groups>
 struct Annotated; // prototype template -- N.B. there are two implementations since most non-numeric classes do not qualify as units::Representation
 
@@ -334,12 +320,6 @@ constexpr T &getAnnotatedMember(T &&annotatedValue) noexcept {
 template<AnnotatedType T>
 constexpr typename T::rep &getAnnotatedMember(T &annotatedValue) noexcept {
     using Type = typename T::rep;
-    return std::forward<Type &>(annotatedValue.value()); // perfect forwarding
-}
-
-template<AnnotatedType T>
-constexpr const typename T::rep &getAnnotatedMember(const T &annotatedValue) noexcept {
-    using Type = const typename T::rep;
     return std::forward<Type &>(annotatedValue.value()); // perfect forwarding
 }
 
