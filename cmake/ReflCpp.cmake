@@ -2,6 +2,6 @@ include(FetchContent)
 FetchContent_Declare(
         refl-cpp
         GIT_REPOSITORY https://github.com/veselink1/refl-cpp.git
-        GIT_TAG        ee92dcd5eb078fdb1c90587db4b163b58382fd27
+        GIT_TAG        14210905eba1bdaeaee196c9ec6193006aafb2b3
 )
 FetchContent_MakeAvailable(refl-cpp)
