@@ -156,7 +156,7 @@ inline std::ostream &operator<<(std::ostream &os, const T &value) {
                         os << fmt::format("{}{}=", (index > 0) ? ", " : "", get_display_name(member));
                     }
                     ClassInfoIndentInc(os);
-                    os << member(value);
+                    os << fmt::format("{}", member(value));
                     ClassInfoIndentDec(os);
                     os << (verbose ? "\n" : ""); // calls this operator<< if necessary
                 });

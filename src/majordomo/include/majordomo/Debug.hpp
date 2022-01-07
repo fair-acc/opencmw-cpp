@@ -4,7 +4,14 @@
 
 #include <iostream>
 #include <mutex>
+#ifdef __clang__ // TODO: replace (source_location is part of C++20 but still "experimental" for clang
+#include <experimental/source_location>
+namespace std {
+typedef std::experimental::source_location source_location;
+}
+#else
 #include <source_location>
+#endif
 
 namespace opencmw {
 

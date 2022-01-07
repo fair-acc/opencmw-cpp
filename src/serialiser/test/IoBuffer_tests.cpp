@@ -1,9 +1,9 @@
 #pragma clang diagnostic push
 #pragma ide diagnostic   ignored "LoopDoesntUseConditionVariableInspection"
 #pragma ide diagnostic   ignored "cppcoreguidelines-avoid-magic-numbers"
+#include <catch2/catch.hpp>
 #include <Debug.hpp>
 #include <IoBuffer.hpp>
-#include <catch2/catch.hpp>
 #include <iostream>
 #include <string_view>
 
@@ -233,10 +233,9 @@ TEST_CASE("IoBuffer syntax - string arrays", "[IoBuffer]") {
         // reset read position and read values -- generate new class (via default rvalue parameter)
         {
             buffer.reset();
-            std::vector<std::string>        stringVector;
-            std::vector<std::string_view>   stringViewVector;
-            std::array<std::string, 3>      stringArray;
-            std::array<std::string_view, 3> stringViewArray;
+            std::vector<std::string>      stringVector;
+            std::vector<std::string_view> stringViewVector;
+            std::array<std::string, 3>    stringArray;
             REQUIRE(stringVectorRef == buffer.get<std::vector<std::string>>());
             REQUIRE(stringViewVectorRef == buffer.get<std::vector<std::string_view>>());
             REQUIRE(stringArrayRef == buffer.get<std::array<std::string, 3>>());
@@ -307,11 +306,11 @@ TEST_CASE("IoBuffer syntax - arrays", "[IoBuffer]") {
         std::vector<double> recoveredDoubleVector;
         recoveredDoubleVector = buffer.getArray(recoveredDoubleVector, 5);
         REQUIRE(inputDoubleVector == recoveredDoubleVector); // && "error while getting double vector"
-        //PRINT_VECTOR(recoveredDoubleVector);
+        // PRINT_VECTOR(recoveredDoubleVector);
         REQUIRE(inputDoubleVector == buffer.getArray<double>(std::vector<double>(5), 5));
 
         std::array<int, 5> array2 = buffer.getArray<int, 5>();
-        //PRINT_VECTOR(array2);
+        // PRINT_VECTOR(array2);
         REQUIRE(array == array2);
 
         // bool vector & bool array
@@ -321,8 +320,8 @@ TEST_CASE("IoBuffer syntax - arrays", "[IoBuffer]") {
         const auto         origPosition = buffer.position();
         std::array<int, 5> array3{ 0, 0, 0, 0, 0 };
         REQUIRE(array == buffer.getArray<int, 5>(array3, 5));
-        //PRINT_VECTOR(array3);
-        // read unnamed array
+        // PRINT_VECTOR(array3);
+        //  read unnamed array
         buffer.set_position(origPosition); // skip back
         REQUIRE(std::array<int, 5>{ 1, 2, 3, 0, 0 } == buffer.getArray<int, 5>(std::array<int, 5>{ 0, 0, 0, 0, 0 }, 3));
     }

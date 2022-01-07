@@ -139,7 +139,7 @@ struct IoSerialiser {
 
 template<ReflectableClass T>
 forceinline int32_t findMemberIndex(const std::string_view &fieldName) noexcept {
-    static constexpr auto m = ConstExprMap{ refl::util::map_to_array<std::pair<std::string_view, int32_t>>(refl::reflect<T>().members, [](auto field, auto index) {
+    static constexpr ConstExprMap<std::string_view, int32_t, refl::reflect<T>().members.size> m{ refl::util::map_to_array<std::pair<std::string_view, int32_t>>(refl::reflect<T>().members, [](auto field, auto index) {
         return std::pair<std::string_view, int32_t>(field.name.c_str(), index);
     }) };
     return m.at(fieldName, -1);
@@ -301,7 +301,7 @@ constexpr void deserialise(IoBuffer &buffer, ReflectableClass auto &value, Deser
         if (field.intDataType == IoSerialiser<protocol, START_MARKER>::getDataTypeId()) {
             buffer.set_position(field.headerStart); // reset buffer position for the nested deserialiser to read again
             // reached start of sub-structure -> dive in
-            for_each(refl::reflect<ValueType>().members, [&fieldIndex, &buffer, &value, &info, &parent, &field](auto member, int32_t index) {
+            for_each(refl::reflect<ValueType>().members, [&](auto member, int32_t index) {
                 if (index != fieldIndex) {
                     return; // fieldName does not match -- skip to next field
                 }
@@ -318,7 +318,7 @@ constexpr void deserialise(IoBuffer &buffer, ReflectableClass auto &value, Deser
             });
         }
 
-        for_each(refl::reflect<ValueType>().members, [&fieldIndex, &buffer, &value, &parent, &field, &info](auto member, int32_t memberIndex) {
+        for_each(refl::reflect<ValueType>().members, [&](auto member, int32_t memberIndex) {
             if constexpr (!is_field(member) || is_static(member)) return;
             if (memberIndex != fieldIndex) return; // fieldName does not match -- skip to next field
 
