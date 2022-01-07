@@ -1,6 +1,6 @@
 #include <IoSerialiserYaS.hpp>
-#include <Utils.hpp>
 #include <iostream>
+#include <Utils.hpp>
 
 // SI units -- include what you need
 #include <units/isq/si/electric_current.h>
@@ -21,6 +21,8 @@ ENABLE_REFLECTION_FOR(className, field1, field2, field3)
 struct classNameMissing {
     int   field1;
     float field2;
+    classNameMissing(const int &a, const float &b)
+        : field1(a), field2(b) {}
 
     // just good common practise to define some operators
     bool operator==(const classNameMissing &) const = default;

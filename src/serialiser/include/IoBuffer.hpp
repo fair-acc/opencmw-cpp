@@ -187,7 +187,6 @@ public:
 
     template<MetaInfo meta = WITH, Number I>
     forceinline constexpr void put(const I &value) noexcept {
-        static_assert(!is_stringlike<I>);
         constexpr std::size_t byteToCopy = sizeof(I);
         reserve_spare(byteToCopy);
         *(reinterpret_cast<I *>(_buffer + _size)) = value;
