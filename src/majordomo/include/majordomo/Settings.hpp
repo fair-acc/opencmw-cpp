@@ -2,6 +2,8 @@
 #define OPENCMW_MAJORDOMO_SETTINGS_H
 
 #include <chrono>
+
+#include <Rbac.hpp>
 #include <URI.hpp>
 
 namespace opencmw::majordomo {

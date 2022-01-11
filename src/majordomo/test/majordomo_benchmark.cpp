@@ -10,6 +10,7 @@
 
 using URI = opencmw::URI<>;
 using opencmw::majordomo::BasicMdpWorker;
+using opencmw::majordomo::BindOption;
 using opencmw::majordomo::Broker;
 using opencmw::majordomo::Client;
 using opencmw::majordomo::Command;
@@ -87,8 +88,8 @@ struct Result {
 };
 
 Result simpleOneWorkerBenchmark(const URI &routerAddress, Get mode, int iterations, std::size_t payloadSize) {
-    Broker broker("benchmarkbroker", benchmarkSettings());
-    REQUIRE(broker.bind(routerAddress, Broker::BindOption::Router));
+    auto broker = Broker("benchmarkbroker", benchmarkSettings());
+    REQUIRE(broker.bind(routerAddress, BindOption::Router));
 
     BasicMdpWorker worker("blob", broker, PayloadHandler(std::string(payloadSize, '\xab')));
 
@@ -133,7 +134,7 @@ Result simpleOneWorkerBenchmark(const URI &routerAddress, Get mode, int iteratio
 
 void simpleTwoWorkerBenchmark(const URI &routerAddress, Get mode, int iterations, std::size_t payload1_size, std::size_t payload2_size) {
     Broker broker("benchmarkbroker", benchmarkSettings());
-    REQUIRE(broker.bind(routerAddress, Broker::BindOption::Router));
+    REQUIRE(broker.bind(routerAddress, BindOption::Router));
     RunInThread    brokerRun(broker);
 
     BasicMdpWorker worker1("blob", broker, PayloadHandler(std::string(payload1_size, '\xab')));

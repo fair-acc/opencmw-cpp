@@ -327,7 +327,7 @@ TEST_CASE("Request answered with unknown service", "[broker][unknown_service]") 
 
     Broker     broker("testbroker", testSettings());
 
-    REQUIRE(broker.bind(address, Broker::BindOption::Router));
+    REQUIRE(broker.bind(address, BindOption::Router));
 
     TestNode<MdpMessage> client(broker.context);
     REQUIRE(client.connect(address));
@@ -352,7 +352,7 @@ TEST_CASE("Request answered with unknown service", "[broker][unknown_service]") 
     REQUIRE(reply->topic() == "mmi.service");
     REQUIRE(reply->body().empty());
     REQUIRE(reply->error() == "unknown service (error 501): 'no.service'");
-    REQUIRE(reply->rbacToken() == "TODO (RBAC)");
+    REQUIRE(reply->rbacToken() == "RBAC=ADMIN,abcdef12345");
 }
 
 TEST_CASE("Test toZeroMQEndpoint conversion", "[utils][toZeroMQEndpoint]") {
@@ -364,15 +364,15 @@ TEST_CASE("Test toZeroMQEndpoint conversion", "[utils][toZeroMQEndpoint]") {
 TEST_CASE("Bind broker to endpoints", "[broker][bind]") {
     // the tcp/mdp/mds test cases rely on the ports being free, use wildcards/search for free ports if this turns out to be a problem
     static const std::array testcases = {
-        std::tuple{ URI("tcp://127.0.0.1:22345"), Broker::BindOption::Router, std::make_optional<URI>("mdp://127.0.0.1:22345") },
-        std::tuple{ URI("mdp://127.0.0.1:22346"), Broker::BindOption::Router, std::make_optional<URI>("mdp://127.0.0.1:22346") },
-        std::tuple{ URI("mdp://127.0.0.1:22347"), Broker::BindOption::DetectFromURI, std::make_optional<URI>("mdp://127.0.0.1:22347") },
-        std::tuple{ URI("mdp://127.0.0.1:22348"), Broker::BindOption::Router, std::make_optional<URI>("mdp://127.0.0.1:22348") },
-        std::tuple{ URI("mdp://127.0.0.1:22348"), Broker::BindOption::Router, std::optional<URI>{} }, // error, already bound
-        std::tuple{ URI("mds://127.0.0.1:22349"), Broker::BindOption::DetectFromURI, std::make_optional<URI>("mds://127.0.0.1:22349") },
-        std::tuple{ URI("tcp://127.0.0.1:22350"), Broker::BindOption::Pub, std::make_optional<URI>("mds://127.0.0.1:22350") },
-        std::tuple{ URI("inproc://bindtest"), Broker::BindOption::Router, std::make_optional<URI>("inproc://bindtest") },
-        std::tuple{ URI("inproc://bindtest_pub"), Broker::BindOption::Pub, std::make_optional<URI>("inproc://bindtest_pub") },
+        std::tuple{ URI("tcp://127.0.0.1:22345"), BindOption::Router, std::make_optional<URI>("mdp://127.0.0.1:22345") },
+        std::tuple{ URI("mdp://127.0.0.1:22346"), BindOption::Router, std::make_optional<URI>("mdp://127.0.0.1:22346") },
+        std::tuple{ URI("mdp://127.0.0.1:22347"), BindOption::DetectFromURI, std::make_optional<URI>("mdp://127.0.0.1:22347") },
+        std::tuple{ URI("mdp://127.0.0.1:22348"), BindOption::Router, std::make_optional<URI>("mdp://127.0.0.1:22348") },
+        std::tuple{ URI("mdp://127.0.0.1:22348"), BindOption::Router, std::optional<URI>{} }, // error, already bound
+        std::tuple{ URI("mds://127.0.0.1:22349"), BindOption::DetectFromURI, std::make_optional<URI>("mds://127.0.0.1:22349") },
+        std::tuple{ URI("tcp://127.0.0.1:22350"), BindOption::Pub, std::make_optional<URI>("mds://127.0.0.1:22350") },
+        std::tuple{ URI("inproc://bindtest"), BindOption::Router, std::make_optional<URI>("inproc://bindtest") },
+        std::tuple{ URI("inproc://bindtest_pub"), BindOption::Pub, std::make_optional<URI>("inproc://bindtest_pub") },
     };
 
     Broker broker("testbroker", testSettings());
@@ -457,7 +457,7 @@ TEST_CASE("One client/one worker roundtrip", "[broker][roundtrip]") {
         REQUIRE(heartbeat->isWorkerMessage());
         REQUIRE(heartbeat->command() == Command::Heartbeat);
         REQUIRE(heartbeat->serviceName() == "a.service");
-        REQUIRE(heartbeat->rbacToken() == "TODO (RBAC)");
+        REQUIRE(heartbeat->rbacToken() == "RBAC=ADMIN,abcdef12345");
     }
 
     const auto disconnect = worker.tryReadOne();
@@ -470,10 +470,11 @@ TEST_CASE("One client/one worker roundtrip", "[broker][roundtrip]") {
     REQUIRE(disconnect->topic() == "a.service");
     REQUIRE(disconnect->body() == "broker shutdown");
     REQUIRE(disconnect->error().empty());
-    REQUIRE(disconnect->rbacToken() == "TODO (RBAC)");
+    REQUIRE(disconnect->rbacToken() == "RBAC=ADMIN,abcdef12345");
 }
 
 TEST_CASE("Pubsub example using SUB client/DEALER worker", "[broker][pubsub_sub_dealer]") {
+    using opencmw::majordomo::BindOption;
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::MdpMessage;
 
@@ -481,7 +482,7 @@ TEST_CASE("Pubsub example using SUB client/DEALER worker", "[broker][pubsub_sub_
 
     Broker     broker("testbroker", testSettings());
 
-    REQUIRE(broker.bind(publisherAddress, Broker::BindOption::Pub));
+    REQUIRE(broker.bind(publisherAddress, BindOption::Pub));
 
     TestNode<BrokerMessage> subscriber(broker.context, ZMQ_SUB);
     REQUIRE(subscriber.connect(publisherAddress, "/a.topic"));
@@ -632,6 +633,14 @@ TEST_CASE("Broker disconnects on unexpected heartbeat", "[broker][unexpected_hea
     RunInThread          brokerRun(broker);
     REQUIRE(worker.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
+    {
+        auto ready = MdpMessage::createWorkerMessage(Command::Ready);
+        ready.setServiceName("heartbeat.service", static_tag);
+        ready.setBody("API description", static_tag);
+        ready.setRbacToken("rbac_worker", static_tag);
+        worker.send(ready);
+    }
+
     // send heartbeat without initial ready - invalid
     auto heartbeat = MdpMessage::createWorkerMessage(Command::Heartbeat);
     heartbeat.setServiceName("heartbeat.service", static_tag);
@@ -641,6 +650,81 @@ TEST_CASE("Broker disconnects on unexpected heartbeat", "[broker][unexpected_hea
     const auto disconnect = worker.tryReadOne();
     REQUIRE(disconnect.has_value());
     REQUIRE(disconnect->command() == Command::Disconnect);
+}
+
+TEST_CASE("Test RBAC role priority handling", "[broker][rbac]") {
+    using opencmw::majordomo::Broker;
+    using opencmw::majordomo::Client;
+    using opencmw::majordomo::MdpMessage;
+    using namespace std::literals;
+
+    // Use higher heartbeat interval so ther broker doesn't bother the worker with heartbeat messages
+    opencmw::majordomo::Settings settings;
+    settings.heartbeatInterval                                       = std::chrono::seconds(1);
+
+    constexpr std::array<opencmw::rbac::RoleAndPriority, 4> roleList = { { { "ADMIN"sv, 0 }, { "USER"sv, 3 }, { "OTHER"sv, 5 }, { "ROOT"sv, 0 } } };
+    Broker                                                  broker("testbroker", settings, opencmw::rbac::RoleSet(roleList));
+    RunInThread                                             brokerRun(broker);
+
+    TestNode<MdpMessage>                                    worker(broker.context);
+    REQUIRE(worker.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
+
+    {
+        auto ready = MdpMessage::createWorkerMessage(Command::Ready);
+        ready.setServiceName("a.service", static_tag);
+        ready.setBody("API description", static_tag);
+        ready.setRbacToken("rbac_worker", static_tag);
+        worker.send(ready);
+    }
+
+    REQUIRE(waitUntilServiceAvailable(broker.context, "a.service"));
+
+    TestNode<MdpMessage> client(broker.context);
+    REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
+
+    constexpr auto roles           = std::array{ "OTHER", "OTHER", "USER", "ROOT", "ADMIN" };
+
+    int            clientRequestId = 0;
+    for (const auto &role : roles) {
+        auto msg = MdpMessage::createClientMessage(Command::Get);
+        msg.setClientRequestId(std::to_string(clientRequestId++), dynamic_tag);
+        msg.setServiceName("a.service", static_tag);
+        msg.setRbacToken(fmt::format("RBAC={},123456abcdef", role), dynamic_tag);
+        client.send(msg);
+    }
+
+    {
+        // read first message but don't reply immediately, this forces the broker to queue the following requests
+        const auto msg = worker.tryReadOne();
+        REQUIRE(msg.has_value());
+        REQUIRE(msg->clientRequestId() == "0");
+
+        // we give the broker time to read and queue the following requests
+        std::this_thread::sleep_for(settings.heartbeatInterval * 0.7);
+
+        auto reply = MdpMessage::createWorkerMessage(Command::Final);
+        reply.setClientSourceId(msg->clientSourceId(), dynamic_tag);
+        reply.setClientRequestId(msg->clientRequestId(), dynamic_tag);
+        reply.setBody("Hello!", static_tag);
+        worker.send(reply);
+    }
+
+    // the remaining messages must have been queued in the broker and thus be reordered:
+    // "ROOT", "ADMIN", "USER", "OTHER"
+    std::vector<std::string> seenMessages;
+    while (seenMessages.size() < roles.size() - 1) {
+        const auto msg = worker.tryReadOne();
+        REQUIRE(msg.has_value());
+        seenMessages.push_back(std::string(msg->clientRequestId()));
+
+        auto reply = MdpMessage::createWorkerMessage(Command::Final);
+        reply.setClientSourceId(msg->clientSourceId(), dynamic_tag);
+        reply.setClientRequestId(msg->clientRequestId(), dynamic_tag);
+        reply.setBody("Hello!", static_tag);
+        worker.send(reply);
+    }
+
+    REQUIRE(seenMessages == std::vector{ "3"s, "4"s, "2"s, "1"s });
 }
 
 TEST_CASE("pubsub example using router socket (DEALER client)", "[broker][pubsub_router]") {

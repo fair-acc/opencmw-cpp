@@ -101,7 +101,7 @@ int main(int argc, char **argv) {
         const auto pubEndpoint    = argc > 3 ? std::optional<URI>(parseUriOrExit(argv[3])) : std::optional<URI>{};
 
         Context    context;
-        Broker     broker("test_broker", testSettings());
+        auto       broker        = Broker("test_broker", testSettings());
         const auto routerAddress = broker.bind(routerEndpoint);
         if (!routerAddress) {
             std::cerr << fmt::format("Could not bind to '{}'\n", routerEndpoint);

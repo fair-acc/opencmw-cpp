@@ -1,6 +1,7 @@
 #ifndef OPENCMW_MAJORDOMO_BROKER_H
 #define OPENCMW_MAJORDOMO_BROKER_H
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <deque>
@@ -8,9 +9,11 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include <fmt/core.h>
 
+#include "Rbac.hpp"
 #include "URI.hpp"
 
 #include <majordomo/Constants.hpp>
@@ -24,8 +27,17 @@ using namespace std::string_literals;
 
 namespace opencmw::majordomo {
 
-using BrokerMessage = BasicMdpMessage<MessageFormat::WithSourceId>;
+using BrokerMessage         = BasicMdpMessage<MessageFormat::WithSourceId>;
 
+constexpr auto DefaultRoles = rbac::RoleSet(std::array<rbac::RoleAndPriority, 3>{ rbac::RoleAndPriority{ "ADMIN", 0 }, rbac::RoleAndPriority{ "USER", 1 }, rbac::RoleAndPriority{ "OTHER", 2 } });
+
+enum class BindOption {
+    DetectFromURI, ///< detect from uri which socket is meant (@see bind)
+    Router,        ///< Always bind ROUTER socket
+    Pub            ///< Always bind PUB socket
+};
+
+template<std::size_t RoleCount>
 class Broker {
 private:
     // Shorten chrono names
@@ -58,30 +70,41 @@ private:
     };
 
     struct Service {
-        std::unique_ptr<InternalService> internalService;
-        std::string                      name;
-        std::string                      description;
-        std::deque<Worker *>             waiting;
-        std::deque<BrokerMessage>        requests;
+        Broker<RoleCount> *const               parent;
+        std::unique_ptr<InternalService>       internalService;
+        std::string                            name;
+        std::string                            description;
+        std::deque<Worker *>                   waiting;
+        std::vector<std::deque<BrokerMessage>> requestsByPriority;
+        std::size_t                            requestCount = 0;
 
-        explicit Service(std::string name_, std::string description_)
-            : name(std::move(name_))
+        explicit Service(std::string name_, std::string description_, Broker *p)
+            : parent(p)
+            , name(std::move(name_))
             , description(std::move(description_)) {
+            requestsByPriority.resize(parent->_rbacRoles.priorityCount());
         }
 
-        explicit Service(std::string name_, std::unique_ptr<InternalService> internalService_)
-            : internalService{ std::move(internalService_) }
+        explicit Service(std::string name_, std::unique_ptr<InternalService> internalService_, Broker *p)
+            : parent(p)
+            , internalService{ std::move(internalService_) }
             , name{ std::move(name_) } {
+            requestsByPriority.resize(parent->_rbacRoles.priorityCount());
         }
 
         void putMessage(BrokerMessage &&message) {
-            // TODO prioritise by RBAC role
-            requests.emplace_back(std::move(message));
+            const auto role     = rbac::role(message.rbacToken());
+            const auto priority = parent->_rbacRoles.priority(role);
+            requestsByPriority[static_cast<std::size_t>(priority)].emplace_back(std::move(message));
+            requestCount++;
         }
 
         BrokerMessage takeNextMessage() {
-            auto msg = std::move(requests.front());
-            requests.pop_front();
+            auto queueIt = std::find_if(requestsByPriority.begin(), requestsByPriority.end(), [](const auto &v) { return !v.empty(); });
+            assert(queueIt != requestsByPriority.end());
+            auto msg = std::move(queueIt->front());
+            queueIt->pop_front();
+            requestCount--;
             return msg;
         }
 
@@ -153,10 +176,11 @@ private:
     std::unordered_map<std::string, Client>                 _clients;
     std::unordered_map<std::string, Worker>                 _workers;
     std::unordered_map<std::string, Service>                _services;
+    rbac::RoleSet<RoleCount>                                _rbacRoles;
 
     const std::string                                       _brokerName;
     const std::optional<URI<STRICT>>                        _dnsAddress;
-    const std::string                                       _rbac              = "TODO (RBAC)";
+    const std::string                                       _rbac              = "RBAC=ADMIN,abcdef12345";
 
     std::atomic<bool>                                       _shutdownRequested = false;
 
@@ -168,8 +192,9 @@ private:
     std::array<zmq_pollitem_t, 4> pollerItems;
 
 public:
-    Broker(std::string brokerName, Settings settings_ = {})
+    Broker(std::string brokerName, Settings settings_ = {}, rbac::RoleSet<RoleCount> rbacRoles = DefaultRoles)
         : settings{ std::move(settings_) }
+        , _rbacRoles{ std::move(rbacRoles) }
         , _brokerName{ std::move(brokerName) }
         , _routerSocket(context, ZMQ_ROUTER)
         , _pubSocket(context, ZMQ_XPUB)
@@ -230,12 +255,6 @@ public:
     void addFilter(const std::string &key) {
         _subscriptionMatcher.addFilter<Filter>(key);
     }
-
-    enum class BindOption {
-        DetectFromURI, ///< detect from uri which socket is meant (@see bind)
-        Router,        ///< Always bind ROUTER socket
-        Pub            ///< Always bind PUB socket
-    };
 
     /**
      * Bind broker to endpoint, can call this multiple times. We use a single
@@ -434,13 +453,13 @@ private:
 
     Service &requireService(std::string serviceName, std::string serviceDescription) {
         // TODO handle serviceDescription differing between workers? or is "first one wins" ok?
-        auto it = _services.try_emplace(serviceName, std::move(serviceName), std::move(serviceDescription));
+        auto it = _services.try_emplace(serviceName, std::move(serviceName), std::move(serviceDescription), this);
         return it.first->second;
     }
 
     template<typename T>
     void addInternalService(std::string serviceName) {
-        _services.try_emplace(serviceName, std::move(serviceName), std::make_unique<T>(this));
+        _services.try_emplace(serviceName, std::move(serviceName), std::make_unique<T>(this), this);
     }
 
     Service *bestMatchingService(std::string_view serviceName) {
@@ -472,7 +491,7 @@ private:
     void dispatch(Service &service) {
         purgeWorkers();
 
-        while (!service.waiting.empty() && !service.requests.empty()) {
+        while (!service.waiting.empty() && service.requestCount > 0) {
             auto message = service.takeNextMessage();
             auto worker  = service.takeNextWorker();
             message.setClientSourceId(message.sourceId(), MessageFrame::dynamic_bytes_tag{});
@@ -690,6 +709,11 @@ private:
     [[nodiscard]] Timestamp updatedClientExpiry() const { return Clock::now() + settings.clientTimeout; }
     [[nodiscard]] Timestamp updatedWorkerExpiry() const { return Clock::now() + settings.heartbeatInterval * settings.heartbeatLiveness; }
 };
+
+Broker(std::string, Settings)->Broker<DefaultRoles.size()>;
+
+template<std::size_t RoleCount>
+Broker(std::string, Settings, rbac::RoleSet<RoleCount>) -> Broker<RoleCount>;
 
 } // namespace opencmw::majordomo
 
