@@ -118,7 +118,8 @@ public:
         query::registerTypes(ContextType(), *this);
     }
 
-    explicit MajordomoWorker(std::string_view serviceName, const Broker &broker, UserHandler userHandler)
+    template<typename BrokerType>
+    explicit MajordomoWorker(std::string_view serviceName, const BrokerType &broker, UserHandler userHandler)
         : BasicMdpWorker<detail::HandlerImpl<ContextType, InputType, OutputType, UserHandler>>(serviceName, broker, detail::HandlerImpl<ContextType, InputType, OutputType, UserHandler>(std::forward<UserHandler>(userHandler))) {
         query::registerTypes(ContextType(), *this);
     }

@@ -91,7 +91,8 @@ public:
         zmq_invoke(zmq_bind, _notifyListenerSocket, _notifyAddress.data()).assertSuccess();
     }
 
-    explicit BasicMdpWorker(std::string_view serviceName, const Broker &broker, RequestHandler &&handler)
+    template<typename BrokerType>
+    explicit BasicMdpWorker(std::string_view serviceName, const BrokerType &broker, RequestHandler &&handler)
         : BasicMdpWorker(serviceName, INPROC_BROKER, std::forward<RequestHandler>(handler), broker.context, broker.settings) {
     }
 
@@ -358,8 +359,8 @@ private:
 template<HandlesRequest RequestHandler>
 BasicMdpWorker(std::string_view, const opencmw::URI<> &, RequestHandler &&, const Context &, Settings) -> BasicMdpWorker<RequestHandler>;
 
-template<HandlesRequest RequestHandler>
-BasicMdpWorker(std::string_view, const Broker &, RequestHandler &&) -> BasicMdpWorker<RequestHandler>;
+template<typename BrokerType, HandlesRequest RequestHandler>
+BasicMdpWorker(std::string_view, const BrokerType &, RequestHandler &&) -> BasicMdpWorker<RequestHandler>;
 
 } // namespace opencmw::majordomo
 
