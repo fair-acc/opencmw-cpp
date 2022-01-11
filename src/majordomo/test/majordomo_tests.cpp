@@ -633,14 +633,6 @@ TEST_CASE("Broker disconnects on unexpected heartbeat", "[broker][unexpected_hea
     RunInThread          brokerRun(broker);
     REQUIRE(worker.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
-    {
-        auto ready = MdpMessage::createWorkerMessage(Command::Ready);
-        ready.setServiceName("heartbeat.service", static_tag);
-        ready.setBody("API description", static_tag);
-        ready.setRbacToken("rbac_worker", static_tag);
-        worker.send(ready);
-    }
-
     // send heartbeat without initial ready - invalid
     auto heartbeat = MdpMessage::createWorkerMessage(Command::Heartbeat);
     heartbeat.setServiceName("heartbeat.service", static_tag);
