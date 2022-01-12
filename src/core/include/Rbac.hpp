@@ -21,10 +21,7 @@ constexpr int lowestPriority(const std::span<RoleAndPriority> &roles) {
 
 template<std::size_t N>
 constexpr std::array<RoleAndPriority, N> normalizedPriorities(std::array<RoleAndPriority, N> roles) {
-    if (roles.empty()) {
-        return roles;
-    }
-
+    static_assert(N > 0);
     std::sort(roles.begin(), roles.end(), [](const auto &lhs, const auto &rhs) { return lhs.priority < rhs.priority; });
     int nextPrio      = 0;
     int originalPrio  = roles[0].priority;
