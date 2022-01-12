@@ -122,6 +122,10 @@ TEST_CASE("ProcessSchedulingParameter", "[ThreadAffinity]") {
 
     REQUIRE_THROWS_AS(getProcessSchedulingParameter(-1), std::system_error);
     REQUIRE_THROWS_AS(setProcessSchedulingParameter(ROUND_ROBIN, 5, -1), std::system_error);
+
+    REQUIRE(opencmw::thread::detail::getEnumPolicy(SCHED_FIFO) == opencmw::thread::FIFO);
+    REQUIRE(opencmw::thread::detail::getEnumPolicy(SCHED_RR) == opencmw::thread::ROUND_ROBIN);
+    REQUIRE(opencmw::thread::detail::getEnumPolicy(SCHED_OTHER) == opencmw::thread::OTHER);
 }
 
 TEST_CASE("ThreadSchedulingParameter", "[ThreadAffinity]") {
