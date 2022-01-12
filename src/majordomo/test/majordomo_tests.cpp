@@ -165,7 +165,7 @@ TEST_CASE("Test mmi.dns", "[broker][mmi][mmi_dns]") {
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::MdpMessage;
 
-    Broker               broker("testbroker", testSettings());
+    Broker broker("testbroker", testSettings());
     REQUIRE(broker.bind(opencmw::URI<opencmw::STRICT>("mds://127.0.0.1:22345")));
 
     RunInThread          brokerRun(broker);
