@@ -26,7 +26,7 @@
 
 namespace opencmw::majordomo {
 
-using BrokerMessage = detail::BrokerMessage;
+using BrokerMessage         = detail::BrokerMessage;
 
 constexpr auto DefaultRoles = rbac::RoleSet(std::array<rbac::RoleAndPriority, 3>{ rbac::RoleAndPriority{ "ADMIN", 0 }, rbac::RoleAndPriority{ "USER", 1 }, rbac::RoleAndPriority{ "OTHER", 2 } });
 
@@ -627,7 +627,7 @@ private:
             workerWaiting(worker);
 
             const auto topicString = std::string(message.topic());
-            const auto topicURI = URI<RELAXED>(topicString);
+            const auto topicURI    = URI<RELAXED>(topicString);
             if (topicURI.scheme()) {
                 registerNewService(message.serviceName());
                 _routerSockets.insert(topicString);
