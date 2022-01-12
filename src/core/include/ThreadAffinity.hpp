@@ -74,7 +74,7 @@ std::string getThreadName(const pthread_t &handle) {
         return "uninitialised thread";
     }
     char threadName[THREAD_MAX_NAME_LENGTH];
-    if (int rc = pthread_getname_np(handle, threadName, THREAD_MAX_NAME_LENGTH) != 0) {
+    if (int rc = pthread_getname_np(handle, threadName, THREAD_MAX_NAME_LENGTH); rc != 0) {
         throw std::system_error(rc, thread_exception(), fmt::format("getThreadName(thread_type)"));
     }
     return std::string{ threadName, std::min(strlen(threadName), THREAD_MAX_NAME_LENGTH) };
@@ -128,7 +128,7 @@ void setThreadName(const std::string_view &threadName, thread_type auto &...thre
     if (handle == 0U) {
         throw std::system_error(THREAD_UNINITIALISED, thread_exception(), fmt::format("setThreadName({}, thread_type)", threadName, detail::getThreadName(handle)));
     }
-    if (int rc = pthread_setname_np(handle, threadName.data()) < 0) {
+    if (int rc = pthread_setname_np(handle, threadName.data()); rc < 0) {
         throw std::system_error(rc, thread_exception(), fmt::format("setThreadName({},{}) - error code '{}'", threadName, detail::getThreadName(handle), rc));
     }
 #endif
@@ -169,7 +169,7 @@ std::vector<bool> getThreadAffinity(thread_type auto &...thread) {
         throw std::system_error(THREAD_UNINITIALISED, thread_exception(), fmt::format("getThreadAffinity(thread_type)"));
     }
     cpu_set_t cpuSet;
-    if (int rc = pthread_getaffinity_np(handle, sizeof(cpu_set_t), &cpuSet) != 0) {
+    if (int rc = pthread_getaffinity_np(handle, sizeof(cpu_set_t), &cpuSet); rc != 0) {
         throw std::system_error(rc, thread_exception(), fmt::format("getThreadAffinity({})", detail::getThreadName(handle)));
     }
     return detail::getAffinityMask(cpuSet);
@@ -187,7 +187,7 @@ constexpr bool setThreadAffinity(const T &threadMap, thread_type auto &...thread
         throw std::system_error(THREAD_UNINITIALISED, thread_exception(), fmt::format("setThreadAffinity(std::vector<bool, {}> = {{{}}}, thread_type)", threadMap.size(), fmt::join(threadMap, ", ")));
     }
     cpu_set_t cpuSet = detail::getAffinityMask(threadMap);
-    if (int rc = pthread_setaffinity_np(handle, sizeof(cpu_set_t), &cpuSet) != 0) {
+    if (int rc = pthread_setaffinity_np(handle, sizeof(cpu_set_t), &cpuSet); rc != 0) {
         throw std::system_error(rc, thread_exception(), fmt::format("setThreadAffinity(std::vector<bool, {}> = {{{}}}, {})", threadMap.size(), fmt::join(threadMap, ", "), detail::getThreadName(handle)));
     }
     return true;
@@ -202,7 +202,7 @@ std::vector<bool> getProcessAffinity(const int pid = detail::getPid()) {
         throw std::system_error(THREAD_UNINITIALISED, thread_exception(), fmt::format("getProcessAffinity({}) -- invalid pid", pid));
     }
     cpu_set_t cpuSet;
-    if (int rc = sched_getaffinity(pid, sizeof(cpu_set_t), &cpuSet) != 0) {
+    if (int rc = sched_getaffinity(pid, sizeof(cpu_set_t), &cpuSet); rc != 0) {
         throw std::system_error(rc, thread_exception(), fmt::format("getProcessAffinity(std::bitset<{}> = {}, thread_type)"));
     }
     return detail::getAffinityMask(cpuSet);
@@ -219,7 +219,7 @@ constexpr bool setProcessAffinity(const T &threadMap, const int pid = detail::ge
         throw std::system_error(THREAD_UNINITIALISED, thread_exception(), fmt::format("setProcessAffinity(std::vector<bool, {}> = {{{}}}, {})", threadMap.size(), fmt::join(threadMap, ", "), pid));
     }
     cpu_set_t cpuSet = detail::getAffinityMask(threadMap);
-    if (int rc = sched_setaffinity(pid, sizeof(cpu_set_t), &cpuSet) != 0) {
+    if (int rc = sched_setaffinity(pid, sizeof(cpu_set_t), &cpuSet); rc != 0) {
         throw std::system_error(rc, thread_exception(), fmt::format("setProcessAffinity(std::vector<bool, {}> = {{{}}}, {})", threadMap.size(), fmt::join(threadMap, ", "), pid));
     }
 
@@ -260,7 +260,7 @@ struct SchedulingParameter getProcessSchedulingParameter(const int pid = detail:
     }
     struct sched_param param;
     const int          policy = sched_getscheduler(pid);
-    if (int rc = sched_getparam(pid, &param) != 0) {
+    if (int rc = sched_getparam(pid, &param); rc != 0) {
         throw std::system_error(rc, thread_exception(), fmt::format("getProcessSchedulingParameter({}) - sched_getparam error", pid));
     }
     return SchedulingParameter{ .policy = detail::getEnumPolicy(policy), .priority = param.sched_priority };
@@ -282,7 +282,7 @@ void setProcessSchedulingParameter(Policy scheduler, int priority, const int pid
     struct sched_param param {
         .sched_priority = priority
     };
-    if (int rc = sched_setscheduler(pid, scheduler, &param) != 0) {
+    if (int rc = sched_setscheduler(pid, scheduler, &param); rc != 0) {
         throw std::system_error(rc, thread_exception(), fmt::format("setProcessSchedulingParameter({}, {}, {}) - sched_setscheduler return code: {}", scheduler, priority, pid, rc));
     }
 #endif
@@ -296,7 +296,7 @@ struct SchedulingParameter getThreadSchedulingParameter(thread_type auto &...thr
     }
     struct sched_param param;
     int                policy;
-    if (int rc = pthread_getschedparam(handle, &policy, &param) != 0) {
+    if (int rc = pthread_getschedparam(handle, &policy, &param); rc != 0) {
         throw std::system_error(rc, thread_exception(), fmt::format("getThreadSchedulingParameter({}) - sched_getparam error", detail::getThreadName(handle)));
     }
     return SchedulingParameter{ .policy = detail::getEnumPolicy(policy), .priority = param.sched_priority };
@@ -319,7 +319,7 @@ void setThreadSchedulingParameter(Policy scheduler, int priority, thread_type au
     struct sched_param param {
         .sched_priority = priority
     };
-    if (int rc = pthread_setschedparam(handle, scheduler, &param) != 0) {
+    if (int rc = pthread_setschedparam(handle, scheduler, &param); rc != 0) {
         throw std::system_error(rc, thread_exception(), fmt::format("setThreadSchedulingParameter({}, {}, {}) - pthread_setschedparam return code: {}", scheduler, priority, detail::getThreadName(handle), rc));
     }
 #endif
