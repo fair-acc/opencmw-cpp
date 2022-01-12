@@ -96,7 +96,7 @@ std::string getProcessName(const int pid = detail::getPid()) {
         return fileContent;
     }
 #endif
-    return "unknown process name";
+    return "unknown_process";
 } // namespace detail
 
 std::string getThreadName(thread_type auto &...thread) {
