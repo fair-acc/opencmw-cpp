@@ -1288,6 +1288,7 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[worker][getset_bas
 TEST_CASE("NOTIFY example using the BasicMdpWorker class", "[worker][notify_basic_worker]") {
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::MdpMessage;
+    using namespace std::literals;
 
     Broker         broker("testbroker", testSettings());
 

@@ -24,9 +24,6 @@
 #include <majordomo/Utils.hpp>
 #include <majordomo/ZmqPtr.hpp>
 
-
-using namespace std::string_literals;
-
 namespace opencmw::majordomo {
 
 using BrokerMessage = detail::BrokerMessage;
