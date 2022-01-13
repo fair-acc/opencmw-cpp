@@ -13,15 +13,10 @@
 
 #include <charconv>
 #include <exception>
+#include <opencmw.hpp>
 #include <optional>
 #include <string_view>
 #include <unordered_map>
-
-// TODO move to opencmw.hpp?
-namespace opencmw {
-template<typename>
-constexpr bool always_false = false;
-}
 
 namespace opencmw::query {
 
