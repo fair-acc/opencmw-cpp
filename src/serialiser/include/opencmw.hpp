@@ -30,6 +30,9 @@ inline constexpr const bool is_quantity<T> = true;
 } // namespace units::detail
 
 namespace opencmw {
+template<typename>
+constexpr bool always_false = false;
+
 using units::basic_fixed_string;
 using units::is_same_v;
 
