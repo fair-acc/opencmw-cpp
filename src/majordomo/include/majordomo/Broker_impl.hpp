@@ -35,21 +35,21 @@ struct InternalService {
 
 template<typename BrokerType>
 struct MmiEcho : public InternalService {
-    explicit MmiEcho(BrokerType *) {}
+    explicit MmiEcho(const BrokerType &) {}
     BrokerMessage processRequest(BrokerMessage &&message) override { return message; }
 };
 
 template<typename BrokerType>
 struct MmiService : public InternalService {
-    BrokerType *const parent;
+    const BrokerType & parent;
 
-    explicit MmiService(BrokerType *parent_)
+    explicit MmiService(const BrokerType &parent_)
         : parent(parent_) {}
 
     BrokerMessage processRequest(BrokerMessage &&message) override {
         message.setCommand(Command::Final);
         if (message.body().empty()) {
-            const auto keyView = std::views::keys(parent->_services);
+            const auto keyView = std::views::keys(parent._services);
             auto       keys    = std::vector<std::string>(keyView.begin(), keyView.end());
             std::ranges::sort(keys);
 
@@ -57,7 +57,7 @@ struct MmiService : public InternalService {
             return message;
         }
 
-        const auto exists = parent->_services.contains(std::string(message.body()));
+        const auto exists = parent._services.contains(std::string(message.body()));
         message.setBody(exists ? "200" : "404", MessageFrame::static_bytes_tag{});
         return message;
     }
@@ -65,16 +65,16 @@ struct MmiService : public InternalService {
 
 template<typename BrokerType>
 struct MmiOpenApi : public InternalService {
-    BrokerType *const parent;
+    const BrokerType & parent;
 
-    explicit MmiOpenApi(BrokerType *parent_)
+    explicit MmiOpenApi(const BrokerType &parent_)
         : parent(parent_) {}
 
     BrokerMessage processRequest(BrokerMessage &&message) override {
         message.setCommand(Command::Final);
         const auto serviceName = std::string(message.body());
-        const auto serviceIt   = parent->_services.find(serviceName);
-        if (serviceIt != parent->_services.end()) {
+        const auto serviceIt   = parent._services.find(serviceName);
+        if (serviceIt != parent._services.end()) {
             message.setBody(serviceIt->second.description, MessageFrame::dynamic_bytes_tag{});
             message.setError("", MessageFrame::static_bytes_tag{});
         } else {
@@ -135,9 +135,9 @@ inline std::string uriAsString(const URI<RELAXED> &uri) {
 
 template<typename BrokerType>
 struct MmiDns : public InternalService {
-    BrokerType *const parent;
+    const BrokerType & parent;
 
-    explicit MmiDns(BrokerType *parent_)
+    explicit MmiDns(const BrokerType &parent_)
         : parent(parent_) {}
 
     BrokerMessage processRequest(BrokerMessage &&message) override {
@@ -146,7 +146,7 @@ struct MmiDns : public InternalService {
 
         std::string reply;
         if (message.body().empty() || message.body().find_first_of(",:/") == std::string_view::npos) {
-            const auto uris = std::views::values(parent->_dnsCache);
+            const auto uris = std::views::values(parent._dnsCache);
             reply           = fmt::format("{}", fmt::join(uris, ","));
         } else {
             // TODO std::views::split seems to have issues in GCC 11, maybe switch to views::split/transform
@@ -171,7 +171,7 @@ struct MmiDns : public InternalService {
         const auto queryScheme              = query.scheme();
         const auto queryPath                = query.path().value_or("");
         const auto strippedQueryPath        = stripStart(queryPath, "/");
-        const auto stripStartFromSearchPath = strippedQueryPath.starts_with("mmi.") ? fmt::format("/{}", parent->brokerName) : "/"; // crop initial broker name for broker-specific MMI services
+        const auto stripStartFromSearchPath = strippedQueryPath.starts_with("mmi.") ? fmt::format("/{}", parent.brokerName) : "/"; // crop initial broker name for broker-specific MMI services
 
         const auto entryMatches             = [&queryScheme, &strippedQueryPath, &stripStartFromSearchPath](const auto &dnsEntry) {
             if (queryScheme && !iequal(dnsEntry.scheme().value_or(""), *queryScheme)) {
@@ -184,7 +184,7 @@ struct MmiDns : public InternalService {
 
         std::string result;
 
-        for (const auto &cacheEntry : parent->_dnsCache) {
+        for (const auto &cacheEntry : parent._dnsCache) {
             using namespace std::views;
             auto matching = cacheEntry.second.uris | filter(entryMatches) | transform(uriAsString);
             if (!matching.empty()) {

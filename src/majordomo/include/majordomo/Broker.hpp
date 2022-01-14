@@ -418,7 +418,7 @@ private:
 
     template<typename T>
     void addInternalService(std::string serviceName) {
-        _services.try_emplace(serviceName, std::move(serviceName), std::make_unique<T>(this), this);
+        _services.try_emplace(serviceName, std::move(serviceName), std::make_unique<T>(*this), this);
     }
 
     Service *bestMatchingService(std::string_view serviceName) {
