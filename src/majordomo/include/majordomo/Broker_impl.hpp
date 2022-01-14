@@ -41,7 +41,7 @@ struct MmiEcho : public InternalService {
 
 template<typename BrokerType>
 struct MmiService : public InternalService {
-    const BrokerType & parent;
+    const BrokerType &parent;
 
     explicit MmiService(const BrokerType &parent_)
         : parent(parent_) {}
@@ -65,7 +65,7 @@ struct MmiService : public InternalService {
 
 template<typename BrokerType>
 struct MmiOpenApi : public InternalService {
-    const BrokerType & parent;
+    const BrokerType &parent;
 
     explicit MmiOpenApi(const BrokerType &parent_)
         : parent(parent_) {}
@@ -135,7 +135,7 @@ inline std::string uriAsString(const URI<RELAXED> &uri) {
 
 template<typename BrokerType>
 struct MmiDns : public InternalService {
-    const BrokerType & parent;
+    const BrokerType &parent;
 
     explicit MmiDns(const BrokerType &parent_)
         : parent(parent_) {}
