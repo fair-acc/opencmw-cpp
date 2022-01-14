@@ -39,10 +39,6 @@ enum class BindOption {
 template<std::size_t RoleCount>
 class Broker {
 private:
-    friend class detail::MmiDns<Broker>;
-    friend class detail::MmiOpenApi<Broker>;
-    friend class detail::MmiService<Broker>;
-
     // Shorten chrono names
     using Clock     = std::chrono::steady_clock;
     using Timestamp = std::chrono::time_point<Clock>;
@@ -69,31 +65,31 @@ private:
     };
 
     struct Service {
-        Broker<RoleCount> *const                 parent;
-        std::unique_ptr<detail::InternalService> internalService;
-        std::string                              name;
-        std::string                              description;
-        std::deque<Worker *>                     waiting;
-        std::vector<std::deque<BrokerMessage>>   requestsByPriority;
-        std::size_t                              requestCount = 0;
+        const Broker<RoleCount>                       &parent;
+        std::function<BrokerMessage(BrokerMessage &&)> internalHandler;
+        std::string                                    name;
+        std::string                                    description;
+        std::deque<Worker *>                           waiting;
+        std::vector<std::deque<BrokerMessage>>         requestsByPriority;
+        std::size_t                                    requestCount = 0;
 
-        explicit Service(std::string name_, std::string description_, Broker *p)
+        explicit Service(std::string name_, std::string description_, const Broker &p)
             : parent(p)
             , name(std::move(name_))
             , description(std::move(description_)) {
-            requestsByPriority.resize(parent->_rbacRoles.priorityCount());
+            requestsByPriority.resize(parent._rbacRoles.priorityCount());
         }
 
-        explicit Service(std::string name_, std::unique_ptr<detail::InternalService> internalService_, Broker *p)
+        explicit Service(std::string name_, std::function<BrokerMessage(BrokerMessage &&)> internalHandler_, const Broker &p)
             : parent(p)
-            , internalService{ std::move(internalService_) }
+            , internalHandler{ std::move(internalHandler_) }
             , name{ std::move(name_) } {
-            requestsByPriority.resize(parent->_rbacRoles.priorityCount());
+            requestsByPriority.resize(parent._rbacRoles.priorityCount());
         }
 
         void putMessage(BrokerMessage &&message) {
             const auto role     = rbac::role(message.rbacToken());
-            const auto priority = parent->_rbacRoles.priority(role);
+            const auto priority = parent._rbacRoles.priority(role);
             requestsByPriority[static_cast<std::size_t>(priority)].emplace_back(std::move(message));
             requestCount++;
         }
@@ -153,10 +149,62 @@ public:
         , _pubSocket(context, ZMQ_XPUB)
         , _subSocket(context, ZMQ_SUB)
         , _dnsSocket(context, ZMQ_DEALER) {
-        addInternalService<detail::MmiDns<Broker>>("mmi.dns");
-        addInternalService<detail::MmiEcho<Broker>>("mmi.echo");
-        addInternalService<detail::MmiService<Broker>>("mmi.service");
-        addInternalService<detail::MmiOpenApi<Broker>>("mmi.openapi");
+        addInternalService("mmi.dns", [this](BrokerMessage &&message) {
+            using namespace std::literals;
+            message.setCommand(Command::Final);
+
+            std::string reply;
+            if (message.body().empty() || message.body().find_first_of(",:/") == std::string_view::npos) {
+                const auto uris = std::views::values(_dnsCache);
+                reply           = fmt::format("{}", fmt::join(uris, ","));
+            } else {
+                // TODO std::views::split seems to have issues in GCC 11, maybe switch to views::split/transform
+                // once it works with our then supported compilers
+                const auto               body     = message.body();
+                auto                     segments = detail::split(body, ","sv);
+                std::vector<std::string> results(segments.size());
+                std::transform(segments.begin(), segments.end(), results.begin(), [this](const auto &v) {
+                    return detail::findDnsEntry(brokerName, _dnsCache, detail::trimmed(v));
+                });
+
+                reply = fmt::format("{}", fmt::join(results, ","));
+            }
+
+            message.setBody(reply, MessageFrame::dynamic_bytes_tag{});
+            return message;
+        });
+
+        addInternalService("mmi.echo", [](BrokerMessage &&message) { return message; });
+
+        addInternalService("mmi.service", [this](BrokerMessage &&message) {
+            message.setCommand(Command::Final);
+            if (message.body().empty()) {
+                const auto keyView = std::views::keys(_services);
+                auto       keys    = std::vector<std::string>(keyView.begin(), keyView.end());
+                std::ranges::sort(keys);
+
+                message.setBody(fmt::format("{}", fmt::join(keys, ",")), MessageFrame::dynamic_bytes_tag{});
+                return message;
+            }
+
+            const auto exists = _services.contains(std::string(message.body()));
+            message.setBody(exists ? "200" : "404", MessageFrame::static_bytes_tag{});
+            return message;
+        });
+
+        addInternalService("mmi.openapi", [this](BrokerMessage &&message) {
+            message.setCommand(Command::Final);
+            const auto serviceName = std::string(message.body());
+            const auto serviceIt   = _services.find(serviceName);
+            if (serviceIt != _services.end()) {
+                message.setBody(serviceIt->second.description, MessageFrame::dynamic_bytes_tag{});
+                message.setError("", MessageFrame::static_bytes_tag{});
+            } else {
+                message.setBody("", MessageFrame::static_bytes_tag{});
+                message.setError(fmt::format("Requested invalid service '{}'", serviceName), MessageFrame::dynamic_bytes_tag{});
+            }
+            return message;
+        });
 
         auto commonSocketInit = [settings_](const Socket &socket) {
             const int heartbeatInterval = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(settings_.heartbeatInterval).count());
@@ -412,13 +460,12 @@ private:
 
     Service &requireService(std::string serviceName, std::string serviceDescription) {
         // TODO handle serviceDescription differing between workers? or is "first one wins" ok?
-        auto it = _services.try_emplace(serviceName, std::move(serviceName), std::move(serviceDescription), this);
+        auto it = _services.try_emplace(serviceName, std::move(serviceName), std::move(serviceDescription), *this);
         return it.first->second;
     }
 
-    template<typename T>
-    void addInternalService(std::string serviceName) {
-        _services.try_emplace(serviceName, std::move(serviceName), std::make_unique<T>(*this), this);
+    void addInternalService(std::string serviceName, std::function<BrokerMessage(BrokerMessage &&)> handler) {
+        _services.try_emplace(serviceName, std::move(serviceName), std::move(handler), *this);
     }
 
     Service *bestMatchingService(std::string_view serviceName) {
@@ -522,8 +569,8 @@ private:
             client.requests.pop_back();
 
             if (auto service = bestMatchingService(clientMessage.serviceName())) {
-                if (service->internalService) {
-                    auto reply = service->internalService->processRequest(std::move(clientMessage));
+                if (service->internalHandler) {
+                    auto reply = service->internalHandler(std::move(clientMessage));
                     reply.send(client.socket).assertSuccess();
                 } else {
                     service->putMessage(std::move(clientMessage));
