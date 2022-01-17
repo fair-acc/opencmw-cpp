@@ -162,8 +162,8 @@ constexpr cpu_set_t getAffinityMask(const T &threadMap) {
 #endif
 } // namespace detail
 
-std::vector<bool> getThreadAffinity(thread_type auto &...thread) {
 #ifdef _POSIX_VERSION
+std::vector<bool> getThreadAffinity(thread_type auto &...thread) {
     const pthread_t handle = detail::getPosixHandler(thread...);
     if (handle == 0U) {
         throw std::system_error(THREAD_UNINITIALISED, thread_exception(), fmt::format("getThreadAffinity(thread_type)"));
@@ -173,15 +173,17 @@ std::vector<bool> getThreadAffinity(thread_type auto &...thread) {
         throw std::system_error(rc, thread_exception(), fmt::format("getThreadAffinity({})", detail::getThreadName(handle)));
     }
     return detail::getAffinityMask(cpuSet);
-#else
-    return std::vector<bool>(std::thread::hardware_concurrency()); // cannot set affinity for non-posix threads
-#endif
 }
+#else
+std::vector<bool> getThreadAffinity(thread_type auto &...) {
+    return std::vector<bool>(std::thread::hardware_concurrency()); // cannot set affinity for non-posix threads
+}
+#endif
 
 template<class T>
 requires requires(T value) { std::get<0>(value); }
-constexpr bool setThreadAffinity(const T &threadMap, thread_type auto &...thread) {
 #ifdef _POSIX_VERSION
+constexpr bool setThreadAffinity(const T &threadMap, thread_type auto &...thread) {
     const pthread_t handle = detail::getPosixHandler(thread...);
     if (handle == 0U) {
         throw std::system_error(THREAD_UNINITIALISED, thread_exception(), fmt::format("setThreadAffinity(std::vector<bool, {}> = {{{}}}, thread_type)", threadMap.size(), fmt::join(threadMap, ", ")));
@@ -191,10 +193,12 @@ constexpr bool setThreadAffinity(const T &threadMap, thread_type auto &...thread
         throw std::system_error(rc, thread_exception(), fmt::format("setThreadAffinity(std::vector<bool, {}> = {{{}}}, {})", threadMap.size(), fmt::join(threadMap, ", "), detail::getThreadName(handle)));
     }
     return true;
-#else
-    return false;                                                  // cannot set affinity for non-posix threads
-#endif
 }
+#else
+constexpr bool setThreadAffinity(const T &threadMap, thread_type auto &...) {
+    return false; // cannot set affinity for non-posix threads
+}
+#endif
 
 std::vector<bool> getProcessAffinity(const int pid = detail::getPid()) {
 #ifdef _POSIX_VERSION
@@ -229,6 +233,7 @@ constexpr bool setProcessAffinity(const T &threadMap, const int pid = detail::ge
 #endif
 }
 enum Policy {
+    UNKNOWN     = -1,
     OTHER       = 0,
     FIFO        = 1,
     ROUND_ROBIN = 2
@@ -240,17 +245,17 @@ struct SchedulingParameter {
 };
 
 namespace detail {
-#ifdef _POSIX_VERSION
 Policy getEnumPolicy(const int policy) {
     switch (policy) {
-    case SCHED_FIFO: return FIFO;
-    case SCHED_RR: return ROUND_ROBIN;
-    case SCHED_OTHER:
+#ifdef _POSIX_VERSION
+    case SCHED_FIFO: return Policy::FIFO;
+    case SCHED_RR: return Policy::ROUND_ROBIN;
+    case SCHED_OTHER: return Policy::OTHER;
+#endif
     default:
-        return OTHER;
+        return Policy::UNKNOWN;
     }
 }
-#endif
 } // namespace detail
 
 struct SchedulingParameter getProcessSchedulingParameter(const int pid = detail::getPid()) {

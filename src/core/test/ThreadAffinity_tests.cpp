@@ -9,6 +9,25 @@
         REQUIRE(cond); \
     } while ((void) 0, 0)
 
+TEST_CASE("thread_exception", "[ThreadAffinity]") {
+    REQUIRE_NOTHROW(opencmw::thread::thread_exception());
+    REQUIRE(std::string("thread_exception") == opencmw::thread::thread_exception().name());
+    REQUIRE(opencmw::thread::thread_exception().message(-1) == "unknown threading error code -1");
+    REQUIRE(opencmw::thread::thread_exception().message(-2) == "unknown threading error code -2");
+    REQUIRE(!opencmw::thread::thread_exception().message(opencmw::thread::THREAD_UNINITIALISED).starts_with("unknown threading error code"));
+    REQUIRE(!opencmw::thread::thread_exception().message(opencmw::thread::THREAD_ERROR_UNKNOWN).starts_with("unknown threading error code"));
+    REQUIRE(!opencmw::thread::thread_exception().message(opencmw::thread::THREAD_VALUE_RANGE).starts_with("unknown threading error code"));
+    REQUIRE(!opencmw::thread::thread_exception().message(opencmw::thread::THREAD_ERANGE).starts_with("unknown threading error code"));
+}
+
+TEST_CASE("thread_helper", "[ThreadAffinity]") {
+    REQUIRE(opencmw::thread::detail::getEnumPolicy(SCHED_FIFO) == opencmw::thread::Policy::FIFO);
+    REQUIRE(opencmw::thread::detail::getEnumPolicy(SCHED_RR) == opencmw::thread::Policy::ROUND_ROBIN);
+    REQUIRE(opencmw::thread::detail::getEnumPolicy(SCHED_OTHER) == opencmw::thread::Policy::OTHER);
+    REQUIRE(opencmw::thread::detail::getEnumPolicy(-1) == opencmw::thread::Policy::UNKNOWN);
+    REQUIRE(opencmw::thread::detail::getEnumPolicy(-2) == opencmw::thread::Policy::UNKNOWN);
+}
+
 TEST_CASE("basic thread affinity", "[ThreadAffinity]") {
     opencmw::debug::resetStats();
     opencmw::debug::Timer timer("ThreadAffinity - basic thread affinity", 40);
