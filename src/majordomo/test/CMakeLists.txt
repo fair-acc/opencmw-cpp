@@ -25,6 +25,7 @@ target_link_libraries (
         project_options
         CONAN_PKG::catch2
         CONAN_PKG::fmt
+        CONAN_PKG::mp-units
         CONAN_PKG::zeromq
     )
 
@@ -84,5 +85,6 @@ target_link_libraries (
         project_warnings
         project_options
         CONAN_PKG::fmt
+        CONAN_PKG::mp-units
         CONAN_PKG::zeromq
     )

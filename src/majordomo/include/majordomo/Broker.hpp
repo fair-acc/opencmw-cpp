@@ -26,9 +26,7 @@
 
 namespace opencmw::majordomo {
 
-using BrokerMessage         = BasicMdpMessage<MessageFormat::WithSourceId>;
-
-constexpr auto DefaultRoles = rbac::RoleSet(std::array<rbac::RoleAndPriority, 3>{ rbac::RoleAndPriority{ "ADMIN", 0 }, rbac::RoleAndPriority{ "USER", 1 }, rbac::RoleAndPriority{ "OTHER", 2 } });
+using BrokerMessage = BasicMdpMessage<MessageFormat::WithSourceId>;
 
 enum class BindOption {
     DetectFromURI, ///< detect from uri which socket is meant (@see bind)
@@ -129,7 +127,7 @@ inline std::string findDnsEntry(std::string_view brokerName, std::unordered_map<
 
 } // namespace detail
 
-template<std::size_t RoleCount>
+template<rbac::role... Roles>
 class Broker {
 private:
     // Shorten chrono names
@@ -158,31 +156,26 @@ private:
     };
 
     struct Service {
-        const Broker<RoleCount>                       &parent;
-        std::function<BrokerMessage(BrokerMessage &&)> internalHandler;
-        std::string                                    name;
-        std::string                                    description;
-        std::deque<Worker *>                           waiting;
-        std::vector<std::deque<BrokerMessage>>         requestsByPriority;
-        std::size_t                                    requestCount = 0;
+        std::function<BrokerMessage(BrokerMessage &&)>                         internalHandler;
+        std::string                                                            name;
+        std::string                                                            description;
+        std::deque<Worker *>                                                   waiting;
+        std::array<std::deque<BrokerMessage>, rbac::priorityCount<Roles...>()> requestsByPriority;
+        std::size_t                                                            requestCount = 0;
 
-        explicit Service(std::string name_, std::string description_, const Broker &p)
-            : parent(p)
-            , name(std::move(name_))
+        explicit Service(std::string name_, std::string description_)
+            : name(std::move(name_))
             , description(std::move(description_)) {
-            requestsByPriority.resize(parent._rbacRoles.priorityCount());
         }
 
-        explicit Service(std::string name_, std::function<BrokerMessage(BrokerMessage &&)> internalHandler_, const Broker &p)
-            : parent(p)
-            , internalHandler{ std::move(internalHandler_) }
+        explicit Service(std::string name_, std::function<BrokerMessage(BrokerMessage &&)> internalHandler_)
+            : internalHandler{ std::move(internalHandler_) }
             , name{ std::move(name_) } {
-            requestsByPriority.resize(parent._rbacRoles.priorityCount());
         }
 
         void putMessage(BrokerMessage &&message) {
-            const auto role     = rbac::role(message.rbacToken());
-            const auto priority = parent._rbacRoles.priority(role);
+            const auto role     = rbac::parse::role(message.rbacToken());
+            const auto priority = rbac::priorityIndex<Roles...>(role);
             requestsByPriority[static_cast<std::size_t>(priority)].emplace_back(std::move(message));
             requestCount++;
         }
@@ -216,7 +209,6 @@ private:
     std::unordered_map<std::string, Client>                 _clients;
     std::unordered_map<std::string, Worker>                 _workers;
     std::unordered_map<std::string, Service>                _services;
-    rbac::RoleSet<RoleCount>                                _rbacRoles;
     std::unordered_map<std::string, detail::DnsServiceItem> _dnsCache;
     std::set<std::string>                                   _routerSockets; // TODO naming follows java; rename to _routerAddresses?
     Timestamp                                               _dnsHeartbeatAt;
@@ -234,10 +226,9 @@ private:
     std::array<zmq_pollitem_t, 4> pollerItems;
 
 public:
-    Broker(std::string brokerName_, Settings settings_ = {}, rbac::RoleSet<RoleCount> rbacRoles = DefaultRoles)
+    Broker(std::string brokerName_, Settings settings_ = {})
         : settings{ std::move(settings_) }
         , brokerName{ std::move(brokerName_) }
-        , _rbacRoles{ std::move(rbacRoles) }
         , _routerSocket(context, ZMQ_ROUTER)
         , _pubSocket(context, ZMQ_XPUB)
         , _subSocket(context, ZMQ_SUB)
@@ -553,12 +544,12 @@ private:
 
     Service &requireService(std::string serviceName, std::string serviceDescription) {
         // TODO handle serviceDescription differing between workers? or is "first one wins" ok?
-        auto it = _services.try_emplace(serviceName, std::move(serviceName), std::move(serviceDescription), *this);
+        auto it = _services.try_emplace(serviceName, std::move(serviceName), std::move(serviceDescription));
         return it.first->second;
     }
 
     void addInternalService(std::string serviceName, std::function<BrokerMessage(BrokerMessage &&)> handler) {
-        _services.try_emplace(serviceName, std::move(serviceName), std::move(handler), *this);
+        _services.try_emplace(serviceName, std::move(serviceName), std::move(handler));
     }
 
     Service *bestMatchingService(std::string_view serviceName) {
@@ -895,11 +886,6 @@ private:
     [[nodiscard]] Timestamp updatedWorkerExpiry() const { return Clock::now() + settings.heartbeatInterval * settings.heartbeatLiveness; }
     [[nodiscard]] Timestamp updatedDnsExpiry() const { return Clock::now() + settings.dnsTimeout * settings.heartbeatLiveness; }
 };
-
-Broker(std::string, Settings)->Broker<DefaultRoles.size()>;
-
-template<std::size_t RoleCount>
-Broker(std::string, Settings, rbac::RoleSet<RoleCount>) -> Broker<RoleCount>;
 
 } // namespace opencmw::majordomo
 

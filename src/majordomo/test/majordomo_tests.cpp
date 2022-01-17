@@ -706,20 +706,19 @@ TEST_CASE("Broker disconnects on unexpected heartbeat", "[broker][unexpected_hea
 }
 
 TEST_CASE("Test RBAC role priority handling", "[broker][rbac]") {
-    using opencmw::majordomo::Broker;
+    using Broker = opencmw::majordomo::Broker<rbac::ADMIN, rbac::ANY, rbac::Role<"ROOT", 255, rbac::Permission::RW>, rbac::Role<"USER", 100, rbac::Permission::RW>>;
     using opencmw::majordomo::Client;
     using opencmw::majordomo::MdpMessage;
     using namespace std::literals;
 
     // Use higher heartbeat interval so ther broker doesn't bother the worker with heartbeat messages
     opencmw::majordomo::Settings settings;
-    settings.heartbeatInterval                                                  = std::chrono::seconds(1);
+    settings.heartbeatInterval = std::chrono::seconds(1);
 
-    constexpr std::array<opencmw::majordomo::rbac::RoleAndPriority, 4> roleList = { { { "ADMIN"sv, 0 }, { "USER"sv, 3 }, { "OTHER"sv, 5 }, { "ROOT"sv, 0 } } };
-    Broker                                                             broker("testbroker", settings, opencmw::majordomo::rbac::RoleSet(roleList));
-    RunInThread                                                        brokerRun(broker);
+    Broker               broker("testbroker", settings);
+    RunInThread          brokerRun(broker);
 
-    TestNode<MdpMessage>                                               worker(broker.context);
+    TestNode<MdpMessage> worker(broker.context);
     REQUIRE(worker.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
     {
@@ -735,7 +734,7 @@ TEST_CASE("Test RBAC role priority handling", "[broker][rbac]") {
     TestNode<MdpMessage> client(broker.context);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
-    constexpr auto roles           = std::array{ "OTHER", "OTHER", "USER", "ROOT", "ADMIN" };
+    constexpr auto roles           = std::array{ "ANY", "ANY", "USER", "ROOT", "ADMIN" };
 
     int            clientRequestId = 0;
     for (const auto &role : roles) {
@@ -763,7 +762,7 @@ TEST_CASE("Test RBAC role priority handling", "[broker][rbac]") {
     }
 
     // the remaining messages must have been queued in the broker and thus be reordered:
-    // "ROOT", "ADMIN", "USER", "OTHER"
+    // "ROOT", "ADMIN", "USER", "ANY"
     std::vector<std::string> seenMessages;
     while (seenMessages.size() < roles.size() - 1) {
         const auto msg = worker.tryReadOne();

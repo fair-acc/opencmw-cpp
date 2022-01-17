@@ -1,69 +1,109 @@
-#ifndef OPENCMW_RBAC_H
-#define OPENCMW_RBAC_H
+#ifndef OPENCMW_MAJORDOMO_RBAC_H
+#define OPENCMW_MAJORDOMO_RBAC_H
+
+#include <units/bits/external/fixed_string.h> // TODO use which header?
 
 #include <algorithm>
 #include <array>
-#include <span>
 #include <string>
 #include <utility>
 
 namespace opencmw::majordomo::rbac {
 
-struct RoleAndPriority {
-    std::string_view name;
-    int              priority;
+enum class Permission { RW,
+    RO,
+    WO,
+    NONE };
+constexpr auto toString(Permission access) noexcept {
+    switch (access) {
+    case Permission::RW: return units::basic_fixed_string("RW");
+    case Permission::RO: return units::basic_fixed_string("RO");
+    case Permission::WO: return units::basic_fixed_string("WO");
+    case Permission::NONE:
+    default:
+        return units::basic_fixed_string("NN");
+    }
+}
+
+template<units::basic_fixed_string roleName = "role", uint8_t rolePriority = 0U, Permission accessRights = Permission::NONE>
+class Role {
+public:
+    [[nodiscard]] static constexpr std::string_view name() { return roleName.data_; }
+    [[nodiscard]] static constexpr int              priority() { return rolePriority; }
+    [[nodiscard]] static constexpr Permission       rights() { return accessRights; }
+    template<typename ROLE>
+    [[nodiscard]] constexpr bool operator==(const ROLE &other) const noexcept {
+        return std::is_same_v<ROLE, Role<roleName, rolePriority, accessRights>>;
+    }
 };
 
+template<typename T>
+concept role = requires {
+    T::name();
+    T::priority();
+    T::rights();
+};
+
+struct ADMIN : Role<"ADMIN", 255, Permission::RW> {};
+struct ANY : Role<"ANY", 0, Permission::RO> {};
+struct NONE : Role<"NONE", 0, Permission::NONE> {};
+
 namespace detail {
-constexpr int lowestPriority(const std::span<RoleAndPriority> &roles) noexcept {
-    return std::max_element(roles.begin(), roles.end(), [](const auto &lhs, const auto &rhs) { return lhs.priority < rhs.priority; })->priority;
+
+using RoleAndPriority = std::pair<std::string_view, std::size_t>;
+
+template<role Role>
+inline constexpr RoleAndPriority fromRole() {
+    return { Role::name(), Role::priority() };
 }
 
 template<std::size_t N>
-constexpr std::array<RoleAndPriority, N> normalizedPriorities(std::array<RoleAndPriority, N> roles) noexcept {
+inline constexpr std::array<RoleAndPriority, N> normalizedPriorities(std::array<RoleAndPriority, N> roles) noexcept {
     static_assert(N > 0);
-    std::sort(roles.begin(), roles.end(), [](const auto &lhs, const auto &rhs) { return lhs.priority < rhs.priority; });
-    int nextPrio      = 0;
-    int originalPrio  = roles[0].priority;
-    roles[0].priority = nextPrio++;
+    std::sort(roles.begin(), roles.end(), [](const auto &lhs, const auto &rhs) { return lhs.second > rhs.second; });
+    std::size_t nextPrio     = 0;
+    auto        originalPrio = roles[0].second;
+    roles[0].second          = nextPrio++;
     for (std::size_t i = 1; i < roles.size(); ++i) {
-        if (roles[i].priority == originalPrio) {
-            roles[i].priority = roles[i - 1].priority;
+        if (roles[i].second == originalPrio) {
+            roles[i].second = roles[i - 1].second;
         } else {
-            originalPrio      = roles[i].priority;
-            roles[i].priority = nextPrio++;
+            originalPrio    = roles[i].second;
+            roles[i].second = nextPrio++;
         }
     }
 
     return roles;
 }
+
+template<role... Roles>
+inline constexpr std::array<RoleAndPriority, sizeof...(Roles)> namesAndPriorities() noexcept {
+    return std::array<RoleAndPriority, sizeof...(Roles)>{ fromRole<Roles>()... };
+}
+
 } // namespace detail
 
-template<std::size_t N>
-struct RoleSet {
-    static_assert(N > 0);
-    std::array<RoleAndPriority, N> _roles;
-    int                            defaultPriority;
-
-    constexpr RoleSet(const std::array<RoleAndPriority, N> &roles) noexcept
-        : _roles(detail::normalizedPriorities(roles)), defaultPriority(detail::lowestPriority(std::span(_roles))) {}
-
-    constexpr std::size_t size() const noexcept {
-        return N;
+template<role... Roles>
+inline constexpr std::size_t priorityCount() noexcept {
+    if constexpr (sizeof...(Roles) == 0) {
+        return 1;
+    } else {
+        return detail::normalizedPriorities(detail::namesAndPriorities<Roles...>()).back().second + 1;
     }
+}
 
-    constexpr std::size_t priorityCount() const noexcept {
-        return static_cast<std::size_t>(_roles.back().priority) + 1;
+template<role... Roles>
+inline constexpr std::size_t priorityIndex(std::string_view roleName) noexcept {
+    if constexpr (sizeof...(Roles) == 0) {
+        return 0;
+    } else {
+        constexpr auto list = detail::normalizedPriorities(detail::namesAndPriorities<Roles...>());
+        const auto     it   = std::find_if(list.begin(), list.end(), [&roleName](const auto &v) { return v.first == roleName; });
+        return it != list.end() ? it->second : list.back().second;
     }
+}
 
-    constexpr int priority(std::string_view role) const noexcept {
-        const auto it = std::find_if(_roles.begin(), _roles.end(), [&role](const auto &v) { return v.name == role; });
-        return it != _roles.end() ? it->priority : defaultPriority;
-    }
-};
-
-template<std::size_t N>
-RoleSet(const std::array<RoleAndPriority, N> &) -> RoleSet<N>;
+namespace parse {
 
 constexpr auto                    RBAC_PREFIX = std::string_view("RBAC=");
 
@@ -110,6 +150,8 @@ inline constexpr std::pair<std::string_view, std::string_view> roleAndHash(std::
 
     return { token.substr(0, commaPos), token.substr(commaPos + 1) };
 }
+
+} // namespace parse
 
 } // namespace opencmw::majordomo::rbac
 
