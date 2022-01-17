@@ -24,8 +24,7 @@ imgui.ini
 bin/
 build/
 out/
-cmake-build-debug/
-cmake-build-release/
+cmake-build-*/
 
 # Annoying OS Generated Files
 .DS_Store
