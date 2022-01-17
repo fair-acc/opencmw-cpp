@@ -713,13 +713,13 @@ TEST_CASE("Test RBAC role priority handling", "[broker][rbac]") {
 
     // Use higher heartbeat interval so ther broker doesn't bother the worker with heartbeat messages
     opencmw::majordomo::Settings settings;
-    settings.heartbeatInterval                                       = std::chrono::seconds(1);
+    settings.heartbeatInterval                                                  = std::chrono::seconds(1);
 
     constexpr std::array<opencmw::majordomo::rbac::RoleAndPriority, 4> roleList = { { { "ADMIN"sv, 0 }, { "USER"sv, 3 }, { "OTHER"sv, 5 }, { "ROOT"sv, 0 } } };
     Broker                                                             broker("testbroker", settings, opencmw::majordomo::rbac::RoleSet(roleList));
     RunInThread                                                        brokerRun(broker);
 
-    TestNode<MdpMessage>                                    worker(broker.context);
+    TestNode<MdpMessage>                                               worker(broker.context);
     REQUIRE(worker.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
     {

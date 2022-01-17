@@ -111,6 +111,6 @@ inline constexpr std::pair<std::string_view, std::string_view> roleAndHash(std::
     return { token.substr(0, commaPos), token.substr(commaPos + 1) };
 }
 
-} // namespace opencmw::rbac
+} // namespace opencmw::majordomo::rbac
 
 #endif
