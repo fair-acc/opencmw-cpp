@@ -3,7 +3,6 @@
 
 #include <chrono>
 
-#include <Rbac.hpp>
 #include <URI.hpp>
 
 namespace opencmw::majordomo {

@@ -7,7 +7,7 @@
 #include <string>
 #include <utility>
 
-namespace opencmw::rbac {
+namespace opencmw::majordomo::rbac {
 
 struct RoleAndPriority {
     std::string_view name;

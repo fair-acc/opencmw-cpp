@@ -1,4 +1,4 @@
-#include <Rbac.hpp>
+#include <majordomo/Rbac.hpp>
 
 #include <catch2/catch.hpp>
 
@@ -10,7 +10,7 @@
     }
 
 TEST_CASE("RBAC parser tests", "[rbac][parsing]") {
-    using namespace opencmw;
+    using namespace opencmw::majordomo;
     using namespace std::literals;
 
     STATIC_REQUIRE2(rbac::role("").empty());
@@ -32,7 +32,7 @@ TEST_CASE("RBAC parser tests", "[rbac][parsing]") {
 }
 
 TEST_CASE("RBAC role handling", "[rbac][role_handling]") {
-    using namespace opencmw;
+    using namespace opencmw::majordomo;
     using namespace std::literals;
 
     constexpr std::array<rbac::RoleAndPriority, 4> roleList = { { { "ADMIN"sv, 100 }, { "USER"sv, 200 }, { "ROOT"sv, 100 }, { "OTHER"sv, 300 } } };

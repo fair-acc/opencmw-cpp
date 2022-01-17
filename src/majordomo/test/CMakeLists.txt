@@ -35,6 +35,7 @@ set (
     majordomo_tests.cpp
     majordomoworker_tests.cpp
     queryserialiser_tests.cpp
+    rbac_tests.cpp
     subscriptionmatcher_tests.cpp
     )
 add_executable (
