@@ -71,7 +71,6 @@ private:
     const Settings                                           _settings;
     const opencmw::URI<STRICT>                               _brokerAddress;
     std::string                                              _serviceDescription;
-    std::string                                              _rbacRole;
     std::atomic<bool>                                        _shutdownRequested = false;
     int                                                      _liveness          = 0;
     Timestamp                                                _heartbeatAt;
@@ -85,6 +84,7 @@ private:
     std::unordered_map<std::thread::id, NotificationHandler> _notificationHandlers;
     std::shared_mutex                                        _notificationHandlersLock;
     const std::string                                        _notifyAddress;
+    static constexpr auto                                    _defaultRbacToken = std::string_view("RBAC=NONE,");
 
 public:
     explicit BasicMdpWorker(std::string_view serviceName, opencmw::URI<STRICT> brokerAddress, RequestHandler &&handler, const Context &context, Settings settings = {})
@@ -102,9 +102,6 @@ public:
         _serviceDescription = std::move(description);
     }
 
-    void setRbacRole(std::string rbac) {
-        _rbacRole = std::move(rbac);
-    }
     template<typename Filter>
     void addFilter(const std::string &key) {
         _subscriptionMatcher.addFilter<Filter>(key);
@@ -118,7 +115,7 @@ public:
         message.setProtocol(Protocol::Worker);
         message.setCommand(Command::Notify);
         message.setServiceName(_serviceName, MessageFrame::dynamic_bytes_tag{});
-        message.setRbacToken(_rbacRole, MessageFrame::dynamic_bytes_tag{});
+        message.setRbacToken(_defaultRbacToken, MessageFrame::dynamic_bytes_tag{});
         return notificationHandlerForThisThread().send(std::move(message));
     }
 
@@ -195,7 +192,7 @@ private:
     MdpMessage createMessage(Command command) const noexcept {
         auto message = MdpMessage::createWorkerMessage(command);
         message.setServiceName(_serviceName, MessageFrame::dynamic_bytes_tag{});
-        message.setRbacToken(_rbacRole, MessageFrame::dynamic_bytes_tag{});
+        message.setRbacToken(_defaultRbacToken, MessageFrame::dynamic_bytes_tag{});
         return message;
     }
 
@@ -207,7 +204,7 @@ private:
         reply.setClientSourceId(request.clientSourceId(), MessageFrame::dynamic_bytes_tag{});
         reply.setClientRequestId(request.clientRequestId(), MessageFrame::dynamic_bytes_tag{});
         reply.setTopic(request.topic(), MessageFrame::dynamic_bytes_tag{});
-        reply.setRbacToken(_rbacRole, MessageFrame::dynamic_bytes_tag{});
+        reply.setRbacToken(request.rbacToken(), MessageFrame::dynamic_bytes_tag{});
         return reply;
     }
 

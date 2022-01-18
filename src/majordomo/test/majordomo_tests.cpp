@@ -1203,7 +1203,6 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[worker][getset_bas
 
     BasicMdpWorker worker("a.service", broker, TestIntHandler(10));
     worker.setServiceDescription("API description");
-    worker.setRbacRole("rbacToken");
 
     TestNode<MdpMessage> client(broker.context);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
@@ -1291,7 +1290,6 @@ TEST_CASE("BasicMdpWorker SET/GET example with RBAC permission handling", "[work
     BrokerWithRoles broker("testbroker", testSettings());
     BasicMdpWorker  worker("/a.service", broker, TestIntHandler(10)); // inherits roles from broker (via CTAD)
     worker.setServiceDescription("API description");
-    worker.setRbacRole("rbacToken");
 
     RunInThread brokerRun(broker);
     RunInThread workerRun(worker);
@@ -1428,7 +1426,6 @@ TEST_CASE("NOTIFY example using the BasicMdpWorker class", "[worker][notify_basi
 
     BasicMdpWorker worker("beverages", broker, TestIntHandler(10));
     worker.setServiceDescription("API description");
-    worker.setRbacRole("rbacToken");
 
     TestNode<BrokerMessage> client(broker.context, ZMQ_XSUB);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_PUBLISHER));
@@ -1568,7 +1565,6 @@ TEST_CASE("NOTIFY example using the BasicMdpWorker class (via ROUTER socket)", "
 
     BasicMdpWorker worker("beverages", broker, TestIntHandler(10));
     worker.setServiceDescription("API description");
-    worker.setRbacRole("rbacToken");
 
     TestNode<MdpMessage> client(broker.context);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
@@ -1709,7 +1705,6 @@ TEST_CASE("SET/GET example using a lambda as the worker's request handler", "[wo
 
     BasicMdpWorker worker("a.service", broker, std::move(handleInt));
     worker.setServiceDescription("API description");
-    worker.setRbacRole("rbacToken");
 
     Client client(broker.context);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
@@ -1753,7 +1748,6 @@ TEST_CASE("Worker's request handler throws an exception", "[worker][handler_exce
 
     BasicMdpWorker worker("a.service", broker, std::move(handleRequest));
     worker.setServiceDescription("API description");
-    worker.setRbacRole("rbacToken");
 
     Client client(broker.context);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
@@ -1783,7 +1777,6 @@ TEST_CASE("Worker's request handler throws an unexpected exception", "[worker][h
 
     BasicMdpWorker worker("a.service", broker, std::move(handleRequest));
     worker.setServiceDescription("API description");
-    worker.setRbacRole("rbacToken");
 
     Client client(broker.context);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
