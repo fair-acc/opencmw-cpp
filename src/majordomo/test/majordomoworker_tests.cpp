@@ -162,10 +162,9 @@ TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][major
     }
 }
 
-TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworker][plain_client]") {
+TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworker][plain_client][rbac]") {
     using namespace opencmw::majordomo;
-    using BrokerWithRoles = opencmw::majordomo::Broker<rbac::ADMIN, rbac::ANY>;
-    BrokerWithRoles broker("TestBroker", testSettings());
+    Broker<rbac::ADMIN, rbac::ANY> broker("TestBroker", testSettings());
     opencmw::query::registerTypes(TestContext(), broker);
 
     // TODO we cannot have partial CTAD for the roles, so they need to be mentioned explicitly here
