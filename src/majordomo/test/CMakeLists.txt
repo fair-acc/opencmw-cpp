@@ -14,7 +14,7 @@ add_executable(
 
 target_include_directories (
     majordomo_testapp
-    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../include ${CMAKE_CURRENT_SOURCE_DIR}/../../utils/include ${CMAKE_CURRENT_SOURCE_DIR}/../../core/include
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../include ${CMAKE_CURRENT_SOURCE_DIR}/../../utils/include ${CMAKE_CURRENT_SOURCE_DIR}/../../core/include ${CMAKE_CURRENT_SOURCE_DIR}/../../serialiser/include
     )
 
 target_link_libraries (
@@ -23,6 +23,7 @@ target_link_libraries (
         pthread
         project_warnings
         project_options
+        serialiser
         CONAN_PKG::catch2
         CONAN_PKG::fmt
         CONAN_PKG::mp-units
@@ -75,7 +76,7 @@ add_executable (
 
 target_include_directories (
     majordomo_benchmark
-    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../include ${CMAKE_CURRENT_SOURCE_DIR}/../../utils/include ${CMAKE_CURRENT_SOURCE_DIR}/../../core/include
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../include ${CMAKE_CURRENT_SOURCE_DIR}/../../utils/include ${CMAKE_CURRENT_SOURCE_DIR}/../../core/include ${CMAKE_CURRENT_SOURCE_DIR}/../../serialiser/include
     )
 
 target_link_libraries (
@@ -84,6 +85,7 @@ target_link_libraries (
         pthread
         project_warnings
         project_options
+        serialiser
         CONAN_PKG::fmt
         CONAN_PKG::mp-units
         CONAN_PKG::zeromq

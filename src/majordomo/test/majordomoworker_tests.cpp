@@ -1,8 +1,8 @@
 #include "helpers.hpp"
 
 #include <majordomo/Broker.hpp>
-#include <majordomo/MajordomoWorker.hpp>
 #include <majordomo/Settings.hpp>
+#include <majordomo/Worker.hpp>
 
 #include <MIME.hpp>
 #include <opencmw.hpp>
@@ -18,10 +18,10 @@
 using opencmw::majordomo::Broker;
 using opencmw::majordomo::BrokerMessage;
 using opencmw::majordomo::Command;
-using opencmw::majordomo::MajordomoWorker;
 using opencmw::majordomo::MdpMessage;
 using opencmw::majordomo::MessageFrame;
 using opencmw::majordomo::Settings;
+using opencmw::majordomo::Worker;
 
 /*
  * This test serves as example on how MajordomoWorker is to be used.
@@ -126,7 +126,7 @@ TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][major
     opencmw::query::registerTypes(TestContext(), broker);
 
     // Create MajordomoWorker with our domain objects, and our TestHandler.
-    MajordomoWorker<TestContext, AddressRequest, AddressEntry, TestHandler> worker("addressbook", broker, TestHandler());
+    Worker<TestContext, AddressRequest, AddressEntry, TestHandler> worker("addressbook", broker, TestHandler());
 
     // Run worker and broker in separate threads
     RunInThread brokerRun(broker);
@@ -169,10 +169,10 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
 
     // TODO we cannot have partial CTAD for the roles, so they need to be mentioned explicitly here
     // Could be solved by a helper class holding both the broker and the MajordomoWorker
-    MajordomoWorker<TestContext, AddressRequest, AddressEntry, TestHandler, rbac::ADMIN, rbac::ANY> worker("addressbook", broker, TestHandler());
+    Worker<TestContext, AddressRequest, AddressEntry, TestHandler, rbac::ADMIN, rbac::ANY> worker("addressbook", broker, TestHandler());
 
-    RunInThread                                                                                     brokerRun(broker);
-    RunInThread                                                                                     workerRun(worker);
+    RunInThread                                                                            brokerRun(broker);
+    RunInThread                                                                            workerRun(worker);
 
     REQUIRE(waitUntilServiceAvailable(broker.context, "addressbook"));
 

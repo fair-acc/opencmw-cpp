@@ -2,9 +2,9 @@
 #include <thread>
 #include <unordered_map>
 
-#include <majordomo/BasicMdpWorker.hpp>
 #include <majordomo/Broker.hpp>
 #include <majordomo/Client.hpp>
+#include <majordomo/Worker.hpp>
 
 #include <fmt/format.h>
 
@@ -68,7 +68,7 @@ static URI parseUriOrExit(std::string str) {
 }
 
 int main(int argc, char **argv) {
-    using opencmw::majordomo::BasicMdpWorker;
+    using opencmw::majordomo::BasicWorker;
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::Settings;
 
@@ -125,15 +125,15 @@ int main(int argc, char **argv) {
             return 0;
         }
 
-        BasicMdpWorker worker(propertyStoreService, broker, TestHandler{});
+        BasicWorker worker(propertyStoreService, broker, TestHandler{});
 
-        auto           brokerThread = std::jthread([&broker] {
+        auto        brokerThread = std::jthread([&broker] {
             broker.run();
-                  });
+               });
 
-        auto           workerThread = std::jthread([&worker] {
+        auto        workerThread = std::jthread([&worker] {
             worker.run();
-                  });
+               });
 
         brokerThread.join();
         workerThread.join();
@@ -145,10 +145,10 @@ int main(int argc, char **argv) {
             std::cerr << "Usage: majordomo_testapp worker <brokerAddress>\n";
             return 1;
         }
-        const auto     brokerAddress = parseUriOrExit(argv[2]);
+        const auto  brokerAddress = parseUriOrExit(argv[2]);
 
-        Context        context;
-        BasicMdpWorker worker(propertyStoreService, brokerAddress, TestHandler{}, context);
+        Context     context;
+        BasicWorker worker(propertyStoreService, brokerAddress, TestHandler{}, context);
 
         worker.run();
         return 0;

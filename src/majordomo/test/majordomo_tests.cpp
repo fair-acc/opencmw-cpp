@@ -1,10 +1,10 @@
 #include "helpers.hpp"
 
-#include <majordomo/BasicMdpWorker.hpp>
 #include <majordomo/Broker.hpp>
 #include <majordomo/Client.hpp>
 #include <majordomo/Constants.hpp>
 #include <majordomo/Utils.hpp>
+#include <majordomo/Worker.hpp>
 
 #include <catch2/catch.hpp>
 #include <fmt/format.h>
@@ -1090,42 +1090,42 @@ public:
     void                       operator()(RequestContext &) {}
 };
 
-TEST_CASE("BasicMdpWorker instantiation", "[worker][instantiation]") {
-    // ensure that BasicMdpWorker can be instantiated with lvalue and rvalue handlers
+TEST_CASE("BasicWorker instantiation", "[worker][instantiation]") {
+    // ensure that BasicWorker can be instantiated with lvalue and rvalue handlers
     // lvalues should be used via reference, rvalues moved
     Broker                    broker("testbroker", testSettings());
     NonCopyableMovableHandler handler;
 
-    BasicMdpWorker            worker1("a.service", broker, NonCopyableMovableHandler());
-    BasicMdpWorker            worker2("a.service", broker, handler);
+    BasicWorker               worker1("a.service", broker, NonCopyableMovableHandler());
+    BasicWorker               worker2("a.service", broker, handler);
     Context                   context;
-    BasicMdpWorker            worker5("a.service", INTERNAL_ADDRESS_BROKER, NonCopyableMovableHandler(), context, testSettings());
-    BasicMdpWorker            worker6("a.service", INTERNAL_ADDRESS_BROKER, handler, context, testSettings());
+    BasicWorker               worker5("a.service", INTERNAL_ADDRESS_BROKER, NonCopyableMovableHandler(), context, testSettings());
+    BasicWorker               worker6("a.service", INTERNAL_ADDRESS_BROKER, handler, context, testSettings());
 }
 
-TEST_CASE("BasicMdpWorker connects to non-existing broker", "[worker]") {
-    const Context  context;
-    BasicMdpWorker worker("a.service", URI("inproc:/doesnotexist"), TestIntHandler(10), context);
+TEST_CASE("BasicWorker connects to non-existing broker", "[worker]") {
+    const Context context;
+    BasicWorker   worker("a.service", URI("inproc:/doesnotexist"), TestIntHandler(10), context);
     worker.run(); // returns immediately on connection failure
 }
 
-TEST_CASE("BasicMdpWorker run loop quits when broker quits", "[worker]") {
-    const Context  context;
-    Broker         broker("testbroker", testSettings());
-    BasicMdpWorker worker("a.service", broker, TestIntHandler(10));
+TEST_CASE("BasicWorker run loop quits when broker quits", "[worker]") {
+    const Context context;
+    Broker        broker("testbroker", testSettings());
+    BasicWorker   worker("a.service", broker, TestIntHandler(10));
 
-    RunInThread    brokerRun(broker);
+    RunInThread   brokerRun(broker);
 
-    auto           quitBroker = std::jthread([&broker]() {
+    auto          quitBroker = std::jthread([&broker]() {
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
         broker.shutdown();
-              });
+             });
 
     worker.run(); // returns when broker disappears
     quitBroker.join();
 }
 
-TEST_CASE("BasicMdpWorker connection basics", "[worker][basic_worker_connection]") {
+TEST_CASE("BasicWorker connection basics", "[worker][basic_worker_connection]") {
     const Context           context;
     TestNode<BrokerMessage> brokerRouter(context, ZMQ_ROUTER);
     TestNode<BrokerMessage> brokerPub(context, ZMQ_PUB);
@@ -1139,7 +1139,7 @@ TEST_CASE("BasicMdpWorker connection basics", "[worker][basic_worker_connection]
     settings.heartbeatLiveness       = 2;
     settings.workerReconnectInterval = std::chrono::milliseconds(200);
 
-    BasicMdpWorker worker(
+    BasicWorker worker(
             "a.service", routerAddress, [](RequestContext &) {}, context, settings);
     RunInThread workerRun(worker);
 
@@ -1195,13 +1195,13 @@ TEST_CASE("BasicMdpWorker connection basics", "[worker][basic_worker_connection]
     }
 }
 
-TEST_CASE("SET/GET example using the BasicMdpWorker class", "[worker][getset_basic_worker]") {
+TEST_CASE("SET/GET example using the BasicWorker class", "[worker][getset_basic_worker]") {
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::MdpMessage;
 
-    Broker         broker("testbroker", testSettings());
+    Broker      broker("testbroker", testSettings());
 
-    BasicMdpWorker worker("a.service", broker, TestIntHandler(10));
+    BasicWorker worker("a.service", broker, TestIntHandler(10));
     worker.setServiceDescription("API description");
 
     TestNode<MdpMessage> client(broker.context);
@@ -1283,12 +1283,12 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[worker][getset_bas
     }
 }
 
-TEST_CASE("BasicMdpWorker SET/GET example with RBAC permission handling", "[worker][getset_basic_worker][rbac]") {
+TEST_CASE("BasicWorker SET/GET example with RBAC permission handling", "[worker][getset_basic_worker][rbac]") {
     using BrokerWithRoles = opencmw::majordomo::Broker<rbac::ADMIN, rbac::Role<"READER", 100, rbac::Permission::RO>, rbac::Role<"WRITER", 100, rbac::Permission::WO>>;
     using opencmw::majordomo::MdpMessage;
 
     BrokerWithRoles broker("testbroker", testSettings());
-    BasicMdpWorker  worker("/a.service", broker, TestIntHandler(10)); // inherits roles from broker (via CTAD)
+    BasicWorker     worker("/a.service", broker, TestIntHandler(10)); // inherits roles from broker (via CTAD)
     worker.setServiceDescription("API description");
 
     RunInThread brokerRun(broker);
@@ -1417,14 +1417,14 @@ TEST_CASE("BasicMdpWorker SET/GET example with RBAC permission handling", "[work
     }
 }
 
-TEST_CASE("NOTIFY example using the BasicMdpWorker class", "[worker][notify_basic_worker]") {
+TEST_CASE("NOTIFY example using the BasicWorker class", "[worker][notify_basic_worker]") {
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::MdpMessage;
     using namespace std::literals;
 
-    Broker         broker("testbroker", testSettings());
+    Broker      broker("testbroker", testSettings());
 
-    BasicMdpWorker worker("beverages", broker, TestIntHandler(10));
+    BasicWorker worker("beverages", broker, TestIntHandler(10));
     worker.setServiceDescription("API description");
 
     TestNode<BrokerMessage> client(broker.context, ZMQ_XSUB);
@@ -1557,13 +1557,13 @@ TEST_CASE("NOTIFY example using the BasicMdpWorker class", "[worker][notify_basi
     }
 }
 
-TEST_CASE("NOTIFY example using the BasicMdpWorker class (via ROUTER socket)", "[worker][notify_basic_worker_router]") {
+TEST_CASE("NOTIFY example using the BasicWorker class (via ROUTER socket)", "[worker][notify_basic_worker_router]") {
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::MdpMessage;
 
-    Broker         broker("testbroker", testSettings());
+    Broker      broker("testbroker", testSettings());
 
-    BasicMdpWorker worker("beverages", broker, TestIntHandler(10));
+    BasicWorker worker("beverages", broker, TestIntHandler(10));
     worker.setServiceDescription("API description");
 
     TestNode<MdpMessage> client(broker.context);
@@ -1703,7 +1703,7 @@ TEST_CASE("SET/GET example using a lambda as the worker's request handler", "[wo
         }
     };
 
-    BasicMdpWorker worker("a.service", broker, std::move(handleInt));
+    BasicWorker worker("a.service", broker, std::move(handleInt));
     worker.setServiceDescription("API description");
 
     Client client(broker.context);
@@ -1746,7 +1746,7 @@ TEST_CASE("Worker's request handler throws an exception", "[worker][handler_exce
         throw std::runtime_error("Something went wrong!");
     };
 
-    BasicMdpWorker worker("a.service", broker, std::move(handleRequest));
+    BasicWorker worker("a.service", broker, std::move(handleRequest));
     worker.setServiceDescription("API description");
 
     Client client(broker.context);
@@ -1775,7 +1775,7 @@ TEST_CASE("Worker's request handler throws an unexpected exception", "[worker][h
         throw std::string("Something went wrong!");
     };
 
-    BasicMdpWorker worker("a.service", broker, std::move(handleRequest));
+    BasicWorker worker("a.service", broker, std::move(handleRequest));
     worker.setServiceDescription("API description");
 
     Client client(broker.context);
