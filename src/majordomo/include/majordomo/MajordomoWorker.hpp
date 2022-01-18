@@ -110,17 +110,17 @@ namespace detail {
 } // namespace detail
 
 // TODO docs, see majordomoworker_tests.cpp for a documented example
-template<ReflectableClass ContextType, ReflectableClass InputType, ReflectableClass OutputType, MajordomoHandler<ContextType, InputType, OutputType> UserHandler>
-class MajordomoWorker : public BasicMdpWorker<detail::HandlerImpl<ContextType, InputType, OutputType, UserHandler>> {
+template<ReflectableClass ContextType, ReflectableClass InputType, ReflectableClass OutputType, MajordomoHandler<ContextType, InputType, OutputType> UserHandler, rbac::role... Roles>
+class MajordomoWorker : public BasicMdpWorker<detail::HandlerImpl<ContextType, InputType, OutputType, UserHandler>, Roles...> {
 public:
     explicit MajordomoWorker(std::string_view serviceName, URI<STRICT> brokerAddress, UserHandler userHandler, const Context &context, Settings settings = {})
-        : BasicMdpWorker<detail::HandlerImpl<ContextType, InputType, OutputType, UserHandler>>(serviceName, std::move(brokerAddress), detail::HandlerImpl<ContextType, InputType, OutputType, UserHandler>(std::forward<UserHandler>(userHandler)), context, settings) {
+        : BasicMdpWorker<detail::HandlerImpl<ContextType, InputType, OutputType, UserHandler, Roles...>>(serviceName, std::move(brokerAddress), detail::HandlerImpl<ContextType, InputType, OutputType, UserHandler>(std::forward<UserHandler>(userHandler)), context, settings) {
         query::registerTypes(ContextType(), *this);
     }
 
     template<typename BrokerType>
     explicit MajordomoWorker(std::string_view serviceName, const BrokerType &broker, UserHandler userHandler)
-        : BasicMdpWorker<detail::HandlerImpl<ContextType, InputType, OutputType, UserHandler>>(serviceName, broker, detail::HandlerImpl<ContextType, InputType, OutputType, UserHandler>(std::forward<UserHandler>(userHandler))) {
+        : BasicMdpWorker<detail::HandlerImpl<ContextType, InputType, OutputType, UserHandler>, Roles...>(serviceName, broker, detail::HandlerImpl<ContextType, InputType, OutputType, UserHandler>(std::forward<UserHandler>(userHandler))) {
         query::registerTypes(ContextType(), *this);
     }
 
@@ -142,7 +142,7 @@ public:
         RequestContext rawCtx;
         rawCtx.reply.setTopic(topicURI.str, MessageFrame::dynamic_bytes_tag{});
         detail::writeResult(rawCtx, context, reply);
-        return BasicMdpWorker<detail::HandlerImpl<ContextType, InputType, OutputType, UserHandler>>::notify(std::move(rawCtx.reply));
+        return BasicMdpWorker<detail::HandlerImpl<ContextType, InputType, OutputType, UserHandler>, Roles...>::notify(std::move(rawCtx.reply));
     }
 };
 
