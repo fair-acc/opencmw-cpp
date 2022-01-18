@@ -10,20 +10,12 @@
 
 namespace opencmw::majordomo::rbac {
 
-enum class Permission { RW,
+enum class Permission {
+    RW,
     RO,
     WO,
-    NONE };
-constexpr auto toString(Permission access) noexcept {
-    switch (access) {
-    case Permission::RW: return units::basic_fixed_string("RW");
-    case Permission::RO: return units::basic_fixed_string("RO");
-    case Permission::WO: return units::basic_fixed_string("WO");
-    case Permission::NONE:
-    default:
-        return units::basic_fixed_string("NN");
-    }
-}
+    NONE
+};
 
 template<units::basic_fixed_string roleName = "role", uint8_t rolePriority = 0U, Permission accessRights = Permission::NONE>
 class Role {
@@ -53,7 +45,7 @@ namespace detail {
 using RoleAndPriority = std::pair<std::string_view, std::size_t>;
 
 template<role Role>
-inline constexpr RoleAndPriority fromRole() {
+inline constexpr RoleAndPriority fromRole() noexcept {
     return { Role::name(), Role::priority() };
 }
 
