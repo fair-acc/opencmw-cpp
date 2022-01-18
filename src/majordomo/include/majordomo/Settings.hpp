@@ -2,7 +2,6 @@
 #define OPENCMW_MAJORDOMO_SETTINGS_H
 
 #include <chrono>
-
 #include <URI.hpp>
 
 namespace opencmw::majordomo {
