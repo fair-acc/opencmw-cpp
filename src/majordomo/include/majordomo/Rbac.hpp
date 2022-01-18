@@ -44,20 +44,10 @@ struct NONE : Role<"NONE", 0, Permission::NONE> {};
 
 namespace detail {
 
-template<role Role>
-inline constexpr std::pair<std::string_view, std::size_t> priorityPair() noexcept {
-    return { Role::name(), Role::priority() };
-}
-
-template<role Role>
-inline constexpr std::pair<std::string_view, Permission> permissionPair() noexcept {
-    return { Role::name(), Role::rights() };
-}
-
 template<role... Roles>
 inline constexpr std::array<std::pair<std::string_view, std::size_t>, sizeof...(Roles)> normalizedPriorities() noexcept {
     static_assert(sizeof...(Roles) > 0);
-    auto roles = std::array<std::pair<std::string_view, std::size_t>, sizeof...(Roles)>{ priorityPair<Roles>()... };
+    auto roles = std::array<std::pair<std::string_view, std::size_t>, sizeof...(Roles)>{ std::pair{ Roles::name(), Roles::priority() }... };
     std::sort(roles.begin(), roles.end(), [](const auto &lhs, const auto &rhs) { return lhs.second > rhs.second; });
     std::size_t nextPrio     = 0;
     auto        originalPrio = roles[0].second;
@@ -101,7 +91,7 @@ inline constexpr Permission permission(std::string_view roleName) noexcept {
     if constexpr (sizeof...(Roles) == 0) {
         return Permission::RW; // no roles defined => default role has all permissions; TODO correct?
     } else {
-        constexpr auto map = opencmw::ConstExprMap<std::string_view, Permission, sizeof...(Roles)>{ detail::permissionPair<Roles>()... };
+        constexpr auto map = opencmw::ConstExprMap<std::string_view, Permission, sizeof...(Roles)>{ std::pair{ Roles::name(), Roles::rights() }... };
         return map.at(roleName, Permission::NONE);
     }
 }
