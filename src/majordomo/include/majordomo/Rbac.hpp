@@ -17,7 +17,7 @@ enum class Permission {
     NONE
 };
 
-template<units::basic_fixed_string roleName = "role", uint8_t rolePriority = 0U, Permission accessRights = Permission::NONE>
+template<units::basic_fixed_string roleName, uint8_t rolePriority, Permission accessRights>
 class Role {
 public:
     [[nodiscard]] static constexpr std::string_view name() { return roleName.data_; }
