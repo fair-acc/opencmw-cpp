@@ -1,6 +1,8 @@
 #ifndef OPENCMW_MAJORDOMO_RBAC_H
 #define OPENCMW_MAJORDOMO_RBAC_H
 
+#include <opencmw.hpp>
+
 #include <units/bits/external/fixed_string.h> // TODO use which header?
 
 #include <algorithm>
@@ -42,35 +44,34 @@ struct NONE : Role<"NONE", 0, Permission::NONE> {};
 
 namespace detail {
 
-using RoleInfo = std::tuple<std::string_view, std::size_t, Permission>;
-
 template<role Role>
-inline constexpr RoleInfo fromRole() noexcept {
-    return { Role::name(), Role::priority(), Role::rights() };
+inline constexpr std::pair<std::string_view, std::size_t> priorityPair() noexcept {
+    return { Role::name(), Role::priority() };
 }
 
-template<std::size_t N>
-inline constexpr std::array<RoleInfo, N> normalizedPriorities(std::array<RoleInfo, N> roles) noexcept {
-    static_assert(N > 0);
-    std::sort(roles.begin(), roles.end(), [](const auto &lhs, const auto &rhs) { return std::get<1>(lhs) > std::get<1>(rhs); });
-    std::size_t nextPrio     = 0;
-    auto        originalPrio = std::get<1>(roles[0]);
-    std::get<1>(roles[0])    = nextPrio++;
-    for (std::size_t i = 1; i < roles.size(); ++i) {
-        if (std::get<1>(roles[i]) == originalPrio) {
-            std::get<1>(roles[i]) = std::get<1>(roles[i - 1]);
-        } else {
-            originalPrio          = std::get<1>(roles[i]);
-            std::get<1>(roles[i]) = nextPrio++;
-        }
-    }
-
-    return roles;
+template<role Role>
+inline constexpr std::pair<std::string_view, Permission> permissionPair() noexcept {
+    return { Role::name(), Role::rights() };
 }
 
 template<role... Roles>
-inline constexpr std::array<RoleInfo, sizeof...(Roles)> roleInfos() noexcept {
-    return std::array<RoleInfo, sizeof...(Roles)>{ fromRole<Roles>()... };
+inline constexpr std::array<std::pair<std::string_view, std::size_t>, sizeof...(Roles)> normalizedPriorities() noexcept {
+    static_assert(sizeof...(Roles) > 0);
+    auto roles = std::array<std::pair<std::string_view, std::size_t>, sizeof...(Roles)>{ priorityPair<Roles>()... };
+    std::sort(roles.begin(), roles.end(), [](const auto &lhs, const auto &rhs) { return lhs.second > rhs.second; });
+    std::size_t nextPrio     = 0;
+    auto        originalPrio = roles[0].second;
+    roles[0].second          = nextPrio++;
+    for (std::size_t i = 1; i < roles.size(); ++i) {
+        if (roles[i].second == originalPrio) {
+            roles[i].second = roles[i - 1].second;
+        } else {
+            originalPrio    = roles[i].second;
+            roles[i].second = nextPrio++;
+        }
+    }
+
+    return { roles };
 }
 
 } // namespace detail
@@ -80,7 +81,7 @@ inline constexpr std::size_t priorityCount() noexcept {
     if constexpr (sizeof...(Roles) == 0) {
         return 1;
     } else {
-        return std::get<1>(detail::normalizedPriorities(detail::roleInfos<Roles...>()).back()) + 1;
+        return detail::normalizedPriorities<Roles...>().back().second + 1;
     }
 }
 
@@ -89,9 +90,9 @@ inline constexpr std::size_t priorityIndex(std::string_view roleName) noexcept {
     if constexpr (sizeof...(Roles) == 0) {
         return 0;
     } else {
-        constexpr auto list = detail::normalizedPriorities(detail::roleInfos<Roles...>());
-        const auto     it   = std::find_if(list.begin(), list.end(), [&roleName](const auto &v) { return std::get<0>(v) == roleName; });
-        return std::get<1>(it != list.end() ? *it : list.back());
+        constexpr auto map          = opencmw::ConstExprMap{ detail::normalizedPriorities<Roles...>() };
+        constexpr auto defaultValue = priorityCount<Roles...>() - 1;
+        return map.at(roleName, defaultValue);
     }
 }
 
@@ -100,9 +101,8 @@ inline constexpr Permission permission(std::string_view roleName) noexcept {
     if constexpr (sizeof...(Roles) == 0) {
         return Permission::RW; // no roles defined => default role has all permissions; TODO correct?
     } else {
-        constexpr auto list = detail::roleInfos<Roles...>();
-        const auto     it   = std::find_if(list.begin(), list.end(), [&roleName](const auto &v) { return std::get<0>(v) == roleName; });
-        return it != list.end() ? std::get<2>(*it) : Permission::NONE;
+        constexpr auto map = opencmw::ConstExprMap<std::string_view, Permission, sizeof...(Roles)>{ detail::permissionPair<Roles>()... };
+        return map.at(roleName, Permission::NONE);
     }
 }
 
