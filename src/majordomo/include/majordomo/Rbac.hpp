@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <string>
-#include <utility>
+#include <tuple>
 
 namespace opencmw::majordomo::rbac {
 
@@ -42,26 +42,26 @@ struct NONE : Role<"NONE", 0, Permission::NONE> {};
 
 namespace detail {
 
-using RoleAndPriority = std::pair<std::string_view, std::size_t>;
+using RoleInfo = std::tuple<std::string_view, std::size_t, Permission>;
 
 template<role Role>
-inline constexpr RoleAndPriority fromRole() noexcept {
-    return { Role::name(), Role::priority() };
+inline constexpr RoleInfo fromRole() noexcept {
+    return { Role::name(), Role::priority(), Role::rights() };
 }
 
 template<std::size_t N>
-inline constexpr std::array<RoleAndPriority, N> normalizedPriorities(std::array<RoleAndPriority, N> roles) noexcept {
+inline constexpr std::array<RoleInfo, N> normalizedPriorities(std::array<RoleInfo, N> roles) noexcept {
     static_assert(N > 0);
-    std::sort(roles.begin(), roles.end(), [](const auto &lhs, const auto &rhs) { return lhs.second > rhs.second; });
+    std::sort(roles.begin(), roles.end(), [](const auto &lhs, const auto &rhs) { return std::get<1>(lhs) > std::get<1>(rhs); });
     std::size_t nextPrio     = 0;
-    auto        originalPrio = roles[0].second;
-    roles[0].second          = nextPrio++;
+    auto        originalPrio = std::get<1>(roles[0]);
+    std::get<1>(roles[0])    = nextPrio++;
     for (std::size_t i = 1; i < roles.size(); ++i) {
-        if (roles[i].second == originalPrio) {
-            roles[i].second = roles[i - 1].second;
+        if (std::get<1>(roles[i]) == originalPrio) {
+            std::get<1>(roles[i]) = std::get<1>(roles[i - 1]);
         } else {
-            originalPrio    = roles[i].second;
-            roles[i].second = nextPrio++;
+            originalPrio          = std::get<1>(roles[i]);
+            std::get<1>(roles[i]) = nextPrio++;
         }
     }
 
@@ -69,8 +69,8 @@ inline constexpr std::array<RoleAndPriority, N> normalizedPriorities(std::array<
 }
 
 template<role... Roles>
-inline constexpr std::array<RoleAndPriority, sizeof...(Roles)> namesAndPriorities() noexcept {
-    return std::array<RoleAndPriority, sizeof...(Roles)>{ fromRole<Roles>()... };
+inline constexpr std::array<RoleInfo, sizeof...(Roles)> roleInfos() noexcept {
+    return std::array<RoleInfo, sizeof...(Roles)>{ fromRole<Roles>()... };
 }
 
 } // namespace detail
@@ -80,7 +80,7 @@ inline constexpr std::size_t priorityCount() noexcept {
     if constexpr (sizeof...(Roles) == 0) {
         return 1;
     } else {
-        return detail::normalizedPriorities(detail::namesAndPriorities<Roles...>()).back().second + 1;
+        return std::get<1>(detail::normalizedPriorities(detail::roleInfos<Roles...>()).back()) + 1;
     }
 }
 
@@ -89,9 +89,20 @@ inline constexpr std::size_t priorityIndex(std::string_view roleName) noexcept {
     if constexpr (sizeof...(Roles) == 0) {
         return 0;
     } else {
-        constexpr auto list = detail::normalizedPriorities(detail::namesAndPriorities<Roles...>());
-        const auto     it   = std::find_if(list.begin(), list.end(), [&roleName](const auto &v) { return v.first == roleName; });
-        return it != list.end() ? it->second : list.back().second;
+        constexpr auto list = detail::normalizedPriorities(detail::roleInfos<Roles...>());
+        const auto     it   = std::find_if(list.begin(), list.end(), [&roleName](const auto &v) { return std::get<0>(v) == roleName; });
+        return std::get<1>(it != list.end() ? *it : list.back());
+    }
+}
+
+template<role... Roles>
+inline constexpr Permission permission(std::string_view roleName) noexcept {
+    if constexpr (sizeof...(Roles) == 0) {
+        return Permission::RW; // no roles defined => default role has all permissions; TODO correct?
+    } else {
+        constexpr auto list = detail::roleInfos<Roles...>();
+        const auto     it   = std::find_if(list.begin(), list.end(), [&roleName](const auto &v) { return std::get<0>(v) == roleName; });
+        return it != list.end() ? std::get<2>(*it) : Permission::NONE;
     }
 }
 

@@ -7,6 +7,7 @@
 #include <majordomo/Broker.hpp>
 #include <majordomo/Constants.hpp>
 #include <majordomo/Debug.hpp>
+#include <majordomo/Rbac.hpp>
 #include <majordomo/Settings.hpp>
 #include <majordomo/Utils.hpp>
 
@@ -41,7 +42,7 @@ namespace detail {
     }
 } // namespace detail
 
-template<HandlesRequest RequestHandler>
+template<HandlesRequest RequestHandler, rbac::role... Roles>
 class BasicMdpWorker {
 private:
     using Clock     = std::chrono::steady_clock;
@@ -301,6 +302,19 @@ private:
     }
 
     MdpMessage processRequest(MdpMessage &&request) noexcept {
+        const auto clientRole = rbac::parse::role(request.rbacToken());
+        const auto permission = rbac::permission<Roles...>(clientRole);
+
+        if (request.command() == Command::Get && !(permission == rbac::Permission::RW || permission == rbac::Permission::RO)) {
+            auto errorReply = replyFromRequest(request);
+            errorReply.setError(fmt::format("GET access denied to role '{}'", clientRole), MessageFrame::dynamic_bytes_tag{});
+            return errorReply;
+        } else if (request.command() == Command::Set && !(permission == rbac::Permission::RW || permission == rbac::Permission::WO)) {
+            auto errorReply = replyFromRequest(request);
+            errorReply.setError(fmt::format("SET access denied to role '{}'", clientRole), MessageFrame::dynamic_bytes_tag{});
+            return errorReply;
+        }
+
         RequestContext context{ .request = std::move(request), .reply = replyFromRequest(context.request), .htmlData = {} };
 
         try {
@@ -356,11 +370,12 @@ private:
     }
 };
 
-template<HandlesRequest RequestHandler>
-BasicMdpWorker(std::string_view, const opencmw::URI<> &, RequestHandler &&, const Context &, Settings) -> BasicMdpWorker<RequestHandler>;
+template<rbac::role... Roles, HandlesRequest RequestHandler>
+BasicMdpWorker(std::string_view, const opencmw::URI<> &, RequestHandler &&, const Context &, Settings) -> BasicMdpWorker<RequestHandler, Roles...>;
 
-template<typename BrokerType, HandlesRequest RequestHandler>
-BasicMdpWorker(std::string_view, const BrokerType &, RequestHandler &&) -> BasicMdpWorker<RequestHandler>;
+// use same roles as broker
+template<rbac::role... Roles, HandlesRequest RequestHandler>
+BasicMdpWorker(std::string_view, const Broker<Roles...> &, RequestHandler &&) -> BasicMdpWorker<RequestHandler, Roles...>;
 
 } // namespace opencmw::majordomo
 

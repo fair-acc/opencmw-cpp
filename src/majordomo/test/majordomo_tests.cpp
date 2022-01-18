@@ -1284,6 +1284,141 @@ TEST_CASE("SET/GET example using the BasicMdpWorker class", "[worker][getset_bas
     }
 }
 
+TEST_CASE("BasicMdpWorker SET/GET example with RBAC permission handling", "[worker][getset_basic_worker][rbac]") {
+    using BrokerWithRoles = opencmw::majordomo::Broker<rbac::ADMIN, rbac::Role<"READER", 100, rbac::Permission::RO>, rbac::Role<"WRITER", 100, rbac::Permission::WO>>;
+    using opencmw::majordomo::MdpMessage;
+
+    BrokerWithRoles broker("testbroker", testSettings());
+    BasicMdpWorker  worker("/a.service", broker, TestIntHandler(10)); // inherits roles from broker (via CTAD)
+    worker.setServiceDescription("API description");
+    worker.setRbacRole("rbacToken");
+
+    RunInThread brokerRun(broker);
+    RunInThread workerRun(worker);
+
+    REQUIRE(waitUntilServiceAvailable(broker.context, "/a.service"));
+
+    TestNode<MdpMessage> writer(broker.context);
+    REQUIRE(writer.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
+
+    // writer is allowed to SET
+    {
+        auto set = MdpMessage::createClientMessage(Command::Set);
+        set.setServiceName("/a.service", static_tag);
+        set.setClientRequestId("1", static_tag);
+        set.setTopic("/topic", static_tag);
+        set.setBody("42", static_tag);
+        set.setRbacToken("RBAC=WRITER,1234", static_tag);
+
+        writer.send(set);
+
+        const auto reply = writer.tryReadOne();
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->clientRequestId() == "1");
+        REQUIRE(reply->body() == "Value set. All good!");
+        REQUIRE(reply->error().empty());
+    }
+
+    // writer is not allowed to GET
+    {
+        auto get = MdpMessage::createClientMessage(Command::Get);
+        get.setServiceName("/a.service", static_tag);
+        get.setClientRequestId("2", static_tag);
+        get.setTopic("/topic", static_tag);
+        get.setRbacToken("RBAC=WRITER,1234", static_tag);
+
+        writer.send(get);
+
+        const auto reply = writer.tryReadOne();
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->clientRequestId() == "2");
+        REQUIRE(reply->body().empty());
+        REQUIRE(reply->error() == "GET access denied to role 'WRITER'");
+    }
+
+    TestNode<MdpMessage> reader(broker.context);
+    REQUIRE(reader.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
+
+    // reader is not allowed to SET
+    {
+        auto set = MdpMessage::createClientMessage(Command::Set);
+        set.setServiceName("/a.service", static_tag);
+        set.setClientRequestId("1", static_tag);
+        set.setTopic("/topic", static_tag);
+        set.setBody("42", static_tag);
+        set.setRbacToken("RBAC=READER,1234", static_tag);
+
+        reader.send(set);
+
+        const auto reply = reader.tryReadOne();
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->clientRequestId() == "1");
+        REQUIRE(reply->body().empty());
+        REQUIRE(reply->error() == "SET access denied to role 'READER'");
+    }
+
+    // reader is allowed to GET
+    {
+        auto get = MdpMessage::createClientMessage(Command::Get);
+        get.setServiceName("/a.service", static_tag);
+        get.setClientRequestId("2", static_tag);
+        get.setTopic("/topic", static_tag);
+        get.setRbacToken("RBAC=READER,1234", static_tag);
+
+        reader.send(get);
+
+        const auto reply = reader.tryReadOne();
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->clientRequestId() == "2");
+        REQUIRE(reply->body() == "42");
+        REQUIRE(reply->error().empty());
+    }
+
+    TestNode<MdpMessage> admin(broker.context);
+    REQUIRE(admin.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
+
+    // admin is allowed to SET
+    {
+        auto set = MdpMessage::createClientMessage(Command::Set);
+        set.setServiceName("/a.service", static_tag);
+        set.setClientRequestId("1", static_tag);
+        set.setTopic("/topic", static_tag);
+        set.setBody("42", static_tag);
+        set.setRbacToken("RBAC=ADMIN,1234", static_tag);
+
+        admin.send(set);
+
+        const auto reply = admin.tryReadOne();
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->clientRequestId() == "1");
+        REQUIRE(reply->body() == "Value set. All good!");
+        REQUIRE(reply->error().empty());
+    }
+
+    // admin is allowed to GET
+    {
+        auto get = MdpMessage::createClientMessage(Command::Get);
+        get.setServiceName("/a.service", static_tag);
+        get.setClientRequestId("2", static_tag);
+        get.setTopic("/topic", static_tag);
+        get.setRbacToken("RBAC=ADMIN,1234", static_tag);
+
+        admin.send(get);
+
+        const auto reply = admin.tryReadOne();
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->clientRequestId() == "2");
+        REQUIRE(reply->body() == "42");
+        REQUIRE(reply->error().empty());
+    }
+}
+
 TEST_CASE("NOTIFY example using the BasicMdpWorker class", "[worker][notify_basic_worker]") {
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::MdpMessage;
