@@ -706,7 +706,7 @@ TEST_CASE("Broker disconnects on unexpected heartbeat", "[broker][unexpected_hea
 }
 
 TEST_CASE("Test RBAC role priority handling", "[broker][rbac]") {
-    using Broker = opencmw::majordomo::Broker<rbac::ADMIN, rbac::ANY, rbac::Role<"ROOT", 255, rbac::Permission::RW>, rbac::Role<"USER", 100, rbac::Permission::RW>>;
+    using Broker = opencmw::majordomo::Broker<rbac::ADMIN, rbac::Role<"BOSS", rbac::Permission::RW>, rbac::Role<"USER", rbac::Permission::RW>, rbac::ANY>;
     using opencmw::majordomo::Client;
     using opencmw::majordomo::MdpMessage;
     using namespace std::literals;
@@ -734,7 +734,7 @@ TEST_CASE("Test RBAC role priority handling", "[broker][rbac]") {
     TestNode<MdpMessage> client(broker.context);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
-    constexpr auto roles           = std::array{ "ANY", "ANY", "USER", "ROOT", "ADMIN" };
+    constexpr auto roles           = std::array{ "ANY", "UNKNOWN", "USER", "BOSS", "ADMIN" };
 
     int            clientRequestId = 0;
     for (const auto &role : roles) {
@@ -762,7 +762,7 @@ TEST_CASE("Test RBAC role priority handling", "[broker][rbac]") {
     }
 
     // the remaining messages must have been queued in the broker and thus be reordered:
-    // "ROOT", "ADMIN", "USER", "ANY"
+    // "ADMIN", "BOSS", "USER", "UNKNOWN" (unexpected roles come last)
     std::vector<std::string> seenMessages;
     while (seenMessages.size() < roles.size() - 1) {
         const auto msg = worker.tryReadOne();
@@ -776,7 +776,7 @@ TEST_CASE("Test RBAC role priority handling", "[broker][rbac]") {
         worker.send(reply);
     }
 
-    REQUIRE(seenMessages == std::vector{ "3"s, "4"s, "2"s, "1"s });
+    REQUIRE(seenMessages == std::vector{ "4"s, "3"s, "2"s, "1"s });
 }
 
 TEST_CASE("pubsub example using router socket (DEALER client)", "[broker][pubsub_router]") {
@@ -1284,7 +1284,7 @@ TEST_CASE("SET/GET example using the BasicWorker class", "[worker][getset_basic_
 }
 
 TEST_CASE("BasicWorker SET/GET example with RBAC permission handling", "[worker][getset_basic_worker][rbac]") {
-    using BrokerWithRoles = opencmw::majordomo::Broker<rbac::ADMIN, rbac::Role<"READER", 100, rbac::Permission::RO>, rbac::Role<"WRITER", 100, rbac::Permission::WO>>;
+    using BrokerWithRoles = opencmw::majordomo::Broker<rbac::ADMIN, rbac::Role<"WRITER", rbac::Permission::WO>, rbac::Role<"READER", rbac::Permission::RO>>;
     using opencmw::majordomo::MdpMessage;
 
     BrokerWithRoles broker("testbroker", testSettings());

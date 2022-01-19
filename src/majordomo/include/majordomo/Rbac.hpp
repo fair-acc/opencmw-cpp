@@ -8,7 +8,6 @@
 #include <algorithm>
 #include <array>
 #include <string>
-#include <tuple>
 
 namespace opencmw::majordomo::rbac {
 
@@ -19,72 +18,26 @@ enum class Permission {
     NONE
 };
 
-template<units::basic_fixed_string roleName, uint8_t rolePriority, Permission accessRights>
+template<units::basic_fixed_string roleName, Permission accessRights>
 class Role {
 public:
     [[nodiscard]] static constexpr std::string_view name() { return roleName.data_; }
-    [[nodiscard]] static constexpr int              priority() { return rolePriority; }
     [[nodiscard]] static constexpr Permission       rights() { return accessRights; }
     template<typename ROLE>
     [[nodiscard]] constexpr bool operator==(const ROLE &other) const noexcept {
-        return std::is_same_v<ROLE, Role<roleName, rolePriority, accessRights>>;
+        return std::is_same_v<ROLE, Role<roleName, accessRights>>;
     }
 };
 
 template<typename T>
 concept role = requires {
     T::name();
-    T::priority();
     T::rights();
 };
 
-struct ADMIN : Role<"ADMIN", 255, Permission::RW> {};
-struct ANY : Role<"ANY", 0, Permission::RO> {};
-struct NONE : Role<"NONE", 0, Permission::NONE> {};
-
-namespace detail {
-
-template<role... Roles>
-inline constexpr std::array<std::pair<std::string_view, std::size_t>, sizeof...(Roles)> normalizedPriorities() noexcept {
-    static_assert(sizeof...(Roles) > 0);
-    auto roles = std::array<std::pair<std::string_view, std::size_t>, sizeof...(Roles)>{ std::pair{ Roles::name(), Roles::priority() }... };
-    std::sort(roles.begin(), roles.end(), [](const auto &lhs, const auto &rhs) { return lhs.second > rhs.second; });
-    std::size_t nextPrio     = 0;
-    auto        originalPrio = roles[0].second;
-    roles[0].second          = nextPrio++;
-    for (std::size_t i = 1; i < roles.size(); ++i) {
-        if (roles[i].second == originalPrio) {
-            roles[i].second = roles[i - 1].second;
-        } else {
-            originalPrio    = roles[i].second;
-            roles[i].second = nextPrio++;
-        }
-    }
-
-    return { roles };
-}
-
-} // namespace detail
-
-template<role... Roles>
-inline constexpr std::size_t priorityCount() noexcept {
-    if constexpr (sizeof...(Roles) == 0) {
-        return 1;
-    } else {
-        return detail::normalizedPriorities<Roles...>().back().second + 1;
-    }
-}
-
-template<role... Roles>
-inline constexpr std::size_t priorityIndex(std::string_view roleName) noexcept {
-    if constexpr (sizeof...(Roles) == 0) {
-        return 0;
-    } else {
-        constexpr auto map          = opencmw::ConstExprMap{ detail::normalizedPriorities<Roles...>() };
-        constexpr auto defaultValue = priorityCount<Roles...>() - 1;
-        return map.at(roleName, defaultValue);
-    }
-}
+struct ADMIN : Role<"ADMIN", Permission::RW> {};
+struct ANY : Role<"ANY", Permission::RO> {};
+struct NONE : Role<"NONE", Permission::NONE> {};
 
 template<role... Roles>
 inline constexpr Permission permission(std::string_view roleName) noexcept {

@@ -156,12 +156,27 @@ private:
     };
 
     struct Service {
-        std::function<BrokerMessage(BrokerMessage &&)>                         internalHandler;
-        std::string                                                            name;
-        std::string                                                            description;
-        std::deque<Worker *>                                                   waiting;
-        std::array<std::deque<BrokerMessage>, rbac::priorityCount<Roles...>()> requestsByPriority;
-        std::size_t                                                            requestCount = 0;
+        using QueueEntry    = std::pair<std::string_view, std::deque<BrokerMessage>>;
+        using PriorityQueue = std::array<QueueEntry, std::max(sizeof...(Roles), static_cast<std::size_t>(1))>;
+        static constexpr PriorityQueue makePriorityQueue() {
+            if constexpr (sizeof...(Roles) == 0) {
+                return { QueueEntry{ "", std::deque<BrokerMessage>{} } };
+            } else {
+                return { QueueEntry{ Roles::name(), std::deque<BrokerMessage>{} }... };
+            }
+        }
+
+        std::function<BrokerMessage(BrokerMessage &&)> internalHandler;
+        std::string                                    name;
+        std::string                                    description;
+        std::deque<Worker *>                           waiting;
+        PriorityQueue                                  requestsByPriority = makePriorityQueue();
+        std::size_t                                    requestCount       = 0;
+
+        auto                                          &queueForRole(const std::string_view role) {
+            auto it = std::find_if(requestsByPriority.begin(), requestsByPriority.end(), [&role](const auto &v) { return v.first == role; });
+            return it != requestsByPriority.end() ? it->second : requestsByPriority.back().second;
+        }
 
         explicit Service(std::string name_, std::string description_)
             : name(std::move(name_))
@@ -174,17 +189,16 @@ private:
         }
 
         void putMessage(BrokerMessage &&message) {
-            const auto role     = rbac::parse::role(message.rbacToken());
-            const auto priority = rbac::priorityIndex<Roles...>(role);
-            requestsByPriority[static_cast<std::size_t>(priority)].emplace_back(std::move(message));
+            const auto role = rbac::parse::role(message.rbacToken());
+            queueForRole(role).emplace_back(std::move(message));
             requestCount++;
         }
 
         BrokerMessage takeNextMessage() {
-            auto queueIt = std::find_if(requestsByPriority.begin(), requestsByPriority.end(), [](const auto &v) { return !v.empty(); });
+            auto queueIt = std::find_if(requestsByPriority.begin(), requestsByPriority.end(), [](const auto &v) { return !v.second.empty(); });
             assert(queueIt != requestsByPriority.end());
-            auto msg = std::move(queueIt->front());
-            queueIt->pop_front();
+            auto msg = std::move(queueIt->second.front());
+            queueIt->second.pop_front();
             requestCount--;
             return msg;
         }
