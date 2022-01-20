@@ -168,10 +168,9 @@ TEST_CASE("Test Long Member Name", "[IoClassSerialiserYAML]") {
     {
         debug::Timer             timer("IoClassSerialiser basic syntax", 30);
         IoBuffer                 buffer;
-        StructWithLongMemberName data;
-        REQUIRE_THROWS_AS(opencmw::serialise<opencmw::YAML>(buffer, data), ProtocolException);
         std::cout << fmt::format("buffer size (before): {} bytes\n", buffer.size());
 
+        StructWithLongMemberName data;
         StructWithLongMemberName data2;
         REQUIRE(data == data2);
         data.boolValueWithASuperAnnoyinglyAndAbsurdlyLongNameJustHereToBreakTheSerialiser = true;
