@@ -90,9 +90,12 @@ inline std::string_view readKey(IoBuffer &buffer) {
     auto       i     = start;
     while (i < (buffer.size() - 1) && buffer.at<uint8_t>(i) != ':') {
         if (buffer.at<uint8_t>(i) == '\n') {
-            throw ProtocolException("encountered pre-mature line-break while reading key at {} - string: {}", i, buffer.asString(start, static_cast<int32_t>(i - start)));
+            throw ProtocolException("encountered pre-mature line-break while reading key at {} - string: '{}'", i, buffer.asString(start, static_cast<int32_t>(i - start)));
         }
         i++;
+        if (i < (buffer.size() - 2) && buffer.at<uint8_t>(i) == ':' && buffer.at<uint8_t>(i + 1) == ':') { // encountered a '::' skip ahead
+            i += 2;
+        }
     }
     if (buffer.at<uint8_t>(i) == '\n' && buffer.at<uint8_t>(i - 1) == '.' && buffer.at<uint8_t>(i - 2) == '.' && buffer.at<uint8_t>(i - 3) == '.') {
         buffer.set_position(i);
@@ -156,30 +159,42 @@ constexpr void fieldParser(const std::string_view &data, std::floating_point aut
 template<bool SingleLineParameter>
 constexpr void fieldParser(const std::string_view &data, bool &value) {
     using namespace std::string_view_literals;
-    if (data == "false"sv || data == "0"sv) {
-        value = false;
-        return;
+    if (SingleLineParameter) {
+        if (data == "false"sv || data == "0"sv) {
+            value = false;
+            return;
+        }
+        if (data == "true"sv || data == "1"sv) {
+            value = true;
+            return;
+        }
+        throw ProtocolException("parsing ArithmeticType (bool) from string '{}'", data);
     }
-    if (data == "true"sv || data == "1"sv) {
-        value = true;
-        return;
-    }
-    throw ProtocolException("parsing ArithmeticType (bool) from string '{}'", data);
+    // is multi-line parameter, strip meta-info and leading spaces
+    const std::string_view parse = data.substr(data.find_first_not_of(' ', data.find_first_of('\n') + 1));
+    fieldParser<true>(parse, FWD(value));
 }
 
 template<bool SingleLineParameter, std::integral DestDataType>
 constexpr void fieldParser(const std::string_view &data, DestDataType &value) {
-    if constexpr (std::is_same_v<DestDataType, char>) {
-        if (data.size() != 1) {
-            throw ProtocolException("parsing ArithmeticType (char) from string '{}'", data);
+    if (SingleLineParameter) {
+        if constexpr (std::is_same_v<DestDataType, char>) {
+            if (data.size() != 1) {
+                throw ProtocolException("parsing ArithmeticType (char) from string '{}'", data);
+            }
+            value = data[0];
+            return;
+        } else {
+            const auto result = std::from_chars(data.data(), data.data() + data.size(), value); // fall-back
+            if (result.ec != std::errc()) {
+                throw ProtocolException("parsing ArithmeticType (integral) from string '{}'", data);
+            }
         }
-        value = data[0];
-    } else {
-        const auto result = std::from_chars(data.data(), data.data() + data.size(), value); // fall-back
-        if (result.ec != std::errc()) {
-            throw ProtocolException("parsing ArithmeticType (integral) from string '{}'", data);
-        }
+        return;
     }
+    // is multi-line parameter, strip meta-info and leading spaces
+    const std::string_view parse = data.substr(data.find_first_not_of(' ', data.find_first_of('\n') + 1));
+    fieldParser<true, DestDataType>(parse, FWD(value));
 }
 
 inline std::string fieldFormatter(StringLike auto const &value, const int nIndentation = 0) noexcept {
@@ -404,15 +419,15 @@ struct IoSerialiser<YAML, DataType> { // catch all template -> dispatched to fie
             return;
         }
         // need line-break to not collide with the meta information
+        const auto minMetaSpacing   = std::max(getMetaPosition() - startPosition, 5);
         const auto lineBrokenFormat = yaml::detail::fieldFormatter(unwrap(rawValue), yaml::detail::getIndentation(field.hierarchyDepth + 1));
         if constexpr (is_annotated<DataType>) {
             const auto unit        = rawValue.getUnit().empty() ? "" : fmt::format(" - [{}]", rawValue.getUnit());
             const auto description = rawValue.getDescription().empty() ? "" : fmt::format(" - {}", rawValue.getDescription());
-            buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>(fmt::format("{:<{}}# {}\t{}{}\n{}", ' ', getMetaPosition() - startPosition, typeName<StrippedDataType>, unit, description, lineBrokenFormat));
+            buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>(fmt::format("{:<{}}# {}\t{}{}\n{}", ' ', minMetaSpacing, typeName<StrippedDataType>, unit, description, lineBrokenFormat));
             return;
         }
-        buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>(fmt::format("{:<{}}# {}\n{}", ' ', getMetaPosition() - startPosition,
-                   typeName<StrippedDataType>, lineBrokenFormat));
+        buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>(fmt::format("{:<{}}# {}\n{}", ' ', minMetaSpacing, typeName<StrippedDataType>, lineBrokenFormat));
     }
     constexpr static void deserialise(IoBuffer &buffer, FieldDescription auto const &field, DataType &value) {
         if (const auto shortData = yaml::detail::parseNonWhiteSpaceData(buffer); !shortData.empty()) {

@@ -25,7 +25,7 @@ using opencmw::ExternalModifier::RW;
 using opencmw::ExternalModifier::RW_DEPRECATED;
 using opencmw::ExternalModifier::RW_PRIVATE;
 
-namespace IoSerialiserYamlTest {
+namespace io_serialiser_yaml_test {
 struct NestedDataY {
     Annotated<int8_t, length<metre>, "nested int8_t">                          annByteValue   = 11;
     Annotated<int16_t, si::time<second>, "custom description for int16_t">     annShortValue  = 12;
@@ -41,37 +41,36 @@ struct NestedDataY {
     // some default operator
     auto operator<=>(const NestedDataY &) const = default;
 };
-} // namespace IoSerialiserYamlTest
+} // namespace io_serialiser_yaml_test
 // following is the visitor-pattern-macro that allows the compile-time reflections via refl-cpp
-ENABLE_REFLECTION_FOR(IoSerialiserYamlTest::NestedDataY, annByteValue, annShortValue, annIntValue, annLongValue, annFloatValue, annDoubleValue, annStringValue, annDoubleArray, annFloatVector, annBoolArray)
+ENABLE_REFLECTION_FOR(io_serialiser_yaml_test::NestedDataY, annByteValue, annShortValue, annIntValue, annLongValue, annFloatValue, annDoubleValue, annStringValue, annDoubleArray, annFloatVector, annBoolArray)
 
-namespace IoSerialiserYamlTest {
+namespace io_serialiser_yaml_test {
 struct DataY {
-    bool                               boolValue        = false;
-    int8_t                             byteValue        = 1;
-    int16_t                            shortValue       = 2;
-    int32_t                            intValue         = 3;
-    int64_t                            longValue        = 4;
-    float                              floatValue       = 5.0F;
-    double                             doubleValue      = 6.0;
-    std::string                        stringValue      = "bare string";
-    std::string const                  constStringValue = "unmodifiable string";
-    std::array<double, 10>             doubleArray      = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
-    std::array<double, 10> const       constDoubleArray = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
-    std::vector<float>                 floatVector      = { 0.1F, 1.1F, 2.1F, 3.1F, 4.1F, 5.1F, 6.1F, 8.1F, 9.1F, 9.1F };
-    opencmw::MultiArray<double, 2>     doubleMatrix{ { 1, 3, 7, 4, 2, 3 }, { 2, 3 } };
-    NestedDataY                        nestedData;
-    Annotated<double, resistance<ohm>> annotatedValue = 0.1;
-    //
-    // Annotated<std::map<std::string, std::string>, NoUnit, "a simple std::map"> map = {{"key1","value1"},{"key2","value2"},{"key3","value3"},{"key4","value4"}};
-    std::map<std::string, std::string> map                             = { { "key1", "value1" }, { "key2", "value2" }, { "key3", "value3" }, { "key4", "value4" }, { "key5", "value5" }, { "key6", "value6" } };
-    std::map<std::string, std::string> smallMap                        = { { "key1", "value1" } };
+    bool                                            boolValue        = false;
+    int8_t                                          byteValue        = 1;
+    int16_t                                         shortValue       = 2;
+    int32_t                                         intValue         = 3;
+    int64_t                                         longValue        = 4;
+    float                                           floatValue       = 5.0F;
+    double                                          doubleValue      = 6.0;
+    std::string                                     stringValue      = "bare string";
+    std::string const                               constStringValue = "unmodifiable string";
+    std::array<double, 10>                          doubleArray      = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+    std::array<double, 10> const                    constDoubleArray = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+    std::vector<float>                              floatVector      = { 0.1F, 1.1F, 2.1F, 3.1F, 4.1F, 5.1F, 6.1F, 8.1F, 9.1F, 9.1F };
+    opencmw::MultiArray<double, 2>                  doubleMatrix{ { 1, 3, 7, 4, 2, 3 }, { 2, 3 } };
+    NestedDataY                                     nestedData;
+    Annotated<double, resistance<ohm>>              annotatedValue                  = 0.1;
 
-    bool                               operator==(const DataY &) const = default;
+    std::map<std::string, std::string, std::less<>> map                             = { { "key1", "value1" }, { "key2", "value2" }, { "key3", "value3" }, { "key4", "value4" }, { "key5", "value5" }, { "key6", "value6" } };
+    std::map<std::string, std::string, std::less<>> smallMap                        = { { "key1", "value1" } };
+
+    bool                                            operator==(const DataY &) const = default;
 };
-} // namespace IoSerialiserYamlTest
+} // namespace io_serialiser_yaml_test
 // following is the visitor-pattern-macro that allows the compile-time reflections via refl-cpp
-ENABLE_REFLECTION_FOR(IoSerialiserYamlTest::DataY, boolValue, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, constStringValue, doubleArray, floatVector, /*doubleMatrix,*/ nestedData, annotatedValue, map, smallMap)
+ENABLE_REFLECTION_FOR(io_serialiser_yaml_test::DataY, boolValue, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, constStringValue, doubleArray, floatVector, /*doubleMatrix,*/ nestedData, annotatedValue, map, smallMap)
 
 template<opencmw::SerialiserProtocol protocol, opencmw::ReflectableClass T>
 void checkSerialiserIdentity(opencmw::IoBuffer &buffer, const T &a, T &b) {
@@ -99,16 +98,14 @@ TEST_CASE("basic YAML serialisation", "[IoClassSerialiserYAML]") {
     std::cerr << std::unitbuf;
     using namespace opencmw;
     using namespace opencmw::utils; // for operator<< and fmt::format overloading
-    using namespace IoSerialiserYamlTest;
+    using namespace io_serialiser_yaml_test;
     debug::resetStats();
     {
         debug::Timer timer("IoClassSerialiser basic syntax", 30);
         IoBuffer     buffer;
         DataY        data;
 
-        std::cout << fmt::format("buffer size (before): {} bytes\n", buffer.size());
-
-        DataY data2;
+        DataY        data2;
         REQUIRE(data == data2);
         data2.boolValue      = true;
         data2.byteValue      = 30;
@@ -128,10 +125,6 @@ TEST_CASE("basic YAML serialisation", "[IoClassSerialiserYAML]") {
         data2.map["key7"]                = "value7";
         data2.smallMap.clear();
         REQUIRE(data != data2);
-
-        //        std::cout << "object (short): " << ClassInfoShort << data << '\n';
-        //        std::cout << fmt::format("object (fmt): {}\n", data);
-        //        std::cout << "object (long):  " << ClassInfoVerbose << data << '\n';
 
         opencmw::serialise<opencmw::YAML>(buffer, data);
         std::cout << "YAML - output:\n"
@@ -153,27 +146,30 @@ TEST_CASE("basic YAML serialisation", "[IoClassSerialiserYAML]") {
     debug::resetStats();
 }
 
-namespace IoSerialiserYamlTest {
+namespace io_serialiser_yaml_test {
 struct StructWithLongMemberName {
-    bool boolValueWithASuperAnnoyinglyAndAbsurdlyLongNameJustHereToBreakTheSerialiser = false;
-    auto operator<=>(const StructWithLongMemberName &) const                          = default;
+    bool boolValueWithASuperAnnoyinglyAndAbsurdlyLongNameJustHereToBreakTheSerialiser      = false;
+    int  intValueWithAnEvenLongerAnnoyinglyAndAbsurdlyLongNameJustHereToBreakTheSerialiser = -1;
+    auto operator<=>(const StructWithLongMemberName &) const                               = default;
 };
-} // namespace IoSerialiserYamlTest
-ENABLE_REFLECTION_FOR(IoSerialiserYamlTest::StructWithLongMemberName, boolValueWithASuperAnnoyinglyAndAbsurdlyLongNameJustHereToBreakTheSerialiser)
+} // namespace io_serialiser_yaml_test
+ENABLE_REFLECTION_FOR(io_serialiser_yaml_test::StructWithLongMemberName,
+        boolValueWithASuperAnnoyinglyAndAbsurdlyLongNameJustHereToBreakTheSerialiser,
+        intValueWithAnEvenLongerAnnoyinglyAndAbsurdlyLongNameJustHereToBreakTheSerialiser)
 TEST_CASE("Test Long Member Name", "[IoClassSerialiserYAML]") {
     using namespace opencmw;
     using namespace opencmw::utils; // for operator<< and fmt::format overloading
-    using namespace IoSerialiserYamlTest;
+    using namespace io_serialiser_yaml_test;
     debug::resetStats();
     {
         debug::Timer             timer("IoClassSerialiser basic syntax", 30);
         IoBuffer                 buffer;
-        std::cout << fmt::format("buffer size (before): {} bytes\n", buffer.size());
 
         StructWithLongMemberName data;
         StructWithLongMemberName data2;
         REQUIRE(data == data2);
-        data.boolValueWithASuperAnnoyinglyAndAbsurdlyLongNameJustHereToBreakTheSerialiser = true;
+        data.boolValueWithASuperAnnoyinglyAndAbsurdlyLongNameJustHereToBreakTheSerialiser      = true;
+        data.intValueWithAnEvenLongerAnnoyinglyAndAbsurdlyLongNameJustHereToBreakTheSerialiser = 2;
         REQUIRE(data != data2);
 
         opencmw::serialise<opencmw::YAML>(buffer, data);
@@ -181,13 +177,11 @@ TEST_CASE("Test Long Member Name", "[IoClassSerialiserYAML]") {
                   << buffer.asString() << std::endl;
 
         // check (de-)serialisation identity
-        std::cout << ClassInfoVerbose << "before: ";
         diffView(std::cout, data, data2);
         checkSerialiserIdentity<opencmw::YAML>(buffer, data, data2);
-        std::cout << fmt::format("buffer size (after): {} bytes\n", buffer.size());
-        std::cout << "after: " << std::flush;
-        diffView(std::cout, data, data2);
         REQUIRE(data == data2);
+        REQUIRE(data2.boolValueWithASuperAnnoyinglyAndAbsurdlyLongNameJustHereToBreakTheSerialiser == true);
+        REQUIRE(data2.intValueWithAnEvenLongerAnnoyinglyAndAbsurdlyLongNameJustHereToBreakTheSerialiser == 2);
     }
     REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
     debug::resetStats();
