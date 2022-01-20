@@ -3,8 +3,6 @@
 
 #include <opencmw.hpp>
 
-#include <units/bits/external/fixed_string.h> // TODO use which header?
-
 #include <algorithm>
 #include <array>
 #include <string>
