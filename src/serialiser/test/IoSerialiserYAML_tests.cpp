@@ -150,3 +150,23 @@ TEST_CASE("basic YAML serialisation", "[IoClassSerialiserYAML]") {
     REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
     debug::resetStats();
 }
+
+struct StructWithLongMemberName {
+    bool boolValueWithASuperAnnoyinglyAndAbsurdlyLongNameJustHereToBreakTheSerialiser = false;
+    auto operator<=>(const StructWithLongMemberName&) const = default;
+};
+ENABLE_REFLECTION_FOR(StructWithLongMemberName, boolValueWithASuperAnnoyinglyAndAbsurdlyLongNameJustHereToBreakTheSerialiser)
+
+TEST_CASE("Test Long Member Name exception", "[IoClassSerialiserYAML]") {
+    using namespace opencmw;
+    using namespace opencmw::utils; // for operator<< and fmt::format overloading
+    debug::resetStats();
+    {
+        debug::Timer timer("IoClassSerialiser basic syntax", 30);
+        IoBuffer     buffer;
+        StructWithLongMemberName data;
+        REQUIRE_THROWS_AS(opencmw::serialise<opencmw::YAML>(buffer, data), ProtocolException);
+    }
+    REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
+    debug::resetStats();
+}
