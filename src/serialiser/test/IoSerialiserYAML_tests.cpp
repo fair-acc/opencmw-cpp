@@ -166,8 +166,8 @@ TEST_CASE("Test Long Member Name", "[IoClassSerialiserYAML]") {
     using namespace IoSerialiserYamlTest;
     debug::resetStats();
     {
-        debug::Timer             timer("IoClassSerialiser basic syntax", 30);
-        IoBuffer                 buffer;
+        debug::Timer timer("IoClassSerialiser basic syntax", 30);
+        IoBuffer     buffer;
         std::cout << fmt::format("buffer size (before): {} bytes\n", buffer.size());
 
         StructWithLongMemberName data;
