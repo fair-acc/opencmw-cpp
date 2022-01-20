@@ -127,7 +127,7 @@ inline std::string findDnsEntry(std::string_view brokerName, std::unordered_map<
 
 } // namespace detail
 
-template<rbac::role... Roles>
+template<role... Roles>
 class Broker {
 private:
     // Shorten chrono names
@@ -189,7 +189,7 @@ private:
         }
 
         void putMessage(BrokerMessage &&message) {
-            const auto role = rbac::parse::role(message.rbacToken());
+            const auto role = parse_rbac::role(message.rbacToken());
             queueForRole(role).emplace_back(std::move(message));
             requestCount++;
         }

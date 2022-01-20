@@ -65,8 +65,8 @@ private:
     using Clock        = std::chrono::steady_clock;
     using Timestamp    = std::chrono::time_point<Clock>;
     using Description  = opencmw::find_type<detail::description_impl, Meta...>;
-    using DefaultRoles = std::tuple<rbac::ADMIN>;
-    using Roles        = opencmw::tuple_unique<opencmw::tuple_cat_t<DefaultRoles, rbac::find_roles<Meta...>>>;
+    using DefaultRoles = std::tuple<ADMIN>;
+    using Roles        = opencmw::tuple_unique<opencmw::tuple_cat_t<DefaultRoles, find_roles<Meta...>>>;
 
     struct NotificationHandler {
         Socket    socket;
@@ -319,29 +319,29 @@ private:
     }
 
     static constexpr auto permissionMap() {
-        constexpr auto                                               N = std::tuple_size<Roles>();
-        std::array<std::pair<std::string_view, rbac::Permission>, N> data;
+        constexpr auto                                         N = std::tuple_size<Roles>();
+        std::array<std::pair<std::string_view, Permission>, N> data;
 
         opencmw::MIME::detail::static_for<std::size_t, 0, N>([&](auto i) {
             using role = std::tuple_element<i, Roles>::type;
             data[i]    = std::pair(role::name(), role::rights());
         });
 
-        return ConstExprMap<std::string_view, rbac::Permission, N>(data);
+        return ConstExprMap<std::string_view, Permission, N>(data);
     }
 
     static constexpr auto _permissionsByRole = permissionMap();
     static constexpr auto _defaultPermission = _permissionsByRole.data.back().second;
 
     MdpMessage            processRequest(MdpMessage &&request) noexcept {
-        const auto clientRole = rbac::parse::role(request.rbacToken());
+        const auto clientRole = parse_rbac::role(request.rbacToken());
         const auto permission = _permissionsByRole.at(clientRole, _defaultPermission);
 
-        if (request.command() == Command::Get && !(permission == rbac::Permission::RW || permission == rbac::Permission::RO)) {
+        if (request.command() == Command::Get && !(permission == Permission::RW || permission == Permission::RO)) {
             auto errorReply = replyFromRequest(request);
             errorReply.setError(fmt::format("GET access denied to role '{}'", clientRole), MessageFrame::dynamic_bytes_tag{});
             return errorReply;
-        } else if (request.command() == Command::Set && !(permission == rbac::Permission::RW || permission == rbac::Permission::WO)) {
+        } else if (request.command() == Command::Set && !(permission == Permission::RW || permission == Permission::WO)) {
             auto errorReply = replyFromRequest(request);
             errorReply.setError(fmt::format("SET access denied to role '{}'", clientRole), MessageFrame::dynamic_bytes_tag{});
             return errorReply;

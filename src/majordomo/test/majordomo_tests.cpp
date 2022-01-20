@@ -706,7 +706,7 @@ TEST_CASE("Broker disconnects on unexpected heartbeat", "[broker][unexpected_hea
 }
 
 TEST_CASE("Test RBAC role priority handling", "[broker][rbac]") {
-    using Broker = opencmw::majordomo::Broker<rbac::ADMIN, rbac::Role<"BOSS", rbac::Permission::RW>, rbac::Role<"USER", rbac::Permission::RW>, rbac::ANY>;
+    using Broker = opencmw::majordomo::Broker<ADMIN, Role<"BOSS", Permission::RW>, Role<"USER", Permission::RW>, ANY>;
     using opencmw::majordomo::Client;
     using opencmw::majordomo::MdpMessage;
     using namespace std::literals;
@@ -1259,13 +1259,13 @@ TEST_CASE("SET/GET example using the BasicWorker class", "[worker][getset_basic_
 }
 
 TEST_CASE("BasicWorker SET/GET example with RBAC permission handling", "[worker][getset_basic_worker][rbac]") {
-    using WRITER = rbac::Role<"WRITER", rbac::Permission::WO>;
-    using READER = rbac::Role<"READER", rbac::Permission::RO>;
+    using WRITER = Role<"WRITER", Permission::WO>;
+    using READER = Role<"READER", Permission::RO>;
     using opencmw::majordomo::description;
     using opencmw::majordomo::MdpMessage;
 
-    Broker                                                                                 broker("testbroker", testSettings());
-    BasicWorker<"/a.service", description<"API description">, rbac::roles<WRITER, READER>> worker(broker, TestIntHandler(10));
+    Broker                                                                          broker("testbroker", testSettings());
+    BasicWorker<"/a.service", description<"API description">, rbac<WRITER, READER>> worker(broker, TestIntHandler(10));
     REQUIRE(worker.serviceDescription() == "API description");
 
     RunInThread brokerRun(broker);

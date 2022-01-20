@@ -228,7 +228,7 @@ public:
         return tmp;
     }
 
-    [[nodiscard]] MessageFrame &      frameAt(int index) { return _frames[static_cast<std::size_t>(index)]; }
+    [[nodiscard]] MessageFrame       &frameAt(int index) { return _frames[static_cast<std::size_t>(index)]; }
     [[nodiscard]] const MessageFrame &frameAt(int index) const { return _frames[static_cast<std::size_t>(index)]; }
 
     template<typename T>

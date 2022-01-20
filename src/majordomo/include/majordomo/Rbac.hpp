@@ -7,7 +7,7 @@
 #include <array>
 #include <string>
 
-namespace opencmw::majordomo::rbac {
+namespace opencmw::majordomo {
 
 enum class Permission {
     RW,
@@ -41,17 +41,17 @@ struct ANY : Role<"ANY", Permission::RW> {};
 struct ANY_RO : Role<"ANY", Permission::RO> {};
 struct NONE : Role<"NONE", Permission::NONE> {};
 
-template<rbac::role... Values>
-struct roles : std::type_identity<std::tuple<Values...>> {
+template<role... Values>
+struct rbac : std::type_identity<std::tuple<Values...>> {
     using type2 = std::tuple<Values...>;
 };
 
 namespace detail {
 template<typename Item>
 constexpr auto find_roles_helper() {
-    if constexpr (rbac::is_role<Item>) {
+    if constexpr (is_role<Item>) {
         return std::tuple<Item>();
-    } else if constexpr (is_instance_of_v<Item, roles>) {
+    } else if constexpr (is_instance_of_v<Item, rbac>) {
         return to_instance<std::tuple>(Item());
     } else {
         return std::tuple<>();
@@ -62,7 +62,7 @@ constexpr auto find_roles_helper() {
 template<typename... Items>
 using find_roles = decltype(std::tuple_cat(detail::find_roles_helper<Items>()...));
 
-namespace parse {
+namespace parse_rbac {
 
 constexpr auto                    RBAC_PREFIX = std::string_view("RBAC=");
 
@@ -110,8 +110,8 @@ inline constexpr std::pair<std::string_view, std::string_view> roleAndHash(std::
     return { token.substr(0, commaPos), token.substr(commaPos + 1) };
 }
 
-} // namespace parse
+} // namespace parse_rbac
 
-} // namespace opencmw::majordomo::rbac
+} // namespace opencmw::majordomo
 
 #endif

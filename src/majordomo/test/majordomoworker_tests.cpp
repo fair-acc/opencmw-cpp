@@ -165,10 +165,10 @@ TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][major
 
 TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworker][plain_client][rbac]") {
     using namespace opencmw::majordomo;
-    Broker<rbac::ADMIN, rbac::ANY> broker("TestBroker", testSettings());
+    Broker<ADMIN, ANY> broker("TestBroker", testSettings());
     opencmw::query::registerTypes(TestContext(), broker);
 
-    Worker<"addressbook", TestContext, AddressRequest, AddressEntry, rbac::roles<rbac::ADMIN, rbac::NONE>, description<"API description">> worker(broker, TestHandler());
+    Worker<"addressbook", TestContext, AddressRequest, AddressEntry, rbac<ADMIN, NONE>, description<"API description">> worker(broker, TestHandler());
     REQUIRE(worker.serviceDescription() == "API description");
 
     RunInThread brokerRun(broker);
