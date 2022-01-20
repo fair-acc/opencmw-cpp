@@ -10,6 +10,7 @@
 #include <units/quantity.h>
 #include <units/quantity_io.h>
 
+#define FWD(x) std::forward<decltype(x)>(x)               // short-hand notation
 #define forceinline inline __attribute__((always_inline)) // use this for hot-spots only <-> may bloat code size, not fit into cache and consequently slow down execution
 #define neverinline __attribute__((noinline))             // primarily used to avoid inlining (rare) exception handling code
 
@@ -32,7 +33,7 @@ namespace opencmw {
 using units::basic_fixed_string;
 using units::is_same_v;
 
-auto &unmove(auto &&t) { return t; } // opposite of std::move(...)
+constexpr auto &unmove(auto &&t) { return t; } // opposite of std::move(...)
 
 template<typename T, typename Type = typename std::decay<T>::type>
 inline constexpr const bool isStdType = get_name(refl::reflect<Type>()).template substr<0, 5>() == "std::";
@@ -69,8 +70,11 @@ concept ArithmeticType = std::is_arithmetic_v<Tp>;
 template<typename T>
 concept SupportedType = is_supported_number<T> || is_stringlike<T>;
 
+template<typename T, typename RawType = typename std::decay<T>::type>
+inline constexpr bool is_map_like = units::is_derived_from_specialization_of<RawType, std::map> || units::is_derived_from_specialization_of<RawType, std::unordered_map>;
+
 template<typename T>
-concept MapLike = units::is_derived_from_specialization_of<T, std::map> || units::is_derived_from_specialization_of<T, std::unordered_map>;
+concept MapLike = is_map_like<T>;
 
 template<typename T>
 inline constexpr const bool is_array = false;
@@ -228,8 +232,8 @@ struct Annotated<Rep, Q, description, modifier, groups...> : public units::quant
     constexpr Annotated &operator=(const R& t) {  R::operator= (t); return *this; }
     constexpr Annotated &operator=(R&& t) { R::operator= (std::move(t)); return *this; }
 
-    [[nodiscard]] constexpr const char* getUnit() const noexcept { return unitStr.c_str(); }
-    [[nodiscard]] constexpr const char* getDescription() const noexcept { return description.c_str(); }
+    [[nodiscard]] constexpr std::string_view getUnit() const noexcept { return unitStr.c_str(); }
+    [[nodiscard]] constexpr std::string_view getDescription() const noexcept { return description.c_str(); }
     [[nodiscard]] constexpr ExternalModifier getModifier() const noexcept { return modifier; }
    // constexpr                      operator rep &() { return this->number(); } // TODO: check if this is safe and/or whether we want this (by-passes type safety)
 
@@ -270,8 +274,8 @@ struct Annotated<T, Q, description, modifier, groups...> : public T { // inherit
     requires (std::is_assignable<T, U>::value)
     Annotated(U&& u) : T(std::move(u)) {}
 
-    [[nodiscard]] constexpr const char* getUnit() const noexcept { return unitStr.c_str(); }
-    [[nodiscard]] constexpr const char* getDescription() const noexcept { return description.c_str(); }
+    [[nodiscard]] constexpr std::string_view getUnit() const noexcept { return unitStr.c_str(); }
+    [[nodiscard]] constexpr std::string_view getDescription() const noexcept { return description.c_str(); }
     [[nodiscard]] constexpr ExternalModifier getModifier() const noexcept { return modifier; }
 
     auto           operator<=>(const Annotated &) const noexcept = default;
