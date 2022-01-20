@@ -16,7 +16,7 @@ TEST_CASE("RBAC parser tests", "[rbac][parsing]") {
     STATIC_REQUIRE2(parse::role("").empty());
     STATIC_REQUIRE2(parse::hash("").empty());
     STATIC_REQUIRE2(parse::roleAndHash("") == std::pair(""sv, ""sv));
-    STATIC_REQUIRE2(parse::role("RBAC=`ADMIN").empty()); // missing comma
+    STATIC_REQUIRE2(parse::role("RBAC=ADMIN").empty()); // missing comma
     STATIC_REQUIRE2(parse::hash("RBAC=ADMIN").empty());
     STATIC_REQUIRE2(parse::roleAndHash("RBAC=ADMIN") == std::pair(""sv, ""sv));
     STATIC_REQUIRE2(parse::role("ADMIN").empty()); // No "RBAC=" prefix
