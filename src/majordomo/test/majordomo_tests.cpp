@@ -1078,31 +1078,6 @@ public:
     }
 };
 
-class NonCopyableMovableHandler {
-public:
-    NonCopyableMovableHandler()                                  = default;
-    ~NonCopyableMovableHandler()                                 = default;
-    NonCopyableMovableHandler(const NonCopyableMovableHandler &) = delete;
-    NonCopyableMovableHandler &operator=(const NonCopyableMovableHandler &) = delete;
-    NonCopyableMovableHandler(NonCopyableMovableHandler &&) noexcept        = default;
-    NonCopyableMovableHandler &operator=(NonCopyableMovableHandler &&) noexcept = default;
-
-    void                       operator()(RequestContext &) {}
-};
-
-TEST_CASE("BasicWorker instantiation", "[worker][instantiation]") {
-    // ensure that BasicWorker can be instantiated with lvalue and rvalue handlers
-    // lvalues should be used via reference, rvalues moved
-    Broker                    broker("testbroker", testSettings());
-    NonCopyableMovableHandler handler;
-
-    BasicWorker               worker1("a.service", broker, NonCopyableMovableHandler());
-    BasicWorker               worker2("a.service", broker, handler);
-    Context                   context;
-    BasicWorker               worker5("a.service", INTERNAL_ADDRESS_BROKER, NonCopyableMovableHandler(), context, testSettings());
-    BasicWorker               worker6("a.service", INTERNAL_ADDRESS_BROKER, handler, context, testSettings());
-}
-
 TEST_CASE("BasicWorker connects to non-existing broker", "[worker]") {
     const Context context;
     BasicWorker   worker("a.service", URI("inproc:/doesnotexist"), TestIntHandler(10), context);

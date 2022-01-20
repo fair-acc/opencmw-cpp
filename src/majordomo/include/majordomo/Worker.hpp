@@ -36,9 +36,6 @@ struct RequestContext {
     std::unordered_map<std::string, std::string> htmlData;
 };
 
-template<typename T>
-concept HandlesRequest = requires(T handler, RequestContext &context) { std::invoke(handler, context); };
-
 namespace detail {
     inline int nextWorkerId() {
         static std::atomic<int> idCounter = 0;
@@ -46,7 +43,7 @@ namespace detail {
     }
 } // namespace detail
 
-template<HandlesRequest RequestHandler, rbac::role... Roles>
+template<rbac::role... Roles>
 class BasicWorker {
 private:
     using Clock     = std::chrono::steady_clock;
@@ -71,7 +68,7 @@ protected:
     const std::string _serviceName;
 
 private:
-    RequestHandler                                           _handler;
+    std::function<void(RequestContext&)>                     _handler;
     const Settings                                           _settings;
     const opencmw::URI<STRICT>                               _brokerAddress;
     std::string                                              _serviceDescription;
@@ -91,14 +88,14 @@ private:
     static constexpr auto                                    _defaultRbacToken = std::string_view("RBAC=NONE,");
 
 public:
-    explicit BasicWorker(std::string_view serviceName, opencmw::URI<STRICT> brokerAddress, RequestHandler &&handler, const Context &context, Settings settings = {})
-        : _serviceName{ std::move(serviceName) }, _handler{ std::forward<RequestHandler>(handler) }, _settings{ std::move(settings) }, _brokerAddress{ std::move(brokerAddress) }, _context(context), _notifyListenerSocket(_context, ZMQ_PULL), _notifyAddress(makeNotifyAddress(serviceName)) {
+    explicit BasicWorker(std::string_view serviceName, opencmw::URI<STRICT> brokerAddress, std::function<void(RequestContext&)> handler, const Context &context, Settings settings = {})
+        : _serviceName{ std::move(serviceName) }, _handler{ std::move(handler) }, _settings{ std::move(settings) }, _brokerAddress{ std::move(brokerAddress) }, _context(context), _notifyListenerSocket(_context, ZMQ_PULL), _notifyAddress(makeNotifyAddress(serviceName)) {
         zmq_invoke(zmq_bind, _notifyListenerSocket, _notifyAddress.data()).assertSuccess();
     }
 
     template<typename BrokerType>
-    explicit BasicWorker(std::string_view serviceName, const BrokerType &broker, RequestHandler &&handler)
-        : BasicWorker(serviceName, INPROC_BROKER, std::forward<RequestHandler>(handler), broker.context, broker.settings) {
+    explicit BasicWorker(std::string_view serviceName, const BrokerType &broker, std::function<void(RequestContext&)> handler)
+        : BasicWorker(serviceName, INPROC_BROKER, std::move(handler), broker.context, broker.settings) {
     }
 
     // Sets the service description
@@ -371,12 +368,12 @@ private:
     }
 };
 
-template<rbac::role... Roles, HandlesRequest RequestHandler>
-BasicWorker(std::string_view, const opencmw::URI<> &, RequestHandler &&, const Context &, Settings) -> BasicWorker<RequestHandler, Roles...>;
+template<rbac::role... Roles>
+BasicWorker(std::string_view, const opencmw::URI<> &, std::function<void(RequestContext&)>, const Context &, Settings) -> BasicWorker<Roles...>;
 
 // use same roles as broker
-template<rbac::role... Roles, HandlesRequest RequestHandler>
-BasicWorker(std::string_view, const Broker<Roles...> &, RequestHandler &&) -> BasicWorker<RequestHandler, Roles...>;
+template<rbac::role... Roles>
+BasicWorker(std::string_view, const Broker<Roles...> &, std::function<void(RequestContext&)>) -> BasicWorker<Roles...>;
 
 // Worker
 
@@ -475,18 +472,18 @@ public:
 
 // TODO docs, see worker_tests.cpp for a documented example
 template<ReflectableClass ContextType, ReflectableClass InputType, ReflectableClass OutputType, rbac::role... Roles>
-class Worker : public BasicWorker<detail::HandlerImpl<ContextType, InputType, OutputType>, Roles...> {
+class Worker : public BasicWorker<Roles...> {
 public:
     using CallbackFunction = detail::HandlerImpl<ContextType, InputType, OutputType>::CallbackFunction;
 
     explicit Worker(std::string_view serviceName, URI<STRICT> brokerAddress, CallbackFunction callback, const Context &context, Settings settings = {})
-        : BasicWorker<detail::HandlerImpl<ContextType, InputType, OutputType>, Roles...>(serviceName, std::move(brokerAddress), detail::HandlerImpl<ContextType, InputType, OutputType>(std::move(callback)), context, settings) {
+        : BasicWorker<Roles...>(serviceName, std::move(brokerAddress), detail::HandlerImpl<ContextType, InputType, OutputType>(std::move(callback)), context, settings) {
         query::registerTypes(ContextType(), *this);
     }
 
     template<typename BrokerType>
     explicit Worker(std::string_view serviceName, const BrokerType &broker, CallbackFunction callback)
-        : BasicWorker<detail::HandlerImpl<ContextType, InputType, OutputType>, Roles...>(serviceName, broker, detail::HandlerImpl<ContextType, InputType, OutputType>(std::move(callback))) {
+        : BasicWorker<Roles...>(serviceName, broker, detail::HandlerImpl<ContextType, InputType, OutputType>(std::move(callback))) {
         query::registerTypes(ContextType(), *this);
     }
 
@@ -508,7 +505,7 @@ public:
         RequestContext rawCtx;
         rawCtx.reply.setTopic(topicURI.str, MessageFrame::dynamic_bytes_tag{});
         detail::writeResult(rawCtx, context, reply);
-        return BasicWorker<detail::HandlerImpl<ContextType, InputType, OutputType>, Roles...>::notify(std::move(rawCtx.reply));
+        return BasicWorker<Roles...>::notify(std::move(rawCtx.reply));
     }
 };
 
