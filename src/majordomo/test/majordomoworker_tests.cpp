@@ -126,7 +126,7 @@ TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][major
     opencmw::query::registerTypes(TestContext(), broker);
 
     // Create MajordomoWorker with our domain objects, and our TestHandler.
-    Worker<TestContext, AddressRequest, AddressEntry> worker("addressbook", broker, TestHandler());
+    Worker<"addressbook", TestContext, AddressRequest, AddressEntry> worker(broker, TestHandler());
 
     // Run worker and broker in separate threads
     RunInThread brokerRun(broker);
@@ -167,12 +167,15 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
     Broker<rbac::ADMIN, rbac::ANY> broker("TestBroker", testSettings());
     opencmw::query::registerTypes(TestContext(), broker);
 
+    // custom ANY without any permissions
+    using ANY = rbac::Role<"ANY", rbac::Permission::NONE>;
+
     // TODO we cannot have partial CTAD for the roles, so they need to be mentioned explicitly here
     // Could be solved by a helper class holding both the broker and the MajordomoWorker
-    Worker<TestContext, AddressRequest, AddressEntry, rbac::ADMIN, rbac::ANY> worker("addressbook", broker, TestHandler());
+    Worker<"addressbook", TestContext, AddressRequest, AddressEntry, rbac::ADMIN, ANY> worker(broker, TestHandler());
 
-    RunInThread                                                               brokerRun(broker);
-    RunInThread                                                               workerRun(worker);
+    RunInThread                                                                        brokerRun(broker);
+    RunInThread                                                                        workerRun(worker);
 
     REQUIRE(waitUntilServiceAvailable(broker.context, "addressbook"));
 
@@ -217,8 +220,8 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
         REQUIRE(reply->command() == Command::Final);
         REQUIRE(reply->serviceName() == "addressbook");
         REQUIRE(reply->clientRequestId() == "1");
-        REQUIRE(reply->body() == "");
         REQUIRE(reply->error() == "GET access denied to role 'NOBODY'");
+        REQUIRE(reply->body() == "");
     }
 
     // request non-existing entry

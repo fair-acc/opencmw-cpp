@@ -30,24 +30,38 @@ public:
 };
 
 template<typename T>
-concept role = requires {
+constexpr const bool is_role = requires {
     T::name();
     T::rights();
 };
+
+template<typename T>
+concept role = is_role<T>;
 
 struct ADMIN : Role<"ADMIN", Permission::RW> {};
 struct ANY : Role<"ANY", Permission::RO> {};
 struct NONE : Role<"NONE", Permission::NONE> {};
 
-template<role... Roles>
-inline constexpr Permission permission(std::string_view roleName) noexcept {
-    if constexpr (sizeof...(Roles) == 0) {
-        return Permission::RW; // no roles defined => default role has all permissions; TODO correct?
+template<rbac::role... Values>
+struct roles : std::type_identity<std::tuple<Values...>> {
+    using type2 = std::tuple<Values...>;
+};
+
+namespace detail {
+template<typename Item>
+constexpr auto find_roles_helper() {
+    if constexpr (rbac::is_role<Item>) {
+        return std::tuple<Item>();
+    } else if constexpr (is_instance_of_v<Item, roles>) {
+        return to_instance<std::tuple>(Item());
     } else {
-        constexpr auto map = opencmw::ConstExprMap<std::string_view, Permission, sizeof...(Roles)>{ std::pair{ Roles::name(), Roles::rights() }... };
-        return map.at(roleName, Permission::NONE);
+        return std::tuple<>();
     }
 }
+} // namespace detail
+
+template<typename... Items>
+using find_roles = decltype(std::tuple_cat(detail::find_roles_helper<Items>()...));
 
 namespace parse {
 

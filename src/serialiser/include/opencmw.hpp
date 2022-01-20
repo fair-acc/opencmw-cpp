@@ -135,6 +135,51 @@ constexpr typename T::element_type &unwrapPointerCreateIfAbsent(T &smart_pointer
     return std::forward<Type &>(*smart_pointer.get());
 }
 
+template<typename Type, template<typename...> typename Template>
+struct is_instance_of : std::false_type {};
+template<typename... Args, template<typename...> typename Template>
+struct is_instance_of<Template<Args...>, Template> : std::true_type {};
+template<typename Type, template<typename...> typename Template>
+constexpr bool is_instance_of_v = is_instance_of<Type, Template>::value;
+
+template<template<typename...> typename To,
+        template<typename...> typename From,
+        typename... Items>
+auto to_instance(From<Items...> from) -> To<Items...>;
+
+namespace detail {
+
+template<typename Out, typename... Ts>
+struct filter_tuple1 : std::type_identity<Out> {};
+
+template<typename... Out, typename InCar, typename... InCdr> // template for std::tuple arguments
+struct filter_tuple1<std::tuple<Out...>, std::tuple<InCar, InCdr...>>
+    : std::conditional_t<(std::is_same_v<InCar, Out> || ...),
+              filter_tuple1<std::tuple<Out...>, std::tuple<InCdr...>>,
+              filter_tuple1<std::tuple<Out..., InCar>, std::tuple<InCdr...>>> {};
+
+template<typename Out, typename... Ts>
+struct filter_tuple2 : std::type_identity<Out> {};
+
+template<typename... Ts, typename U, typename... Us> // template for variadic arguments returning std::tuple
+struct filter_tuple2<std::tuple<Ts...>, U, Us...> : std::conditional_t<(std::is_same_v<U, Ts> || ...), filter_tuple2<std::tuple<Ts...>, Us...>, filter_tuple2<std::tuple<Ts..., U>, Us...>> {};
+
+} // namespace detail
+
+template<typename... input_t>
+using tuple_cat_t = decltype(std::tuple_cat(std::declval<input_t>()...));
+
+template<typename>
+constexpr bool is_tuple = false;
+template<typename... T>
+constexpr bool is_tuple<std::tuple<T...>> = true;
+
+template<class T> requires(is_tuple<T>)
+using tuple_unique = typename detail::filter_tuple1<std::tuple<>, T>::type;
+
+template<template<typename...> typename Type, typename... Items>
+using find_type = decltype(std::tuple_cat(std::declval<std::conditional_t<is_instance_of_v<Items, Type>, std::tuple<Items>, std::tuple<>>>()...));
+
 // clang-format off
 /*
  * unit-/description-type annotation

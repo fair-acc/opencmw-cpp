@@ -37,17 +37,36 @@ struct RequestContext {
 };
 
 namespace detail {
-    inline int nextWorkerId() {
-        static std::atomic<int> idCounter = 0;
-        return ++idCounter;
-    }
+inline int nextWorkerId() {
+    static std::atomic<int> idCounter = 0;
+    return ++idCounter;
+}
+
+template<typename WrappedValue>
+struct description_impl {
+    static constexpr auto value = WrappedValue::value;
+};
+
+template<auto Value>
+struct to_type {
+    static constexpr auto value = Value;
+};
+
+template<units::basic_fixed_string Value>
+using description = description_impl<to_type<Value>>;
+
 } // namespace detail
 
-template<rbac::role... Roles>
+template<units::basic_fixed_string serviceName, typename... Meta>
 class BasicWorker {
 private:
-    using Clock     = std::chrono::steady_clock;
-    using Timestamp = std::chrono::time_point<Clock>;
+    static_assert(!serviceName.empty());
+
+    using Clock        = std::chrono::steady_clock;
+    using Timestamp    = std::chrono::time_point<Clock>;
+    using Description  = opencmw::find_type<detail::description_impl, Meta...>;
+    using DefaultRoles = std::tuple<rbac::ADMIN>;
+    using Roles        = opencmw::tuple_unique<opencmw::tuple_cat_t<DefaultRoles, rbac::find_roles<Meta...>>>;
 
     struct NotificationHandler {
         Socket    socket;
@@ -64,11 +83,8 @@ private:
         }
     };
 
-protected:
-    const std::string _serviceName;
-
 private:
-    std::function<void(RequestContext&)>                     _handler;
+    std::function<void(RequestContext &)>                    _handler;
     const Settings                                           _settings;
     const opencmw::URI<STRICT>                               _brokerAddress;
     std::string                                              _serviceDescription;
@@ -88,19 +104,22 @@ private:
     static constexpr auto                                    _defaultRbacToken = std::string_view("RBAC=NONE,");
 
 public:
-    explicit BasicWorker(std::string_view serviceName, opencmw::URI<STRICT> brokerAddress, std::function<void(RequestContext&)> handler, const Context &context, Settings settings = {})
-        : _serviceName{ std::move(serviceName) }, _handler{ std::move(handler) }, _settings{ std::move(settings) }, _brokerAddress{ std::move(brokerAddress) }, _context(context), _notifyListenerSocket(_context, ZMQ_PULL), _notifyAddress(makeNotifyAddress(serviceName)) {
+    explicit BasicWorker(opencmw::URI<STRICT> brokerAddress, std::function<void(RequestContext &)> handler, const Context &context, Settings settings = {})
+        : _handler{ std::move(handler) }, _settings{ std::move(settings) }, _brokerAddress{ std::move(brokerAddress) }, _context(context), _notifyListenerSocket(_context, ZMQ_PULL), _notifyAddress(makeNotifyAddress()) {
         zmq_invoke(zmq_bind, _notifyListenerSocket, _notifyAddress.data()).assertSuccess();
     }
 
     template<typename BrokerType>
-    explicit BasicWorker(std::string_view serviceName, const BrokerType &broker, std::function<void(RequestContext&)> handler)
-        : BasicWorker(serviceName, INPROC_BROKER, std::move(handler), broker.context, broker.settings) {
+    explicit BasicWorker(const BrokerType &broker, std::function<void(RequestContext &)> handler)
+        : BasicWorker(INPROC_BROKER, std::move(handler), broker.context, broker.settings) {
     }
 
-    // Sets the service description
-    void setServiceDescription(std::string description) {
-        _serviceDescription = std::move(description);
+    [[nodiscard]] static constexpr std::string_view serviceDescription() {
+        if constexpr (std::tuple_size<Description>() == 0) {
+            return std::string_view{};
+        } else {
+            return std::string_view{ std::tuple_element<0, Description>::type::value.data() };
+        }
     }
 
     template<typename Filter>
@@ -115,7 +134,7 @@ public:
     bool notify(MdpMessage &&message) {
         message.setProtocol(Protocol::Worker);
         message.setCommand(Command::Notify);
-        message.setServiceName(_serviceName, MessageFrame::dynamic_bytes_tag{});
+        message.setServiceName(serviceName.data(), MessageFrame::static_bytes_tag{});
         message.setRbacToken(_defaultRbacToken, MessageFrame::dynamic_bytes_tag{});
         return notificationHandlerForThisThread().send(std::move(message));
     }
@@ -162,8 +181,8 @@ public:
     }
 
 private:
-    std::string makeNotifyAddress(std::string_view &serviceName) const noexcept {
-        return fmt::format("inproc://workers/{}-{}/notify", serviceName, detail::nextWorkerId());
+    std::string makeNotifyAddress() const noexcept {
+        return fmt::format("inproc://workers/{}-{}/notify", serviceName.data(), detail::nextWorkerId());
     }
 
     NotificationHandler &notificationHandlerForThisThread() {
@@ -192,7 +211,7 @@ private:
 
     MdpMessage createMessage(Command command) const noexcept {
         auto message = MdpMessage::createWorkerMessage(command);
-        message.setServiceName(_serviceName, MessageFrame::dynamic_bytes_tag{});
+        message.setServiceName(serviceName.data(), MessageFrame::static_bytes_tag{});
         message.setRbacToken(_defaultRbacToken, MessageFrame::dynamic_bytes_tag{});
         return message;
     }
@@ -299,9 +318,24 @@ private:
         }
     }
 
+    static constexpr auto permissionMap() {
+        constexpr auto                                               N = std::tuple_size<Roles>();
+        std::array<std::pair<std::string_view, rbac::Permission>, N> data;
+
+        opencmw::MIME::detail::static_for<std::size_t, 0, N>([&](auto i) {
+            using role = std::tuple_element<i, Roles>::type;
+            data[i]    = std::pair(role::name(), role::rights());
+        });
+
+        return ConstExprMap<std::string_view, rbac::Permission, N>(data);
+    }
+
     MdpMessage processRequest(MdpMessage &&request) noexcept {
-        const auto clientRole = rbac::parse::role(request.rbacToken());
-        const auto permission = rbac::permission<Roles...>(clientRole);
+        const auto     clientRole        = rbac::parse::role(request.rbacToken());
+
+        constexpr auto permissionsByRole = permissionMap();
+        constexpr auto defaultPermission = std::tuple_size<Roles>() == std::tuple_size<DefaultRoles>() ? rbac::Permission::RW : permissionsByRole.at("ANY", rbac::Permission::NONE);
+        const auto     permission        = permissionsByRole.at(clientRole, defaultPermission);
 
         if (request.command() == Command::Get && !(permission == rbac::Permission::RW || permission == rbac::Permission::RO)) {
             auto errorReply = replyFromRequest(request);
@@ -320,11 +354,11 @@ private:
             return std::move(context.reply);
         } catch (const std::exception &e) {
             auto errorReply = replyFromRequest(context.request);
-            errorReply.setError(fmt::format("Caught exception for service '{}'\nrequest message: {}\nexception: {}", _serviceName, context.request.body(), e.what()), MessageFrame::dynamic_bytes_tag{});
+            errorReply.setError(fmt::format("Caught exception for service '{}'\nrequest message: {}\nexception: {}", serviceName.data(), context.request.body(), e.what()), MessageFrame::dynamic_bytes_tag{});
             return errorReply;
         } catch (...) {
             auto errorReply = replyFromRequest(context.request);
-            errorReply.setError(fmt::format("Caught unexpected exception for service '{}'\nrequest message: {}", _serviceName, context.request.body()), MessageFrame::dynamic_bytes_tag{});
+            errorReply.setError(fmt::format("Caught unexpected exception for service '{}'\nrequest message: {}", serviceName.data(), context.request.body()), MessageFrame::dynamic_bytes_tag{});
             return errorReply;
         }
     }
@@ -367,13 +401,6 @@ private:
         return true;
     }
 };
-
-template<rbac::role... Roles>
-BasicWorker(std::string_view, const opencmw::URI<> &, std::function<void(RequestContext&)>, const Context &, Settings) -> BasicWorker<Roles...>;
-
-// use same roles as broker
-template<rbac::role... Roles>
-BasicWorker(std::string_view, const Broker<Roles...> &, std::function<void(RequestContext&)>) -> BasicWorker<Roles...>;
 
 // Worker
 
@@ -439,8 +466,7 @@ inline void writeResult(RequestContext &rawCtx, const auto &replyContext, const 
 }
 
 template<ReflectableClass ContextType, ReflectableClass InputType, ReflectableClass OutputType>
-class HandlerImpl {
-public:
+struct HandlerImpl {
     using CallbackFunction = std::function<void(RequestContext &, const ContextType &, const InputType &, ContextType &, OutputType &)>;
 
     CallbackFunction _callback;
@@ -471,19 +497,19 @@ public:
 } // namespace detail
 
 // TODO docs, see worker_tests.cpp for a documented example
-template<ReflectableClass ContextType, ReflectableClass InputType, ReflectableClass OutputType, rbac::role... Roles>
-class Worker : public BasicWorker<Roles...> {
+template<units::basic_fixed_string serviceName, ReflectableClass ContextType, ReflectableClass InputType, ReflectableClass OutputType, rbac::role... Roles>
+class Worker : public BasicWorker<serviceName, Roles...> {
 public:
     using CallbackFunction = detail::HandlerImpl<ContextType, InputType, OutputType>::CallbackFunction;
 
-    explicit Worker(std::string_view serviceName, URI<STRICT> brokerAddress, CallbackFunction callback, const Context &context, Settings settings = {})
-        : BasicWorker<Roles...>(serviceName, std::move(brokerAddress), detail::HandlerImpl<ContextType, InputType, OutputType>(std::move(callback)), context, settings) {
+    explicit Worker(URI<STRICT> brokerAddress, CallbackFunction callback, const Context &context, Settings settings = {})
+        : BasicWorker<serviceName, Roles...>(std::move(brokerAddress), detail::HandlerImpl<ContextType, InputType, OutputType>(std::move(callback)), context, settings) {
         query::registerTypes(ContextType(), *this);
     }
 
     template<typename BrokerType>
-    explicit Worker(std::string_view serviceName, const BrokerType &broker, CallbackFunction callback)
-        : BasicWorker<Roles...>(serviceName, broker, detail::HandlerImpl<ContextType, InputType, OutputType>(std::move(callback))) {
+    explicit Worker(const BrokerType &broker, CallbackFunction callback)
+        : BasicWorker<serviceName, Roles...>(broker, detail::HandlerImpl<ContextType, InputType, OutputType>(std::move(callback))) {
         query::registerTypes(ContextType(), *this);
     }
 
@@ -505,7 +531,7 @@ public:
         RequestContext rawCtx;
         rawCtx.reply.setTopic(topicURI.str, MessageFrame::dynamic_bytes_tag{});
         detail::writeResult(rawCtx, context, reply);
-        return BasicWorker<Roles...>::notify(std::move(rawCtx.reply));
+        return BasicWorker<serviceName, Roles...>::notify(std::move(rawCtx.reply));
     }
 };
 

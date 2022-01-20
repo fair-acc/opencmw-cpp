@@ -1079,22 +1079,22 @@ public:
 };
 
 TEST_CASE("BasicWorker connects to non-existing broker", "[worker]") {
-    const Context context;
-    BasicWorker   worker("a.service", URI("inproc:/doesnotexist"), TestIntHandler(10), context);
+    const Context            context;
+    BasicWorker<"a.service"> worker(URI("inproc:/doesnotexist"), TestIntHandler(10), context);
     worker.run(); // returns immediately on connection failure
 }
 
 TEST_CASE("BasicWorker run loop quits when broker quits", "[worker]") {
-    const Context context;
-    Broker        broker("testbroker", testSettings());
-    BasicWorker   worker("a.service", broker, TestIntHandler(10));
+    const Context            context;
+    Broker                   broker("testbroker", testSettings());
+    BasicWorker<"a.service"> worker(broker, TestIntHandler(10));
 
-    RunInThread   brokerRun(broker);
+    RunInThread              brokerRun(broker);
 
-    auto          quitBroker = std::jthread([&broker]() {
+    auto                     quitBroker = std::jthread([&broker]() {
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
         broker.shutdown();
-             });
+                        });
 
     worker.run(); // returns when broker disappears
     quitBroker.join();
@@ -1114,8 +1114,8 @@ TEST_CASE("BasicWorker connection basics", "[worker][basic_worker_connection]") 
     settings.heartbeatLiveness       = 2;
     settings.workerReconnectInterval = std::chrono::milliseconds(200);
 
-    BasicWorker worker(
-            "a.service", routerAddress, [](RequestContext &) {}, context, settings);
+    BasicWorker<"a.service"> worker(
+            routerAddress, [](RequestContext &) {}, context, settings);
     RunInThread workerRun(worker);
 
     std::string workerId;
@@ -1174,10 +1174,10 @@ TEST_CASE("SET/GET example using the BasicWorker class", "[worker][getset_basic_
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::MdpMessage;
 
-    Broker      broker("testbroker", testSettings());
+    Broker                                                                               broker("testbroker", testSettings());
 
-    BasicWorker worker("a.service", broker, TestIntHandler(10));
-    worker.setServiceDescription("API description");
+    BasicWorker<"a.service", opencmw::majordomo::detail::description<"API description">> worker(broker, TestIntHandler(10));
+    REQUIRE(worker.serviceDescription() == "API description");
 
     TestNode<MdpMessage> client(broker.context);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
@@ -1259,12 +1259,14 @@ TEST_CASE("SET/GET example using the BasicWorker class", "[worker][getset_basic_
 }
 
 TEST_CASE("BasicWorker SET/GET example with RBAC permission handling", "[worker][getset_basic_worker][rbac]") {
-    using BrokerWithRoles = opencmw::majordomo::Broker<rbac::ADMIN, rbac::Role<"WRITER", rbac::Permission::WO>, rbac::Role<"READER", rbac::Permission::RO>>;
+    using WRITER = rbac::Role<"WRITER", rbac::Permission::WO>;
+    using READER = rbac::Role<"READER", rbac::Permission::RO>;
     using opencmw::majordomo::MdpMessage;
+    using opencmw::majordomo::detail::description;
 
-    BrokerWithRoles broker("testbroker", testSettings());
-    BasicWorker     worker("/a.service", broker, TestIntHandler(10)); // inherits roles from broker (via CTAD)
-    worker.setServiceDescription("API description");
+    Broker                                                                                 broker("testbroker", testSettings());
+    BasicWorker<"/a.service", description<"API description">, rbac::roles<WRITER, READER>> worker(broker, TestIntHandler(10));
+    REQUIRE(worker.serviceDescription() == "API description");
 
     RunInThread brokerRun(broker);
     RunInThread workerRun(worker);
@@ -1397,12 +1399,11 @@ TEST_CASE("NOTIFY example using the BasicWorker class", "[worker][notify_basic_w
     using opencmw::majordomo::MdpMessage;
     using namespace std::literals;
 
-    Broker      broker("testbroker", testSettings());
+    Broker                   broker("testbroker", testSettings());
 
-    BasicWorker worker("beverages", broker, TestIntHandler(10));
-    worker.setServiceDescription("API description");
+    BasicWorker<"beverages"> worker(broker, TestIntHandler(10));
 
-    TestNode<BrokerMessage> client(broker.context, ZMQ_XSUB);
+    TestNode<BrokerMessage>  client(broker.context, ZMQ_XSUB);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_PUBLISHER));
 
     RunInThread brokerRun(broker);
@@ -1536,12 +1537,11 @@ TEST_CASE("NOTIFY example using the BasicWorker class (via ROUTER socket)", "[wo
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::MdpMessage;
 
-    Broker      broker("testbroker", testSettings());
+    Broker                   broker("testbroker", testSettings());
 
-    BasicWorker worker("beverages", broker, TestIntHandler(10));
-    worker.setServiceDescription("API description");
+    BasicWorker<"beverages"> worker(broker, TestIntHandler(10));
 
-    TestNode<MdpMessage> client(broker.context);
+    TestNode<MdpMessage>     client(broker.context);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
     RunInThread brokerRun(broker);
@@ -1678,10 +1678,9 @@ TEST_CASE("SET/GET example using a lambda as the worker's request handler", "[wo
         }
     };
 
-    BasicWorker worker("a.service", broker, std::move(handleInt));
-    worker.setServiceDescription("API description");
+    BasicWorker<"a.service"> worker(broker, std::move(handleInt));
 
-    Client client(broker.context);
+    Client                   client(broker.context);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
     RunInThread brokerRun(broker);
@@ -1690,21 +1689,22 @@ TEST_CASE("SET/GET example using a lambda as the worker's request handler", "[wo
     REQUIRE(waitUntilServiceAvailable(broker.context, "a.service"));
 
     client.get("a.service", "", [](auto &&message) {
+        REQUIRE(message.error() == "");
         REQUIRE(message.body() == "100");
     });
 
     REQUIRE(client.tryRead(std::chrono::seconds(3)));
 
     client.set("a.service", "42", [](auto &&message) {
+        REQUIRE(message.error() == "");
         REQUIRE(message.body() == "Value set. All good!");
-        REQUIRE(message.error().empty());
     });
 
     REQUIRE(client.tryRead(std::chrono::seconds(3)));
 
     client.get("a.service", "", [](auto &&message) {
+        REQUIRE(message.error() == "");
         REQUIRE(message.body() == "42");
-        REQUIRE(message.error().empty());
     });
 
     REQUIRE(client.tryRead(std::chrono::seconds(3)));
@@ -1721,10 +1721,9 @@ TEST_CASE("Worker's request handler throws an exception", "[worker][handler_exce
         throw std::runtime_error("Something went wrong!");
     };
 
-    BasicWorker worker("a.service", broker, std::move(handleRequest));
-    worker.setServiceDescription("API description");
+    BasicWorker<"a.service"> worker(broker, std::move(handleRequest));
 
-    Client client(broker.context);
+    Client                   client(broker.context);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
     RunInThread brokerRun(broker);
@@ -1750,10 +1749,9 @@ TEST_CASE("Worker's request handler throws an unexpected exception", "[worker][h
         throw std::string("Something went wrong!");
     };
 
-    BasicWorker worker("a.service", broker, std::move(handleRequest));
-    worker.setServiceDescription("API description");
+    BasicWorker<"a.service"> worker(broker, std::move(handleRequest));
 
-    Client client(broker.context);
+    Client                   client(broker.context);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
     RunInThread brokerRun(broker);
