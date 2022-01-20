@@ -174,8 +174,8 @@ constexpr bool is_tuple = false;
 template<typename... T>
 constexpr bool is_tuple<std::tuple<T...>> = true;
 
-template<class T> requires(is_tuple<T>)
-using tuple_unique = typename detail::filter_tuple1<std::tuple<>, T>::type;
+template<class T>
+requires(is_tuple<T>) using tuple_unique = typename detail::filter_tuple1<std::tuple<>, T>::type;
 
 template<template<typename...> typename Type, typename... Items>
 using find_type = decltype(std::tuple_cat(std::declval<std::conditional_t<is_instance_of_v<Items, Type>, std::tuple<Items>, std::tuple<>>>()...));
