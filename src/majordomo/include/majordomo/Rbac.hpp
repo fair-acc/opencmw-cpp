@@ -39,7 +39,8 @@ template<typename T>
 concept role = is_role<T>;
 
 struct ADMIN : Role<"ADMIN", Permission::RW> {};
-struct ANY : Role<"ANY", Permission::RO> {};
+struct ANY : Role<"ANY", Permission::RW> {};
+struct ANY_RO : Role<"ANY", Permission::RO> {};
 struct NONE : Role<"NONE", Permission::NONE> {};
 
 template<rbac::role... Values>

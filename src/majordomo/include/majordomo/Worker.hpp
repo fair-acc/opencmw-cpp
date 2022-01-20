@@ -330,12 +330,12 @@ private:
         return ConstExprMap<std::string_view, rbac::Permission, N>(data);
     }
 
-    MdpMessage processRequest(MdpMessage &&request) noexcept {
-        const auto     clientRole        = rbac::parse::role(request.rbacToken());
+    static constexpr auto _permissionsByRole = permissionMap();
+    static constexpr auto _defaultPermission = _permissionsByRole.data.back().second;
 
-        constexpr auto permissionsByRole = permissionMap();
-        constexpr auto defaultPermission = std::tuple_size<Roles>() == std::tuple_size<DefaultRoles>() ? rbac::Permission::RW : permissionsByRole.at("ANY", rbac::Permission::NONE);
-        const auto     permission        = permissionsByRole.at(clientRole, defaultPermission);
+    MdpMessage            processRequest(MdpMessage &&request) noexcept {
+        const auto clientRole = rbac::parse::role(request.rbacToken());
+        const auto permission = _permissionsByRole.at(clientRole, _defaultPermission);
 
         if (request.command() == Command::Get && !(permission == rbac::Permission::RW || permission == rbac::Permission::RO)) {
             auto errorReply = replyFromRequest(request);

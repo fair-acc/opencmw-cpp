@@ -111,7 +111,8 @@ struct TestHandler {
     }
 };
 
-constexpr auto static_tag = MessageFrame::static_bytes_tag{};
+constexpr auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
+constexpr auto static_tag  = MessageFrame::static_bytes_tag{};
 
 TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][majordomoworker][simple_example]") {
     // We run both broker and worker inproc
@@ -167,10 +168,7 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
     Broker<rbac::ADMIN, rbac::ANY> broker("TestBroker", testSettings());
     opencmw::query::registerTypes(TestContext(), broker);
 
-    // custom ANY without any permissions
-    using ANY = rbac::Role<"ANY", rbac::Permission::NONE>;
-
-    Worker<"addressbook", TestContext, AddressRequest, AddressEntry, rbac::ADMIN, description<"API description">, ANY> worker(broker, TestHandler());
+    Worker<"addressbook", TestContext, AddressRequest, AddressEntry, rbac::roles<rbac::ADMIN, rbac::NONE>, description<"API description">> worker(broker, TestHandler());
     REQUIRE(worker.serviceDescription() == "API description");
 
     RunInThread brokerRun(broker);
@@ -204,13 +202,14 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
         REQUIRE(reply->body() == "\"AddressEntry\": {\n\"name\": \"Santa Claus\",\n\"street\": \"Elf Road\",\n\"streetNumber\": 123,\n\"postalCode\": \"88888\",\n\"city\": \"North Pole\",\n}");
     }
 
-    { // GET with unknown role fails
+    // GET with unknown role or empty role fails
+    for (const auto &role : { "UNKNOWN", "" }) {
         auto request = MdpMessage::createClientMessage(Command::Get);
         request.setServiceName("addressbook", static_tag);
         request.setClientRequestId("1", static_tag);
         request.setTopic("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json", static_tag);
         request.setBody("{ \"id\": 42 }", static_tag);
-        request.setRbacToken("RBAC=NOBODY,1234", static_tag);
+        request.setRbacToken(fmt::format("RBAC={},1234", role), dynamic_tag);
         client.send(request);
 
         const auto reply = client.tryReadOne();
@@ -219,7 +218,7 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
         REQUIRE(reply->command() == Command::Final);
         REQUIRE(reply->serviceName() == "addressbook");
         REQUIRE(reply->clientRequestId() == "1");
-        REQUIRE(reply->error() == "GET access denied to role 'NOBODY'");
+        REQUIRE(reply->error() == fmt::format("GET access denied to role '{}'", role));
         REQUIRE(reply->body() == "");
     }
 
