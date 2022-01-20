@@ -420,17 +420,13 @@ inline I deserialiseRequest(const MdpMessage &request) {
 
 template<ReflectableClass I>
 inline I deserialiseRequest(const RequestContext &rawCtx) {
-    try {
-        if (rawCtx.mimeType == MIME::JSON) {
-            return deserialiseRequest<I, opencmw::Json>(rawCtx.request);
-        } else if (rawCtx.mimeType == MIME::BINARY) {
-            return deserialiseRequest<I, opencmw::YaS>(rawCtx.request);
-        } else if (rawCtx.mimeType == MIME::CMWLIGHT) {
-            // TODO the following line does not compile
-            // return deserialiseRequest<I, opencmw::CmwLight>(rawCtx.request);
-        }
-    } catch (const ProtocolException &e) { // TODO if ProtocolException would inherit from std::exception, we could omit this catch/try and leave it to the generic exception handling in BasicMdpWorker
-        throw std::runtime_error(std::string(e.what()));
+    if (rawCtx.mimeType == MIME::JSON) {
+        return deserialiseRequest<I, opencmw::Json>(rawCtx.request);
+    } else if (rawCtx.mimeType == MIME::BINARY) {
+        return deserialiseRequest<I, opencmw::YaS>(rawCtx.request);
+    } else if (rawCtx.mimeType == MIME::CMWLIGHT) {
+        // TODO the following line does not compile
+        // return deserialiseRequest<I, opencmw::CmwLight>(rawCtx.request);
     }
 
     throw std::runtime_error(fmt::format("MIME type '{}' not supported", rawCtx.mimeType.typeName()));
