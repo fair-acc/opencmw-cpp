@@ -2,9 +2,9 @@
 #include <thread>
 #include <unordered_map>
 
-#include <majordomo/BasicMdpWorker.hpp>
 #include <majordomo/Broker.hpp>
 #include <majordomo/Client.hpp>
+#include <majordomo/Worker.hpp>
 
 #include <fmt/format.h>
 
@@ -68,11 +68,11 @@ static URI parseUriOrExit(std::string str) {
 }
 
 int main(int argc, char **argv) {
-    using opencmw::majordomo::BasicMdpWorker;
+    using opencmw::majordomo::BasicWorker;
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::Settings;
 
-    static constexpr auto propertyStoreService = "property_store";
+    static constexpr auto propertyStoreService = units::basic_fixed_string("property_store");
 
     if (argc < 2) {
         std::cerr << "Usage: majordomo_testapp <broker|client|worker|brokerworker> <options>\n\n"
@@ -101,7 +101,7 @@ int main(int argc, char **argv) {
         const auto pubEndpoint    = argc > 3 ? std::optional<URI>(parseUriOrExit(argv[3])) : std::optional<URI>{};
 
         Context    context;
-        Broker     broker("test_broker", testSettings());
+        auto       broker        = Broker("test_broker", testSettings());
         const auto routerAddress = broker.bind(routerEndpoint);
         if (!routerAddress) {
             std::cerr << fmt::format("Could not bind to '{}'\n", routerEndpoint);
@@ -125,15 +125,15 @@ int main(int argc, char **argv) {
             return 0;
         }
 
-        BasicMdpWorker worker(propertyStoreService, broker, TestHandler{});
+        BasicWorker<propertyStoreService> worker(broker, TestHandler{});
 
-        auto           brokerThread = std::jthread([&broker] {
+        auto                              brokerThread = std::jthread([&broker] {
             broker.run();
-                  });
+                                     });
 
-        auto           workerThread = std::jthread([&worker] {
+        auto                              workerThread = std::jthread([&worker] {
             worker.run();
-                  });
+                                     });
 
         brokerThread.join();
         workerThread.join();
@@ -145,10 +145,10 @@ int main(int argc, char **argv) {
             std::cerr << "Usage: majordomo_testapp worker <brokerAddress>\n";
             return 1;
         }
-        const auto     brokerAddress = parseUriOrExit(argv[2]);
+        const auto                        brokerAddress = parseUriOrExit(argv[2]);
 
-        Context        context;
-        BasicMdpWorker worker(propertyStoreService, brokerAddress, TestHandler{}, context);
+        Context                           context;
+        BasicWorker<propertyStoreService> worker(brokerAddress, TestHandler{}, context);
 
         worker.run();
         return 0;
@@ -186,7 +186,7 @@ int main(int argc, char **argv) {
         bool replyReceived = false;
 
         if (command == "set") {
-            client.set(propertyStoreService, fmt::format("{}={}", property, value), [&replyReceived](auto &&reply) {
+            client.set(propertyStoreService.data(), fmt::format("{}={}", property, value), [&replyReceived](auto &&reply) {
                 replyReceived = true;
                 if (!reply.error().empty()) {
                     std::cout << "Error: " << reply.error() << std::endl;
@@ -196,7 +196,7 @@ int main(int argc, char **argv) {
                 std::cout << reply.body() << std::endl;
             });
         } else {
-            client.get(propertyStoreService, property, [property, &replyReceived](auto &&reply) {
+            client.get(propertyStoreService.data(), property, [property, &replyReceived](auto &&reply) {
                 replyReceived = true;
                 if (!reply.error().empty()) {
                     std::cout << "Error: " << reply.error() << std::endl;

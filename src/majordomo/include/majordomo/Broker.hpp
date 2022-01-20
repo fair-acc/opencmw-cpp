@@ -1,16 +1,20 @@
 #ifndef OPENCMW_MAJORDOMO_BROKER_H
 #define OPENCMW_MAJORDOMO_BROKER_H
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <deque>
 #include <optional>
+#include <ranges>
 #include <set>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include <fmt/core.h>
 
+#include "Rbac.hpp"
 #include "URI.hpp"
 
 #include <majordomo/Constants.hpp>
@@ -20,12 +24,110 @@
 #include <majordomo/Utils.hpp>
 #include <majordomo/ZmqPtr.hpp>
 
-using namespace std::string_literals;
-
 namespace opencmw::majordomo {
 
 using BrokerMessage = BasicMdpMessage<MessageFormat::WithSourceId>;
 
+enum class BindOption {
+    DetectFromURI, ///< detect from uri which socket is meant (@see bind)
+    Router,        ///< Always bind ROUTER socket
+    Pub            ///< Always bind PUB socket
+};
+
+namespace detail {
+
+struct DnsServiceItem {
+    std::string                                        address;
+    std::string                                        serviceName;
+    std::set<URI<RELAXED>>                             uris;
+    std::chrono::time_point<std::chrono::steady_clock> expiry;
+
+    explicit DnsServiceItem(std::string address_, std::string serviceName_)
+        : address{ std::move(address_) }
+        , serviceName{ std::move(serviceName_) } {}
+};
+
+inline constexpr std::string_view trimmed(std::string_view s) {
+    using namespace std::literals;
+    constexpr auto whitespace   = " \x0c\x0a\x0d\x09\x0b"sv;
+    const auto     first        = s.find_first_not_of(whitespace);
+    const auto     prefixLength = first != std::string_view::npos ? first : s.size();
+    s.remove_prefix(prefixLength);
+    if (s.empty()) {
+        return s;
+    }
+    const auto last = s.find_last_not_of(whitespace);
+    s.remove_suffix(s.size() - 1 - last);
+    return s;
+}
+
+inline std::vector<std::string_view> split(std::string_view s, std::string_view delim) {
+    std::vector<std::string_view> segments;
+    while (true) {
+        const auto pos = s.find(delim);
+        if (pos == std::string_view::npos) {
+            segments.push_back(s);
+            return segments;
+        }
+
+        segments.push_back(s.substr(0, pos));
+        s.remove_prefix(pos + 1);
+    }
+}
+
+inline std::string_view stripStart(std::string_view s, std::string_view stripChars) {
+    const auto pos = s.find_first_not_of(stripChars);
+    if (pos == std::string_view::npos) {
+        return {};
+    }
+
+    s.remove_prefix(pos);
+    return s;
+}
+
+template<typename Left, typename Right>
+inline bool iequal(const Left &left, const Right &right) noexcept {
+    return std::equal(std::cbegin(left), std::cend(left), std::cbegin(right), std::cend(right),
+            [](auto l, auto r) { return std::tolower(l) == std::tolower(r); });
+}
+
+inline std::string uriAsString(const URI<RELAXED> &uri) {
+    return uri.str;
+}
+
+inline std::string findDnsEntry(std::string_view brokerName, std::unordered_map<std::string, detail::DnsServiceItem> &dnsCache, std::string_view s) {
+    const auto query                    = URI<RELAXED>(std::string(s));
+
+    const auto queryScheme              = query.scheme();
+    const auto queryPath                = query.path().value_or("");
+    const auto strippedQueryPath        = stripStart(queryPath, "/");
+    const auto stripStartFromSearchPath = strippedQueryPath.starts_with("mmi.") ? fmt::format("/{}", brokerName) : "/"; // crop initial broker name for broker-specific MMI services
+
+    const auto entryMatches             = [&queryScheme, &strippedQueryPath, &stripStartFromSearchPath](const auto &dnsEntry) {
+        if (queryScheme && !iequal(dnsEntry.scheme().value_or(""), *queryScheme)) {
+            return false;
+        }
+
+        const auto entryPath = dnsEntry.path().value_or("");
+        return stripStart(entryPath, stripStartFromSearchPath).starts_with(strippedQueryPath);
+    };
+
+    std::string result;
+
+    for (const auto &cacheEntry : dnsCache) {
+        using namespace std::views;
+        auto matching = cacheEntry.second.uris | filter(entryMatches) | transform(uriAsString);
+        if (!matching.empty()) {
+            result += fmt::format("[{}: {}]", s, fmt::join(matching, ", "));
+        }
+    }
+
+    return !result.empty() ? result : fmt::format("[{}: null]", s);
+}
+
+} // namespace detail
+
+template<role... Roles>
 class Broker {
 private:
     // Shorten chrono names
@@ -46,42 +148,58 @@ private:
         const Socket     &socket;
         const std::string id;
         const std::string serviceName;
+        const std::string serviceNameTopic;
         Timestamp         expiry;
 
         explicit Worker(const Socket &s, const std::string &id_, const std::string &serviceName_, Timestamp expiry_)
-            : socket(s), id{ std::move(id_) }, serviceName{ std::move(serviceName_) }, expiry{ std::move(expiry_) } {}
-    };
-
-    struct InternalService {
-        virtual ~InternalService()                                    = default;
-        virtual BrokerMessage processRequest(BrokerMessage &&request) = 0;
+            : socket(s), id{ std::move(id_) }, serviceName{ std::move(serviceName_) }, serviceNameTopic(std::string("/") + serviceName), expiry{ std::move(expiry_) } {}
     };
 
     struct Service {
-        std::unique_ptr<InternalService> internalService;
-        std::string                      name;
-        std::string                      description;
-        std::deque<Worker *>             waiting;
-        std::deque<BrokerMessage>        requests;
+        using QueueEntry    = std::pair<std::string_view, std::deque<BrokerMessage>>;
+        using PriorityQueue = std::array<QueueEntry, std::max(sizeof...(Roles), static_cast<std::size_t>(1))>;
+        static constexpr PriorityQueue makePriorityQueue() {
+            if constexpr (sizeof...(Roles) == 0) {
+                return { QueueEntry{ "", std::deque<BrokerMessage>{} } };
+            } else {
+                return { QueueEntry{ Roles::name(), std::deque<BrokerMessage>{} }... };
+            }
+        }
+
+        std::function<BrokerMessage(BrokerMessage &&)> internalHandler;
+        std::string                                    name;
+        std::string                                    description;
+        std::deque<Worker *>                           waiting;
+        PriorityQueue                                  requestsByPriority = makePriorityQueue();
+        std::size_t                                    requestCount       = 0;
+
+        auto                                          &queueForRole(const std::string_view role) {
+            auto it = std::find_if(requestsByPriority.begin(), requestsByPriority.end(), [&role](const auto &v) { return v.first == role; });
+            return it != requestsByPriority.end() ? it->second : requestsByPriority.back().second;
+        }
 
         explicit Service(std::string name_, std::string description_)
             : name(std::move(name_))
             , description(std::move(description_)) {
         }
 
-        explicit Service(std::string name_, std::unique_ptr<InternalService> internalService_)
-            : internalService{ std::move(internalService_) }
+        explicit Service(std::string name_, std::function<BrokerMessage(BrokerMessage &&)> internalHandler_)
+            : internalHandler{ std::move(internalHandler_) }
             , name{ std::move(name_) } {
         }
 
         void putMessage(BrokerMessage &&message) {
-            // TODO prioritise by RBAC role
-            requests.emplace_back(std::move(message));
+            const auto role = parse_rbac::role(message.rbacToken());
+            queueForRole(role).emplace_back(std::move(message));
+            requestCount++;
         }
 
         BrokerMessage takeNextMessage() {
-            auto msg = std::move(requests.front());
-            requests.pop_front();
+            auto queueIt = std::find_if(requestsByPriority.begin(), requestsByPriority.end(), [](const auto &v) { return !v.second.empty(); });
+            assert(queueIt != requestsByPriority.end());
+            auto msg = std::move(queueIt->second.front());
+            queueIt->second.pop_front();
+            requestCount--;
             return msg;
         }
 
@@ -92,32 +210,10 @@ private:
         }
     };
 
-    struct MmiService : public InternalService {
-        Broker *const parent;
-
-        explicit MmiService(Broker *parent_)
-            : parent(parent_) {}
-
-        BrokerMessage processRequest(BrokerMessage &&message) override {
-            message.setCommand(Command::Final);
-            if (message.body().empty()) {
-                std::vector<std::string> names(parent->_services.size());
-                std::transform(parent->_services.begin(), parent->_services.end(), names.begin(), [](const auto &it) { return it.first; });
-                std::sort(names.begin(), names.end());
-
-                message.setBody(fmt::format("{}", fmt::join(names, ",")), MessageFrame::dynamic_bytes_tag{});
-                return message;
-            }
-
-            const auto exists = parent->_services.contains(std::string(message.body()));
-            message.setBody(exists ? "200" : "404", MessageFrame::static_bytes_tag{});
-            return message;
-        }
-    };
-
 public:
-    const Context  context;
-    const Settings settings;
+    const Context     context;
+    const Settings    settings;
+    const std::string brokerName;
 
 private:
     Timestamp                                               _heartbeatAt = Clock::now() + settings.heartbeatInterval;
@@ -127,10 +223,12 @@ private:
     std::unordered_map<std::string, Client>                 _clients;
     std::unordered_map<std::string, Worker>                 _workers;
     std::unordered_map<std::string, Service>                _services;
+    std::unordered_map<std::string, detail::DnsServiceItem> _dnsCache;
+    std::set<std::string>                                   _routerSockets; // TODO naming follows java; rename to _routerAddresses?
+    Timestamp                                               _dnsHeartbeatAt;
 
-    const std::string                                       _brokerName;
     const std::optional<URI<STRICT>>                        _dnsAddress;
-    const std::string                                       _rbac              = "TODO (RBAC)";
+    const std::string                                       _rbac              = "RBAC=ADMIN,abcdef12345";
 
     std::atomic<bool>                                       _shutdownRequested = false;
 
@@ -142,14 +240,69 @@ private:
     std::array<zmq_pollitem_t, 4> pollerItems;
 
 public:
-    Broker(std::string brokerName, Settings settings_ = {})
+    Broker(std::string brokerName_, Settings settings_ = {})
         : settings{ std::move(settings_) }
-        , _brokerName{ std::move(brokerName) }
+        , brokerName{ std::move(brokerName_) }
         , _routerSocket(context, ZMQ_ROUTER)
         , _pubSocket(context, ZMQ_XPUB)
         , _subSocket(context, ZMQ_SUB)
         , _dnsSocket(context, ZMQ_DEALER) {
-        addInternalService<MmiService>("mmi.service");
+        addInternalService("mmi.dns", [this](BrokerMessage &&message) {
+            using namespace std::literals;
+            message.setCommand(Command::Final);
+
+            std::string reply;
+            if (message.body().empty() || message.body().find_first_of(",:/") == std::string_view::npos) {
+                const auto uris = std::views::values(_dnsCache);
+                reply           = fmt::format("{}", fmt::join(uris, ","));
+            } else {
+                // TODO std::views::split seems to have issues in GCC 11, maybe switch to views::split/transform
+                // once it works with our then supported compilers
+                const auto               body     = message.body();
+                auto                     segments = detail::split(body, ","sv);
+                std::vector<std::string> results(segments.size());
+                std::transform(segments.begin(), segments.end(), results.begin(), [this](const auto &v) {
+                    return detail::findDnsEntry(brokerName, _dnsCache, detail::trimmed(v));
+                });
+
+                reply = fmt::format("{}", fmt::join(results, ","));
+            }
+
+            message.setBody(reply, MessageFrame::dynamic_bytes_tag{});
+            return message;
+        });
+
+        addInternalService("mmi.echo", [](BrokerMessage &&message) { return message; });
+
+        addInternalService("mmi.service", [this](BrokerMessage &&message) {
+            message.setCommand(Command::Final);
+            if (message.body().empty()) {
+                const auto keyView = std::views::keys(_services);
+                auto       keys    = std::vector<std::string>(keyView.begin(), keyView.end());
+                std::ranges::sort(keys);
+
+                message.setBody(fmt::format("{}", fmt::join(keys, ",")), MessageFrame::dynamic_bytes_tag{});
+                return message;
+            }
+
+            const auto exists = _services.contains(std::string(message.body()));
+            message.setBody(exists ? "200" : "404", MessageFrame::static_bytes_tag{});
+            return message;
+        });
+
+        addInternalService("mmi.openapi", [this](BrokerMessage &&message) {
+            message.setCommand(Command::Final);
+            const auto serviceName = std::string(message.body());
+            const auto serviceIt   = _services.find(serviceName);
+            if (serviceIt != _services.end()) {
+                message.setBody(serviceIt->second.description, MessageFrame::dynamic_bytes_tag{});
+                message.setError("", MessageFrame::static_bytes_tag{});
+            } else {
+                message.setBody("", MessageFrame::static_bytes_tag{});
+                message.setError(fmt::format("Requested invalid service '{}'", serviceName), MessageFrame::dynamic_bytes_tag{});
+            }
+            return message;
+        });
 
         auto commonSocketInit = [settings_](const Socket &socket) {
             const int heartbeatInterval = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(settings_.heartbeatInterval).count());
@@ -203,12 +356,6 @@ public:
         _subscriptionMatcher.addFilter<Filter>(key);
     }
 
-    enum class BindOption {
-        DetectFromURI, ///< detect from uri which socket is meant (@see bind)
-        Router,        ///< Always bind ROUTER socket
-        Pub            ///< Always bind PUB socket
-    };
-
     /**
      * Bind broker to endpoint, can call this multiple times. We use a single
      * socket for both clients and workers.
@@ -240,11 +387,15 @@ public:
         const auto adjustedAddressPublic = endpointAdjusted; // TODO (java) resolveHost(endpointAdjusted, getLocalHostName());
 
         debug() << fmt::format("Majordomo broker/0.1 is active at '{}'\n", adjustedAddressPublic.str); // TODO do not hardcode version
-        // TODO port sendDnsHeartbeats(true);
+
+        _routerSockets.insert(adjustedAddressPublic.str);
+        sendDnsHeartbeats(true);
         return adjustedAddressPublic;
     }
 
     void run() {
+        sendDnsHeartbeats(true); // initial register of default routes
+
         do {
         } while (processMessages() && !_shutdownRequested /* && thread is not interrupted */);
 
@@ -272,6 +423,7 @@ public:
                 purgeWorkers();
                 purgeClients();
                 sendHeartbeats();
+                purgeDnsServices();
             }
             loopCount++;
         } while (anythingReceived);
@@ -387,7 +539,7 @@ private:
                 return true;
             }
             case Command::Heartbeat:
-                // TODO sendDnsHeartbeats(true)
+                sendDnsHeartbeats(true);
                 break;
             default:
                 break;
@@ -410,9 +562,8 @@ private:
         return it.first->second;
     }
 
-    template<typename T>
-    void addInternalService(std::string serviceName) {
-        _services.try_emplace(serviceName, std::move(serviceName), std::make_unique<T>(this));
+    void addInternalService(std::string serviceName, std::function<BrokerMessage(BrokerMessage &&)> handler) {
+        _services.try_emplace(serviceName, std::move(serviceName), std::move(handler));
     }
 
     Service *bestMatchingService(std::string_view serviceName) {
@@ -444,7 +595,7 @@ private:
     void dispatch(Service &service) {
         purgeWorkers();
 
-        while (!service.waiting.empty() && !service.requests.empty()) {
+        while (!service.waiting.empty() && service.requestCount > 0) {
             auto message = service.takeNextMessage();
             auto worker  = service.takeNextWorker();
             message.setClientSourceId(message.sourceId(), MessageFrame::dynamic_bytes_tag{});
@@ -516,8 +667,8 @@ private:
             client.requests.pop_back();
 
             if (auto service = bestMatchingService(clientMessage.serviceName())) {
-                if (service->internalService) {
-                    auto reply = service->internalService->processRequest(std::move(clientMessage));
+                if (service->internalHandler) {
+                    auto reply = service->internalHandler(std::move(clientMessage));
                     reply.send(client.socket).assertSuccess();
                 } else {
                     service->putMessage(std::move(clientMessage));
@@ -532,7 +683,7 @@ private:
             constexpr auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
             constexpr auto static_tag  = MessageFrame::static_bytes_tag{};
             reply.setCommand(Command::Final);
-            reply.setTopic(INTERNAL_SERVICE_NAMES, static_tag);
+            reply.setTopic(INTERNAL_SERVICE_NAMES_URI.str, static_tag);
             reply.setBody("", static_tag);
             reply.setError(fmt::format("unknown service (error 501): '{}'", reply.serviceName()), dynamic_tag);
             reply.setRbacToken(_rbac, static_tag);
@@ -553,6 +704,42 @@ private:
         };
 
         std::erase_if(_clients, isExpired);
+    }
+
+    void purgeDnsServices() {
+        const auto now = Clock::now();
+        if (now < _dnsHeartbeatAt) {
+            return;
+        }
+
+        sendDnsHeartbeats(false);
+
+        auto challenge = BrokerMessage::createClientMessage(Command::Heartbeat);
+        challenge.setClientRequestId("dnsChallenge", MessageFrame::static_bytes_tag{});
+        challenge.setRbacToken(_rbac, MessageFrame::static_bytes_tag{});
+        const auto newExpiry = updatedDnsExpiry();
+
+        for (auto it = _dnsCache.begin(); it != _dnsCache.end(); ++it) {
+            auto &registeredService = it->second;
+
+            if (registeredService.serviceName == brokerName) { // TODO ignore case
+                registeredService.expiry = newExpiry;
+                continue;
+            }
+
+            // challenge remote broker with a HEARTBEAT
+            auto toSend = challenge.clone();
+            toSend.setSourceId(registeredService.address, MessageFrame::dynamic_bytes_tag{});
+            toSend.setServiceName(registeredService.serviceName, MessageFrame::dynamic_bytes_tag{});
+            toSend.send(_routerSocket).assertSuccess();
+
+            if (now > registeredService.expiry) {
+                debug() << fmt::format("Majordomo broker deleting expired DNS service '{}'\n", registeredService.serviceName);
+                it = _dnsCache.erase(it);
+            }
+        }
+
+        _dnsHeartbeatAt = now + settings.dnsTimeout;
     }
 
     void sendHeartbeats() {
@@ -581,16 +768,23 @@ private:
 
         switch (message.command()) {
         case Command::Ready: {
-            debug() << "log new local/external worker for service " << serviceName << " - " << message;
             std::ignore = requireService(serviceName, std::string(message.body()));
             workerWaiting(worker);
 
+            const auto topicString = std::string(message.topic());
+            const auto topicURI    = URI<RELAXED>(topicString);
+            if (topicURI.scheme()) {
+                registerNewService(message.serviceName());
+                _routerSockets.insert(topicString);
+                auto item = _dnsCache.try_emplace(brokerName, std::string(message.sourceId()), brokerName);
+                item.first->second.uris.insert(topicURI);
+            }
             // notify potential listeners
             auto       notify      = BrokerMessage::createWorkerMessage(Command::Notify);
             const auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
             notify.setServiceName(INTERNAL_SERVICE_NAMES, dynamic_tag);
-            notify.setTopic(INTERNAL_SERVICE_NAMES, dynamic_tag);
-            notify.setClientRequestId(_brokerName, dynamic_tag);
+            notify.setTopic(INTERNAL_SERVICE_NAMES_URI.str, dynamic_tag);
+            notify.setClientRequestId(brokerName, dynamic_tag);
             notify.setSourceId(INTERNAL_SERVICE_NAMES, dynamic_tag);
             notify.send(_pubSocket).assertSuccess();
             break;
@@ -652,17 +846,74 @@ private:
         constexpr auto static_tag  = MessageFrame::static_bytes_tag{};
         disconnect.setSourceId(worker.id, dynamic_tag);
         disconnect.setServiceName(worker.serviceName, dynamic_tag);
-        disconnect.setTopic(worker.serviceName, dynamic_tag);
+        disconnect.setTopic(worker.serviceNameTopic, dynamic_tag);
         disconnect.setBody("broker shutdown", static_tag);
         disconnect.setRbacToken(_rbac, dynamic_tag);
         disconnect.send(worker.socket).assertSuccess();
         deleteWorker(worker);
     }
 
+    BrokerMessage createDnsReadyMessage() {
+        auto ready = BrokerMessage::createClientMessage(Command::Ready);
+        ready.setServiceName(brokerName, MessageFrame::dynamic_bytes_tag{});
+        ready.setClientRequestId("clientID", MessageFrame::static_bytes_tag{});
+        ready.setRbacToken(_rbac, MessageFrame::dynamic_bytes_tag{});
+        return ready;
+    }
+
+    void sendDnsHeartbeats(bool force) {
+        if (Clock::now() > _dnsHeartbeatAt || force) {
+            const auto ready = createDnsReadyMessage();
+            for (const auto &routerAddress : _routerSockets) {
+                auto toSend = ready.clone();
+                toSend.setTopic(routerAddress, MessageFrame::dynamic_bytes_tag{});
+                registerWithDnsServices(std::move(toSend));
+            }
+        }
+
+        for (const auto &service : _services) {
+            registerNewService(service.first);
+        }
+    }
+
+    void registerNewService(std::string_view serviceName) {
+        const auto ready = createDnsReadyMessage();
+
+        for (const auto &routerAddress : _routerSockets) {
+            auto toSend = ready.clone();
+            toSend.setTopic(fmt::format("{}/{}", routerAddress, serviceName), MessageFrame::dynamic_bytes_tag{});
+            registerWithDnsServices(std::move(toSend));
+        }
+    }
+
+    void registerWithDnsServices(BrokerMessage &&readyMessage) {
+        auto it = _dnsCache.try_emplace(brokerName, std::string(readyMessage.sourceId()), brokerName);
+        it.first->second.uris.insert(URI<RELAXED>(std::string(readyMessage.topic())));
+        it.first->second.expiry = updatedDnsExpiry();
+
+        if (_dnsAddress) {
+            readyMessage.send(_dnsSocket).assertSuccess();
+        }
+    }
+
     [[nodiscard]] Timestamp updatedClientExpiry() const { return Clock::now() + settings.clientTimeout; }
     [[nodiscard]] Timestamp updatedWorkerExpiry() const { return Clock::now() + settings.heartbeatInterval * settings.heartbeatLiveness; }
+    [[nodiscard]] Timestamp updatedDnsExpiry() const { return Clock::now() + settings.dnsTimeout * settings.heartbeatLiveness; }
 };
 
 } // namespace opencmw::majordomo
+
+template<>
+struct fmt::formatter<opencmw::majordomo::detail::DnsServiceItem> {
+    template<typename ParseContext>
+    constexpr auto parse(ParseContext &ctx) {
+        return ctx.begin();
+    }
+
+    template<typename FormatContext>
+    auto format(const opencmw::majordomo::detail::DnsServiceItem &v, FormatContext &ctx) {
+        return fmt::format_to(ctx.out(), "[{}: {}]", v.serviceName, fmt::join(v.uris | std::views::transform(opencmw::majordomo::detail::uriAsString), ","));
+    }
+};
 
 #endif

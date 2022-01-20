@@ -1,8 +1,8 @@
 #include "helpers.hpp"
 
 #include <majordomo/Broker.hpp>
-#include <majordomo/MajordomoWorker.hpp>
 #include <majordomo/Settings.hpp>
+#include <majordomo/Worker.hpp>
 
 #include <MIME.hpp>
 #include <opencmw.hpp>
@@ -18,10 +18,10 @@
 using opencmw::majordomo::Broker;
 using opencmw::majordomo::BrokerMessage;
 using opencmw::majordomo::Command;
-using opencmw::majordomo::MajordomoWorker;
 using opencmw::majordomo::MdpMessage;
 using opencmw::majordomo::MessageFrame;
 using opencmw::majordomo::Settings;
+using opencmw::majordomo::Worker;
 
 /*
  * This test serves as example on how MajordomoWorker is to be used.
@@ -97,7 +97,7 @@ struct TestHandler {
     /**
      * The handler function that the handler is required to implement.
      */
-    void handle(opencmw::majordomo::RequestContext & /*rawCtx*/, const TestContext & /*requestContext*/, const AddressRequest &request, TestContext & /*replyContext*/, AddressEntry &output) {
+    void operator()(opencmw::majordomo::RequestContext & /*rawCtx*/, const TestContext & /*requestContext*/, const AddressRequest &request, TestContext & /*replyContext*/, AddressEntry &output) {
         // we just use the request to look up the address, return it if found, or throw an exception if not.
         // MajordomoWorker/BasicMdpWorker translate any exception from the handler or the deserialisation into an error reply (message.body() empty, error message in message.error())
 
@@ -111,7 +111,8 @@ struct TestHandler {
     }
 };
 
-constexpr auto static_tag = MessageFrame::static_bytes_tag{};
+constexpr auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
+constexpr auto static_tag  = MessageFrame::static_bytes_tag{};
 
 TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][majordomoworker][simple_example]") {
     // We run both broker and worker inproc
@@ -126,7 +127,7 @@ TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][major
     opencmw::query::registerTypes(TestContext(), broker);
 
     // Create MajordomoWorker with our domain objects, and our TestHandler.
-    MajordomoWorker<TestContext, AddressRequest, AddressEntry, TestHandler> worker("addressbook", broker, TestHandler());
+    Worker<"addressbook", TestContext, AddressRequest, AddressEntry> worker(broker, TestHandler());
 
     // Run worker and broker in separate threads
     RunInThread brokerRun(broker);
@@ -162,14 +163,16 @@ TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][major
     }
 }
 
-TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworker][plain_client]") {
-    Broker broker("TestBroker", testSettings());
+TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworker][plain_client][rbac]") {
+    using namespace opencmw::majordomo;
+    Broker<ADMIN, ANY> broker("TestBroker", testSettings());
     opencmw::query::registerTypes(TestContext(), broker);
 
-    MajordomoWorker<TestContext, AddressRequest, AddressEntry, TestHandler> worker("addressbook", broker, TestHandler());
+    Worker<"addressbook", TestContext, AddressRequest, AddressEntry, rbac<ADMIN, NONE>, description<"API description">> worker(broker, TestHandler());
+    REQUIRE(worker.serviceDescription() == "API description");
 
-    RunInThread                                                             brokerRun(broker);
-    RunInThread                                                             workerRun(worker);
+    RunInThread brokerRun(broker);
+    RunInThread workerRun(worker);
 
     REQUIRE(waitUntilServiceAvailable(broker.context, "addressbook"));
 
@@ -185,6 +188,7 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
         request.setClientRequestId("1", static_tag);
         request.setTopic("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json", static_tag);
         request.setBody("{ \"id\": 42 }", static_tag);
+        request.setRbacToken("RBAC=ADMIN,1234", static_tag);
         client.send(request);
 
         const auto reply = client.tryReadOne();
@@ -198,6 +202,26 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
         REQUIRE(reply->body() == "\"AddressEntry\": {\n\"name\": \"Santa Claus\",\n\"street\": \"Elf Road\",\n\"streetNumber\": 123,\n\"postalCode\": \"88888\",\n\"city\": \"North Pole\",\n}");
     }
 
+    // GET with unknown role or empty role fails
+    for (const auto &role : { "UNKNOWN", "" }) {
+        auto request = MdpMessage::createClientMessage(Command::Get);
+        request.setServiceName("addressbook", static_tag);
+        request.setClientRequestId("1", static_tag);
+        request.setTopic("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json", static_tag);
+        request.setBody("{ \"id\": 42 }", static_tag);
+        request.setRbacToken(fmt::format("RBAC={},1234", role), dynamic_tag);
+        client.send(request);
+
+        const auto reply = client.tryReadOne();
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->command() == Command::Final);
+        REQUIRE(reply->serviceName() == "addressbook");
+        REQUIRE(reply->clientRequestId() == "1");
+        REQUIRE(reply->error() == fmt::format("GET access denied to role '{}'", role));
+        REQUIRE(reply->body() == "");
+    }
+
     // request non-existing entry
     {
         auto request = MdpMessage::createClientMessage(Command::Get);
@@ -205,6 +229,7 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
         request.setClientRequestId("2", static_tag);
         request.setTopic("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json", static_tag);
         request.setBody("{ \"id\": 4711 }", static_tag);
+        request.setRbacToken("RBAC=ADMIN,1234", static_tag);
         client.send(request);
     }
 
@@ -225,6 +250,7 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
         request.setClientRequestId("3", static_tag);
         request.setTopic("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json", static_tag);
         request.setBody("", static_tag);
+        request.setRbacToken("RBAC=ADMIN,1234", static_tag);
         client.send(request);
     }
 
@@ -245,6 +271,7 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
         request.setClientRequestId("4", static_tag);
         request.setTopic("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json", static_tag);
         request.setBody("{ \"id\": 42 ]", static_tag);
+        request.setRbacToken("RBAC=ADMIN,1234", static_tag);
         client.send(request);
     }
 
