@@ -170,12 +170,11 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
     // custom ANY without any permissions
     using ANY = rbac::Role<"ANY", rbac::Permission::NONE>;
 
-    // TODO we cannot have partial CTAD for the roles, so they need to be mentioned explicitly here
-    // Could be solved by a helper class holding both the broker and the MajordomoWorker
-    Worker<"addressbook", TestContext, AddressRequest, AddressEntry, rbac::ADMIN, ANY> worker(broker, TestHandler());
+    Worker<"addressbook", TestContext, AddressRequest, AddressEntry, rbac::ADMIN, description<"API description">, ANY> worker(broker, TestHandler());
+    REQUIRE(worker.serviceDescription() == "API description");
 
-    RunInThread                                                                        brokerRun(broker);
-    RunInThread                                                                        workerRun(worker);
+    RunInThread brokerRun(broker);
+    RunInThread workerRun(worker);
 
     REQUIRE(waitUntilServiceAvailable(broker.context, "addressbook"));
 

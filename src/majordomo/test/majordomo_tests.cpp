@@ -1174,9 +1174,9 @@ TEST_CASE("SET/GET example using the BasicWorker class", "[worker][getset_basic_
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::MdpMessage;
 
-    Broker                                                                               broker("testbroker", testSettings());
+    Broker                                                                       broker("testbroker", testSettings());
 
-    BasicWorker<"a.service", opencmw::majordomo::detail::description<"API description">> worker(broker, TestIntHandler(10));
+    BasicWorker<"a.service", opencmw::majordomo::description<"API description">> worker(broker, TestIntHandler(10));
     REQUIRE(worker.serviceDescription() == "API description");
 
     TestNode<MdpMessage> client(broker.context);
@@ -1261,8 +1261,8 @@ TEST_CASE("SET/GET example using the BasicWorker class", "[worker][getset_basic_
 TEST_CASE("BasicWorker SET/GET example with RBAC permission handling", "[worker][getset_basic_worker][rbac]") {
     using WRITER = rbac::Role<"WRITER", rbac::Permission::WO>;
     using READER = rbac::Role<"READER", rbac::Permission::RO>;
+    using opencmw::majordomo::description;
     using opencmw::majordomo::MdpMessage;
-    using opencmw::majordomo::detail::description;
 
     Broker                                                                                 broker("testbroker", testSettings());
     BasicWorker<"/a.service", description<"API description">, rbac::roles<WRITER, READER>> worker(broker, TestIntHandler(10));

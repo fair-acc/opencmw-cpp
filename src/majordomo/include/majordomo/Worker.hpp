@@ -52,10 +52,10 @@ struct to_type {
     static constexpr auto value = Value;
 };
 
-template<units::basic_fixed_string Value>
-using description = description_impl<to_type<Value>>;
-
 } // namespace detail
+
+template<units::basic_fixed_string Value>
+using description = detail::description_impl<detail::to_type<Value>>;
 
 template<units::basic_fixed_string serviceName, typename... Meta>
 class BasicWorker {
@@ -497,19 +497,19 @@ struct HandlerImpl {
 } // namespace detail
 
 // TODO docs, see worker_tests.cpp for a documented example
-template<units::basic_fixed_string serviceName, ReflectableClass ContextType, ReflectableClass InputType, ReflectableClass OutputType, rbac::role... Roles>
-class Worker : public BasicWorker<serviceName, Roles...> {
+template<units::basic_fixed_string serviceName, ReflectableClass ContextType, ReflectableClass InputType, ReflectableClass OutputType, typename... Meta>
+class Worker : public BasicWorker<serviceName, Meta...> {
 public:
     using CallbackFunction = detail::HandlerImpl<ContextType, InputType, OutputType>::CallbackFunction;
 
     explicit Worker(URI<STRICT> brokerAddress, CallbackFunction callback, const Context &context, Settings settings = {})
-        : BasicWorker<serviceName, Roles...>(std::move(brokerAddress), detail::HandlerImpl<ContextType, InputType, OutputType>(std::move(callback)), context, settings) {
+        : BasicWorker<serviceName, Meta...>(std::move(brokerAddress), detail::HandlerImpl<ContextType, InputType, OutputType>(std::move(callback)), context, settings) {
         query::registerTypes(ContextType(), *this);
     }
 
     template<typename BrokerType>
     explicit Worker(const BrokerType &broker, CallbackFunction callback)
-        : BasicWorker<serviceName, Roles...>(broker, detail::HandlerImpl<ContextType, InputType, OutputType>(std::move(callback))) {
+        : BasicWorker<serviceName, Meta...>(broker, detail::HandlerImpl<ContextType, InputType, OutputType>(std::move(callback))) {
         query::registerTypes(ContextType(), *this);
     }
 
@@ -531,7 +531,7 @@ public:
         RequestContext rawCtx;
         rawCtx.reply.setTopic(topicURI.str, MessageFrame::dynamic_bytes_tag{});
         detail::writeResult(rawCtx, context, reply);
-        return BasicWorker<serviceName, Roles...>::notify(std::move(rawCtx.reply));
+        return BasicWorker<serviceName, Meta...>::notify(std::move(rawCtx.reply));
     }
 };
 
