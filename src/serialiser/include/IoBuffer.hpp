@@ -142,6 +142,7 @@ public:
     forceinline constexpr const uint8_t                   &operator[](const std::size_t i) const noexcept { return _buffer[i]; }
     forceinline constexpr void                             reset() noexcept { _position = 0; }
     forceinline constexpr void                             set_position(size_t position) noexcept { _position = position; }
+    forceinline constexpr void                             skip(size_t bytes) noexcept { _position += bytes; }
     [[nodiscard]] forceinline constexpr const std::size_t &position() const noexcept { return _position; }
     [[nodiscard]] forceinline constexpr const std::size_t &capacity() const noexcept { return _capacity; }
     [[nodiscard]] forceinline constexpr const std::size_t &size() const noexcept { return _size; }

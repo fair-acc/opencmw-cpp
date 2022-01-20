@@ -13,6 +13,27 @@ namespace opencmw {
 struct CmwLight : Protocol<"CmwLight"> {
 };
 
+namespace cmwlight {
+
+void skipStrings(IoBuffer &buffer, const size_t n) {
+    for (int i = 0; i < n; i++) {
+        buffer.skip(buffer.get<int32_t>() * sizeof(char));
+    }
+}
+
+template<typename T>
+void skipMultiArray(IoBuffer &buffer) {
+    // skip size header
+    buffer.skip(buffer.get<int32_t>() * sizeof(int32_t));
+    if constexpr (is_stringlike<T>) {
+        skipStrings(buffer, buffer.get<int32_t>());
+    } else {
+        buffer.skip(buffer.get<int32_t>() * sizeof(T));
+    }
+}
+
+} // namespace cmwlight
+
 template<typename T>
 struct IoSerialiser<CmwLight, T> {
     inline static constexpr uint8_t getDataTypeId() { return 0xFF; } // default value
@@ -179,15 +200,51 @@ struct IoSerialiser<CmwLight, OTHER> {
         // do not do anything, as the end marker is of size zero and only the type byte is important
     }
 
-    static void deserialise(IoBuffer &buffer, FieldDescription auto const &field, const END_MARKER &) {
+    static void deserialise(IoBuffer &buffer, FieldDescription auto const &field, const OTHER &) {
+        using namespace cmwlight;
         auto typeId = field.intDataType;
-        if (typeId == IoSerialiser<CmwLight, int>::getDataTypeId()) {
-            IoSerialiser<CmwLight, int>::deserialise(buffer, field, std::ignore);
-            // todo: implement more types/find generic way to express this
-        } else {
-            throw ProtocolException(fmt::format("Skipping data type {} is not supported", typeId));
-        }
-        // todo: check how this works with nested data
+        // clang-format off
+        // primitives
+             if (typeId == IoSerialiser<CmwLight, bool   >::getDataTypeId()) { buffer.skip(sizeof(bool   )); }
+        else if (typeId == IoSerialiser<CmwLight, int8_t >::getDataTypeId()) { buffer.skip(sizeof(int8_t )); }
+        else if (typeId == IoSerialiser<CmwLight, int16_t>::getDataTypeId()) { buffer.skip(sizeof(int16_t)); }
+        else if (typeId == IoSerialiser<CmwLight, int32_t>::getDataTypeId()) { buffer.skip(sizeof(int32_t)); }
+        else if (typeId == IoSerialiser<CmwLight, int64_t>::getDataTypeId()) { buffer.skip(sizeof(int64_t)); }
+        else if (typeId == IoSerialiser<CmwLight, float  >::getDataTypeId()) { buffer.skip(sizeof(float  )); }
+        else if (typeId == IoSerialiser<CmwLight, double >::getDataTypeId()) { buffer.skip(sizeof(double )); }
+        else if (typeId == IoSerialiser<CmwLight, char   >::getDataTypeId()) { buffer.skip(sizeof(char   )); }
+        else if (typeId == IoSerialiser<CmwLight, std::string>::getDataTypeId()) { skipStrings(buffer, 1); }
+        // arrays
+        else if (typeId == IoSerialiser<CmwLight, std::vector<int8_t >>::getDataTypeId()) { buffer.skip(buffer.get<int32_t>() * sizeof(int8_t )); }
+        else if (typeId == IoSerialiser<CmwLight, std::vector<int16_t>>::getDataTypeId()) { buffer.skip(buffer.get<int32_t>() * sizeof(int16_t)); }
+        else if (typeId == IoSerialiser<CmwLight, std::vector<int32_t>>::getDataTypeId()) { buffer.skip(buffer.get<int32_t>() * sizeof(int32_t)); }
+        else if (typeId == IoSerialiser<CmwLight, std::vector<int64_t>>::getDataTypeId()) { buffer.skip(buffer.get<int32_t>() * sizeof(int64_t)); }
+        else if (typeId == IoSerialiser<CmwLight, std::vector<float  >>::getDataTypeId()) { buffer.skip(buffer.get<int32_t>() * sizeof(float  )); }
+        else if (typeId == IoSerialiser<CmwLight, std::vector<double >>::getDataTypeId()) { buffer.skip(buffer.get<int32_t>() * sizeof(double )); }
+        else if (typeId == IoSerialiser<CmwLight, std::vector<char   >>::getDataTypeId()) { buffer.skip(buffer.get<int32_t>() * sizeof(char   )); }
+        else if (typeId == IoSerialiser<CmwLight, std::vector<std::string>>::getDataTypeId()) { skipStrings(buffer, buffer.get<int32_t>()); }
+        // 2D array
+        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<int8_t , 2>>::getDataTypeId()) { skipMultiArray<int8_t >(buffer); }
+        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<int16_t, 2>>::getDataTypeId()) { skipMultiArray<int16_t>(buffer); }
+        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<int32_t, 2>>::getDataTypeId()) { skipMultiArray<int32_t>(buffer); }
+        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<int64_t, 2>>::getDataTypeId()) { skipMultiArray<int64_t>(buffer); }
+        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<float  , 2>>::getDataTypeId()) { skipMultiArray<float  >(buffer); }
+        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<double , 2>>::getDataTypeId()) { skipMultiArray<double >(buffer); }
+        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<char   , 2>>::getDataTypeId()) { skipMultiArray<char   >(buffer); }
+        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<std::string, 2>>::getDataTypeId()) { skipMultiArray<std::string>(buffer); }
+        // multi-array
+        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<int8_t , 3>>::getDataTypeId()) { skipMultiArray<int8_t >(buffer); }
+        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<int16_t, 3>>::getDataTypeId()) { skipMultiArray<int16_t>(buffer); }
+        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<int32_t, 3>>::getDataTypeId()) { skipMultiArray<int32_t>(buffer); }
+        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<int64_t, 3>>::getDataTypeId()) { skipMultiArray<int64_t>(buffer); }
+        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<float  , 3>>::getDataTypeId()) { skipMultiArray<float  >(buffer); }
+        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<double , 3>>::getDataTypeId()) { skipMultiArray<double >(buffer); }
+        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<char   , 3>>::getDataTypeId()) { skipMultiArray<char   >(buffer); }
+        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<std::string, 3>>::getDataTypeId()) { skipMultiArray<std::string>(buffer); }
+        // nested
+        // unsupported
+        else { throw ProtocolException(fmt::format("Skipping data type {} is not supported", typeId)); }
+        // clang-format on
     }
 };
 
