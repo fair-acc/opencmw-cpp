@@ -1,4 +1,5 @@
 #include "IoSerialiserBenchmark.hpp"
+#include <IoSerialiserCmwLight.hpp>
 #include <IoSerialiserJson.hpp>
 #include <IoSerialiserYAML.hpp>
 #include <IoSerialiserYaS.hpp>
@@ -72,6 +73,7 @@ int main() {
     results.emplace_back(runTests<YAML>(1'000));
     results.emplace_back(runTests<Json>(1'000));
     results.emplace_back(runTests<YaS>(100'000));
+    results.emplace_back(runTests<CmwLight>(100'000));
 
     constexpr int columWidth = 10;
     fmt::print("┌{2:─^{0}}┬{3:─^{1}}┬{4:─^{1}}┬{5:─^{1}}┐\n", columWidth, 2 * columWidth + 3, "protocol", "ALWAYS", "LENIENT", "IGNORE");
