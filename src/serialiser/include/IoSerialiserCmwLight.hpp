@@ -18,7 +18,7 @@ namespace cmwlight {
 void skipString(IoBuffer &buffer);
 
 template<typename T>
-void skipArray(IoBuffer &buffer) {
+inline void skipArray(IoBuffer &buffer) {
     if constexpr (is_stringlike<T>) {
         for (auto i = buffer.get<int32_t>(); i > 0; i--) {
             skipString(buffer);
@@ -28,24 +28,24 @@ void skipArray(IoBuffer &buffer) {
     }
 }
 
-void skipString(IoBuffer &buffer) { skipArray<char>(buffer); }
+inline void skipString(IoBuffer &buffer) { skipArray<char>(buffer); }
 
 template<typename T>
-void skipMultiArray(IoBuffer &buffer) {
+inline void skipMultiArray(IoBuffer &buffer) {
     buffer.skip(buffer.get<int32_t>() * static_cast<int32_t>(sizeof(int32_t))); // skip size header
     skipArray<T>(buffer);                                                       // skip elements
 }
 
 template<typename T>
-int getTypeId() {
+inline int getTypeId() {
     return IoSerialiser<CmwLight, T>::getDataTypeId();
 }
 template<typename T>
-int getTypeIdVector() {
+inline int getTypeIdVector() {
     return IoSerialiser<CmwLight, std::vector<T>>::getDataTypeId();
 }
 template<typename T, size_t N>
-int getTypeIdMultiArray() {
+inline int getTypeIdMultiArray() {
     return IoSerialiser<CmwLight, MultiArray<T, N>>::getDataTypeId();
 }
 
