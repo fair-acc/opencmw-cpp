@@ -150,7 +150,7 @@ public:
     constexpr void                                         clear() noexcept { _position = _size = 0; }
 
     template<bool checkRange = true>
-    constexpr void skip(int bytes) noexcept(!checkRange) {
+    forceinline constexpr void skip(int bytes) noexcept(!checkRange) {
         if constexpr (checkRange) {
             if (_position + static_cast<std::size_t>(bytes) > size()) { // catches both over and underflow
                 throw std::out_of_range(fmt::format("requested index {} is out-of-range [0,{}]", static_cast<std::ptrdiff_t>(_position) + bytes, _size));
