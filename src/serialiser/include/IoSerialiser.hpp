@@ -201,8 +201,7 @@ constexpr void serialise(IoBuffer &buffer, ReflectableClass auto const &value, F
 template<SerialiserProtocol protocol, const bool writeMetaInfo = true>
 constexpr void serialise(IoBuffer &buffer, ReflectableClass auto const &value) {
     putHeaderInfo<protocol>(buffer);
-    const auto       &reflectionData       = refl::reflect(value);
-    auto              field                = detail::newFieldHeader<protocol, writeMetaInfo>(buffer, reflectionData.name.c_str(), 0, value);
+    auto              field                = detail::newFieldHeader<protocol, writeMetaInfo>(buffer, refl::reflect(value).name.c_str(), 0, value);
     const std::size_t posSizePositionStart = FieldHeaderWriter<protocol>::template put<writeMetaInfo>(buffer, field, START_MARKER_INST);
     const std::size_t posStartDataStart    = buffer.size();
     detail::serialise<protocol, writeMetaInfo>(buffer, value, field);
