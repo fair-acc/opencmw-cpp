@@ -15,21 +15,38 @@ struct CmwLight : Protocol<"CmwLight"> {
 
 namespace cmwlight {
 
-void skipStrings(IoBuffer &buffer, const size_t n) {
-    for (int i = 0; i < n; i++) {
-        buffer.skip(buffer.get<int32_t>() * sizeof(char));
+void skipString(IoBuffer &buffer);
+
+template<typename T>
+void skipArray(IoBuffer &buffer) {
+    if constexpr (is_stringlike<T>) {
+        for (auto i = buffer.get<int32_t>(); i > 0; i--) {
+            skipString(buffer);
+        }
+    } else {
+        buffer.skip(buffer.get<int32_t>() * static_cast<int32_t>(sizeof(T)));
     }
 }
 
+void skipString(IoBuffer &buffer) { skipArray<char>(buffer); }
+
 template<typename T>
 void skipMultiArray(IoBuffer &buffer) {
-    // skip size header
-    buffer.skip(buffer.get<int32_t>() * sizeof(int32_t));
-    if constexpr (is_stringlike<T>) {
-        skipStrings(buffer, buffer.get<int32_t>());
-    } else {
-        buffer.skip(buffer.get<int32_t>() * sizeof(T));
-    }
+    buffer.skip(buffer.get<int32_t>() * static_cast<int32_t>(sizeof(int32_t))); // skip size header
+    skipArray<T>(buffer);                                                       // skip elements
+}
+
+template<typename T>
+int getTypeId() {
+    return IoSerialiser<CmwLight, T>::getDataTypeId();
+}
+template<typename T>
+int getTypeIdVector() {
+    return IoSerialiser<CmwLight, std::vector<T>>::getDataTypeId();
+}
+template<typename T, size_t N>
+int getTypeIdMultiArray() {
+    return IoSerialiser<CmwLight, MultiArray<T, N>>::getDataTypeId();
 }
 
 } // namespace cmwlight
@@ -109,15 +126,15 @@ template<MultiArrayType T>
 struct IoSerialiser<CmwLight, T> {
     inline static constexpr uint8_t getDataTypeId() {
         // clang-format off
-        if      constexpr (std::is_same_v<bool   , typename T::value_type> && T::n_dims_ == 1) { return  9; }
-        else if constexpr (std::is_same_v<int8_t , typename T::value_type> && T::n_dims_ == 1) { return 10; }
-        else if constexpr (std::is_same_v<int16_t, typename T::value_type> && T::n_dims_ == 1) { return 11; }
-        else if constexpr (std::is_same_v<int32_t, typename T::value_type> && T::n_dims_ == 1) { return 12; }
-        else if constexpr (std::is_same_v<int64_t, typename T::value_type> && T::n_dims_ == 1) { return 13; }
-        else if constexpr (std::is_same_v<float  , typename T::value_type> && T::n_dims_ == 1) { return 14; }
-        else if constexpr (std::is_same_v<double , typename T::value_type> && T::n_dims_ == 1) { return 15; }
-        else if constexpr (std::is_same_v<char   , typename T::value_type> && T::n_dims_ == 1) { return 202; }
-        else if constexpr (opencmw::is_stringlike<typename T::value_type>  && T::n_dims_ == 1) { return 16; }
+        if      constexpr (std::is_same_v<bool   , typename T::value_type> && T::n_dims_ == 1) { return cmwlight::getTypeIdVector<typename T::value_type>(); }
+        else if constexpr (std::is_same_v<int8_t , typename T::value_type> && T::n_dims_ == 1) { return cmwlight::getTypeIdVector<typename T::value_type>(); }
+        else if constexpr (std::is_same_v<int16_t, typename T::value_type> && T::n_dims_ == 1) { return cmwlight::getTypeIdVector<typename T::value_type>(); }
+        else if constexpr (std::is_same_v<int32_t, typename T::value_type> && T::n_dims_ == 1) { return cmwlight::getTypeIdVector<typename T::value_type>(); }
+        else if constexpr (std::is_same_v<int64_t, typename T::value_type> && T::n_dims_ == 1) { return cmwlight::getTypeIdVector<typename T::value_type>(); }
+        else if constexpr (std::is_same_v<float  , typename T::value_type> && T::n_dims_ == 1) { return cmwlight::getTypeIdVector<typename T::value_type>(); }
+        else if constexpr (std::is_same_v<double , typename T::value_type> && T::n_dims_ == 1) { return cmwlight::getTypeIdVector<typename T::value_type>(); }
+        else if constexpr (std::is_same_v<char   , typename T::value_type> && T::n_dims_ == 1) { return cmwlight::getTypeIdVector<typename T::value_type>(); }
+        else if constexpr (opencmw::is_stringlike<typename T::value_type>  && T::n_dims_ == 1) { return cmwlight::getTypeIdVector<typename T::value_type>(); }
         else if constexpr (std::is_same_v<bool   , typename T::value_type> && T::n_dims_ == 2) { return 17; }
         else if constexpr (std::is_same_v<int8_t , typename T::value_type> && T::n_dims_ == 2) { return 18; }
         else if constexpr (std::is_same_v<int16_t, typename T::value_type> && T::n_dims_ == 2) { return 19; }
@@ -205,42 +222,33 @@ struct IoSerialiser<CmwLight, OTHER> {
         auto typeId = field.intDataType;
         // clang-format off
         // primitives
-             if (typeId == IoSerialiser<CmwLight, bool   >::getDataTypeId()) { buffer.skip(sizeof(bool   )); }
-        else if (typeId == IoSerialiser<CmwLight, int8_t >::getDataTypeId()) { buffer.skip(sizeof(int8_t )); }
-        else if (typeId == IoSerialiser<CmwLight, int16_t>::getDataTypeId()) { buffer.skip(sizeof(int16_t)); }
-        else if (typeId == IoSerialiser<CmwLight, int32_t>::getDataTypeId()) { buffer.skip(sizeof(int32_t)); }
-        else if (typeId == IoSerialiser<CmwLight, int64_t>::getDataTypeId()) { buffer.skip(sizeof(int64_t)); }
-        else if (typeId == IoSerialiser<CmwLight, float  >::getDataTypeId()) { buffer.skip(sizeof(float  )); }
-        else if (typeId == IoSerialiser<CmwLight, double >::getDataTypeId()) { buffer.skip(sizeof(double )); }
-        else if (typeId == IoSerialiser<CmwLight, char   >::getDataTypeId()) { buffer.skip(sizeof(char   )); }
-        else if (typeId == IoSerialiser<CmwLight, std::string>::getDataTypeId()) { skipStrings(buffer, 1); }
+             if (typeId == getTypeId<bool       >()) { buffer.skip(sizeof(bool   )); }
+        else if (typeId == getTypeId<int8_t     >()) { buffer.skip(sizeof(int8_t )); }
+        else if (typeId == getTypeId<int16_t    >()) { buffer.skip(sizeof(int16_t)); }
+        else if (typeId == getTypeId<int32_t    >()) { buffer.skip(sizeof(int32_t)); }
+        else if (typeId == getTypeId<int64_t    >()) { buffer.skip(sizeof(int64_t)); }
+        else if (typeId == getTypeId<float      >()) { buffer.skip(sizeof(float  )); }
+        else if (typeId == getTypeId<double     >()) { buffer.skip(sizeof(double )); }
+        else if (typeId == getTypeId<char       >()) { buffer.skip(sizeof(char   )); }
+        else if (typeId == getTypeId<std::string>()) { skipString(buffer); }
         // arrays
-        else if (typeId == IoSerialiser<CmwLight, std::vector<int8_t >>::getDataTypeId()) { buffer.skip(buffer.get<int32_t>() * sizeof(int8_t )); }
-        else if (typeId == IoSerialiser<CmwLight, std::vector<int16_t>>::getDataTypeId()) { buffer.skip(buffer.get<int32_t>() * sizeof(int16_t)); }
-        else if (typeId == IoSerialiser<CmwLight, std::vector<int32_t>>::getDataTypeId()) { buffer.skip(buffer.get<int32_t>() * sizeof(int32_t)); }
-        else if (typeId == IoSerialiser<CmwLight, std::vector<int64_t>>::getDataTypeId()) { buffer.skip(buffer.get<int32_t>() * sizeof(int64_t)); }
-        else if (typeId == IoSerialiser<CmwLight, std::vector<float  >>::getDataTypeId()) { buffer.skip(buffer.get<int32_t>() * sizeof(float  )); }
-        else if (typeId == IoSerialiser<CmwLight, std::vector<double >>::getDataTypeId()) { buffer.skip(buffer.get<int32_t>() * sizeof(double )); }
-        else if (typeId == IoSerialiser<CmwLight, std::vector<char   >>::getDataTypeId()) { buffer.skip(buffer.get<int32_t>() * sizeof(char   )); }
-        else if (typeId == IoSerialiser<CmwLight, std::vector<std::string>>::getDataTypeId()) { skipStrings(buffer, buffer.get<int32_t>()); }
-        // 2D array
-        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<int8_t , 2>>::getDataTypeId()) { skipMultiArray<int8_t >(buffer); }
-        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<int16_t, 2>>::getDataTypeId()) { skipMultiArray<int16_t>(buffer); }
-        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<int32_t, 2>>::getDataTypeId()) { skipMultiArray<int32_t>(buffer); }
-        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<int64_t, 2>>::getDataTypeId()) { skipMultiArray<int64_t>(buffer); }
-        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<float  , 2>>::getDataTypeId()) { skipMultiArray<float  >(buffer); }
-        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<double , 2>>::getDataTypeId()) { skipMultiArray<double >(buffer); }
-        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<char   , 2>>::getDataTypeId()) { skipMultiArray<char   >(buffer); }
-        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<std::string, 2>>::getDataTypeId()) { skipMultiArray<std::string>(buffer); }
-        // multi-array
-        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<int8_t , 3>>::getDataTypeId()) { skipMultiArray<int8_t >(buffer); }
-        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<int16_t, 3>>::getDataTypeId()) { skipMultiArray<int16_t>(buffer); }
-        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<int32_t, 3>>::getDataTypeId()) { skipMultiArray<int32_t>(buffer); }
-        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<int64_t, 3>>::getDataTypeId()) { skipMultiArray<int64_t>(buffer); }
-        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<float  , 3>>::getDataTypeId()) { skipMultiArray<float  >(buffer); }
-        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<double , 3>>::getDataTypeId()) { skipMultiArray<double >(buffer); }
-        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<char   , 3>>::getDataTypeId()) { skipMultiArray<char   >(buffer); }
-        else if (typeId == IoSerialiser<CmwLight, opencmw::MultiArray<std::string, 3>>::getDataTypeId()) { skipMultiArray<std::string>(buffer); }
+        else if (typeId == getTypeIdVector<int8_t     >()) { skipArray<int8_t     >(buffer); }
+        else if (typeId == getTypeIdVector<int16_t    >()) { skipArray<int16_t    >(buffer); }
+        else if (typeId == getTypeIdVector<int32_t    >()) { skipArray<int32_t    >(buffer); }
+        else if (typeId == getTypeIdVector<int64_t    >()) { skipArray<int64_t    >(buffer); }
+        else if (typeId == getTypeIdVector<float      >()) { skipArray<float      >(buffer); }
+        else if (typeId == getTypeIdVector<double     >()) { skipArray<double     >(buffer); }
+        else if (typeId == getTypeIdVector<char       >()) { skipArray<char       >(buffer); }
+        else if (typeId == getTypeIdVector<std::string>()) { skipArray<std::string>(buffer); }
+        // 2D and Multi array
+        else if (typeId == getTypeIdMultiArray<int8_t     , 2>() || typeId == getTypeIdMultiArray<int8_t     , 3>()) { skipMultiArray<int8_t     >(buffer); }
+        else if (typeId == getTypeIdMultiArray<int16_t    , 2>() || typeId == getTypeIdMultiArray<int16_t    , 3>()) { skipMultiArray<int16_t    >(buffer); }
+        else if (typeId == getTypeIdMultiArray<int32_t    , 2>() || typeId == getTypeIdMultiArray<int32_t    , 3>()) { skipMultiArray<int32_t    >(buffer); }
+        else if (typeId == getTypeIdMultiArray<int64_t    , 2>() || typeId == getTypeIdMultiArray<int64_t    , 3>()) { skipMultiArray<int64_t    >(buffer); }
+        else if (typeId == getTypeIdMultiArray<float      , 2>() || typeId == getTypeIdMultiArray<float      , 3>()) { skipMultiArray<float      >(buffer); }
+        else if (typeId == getTypeIdMultiArray<double     , 2>() || typeId == getTypeIdMultiArray<double     , 3>()) { skipMultiArray<double     >(buffer); }
+        else if (typeId == getTypeIdMultiArray<char       , 2>() || typeId == getTypeIdMultiArray<char       , 3>()) { skipMultiArray<char       >(buffer); }
+        else if (typeId == getTypeIdMultiArray<std::string, 2>() || typeId == getTypeIdMultiArray<std::string, 3>()) { skipMultiArray<std::string>(buffer); }
         // nested
         // unsupported
         else { throw ProtocolException(fmt::format("Skipping data type {} is not supported", typeId)); }
