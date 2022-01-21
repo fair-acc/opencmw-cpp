@@ -20,7 +20,7 @@ using namespace opencmw::utils; // for operator<< and fmt::format overloading
  * [..]
  * IO Serializer (POCO, YaS, 0) throughput = 7.7 GB/s for 29.6 kB per test run (took 385.8 ms)
  * IO Serializer (POCO, YaS, 0) throughput = 7.7 GB/s for 29.6 kB per test run (took 384.2 ms)
-* [..]
+ * [..]
  * IO Serializer (POCO, CmwLight, 0) throughput = 9.3 GB/s for 29.0 kB per test run (took 312.3 ms)
  * ┌─protocol─┬────────ALWAYS─────────┬────────LENIENT────────┬────────IGNORE─────────┐
  * │   YAML   │ 84.3 MB/s ±   8.1 MB/s│ 83.6 MB/s ± 427.6 kB/s│ 86.3 MB/s ± 539.8 kB/s│
