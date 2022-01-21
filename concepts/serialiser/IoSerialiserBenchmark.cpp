@@ -1,4 +1,5 @@
 #include "IoSerialiserBenchmark.hpp"
+#include <IoSerialiserCmwLight.hpp>
 #include <IoSerialiserJson.hpp>
 #include <IoSerialiserYAML.hpp>
 #include <IoSerialiserYaS.hpp>
@@ -17,13 +18,15 @@ using namespace opencmw::utils; // for operator<< and fmt::format overloading
  *
  * benchmark exemplary output:
  * [..]
- * IO Serializer (POCO, YaS, 0) throughput = 7.5 GB/s for 29.6 kB per test run (took 395.8 ms)
- * IO Serializer (POCO, YaS, 0) throughput = 7.5 GB/s for 29.6 kB per test run (took 397.1 ms)
- * IO Serializer (POCO, YaS, 0) throughput = 7.5 GB/s for 29.6 kB per test run (took 395.8 ms)
+ * IO Serializer (POCO, YaS, 0) throughput = 7.7 GB/s for 29.6 kB per test run (took 385.8 ms)
+ * IO Serializer (POCO, YaS, 0) throughput = 7.7 GB/s for 29.6 kB per test run (took 384.2 ms)
+ * [..]
+ * IO Serializer (POCO, CmwLight, 0) throughput = 9.3 GB/s for 29.0 kB per test run (took 312.3 ms)
  * ┌─protocol─┬────────ALWAYS─────────┬────────LENIENT────────┬────────IGNORE─────────┐
- * │   YAML   │ 95.7 MB/s ±   2.9 MB/s│ 99.4 MB/s ± 232.1 kB/s│ 86.5 MB/s ± 190.7 kB/s│
- * │   Json   │334.9 MB/s ± 780.6 kB/s│333.4 MB/s ± 560.1 kB/s│335.4 MB/s ± 822.2 kB/s│
- * │   YaS    │  6.9 GB/s ±   6.2 MB/s│  6.4 GB/s ±  73.3 MB/s│  7.5 GB/s ±  16.4 MB/s│
+ * │   YAML   │ 84.3 MB/s ±   8.1 MB/s│ 83.6 MB/s ± 427.6 kB/s│ 86.3 MB/s ± 539.8 kB/s│
+ * │   Json   │283.2 MB/s ±   1.6 MB/s│283.0 MB/s ±   1.8 MB/s│287.0 MB/s ± 854.8 kB/s│
+ * │   YaS    │  6.0 GB/s ±  33.0 MB/s│  6.3 GB/s ±  22.6 MB/s│  7.7 GB/s ±  47.9 MB/s│
+ * │ CmwLight │  8.0 GB/s ±  39.8 MB/s│  8.2 GB/s ±  24.9 MB/s│  9.3 GB/s ± 104.0 MB/s│
  * └──────────┴───────────────────────┴───────────────────────┴───────────────────────┘
  *
  */
@@ -72,6 +75,7 @@ int main() {
     results.emplace_back(runTests<YAML>(1'000));
     results.emplace_back(runTests<Json>(1'000));
     results.emplace_back(runTests<YaS>(100'000));
+    results.emplace_back(runTests<CmwLight>(100'000));
 
     constexpr int columWidth = 10;
     fmt::print("┌{2:─^{0}}┬{3:─^{1}}┬{4:─^{1}}┬{5:─^{1}}┐\n", columWidth, 2 * columWidth + 3, "protocol", "ALWAYS", "LENIENT", "IGNORE");
