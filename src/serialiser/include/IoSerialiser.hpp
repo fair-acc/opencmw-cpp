@@ -79,7 +79,7 @@ struct FieldDescriptionShort {
     uint64_t         headerStart       = 0U;
     std::size_t      dataStartPosition = 0U;
     std::size_t      dataEndPosition   = 0U;
-    std::size_t      subfields         = 0U;
+    uint16_t         subfields         = 0U;
     std::string_view fieldName;
     uint8_t          intDataType    = 0U;
     uint8_t          hierarchyDepth = 0;
@@ -89,7 +89,7 @@ struct FieldDescriptionLong {
     uint64_t         headerStart;
     std::size_t      dataStartPosition;
     std::size_t      dataEndPosition;
-    std::size_t      subfields = 0U;
+    uint16_t         subfields = 0U;
     std::string_view fieldName;
     std::string_view unit;
     std::string_view description;

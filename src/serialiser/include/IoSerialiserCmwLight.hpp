@@ -275,13 +275,13 @@ struct FieldHeaderReader<CmwLight> {
         }
         field.headerStart = buffer.position();
         if (field.hierarchyDepth == 0) { // do not read field description for root element
-            field.subfields = static_cast<std::size_t>(buffer.get<int32_t>());
+            field.subfields = static_cast<uint16_t>(buffer.get<int32_t>());
             field.hierarchyDepth++;
         } else {
             field.fieldName   = buffer.get<std::string_view>();                               // full field name
             field.intDataType = buffer.get<uint8_t>();                                        // data type ID
             if (field.intDataType == IoSerialiser<CmwLight, START_MARKER>::getDataTypeId()) { // read number of fields for start markers
-                field.subfields = static_cast<std::size_t>(buffer.get<int32_t>());
+                field.subfields = static_cast<uint16_t>(buffer.get<int32_t>());
                 field.hierarchyDepth++;
             } else {
                 field.subfields--; // decrease the number of remaining fields in the structure... todo: adapt strategy for nested fields (has to somewhere store subfields)
