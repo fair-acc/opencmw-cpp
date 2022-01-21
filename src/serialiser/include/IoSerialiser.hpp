@@ -153,7 +153,7 @@ namespace detail {
 template<SerialiserProtocol protocol, const bool writeMetaInfo = true, typename DataType>
 constexpr auto newFieldHeader(const IoBuffer &buffer, const char *fieldName, const int hierarchyDepth = 0, const DataType &value = 0) {
     constexpr int typeID    = IoSerialiser<protocol, std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(value)))>>::getDataTypeId();
-    size_t        subfields = 0;
+    uint16_t      subfields = 0;
     if constexpr (isReflectableClass<DataType>()) {
         subfields = refl::reflect<DataType>().declared_members.size;
     } else {
