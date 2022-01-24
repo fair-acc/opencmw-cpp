@@ -260,7 +260,7 @@ template<>
 struct FieldHeaderWriter<CmwLight> {
     template<const bool /*writeMetaInfo*/, typename DataType>
     constexpr std::size_t static put(IoBuffer &buffer, FieldDescription auto const &field, const DataType &data) {
-        using StrippedDataType      = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(data)))>;
+        using StrippedDataType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(data)))>;
         if constexpr (is_same_v<DataType, END_MARKER>) { // do not put endMarker type id into buffer
             return std::numeric_limits<size_t>::max();
         }
@@ -269,7 +269,7 @@ struct FieldHeaderWriter<CmwLight> {
         if (field.hierarchyDepth != 0) {
             buffer.put<IoBuffer::MetaInfo::WITH>(field.fieldName); // full field name with zero termination
         }
-        if constexpr (!is_same_v<DataType, START_MARKER>) {        // do not put startMarker type id into buffer
+        if constexpr (!is_same_v<DataType, START_MARKER>) {                        // do not put startMarker type id into buffer
             buffer.put(IoSerialiser<CmwLight, StrippedDataType>::getDataTypeId()); // data type ID
         }
         IoSerialiser<CmwLight, StrippedDataType>::serialise(buffer, field, getAnnotatedMember(unwrapPointer(data)));
@@ -281,9 +281,9 @@ template<>
 struct FieldHeaderReader<CmwLight> {
     template<ProtocolCheck protocolCheckVariant>
     inline static void get(IoBuffer &buffer, DeserialiserInfo & /*info*/, FieldDescription auto &field) {
-        field.headerStart = buffer.position();
-        field.dataEndPosition   = std::numeric_limits<size_t>::max();
-        field.modifier = ExternalModifier::UNKNOWN;
+        field.headerStart     = buffer.position();
+        field.dataEndPosition = std::numeric_limits<size_t>::max();
+        field.modifier        = ExternalModifier::UNKNOWN;
         if (field.subfields == 0) {
             field.intDataType = IoSerialiser<CmwLight, END_MARKER>::getDataTypeId();
             field.hierarchyDepth--;
@@ -291,15 +291,15 @@ struct FieldHeaderReader<CmwLight> {
             return;
         }
         if (field.subfields == -1) {
-            if (field.hierarchyDepth != 0) { // do not read field description for root element
+            if (field.hierarchyDepth != 0) {                      // do not read field description for root element
                 field.fieldName = buffer.get<std::string_view>(); // full field name
             }
             field.intDataType = IoSerialiser<CmwLight, START_MARKER>::getDataTypeId();
-            field.subfields = static_cast<int16_t>(buffer.get<int32_t>());
+            field.subfields   = static_cast<int16_t>(buffer.get<int32_t>());
         } else {
-            field.fieldName   = buffer.get<std::string_view>();                               // full field name
-            field.intDataType = buffer.get<uint8_t>();                                        // data type ID
-            field.subfields--; // decrease the number of remaining fields in the structure... todo: adapt strategy for nested fields (has to somewhere store subfields)
+            field.fieldName   = buffer.get<std::string_view>(); // full field name
+            field.intDataType = buffer.get<uint8_t>();          // data type ID
+            field.subfields--;                                  // decrease the number of remaining fields in the structure... todo: adapt strategy for nested fields (has to somewhere store subfields)
         }
         field.dataStartPosition = buffer.position();
     }
