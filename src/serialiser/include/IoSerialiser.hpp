@@ -79,7 +79,7 @@ struct FieldDescriptionShort {
     uint64_t         headerStart       = 0U;
     std::size_t      dataStartPosition = 0U;
     std::size_t      dataEndPosition   = 0U;
-    uint16_t         subfields         = 0U;
+    int16_t         subfields         = 0;
     std::string_view fieldName;
     uint8_t          intDataType    = 0U;
     uint8_t          hierarchyDepth = 0;
@@ -89,7 +89,7 @@ struct FieldDescriptionLong {
     uint64_t         headerStart;
     std::size_t      dataStartPosition;
     std::size_t      dataEndPosition;
-    uint16_t         subfields = 0U;
+    int16_t         subfields = 0;
     std::string_view fieldName;
     std::string_view unit;
     std::string_view description;
@@ -150,15 +150,25 @@ forceinline int32_t findMemberIndex(const std::string_view &fieldName) noexcept 
 
 namespace detail {
 
+template<ReflectableClass T>
+constexpr int16_t getNumberOfNonNullSubfields(const T &value) {
+    int16_t fields = 0;
+    for_each(refl::reflect(value).members, [&](const auto member, [[maybe_unused]] const auto index) {
+        if constexpr (is_field(member) && !is_static(member)) {
+            if constexpr (is_smart_pointer<std::remove_reference_t<decltype(member(value))>>) {
+                if (!member(value)) {
+                    return; // skip empty smart pointers
+                }
+            }
+            fields++;
+        }
+    });
+    return fields;
+}
+
 template<SerialiserProtocol protocol, const bool writeMetaInfo = true, typename DataType>
-constexpr auto newFieldHeader(const IoBuffer &buffer, const char *fieldName, const int hierarchyDepth = 0, const DataType &value = 0) {
-    constexpr int typeID    = IoSerialiser<protocol, std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(value)))>>::getDataTypeId();
-    uint16_t      subfields = 0;
-    if constexpr (isReflectableClass<DataType>()) {
-        subfields = refl::reflect<DataType>().declared_members.size;
-    } else {
-        subfields = 0;
-    }
+constexpr auto newFieldHeader(const IoBuffer &buffer, const char *fieldName, const int hierarchyDepth, const DataType &value, const int16_t subfields) {
+    constexpr int typeID     = IoSerialiser<protocol, std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(value)))>>::getDataTypeId();
     const auto pos = buffer.size();
     if constexpr (writeMetaInfo && is_annotated<DataType>) {
         return FieldDescriptionLong{ .headerStart = pos, .dataStartPosition = pos, .dataEndPosition = pos, .subfields = subfields, .fieldName = fieldName, .unit = value.getUnit(), .description = value.getDescription(), .modifier = value.getModifier(), .intDataType = typeID, .hierarchyDepth = static_cast<uint8_t>(hierarchyDepth) };
@@ -182,7 +192,8 @@ constexpr void serialise(IoBuffer &buffer, ReflectableClass auto const &value, F
 
             using UnwrappedMemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(fieldValue)))>;
             if constexpr (isReflectableClass<UnwrappedMemberType>()) { // nested data-structure
-                FieldDescription auto field                = newFieldHeader<protocol, writeMetaInfo>(buffer, member.name.c_str(), parent.hierarchyDepth + 1, fieldValue);
+                const auto subfields = getNumberOfNonNullSubfields(getAnnotatedMember(unwrapPointer(fieldValue)));
+                FieldDescription auto field                = newFieldHeader<protocol, writeMetaInfo>(buffer, member.name.c_str(), parent.hierarchyDepth + 1, FWD(fieldValue), subfields);
                 const std::size_t     posSizePositionStart = FieldHeaderWriter<protocol>::template put<writeMetaInfo>(buffer, field, START_MARKER_INST);
                 const std::size_t     posStartDataStart    = buffer.size();
                 serialise<protocol, writeMetaInfo>(buffer, getAnnotatedMember(unwrapPointer(fieldValue)), field); // do not inspect annotation itself
@@ -190,7 +201,7 @@ constexpr void serialise(IoBuffer &buffer, ReflectableClass auto const &value, F
                 updateSize<protocol>(buffer, posSizePositionStart, posStartDataStart);
                 return;
             } else { // field is a (possibly annotated) primitive type
-                FieldDescription auto field = newFieldHeader<protocol, writeMetaInfo>(buffer, member.name.c_str(), parent.hierarchyDepth + 1, fieldValue);
+                FieldDescription auto field = newFieldHeader<protocol, writeMetaInfo>(buffer, member.name.c_str(), parent.hierarchyDepth + 1, fieldValue, 0);
                 FieldHeaderWriter<protocol>::template put<writeMetaInfo>(buffer, field, fieldValue);
             }
         }
@@ -201,7 +212,8 @@ constexpr void serialise(IoBuffer &buffer, ReflectableClass auto const &value, F
 template<SerialiserProtocol protocol, const bool writeMetaInfo = true>
 constexpr void serialise(IoBuffer &buffer, ReflectableClass auto const &value) {
     putHeaderInfo<protocol>(buffer);
-    auto              field                = detail::newFieldHeader<protocol, writeMetaInfo>(buffer, refl::reflect(value).name.c_str(), 0, value);
+    const auto subfields = detail::getNumberOfNonNullSubfields(value);
+    auto              field                = detail::newFieldHeader<protocol, writeMetaInfo>(buffer, refl::reflect(value).name.c_str(), 0, value, subfields);
     const std::size_t posSizePositionStart = FieldHeaderWriter<protocol>::template put<writeMetaInfo>(buffer, field, START_MARKER_INST);
     const std::size_t posStartDataStart    = buffer.size();
     detail::serialise<protocol, writeMetaInfo>(buffer, value, field);
@@ -255,7 +267,7 @@ constexpr void deserialise(IoBuffer &buffer, ReflectableClass auto &value, Deser
     }
 
     // read initial field header
-    auto field = newFieldHeader<protocol, true>(buffer, "", parent.hierarchyDepth, value);
+    auto field = newFieldHeader<protocol, true>(buffer, "", parent.hierarchyDepth, value, -1);
     FieldHeaderReader<protocol>::template get<check>(buffer, info, field);
     if (field.hierarchyDepth == 0 && field.fieldName != typeName<ValueType> && !field.fieldName.empty() && check != ProtocolCheck::IGNORE) { // check if root type is matching
         handleDeserialisationError<check>(info, "IoSerialiser<{}, {}>::deserialise: data is not of excepted type but of type {}", protocol::protocolName(), typeName<ValueType>, field.fieldName);
@@ -307,35 +319,16 @@ constexpr void deserialise(IoBuffer &buffer, ReflectableClass auto &value, Deser
             continue;
         }
 
-        if (field.intDataType == IoSerialiser<protocol, START_MARKER>::getDataTypeId()) {
-            buffer.set_position(field.headerStart); // reset buffer position for the nested deserialiser to read again
-            // reached start of sub-structure -> dive in
-            for_each(refl::reflect<ValueType>().members, [&](auto member, int32_t index) {
-                if (index != fieldIndex) {
-                    return; // fieldName does not match -- skip to next field
-                }
-                using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
-                if constexpr (isReflectableClass<MemberType>()) {
-                    field.hierarchyDepth++;
-                    field.fieldName = member.name.c_str(); // N.B. needed since member.name is referring to compile-time const string
-                    deserialise<protocol, check>(buffer, unwrapPointerCreateIfAbsent(member(value)), info, field);
-                    field.hierarchyDepth--;
-                    if constexpr (check != ProtocolCheck::IGNORE) {
-                        info.setFields[parent.fieldName][static_cast<uint64_t>(fieldIndex)] = true;
-                    }
-                }
-            });
-            field.subfields = previousSubFields - 1;
-        }
-
         for_each(refl::reflect<ValueType>().members, [&](auto member, int32_t memberIndex) {
             if constexpr (!is_field(member) || is_static(member)) return;
             if (memberIndex != fieldIndex) return; // fieldName does not match -- skip to next field
 
             using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
-            if constexpr (isReflectableClass<MemberType>() || !is_writable(member) || is_static(member)) {
+            if constexpr (!is_writable(member) || is_static(member)) {
                 moveToFieldEndBufferPosition(buffer, field);
                 return;
+            } else if constexpr (isReflectableClass<MemberType>() ) {
+                field.intDataType = IoSerialiser<protocol, START_MARKER>::getDataTypeId();
             } else {
                 constexpr int requestedType = IoSerialiser<protocol, MemberType>::getDataTypeId();
                 if (requestedType != field.intDataType) { // mismatching data-type
@@ -372,6 +365,27 @@ constexpr void deserialise(IoBuffer &buffer, ReflectableClass auto &value, Deser
             }
         });
 
+        if (field.intDataType == IoSerialiser<protocol, START_MARKER>::getDataTypeId()) {
+            buffer.set_position(field.headerStart); // reset buffer position for the nested deserialiser to read again
+            // reached start of sub-structure -> dive in
+            for_each(refl::reflect<ValueType>().members, [&](auto member, int32_t index) {
+                if (index != fieldIndex) {
+                    return; // fieldName does not match -- skip to next field
+                }
+                using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
+                if constexpr (isReflectableClass<MemberType>()) {
+                    field.hierarchyDepth++;
+                    field.fieldName = member.name.c_str(); // N.B. needed since member.name is referring to compile-time const string
+                    deserialise<protocol, check>(buffer, unwrapPointerCreateIfAbsent(member(value)), info, field);
+                    field.hierarchyDepth--;
+                    if constexpr (check != ProtocolCheck::IGNORE) {
+                        info.setFields[parent.fieldName][static_cast<uint64_t>(fieldIndex)] = true;
+                    }
+                }
+            });
+            field.subfields = previousSubFields - 1;
+        }
+
         // skip to data end if field header defines the end
         if (field.dataEndPosition != std::numeric_limits<size_t>::max() && field.dataEndPosition != buffer.position()) {
             if (check != ProtocolCheck::IGNORE) {
@@ -398,7 +412,7 @@ DeserialiserInfo deserialise(IoBuffer &buffer, ReflectableClass auto &value, Des
     if (check == ProtocolCheck::LENIENT && !info.exceptions.empty()) {
         return info; // do not attempt to deserialise data with wrong header
     }
-    FieldDescription auto fieldDescription = detail::newFieldHeader<protocol, true>(buffer, detail::ROOT_NAME, 0, value);
+    FieldDescription auto fieldDescription = detail::newFieldHeader<protocol, true>(buffer, detail::ROOT_NAME, 0, value, -1);
     detail::deserialise<protocol, check>(buffer, value, info, fieldDescription);
     return info;
 }
