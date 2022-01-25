@@ -120,18 +120,18 @@ TEST_CASE("JsonArraySerialisation", "[JsonSerialiser]") {
     {
         std::vector<int>  test{ 1, 3, 3, 7 };
         opencmw::IoBuffer buffer;
-        opencmw::IoSerialiser<opencmw::Json, std::vector<int>>::serialise(buffer, detail::newFieldHeader<opencmw::Json>(buffer, "test", 0, test), test);
+        opencmw::IoSerialiser<opencmw::Json, std::vector<int>>::serialise(buffer, detail::newFieldHeader<opencmw::Json>(buffer, "test", 0, test, 0), test);
         REQUIRE(buffer.asString() == "[1, 3, 3, 7]");
         {
             std::vector<int> result;
-            opencmw::IoSerialiser<opencmw::Json, std::vector<int>>::deserialise(buffer, detail::newFieldHeader<opencmw::Json>(buffer, "test", 0, result), result);
+            opencmw::IoSerialiser<opencmw::Json, std::vector<int>>::deserialise(buffer, detail::newFieldHeader<opencmw::Json>(buffer, "test", 0, result, 0), result);
             REQUIRE(test == result);
             REQUIRE(buffer.position() == 12);
         }
         buffer.set_position(0);
         {
             std::array<int, 4> resultArray;
-            opencmw::IoSerialiser<opencmw::Json, std::array<int, 4>>::deserialise(buffer, detail::newFieldHeader<opencmw::Json>(buffer, "test", 0, resultArray), resultArray);
+            opencmw::IoSerialiser<opencmw::Json, std::array<int, 4>>::deserialise(buffer, detail::newFieldHeader<opencmw::Json>(buffer, "test", 0, resultArray, 0), resultArray);
             REQUIRE(test == std::vector<int>(resultArray.begin(), resultArray.end()));
             REQUIRE(buffer.position() == 12);
         }
@@ -139,10 +139,10 @@ TEST_CASE("JsonArraySerialisation", "[JsonSerialiser]") {
     { // empty vector
         std::vector<int>  test{};
         opencmw::IoBuffer buffer;
-        opencmw::IoSerialiser<opencmw::Json, std::vector<int>>::serialise(buffer, detail::newFieldHeader<opencmw::Json>(buffer, "test", 0, test), test);
+        opencmw::IoSerialiser<opencmw::Json, std::vector<int>>::serialise(buffer, detail::newFieldHeader<opencmw::Json>(buffer, "test", 0, test, 0), test);
         REQUIRE(buffer.asString() == "[]");
         std::vector<int> result;
-        opencmw::IoSerialiser<opencmw::Json, std::vector<int>>::deserialise(buffer, detail::newFieldHeader<opencmw::Json>(buffer, "test", 0, result), result);
+        opencmw::IoSerialiser<opencmw::Json, std::vector<int>>::deserialise(buffer, detail::newFieldHeader<opencmw::Json>(buffer, "test", 0, result, 0), result);
         REQUIRE(test == result);
         REQUIRE(buffer.position() == 2);
     }

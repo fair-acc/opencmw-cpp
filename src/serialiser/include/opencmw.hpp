@@ -48,6 +48,8 @@ inline constexpr bool isReflectableClass() {
     }
     return false;
 }
+template<typename T>
+constexpr bool isReflectableClass_v = isReflectableClass<T>();
 template<class T>
 concept ReflectableClass = isReflectableClass<T>();
 
