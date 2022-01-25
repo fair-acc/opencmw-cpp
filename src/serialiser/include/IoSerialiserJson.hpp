@@ -209,7 +209,13 @@ struct FieldHeaderWriter<Json> {
             return 0;
         }
         if constexpr (std::is_same_v<DataType, END_MARKER>) {
-            buffer.put('}');
+            if (buffer.template at<uint8_t>(buffer.size() - 2) == ',') {
+                // proceeded by value, remove trailing comma
+                buffer.resize(buffer.size() - 2);
+                buffer.put<WITHOUT>("\n}"sv);
+            } else {
+                buffer.put('}');
+            }
             return 0;
         }
         buffer.put<WITHOUT>("\""sv);
