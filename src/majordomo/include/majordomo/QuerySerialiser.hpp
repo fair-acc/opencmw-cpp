@@ -195,14 +195,15 @@ void registerTypes(const C &context, T &registerAt) {
 }
 
 template<ReflectableClass C>
-inline constexpr opencmw::MIME::MimeType getMimeType(const C &context) {
-    constexpr auto type       = refl::reflect<C>();
-    constexpr auto members    = refl::descriptor::get_members(type);
+inline opencmw::MIME::MimeType getMimeType(const C &context) {
+    constexpr auto type    = refl::reflect<C>();
+    constexpr auto members = refl::descriptor::get_members(type);
 
-    constexpr auto isMimeType = [&](auto member) {
-        using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(context))))>;
-        return is_field(member) && !is_static(member) && std::same_as<MemberType, opencmw::MIME::MimeType>;
-    };
+    constexpr auto isMimeType
+            = [&](auto member) {
+                  using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(context))))>;
+                  return is_field(member) && !is_static(member) && std::same_as<MemberType, opencmw::MIME::MimeType>;
+              };
 
     if constexpr (contains(members, isMimeType)) {
         return find_first(members, isMimeType)(context);

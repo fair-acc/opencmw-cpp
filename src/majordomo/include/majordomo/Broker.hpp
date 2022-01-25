@@ -17,12 +17,25 @@
 #include "Rbac.hpp"
 #include "URI.hpp"
 
+#include <opencmw.hpp>
+
+#include <IoSerialiserJson.hpp>
+#include <MustacheSerialiser.hpp>
+
 #include <majordomo/Constants.hpp>
 #include <majordomo/Message.hpp>
+#include <majordomo/QuerySerialiser.hpp>
 #include <majordomo/Settings.hpp>
 #include <majordomo/SubscriptionMatcher.hpp>
 #include <majordomo/Utils.hpp>
 #include <majordomo/ZmqPtr.hpp>
+
+using namespace std::string_literals;
+
+struct ServiceNamesList {
+    std::vector<std::string> services;
+};
+ENABLE_REFLECTION_FOR(ServiceNamesList, services)
 
 namespace opencmw::majordomo {
 
@@ -378,7 +391,7 @@ public:
                                                    : zmq_invoke(zmq_bind, _pubSocket, zmqEndpoint.data());
 
         if (!result) {
-            debug() << fmt::format("Could not bind broker to '{}'\n", zmqEndpoint);
+            debug::log() << fmt::format("Could not bind broker to '{}'\n", zmqEndpoint);
             return {};
         }
 
@@ -386,7 +399,7 @@ public:
                                                                               : URI<STRICT>::factory(endpoint).scheme(isRouterSocket ? SCHEME_MDP : SCHEME_MDS).build();
         const auto adjustedAddressPublic = endpointAdjusted; // TODO (java) resolveHost(endpointAdjusted, getLocalHostName());
 
-        debug() << fmt::format("Majordomo broker/0.1 is active at '{}'\n", adjustedAddressPublic.str); // TODO do not hardcode version
+        debug::log() << fmt::format("Majordomo broker/0.1 is active at '{}'\n", adjustedAddressPublic.str); // TODO do not hardcode version
 
         _routerSockets.insert(adjustedAddressPublic.str);
         sendDnsHeartbeats(true);
@@ -443,6 +456,13 @@ public:
         }
     }
 
+    template<typename Handler>
+    void forEachService(Handler &&handler) const {
+        for (const auto &[name, service] : _services) {
+            handler(std::string_view{ name });
+        }
+    }
+
 private:
     void subscribe(const URI<RELAXED> &topic) {
         auto it = _subscribedTopics.try_emplace(topic, 0);
@@ -473,7 +493,7 @@ private:
         std::string_view data = frame.data();
 
         if (data.size() < 2 || !(data[0] == '\x0' || data[0] == '\x1')) {
-            debug() << "Unexpected subscribe/unsubscribe message: " << data;
+            debug::log() << "Unexpected subscribe/unsubscribe message: " << data;
             return false;
         }
 
@@ -508,7 +528,7 @@ private:
             // TODO handle READY (client)?
             case Command::Subscribe: {
                 if (message.topic().empty()) {
-                    debug() << "received SUBSCRIBE with empty topic";
+                    debug::log() << "received SUBSCRIBE with empty topic";
                     // TODO disconnect client?
                     return false;
                 }
@@ -522,7 +542,7 @@ private:
             }
             case Command::Unsubscribe: {
                 if (message.topic().empty()) {
-                    debug() << "received UNSUBSCRIBE with empty topic";
+                    debug::log() << "received UNSUBSCRIBE with empty topic";
                     // TODO disconnect client?
                     return false;
                 }
@@ -734,7 +754,7 @@ private:
             toSend.send(_routerSocket).assertSuccess();
 
             if (now > registeredService.expiry) {
-                debug() << fmt::format("Majordomo broker deleting expired DNS service '{}'\n", registeredService.serviceName);
+                debug::log() << fmt::format("Majordomo broker deleting expired DNS service '{}'\n", registeredService.serviceName);
                 it = _dnsCache.erase(it);
             }
         }

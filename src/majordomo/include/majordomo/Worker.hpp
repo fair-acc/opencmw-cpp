@@ -12,6 +12,7 @@
 #include <IoSerialiserCmwLight.hpp>
 #include <IoSerialiserJson.hpp>
 #include <IoSerialiserYaS.hpp>
+#include <MustacheSerialiser.hpp>
 
 #include <MIME.hpp>
 #include <opencmw.hpp>
@@ -30,13 +31,12 @@
 namespace opencmw::majordomo {
 
 struct RequestContext {
-    const MdpMessage                             request;
-    MdpMessage                                   reply;
-    MIME::MimeType                               mimeType = MIME::BINARY;
-    std::unordered_map<std::string, std::string> htmlData;
+    const MdpMessage request;
+    MdpMessage       reply;
+    MIME::MimeType   mimeType = MIME::BINARY;
 };
 
-namespace detail {
+namespace worker_detail {
 inline int nextWorkerId() {
     static std::atomic<int> idCounter = 0;
     return ++idCounter;
@@ -52,10 +52,10 @@ struct to_type {
     static constexpr auto value = Value;
 };
 
-} // namespace detail
+} // namespace worker_detail
 
 template<units::basic_fixed_string Value>
-using description = detail::description_impl<detail::to_type<Value>>;
+using description = worker_detail::description_impl<worker_detail::to_type<Value>>;
 
 template<units::basic_fixed_string serviceName, typename... Meta>
 class BasicWorker {
@@ -64,7 +64,7 @@ private:
 
     using Clock        = std::chrono::steady_clock;
     using Timestamp    = std::chrono::time_point<Clock>;
-    using Description  = opencmw::find_type<detail::description_impl, Meta...>;
+    using Description  = opencmw::find_type<worker_detail::description_impl, Meta...>;
     using DefaultRoles = std::tuple<ADMIN>;
     using Roles        = opencmw::tuple_unique<opencmw::tuple_cat_t<DefaultRoles, find_roles<Meta...>>>;
 
@@ -104,6 +104,8 @@ private:
     static constexpr auto                                    _defaultRbacToken = std::string_view("RBAC=NONE,");
 
 public:
+    static constexpr std::string_view name = serviceName.data();
+
     explicit BasicWorker(opencmw::URI<STRICT> brokerAddress, std::function<void(RequestContext &)> handler, const Context &context, Settings settings = {})
         : _handler{ std::move(handler) }, _settings{ std::move(settings) }, _brokerAddress{ std::move(brokerAddress) }, _context(context), _notifyListenerSocket(_context, ZMQ_PULL), _notifyAddress(makeNotifyAddress()) {
         zmq_invoke(zmq_bind, _notifyListenerSocket, _notifyAddress.data()).assertSuccess();
@@ -182,7 +184,7 @@ public:
 
 private:
     std::string makeNotifyAddress() const noexcept {
-        return fmt::format("inproc://workers/{}-{}/notify", serviceName.data(), detail::nextWorkerId());
+        return fmt::format("inproc://workers/{}-{}/notify", serviceName.data(), worker_detail::nextWorkerId());
     }
 
     NotificationHandler &notificationHandlerForThisThread() {
@@ -240,7 +242,7 @@ private:
 
         if (data.size() < 2 || !(data[0] == '\x0' || data[0] == '\x1')) {
             // will never happen if the broker works correctly (we could assert for inproc brokers)
-            debug() << "Unexpected subscribe/unsubscribe message: " << data;
+            debug::log() << "Unexpected subscribe/unsubscribe message: " << data;
             return true;
         }
 
@@ -288,7 +290,7 @@ private:
         _liveness = _settings.heartbeatLiveness;
 
         if (!message.isValid()) {
-            debug() << "invalid MdpMessage received\n";
+            debug::log() << "invalid MdpMessage received\n";
             return;
         }
 
@@ -347,7 +349,7 @@ private:
             return errorReply;
         }
 
-        RequestContext context{ .request = std::move(request), .reply = replyFromRequest(context.request), .htmlData = {} };
+        RequestContext context{ .request = std::move(request), .reply = replyFromRequest(context.request) };
 
         try {
             std::invoke(_handler, context);
@@ -404,15 +406,18 @@ private:
 
 // Worker
 
-namespace detail {
+namespace worker_detail {
 template<ReflectableClass I, typename Protocol>
 inline I deserialiseRequest(const MdpMessage &request) {
     IoBuffer buffer;
     buffer.put<IoBuffer::MetaInfo::WITHOUT>(request.body());
-    I          input;
-    const auto result = opencmw::deserialise<Protocol, opencmw::ProtocolCheck::ALWAYS>(buffer, input);
-    if (!result.exceptions.empty()) {
-        throw result.exceptions.front();
+    I input;
+
+    if (!request.body().empty()) {
+        const auto result = opencmw::deserialise<Protocol, opencmw::ProtocolCheck::ALWAYS>(buffer, input);
+        if (!result.exceptions.empty()) {
+            throw result.exceptions.front();
+        }
     }
 
     return input;
@@ -420,7 +425,8 @@ inline I deserialiseRequest(const MdpMessage &request) {
 
 template<ReflectableClass I>
 inline I deserialiseRequest(const RequestContext &rawCtx) {
-    if (rawCtx.mimeType == MIME::JSON) {
+    if (rawCtx.mimeType == MIME::JSON || rawCtx.mimeType == MIME::HTML) {
+        // We accept JSON requests with HTML output
         return deserialiseRequest<I, opencmw::Json>(rawCtx.request);
     } else if (rawCtx.mimeType == MIME::BINARY) {
         return deserialiseRequest<I, opencmw::YaS>(rawCtx.request);
@@ -439,7 +445,7 @@ inline void serialiseAndWriteToBody(RequestContext &rawCtx, const ReflectableCla
     rawCtx.reply.setBody(buffer.asString(), MessageFrame::dynamic_bytes_tag{});
 }
 
-inline void writeResult(RequestContext &rawCtx, const auto &replyContext, const auto &output) {
+inline void writeResult(std::string_view workerName, RequestContext &rawCtx, const auto &replyContext, const auto &output) {
     auto       replyQuery = query::serialise(replyContext);
     const auto baseUri    = URI<RELAXED>(std::string(rawCtx.reply.topic().empty() ? rawCtx.request.topic() : rawCtx.reply.topic()));
     const auto topicUri   = URI<RELAXED>::factory(baseUri).setQuery(std::move(replyQuery)).build();
@@ -456,12 +462,53 @@ inline void writeResult(RequestContext &rawCtx, const auto &replyContext, const 
     } else if (mimeType == MIME::CMWLIGHT) {
         serialiseAndWriteToBody<opencmw::CmwLight>(rawCtx, output);
         return;
+    } else if (mimeType == MIME::HTML) {
+        using namespace std::string_literals;
+        std::stringstream stream;
+        mustache::serialise(std::string(workerName), stream,
+                std::pair<std::string, const decltype(output) &>{ "result"s, output },
+                std::pair<std::string, const RequestContext &>{ "rawCtx"s, rawCtx });
+        rawCtx.reply.setBody(stream.str(), MessageFrame::dynamic_bytes_tag{});
+        return;
     }
 
     throw std::runtime_error(fmt::format("MIME type '{}' not supported", mimeType.typeName()));
 }
 
-template<ReflectableClass ContextType, ReflectableClass InputType, ReflectableClass OutputType>
+inline void writeResultFull(std::string_view workerName, RequestContext &rawCtx, const auto &requestContext, const auto &replyContext, const auto &input, const auto &output) {
+    auto       replyQuery = query::serialise(replyContext);
+    const auto baseUri    = URI<RELAXED>(std::string(rawCtx.reply.topic().empty() ? rawCtx.request.topic() : rawCtx.reply.topic()));
+    const auto topicUri   = URI<RELAXED>::factory(baseUri).setQuery(std::move(replyQuery)).build();
+
+    rawCtx.reply.setTopic(topicUri.str, MessageFrame::dynamic_bytes_tag{});
+    const auto replyMimetype = query::getMimeType(replyContext);
+    const auto mimeType      = replyMimetype != MIME::UNKNOWN ? replyMimetype : rawCtx.mimeType;
+    if (mimeType == MIME::JSON) {
+        serialiseAndWriteToBody<opencmw::Json>(rawCtx, output);
+        return;
+    } else if (mimeType == MIME::BINARY) {
+        serialiseAndWriteToBody<opencmw::YaS>(rawCtx, output);
+        return;
+    } else if (mimeType == MIME::CMWLIGHT) {
+        serialiseAndWriteToBody<opencmw::CmwLight>(rawCtx, output);
+        return;
+    } else if (mimeType == MIME::HTML) {
+        using namespace std::string_literals;
+        std::stringstream stream;
+
+        mustache::serialise(std::string(workerName), stream,
+                std::pair<std::string, const decltype(output) &>{ "result"s, output },
+                std::pair<std::string, const decltype(input) &>{ "input"s, input },
+                std::pair<std::string, const decltype(requestContext) &>{ "requestContext"s, requestContext },
+                std::pair<std::string, const decltype(replyContext) &>{ "replyContext"s, replyContext });
+        rawCtx.reply.setBody(stream.str(), MessageFrame::dynamic_bytes_tag{});
+        return;
+    }
+
+    throw std::runtime_error(fmt::format("MIME type '{}' not supported", mimeType.typeName()));
+}
+
+template<typename Worker, ReflectableClass ContextType, ReflectableClass InputType, ReflectableClass OutputType>
 struct HandlerImpl {
     using CallbackFunction = std::function<void(RequestContext &, const ContextType &, const InputType &, ContextType &, OutputType &)>;
 
@@ -486,26 +533,27 @@ struct HandlerImpl {
 
         OutputType output;
         _callback(rawCtx, requestCtx, input, replyCtx, output);
-        writeResult(rawCtx, replyCtx, output);
+        writeResultFull(Worker::name, rawCtx, requestCtx, replyCtx, input, output);
     }
 };
 
-} // namespace detail
+} // namespace worker_detail
 
 // TODO docs, see worker_tests.cpp for a documented example
 template<units::basic_fixed_string serviceName, ReflectableClass ContextType, ReflectableClass InputType, ReflectableClass OutputType, typename... Meta>
 class Worker : public BasicWorker<serviceName, Meta...> {
 public:
-    using CallbackFunction = detail::HandlerImpl<ContextType, InputType, OutputType>::CallbackFunction;
+    using HandlerImpl      = worker_detail::HandlerImpl<Worker, ContextType, InputType, OutputType>;
+    using CallbackFunction = HandlerImpl::CallbackFunction;
 
     explicit Worker(URI<STRICT> brokerAddress, CallbackFunction callback, const Context &context, Settings settings = {})
-        : BasicWorker<serviceName, Meta...>(std::move(brokerAddress), detail::HandlerImpl<ContextType, InputType, OutputType>(std::move(callback)), context, settings) {
+        : BasicWorker<serviceName, Meta...>(std::move(brokerAddress), HandlerImpl(std::move(callback)), context, settings) {
         query::registerTypes(ContextType(), *this);
     }
 
     template<typename BrokerType>
     explicit Worker(const BrokerType &broker, CallbackFunction callback)
-        : BasicWorker<serviceName, Meta...>(broker, detail::HandlerImpl<ContextType, InputType, OutputType>(std::move(callback))) {
+        : BasicWorker<serviceName, Meta...>(broker, HandlerImpl(std::move(callback))) {
         query::registerTypes(ContextType(), *this);
     }
 
@@ -526,11 +574,13 @@ public:
 
         RequestContext rawCtx;
         rawCtx.reply.setTopic(topicURI.str, MessageFrame::dynamic_bytes_tag{});
-        detail::writeResult(rawCtx, context, reply);
+        worker_detail::writeResult(Worker::name, rawCtx, context, reply);
         return BasicWorker<serviceName, Meta...>::notify(std::move(rawCtx.reply));
     }
 };
 
 } // namespace opencmw::majordomo
+
+ENABLE_REFLECTION_FOR(opencmw::majordomo::RequestContext, mimeType);
 
 #endif

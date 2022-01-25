@@ -53,20 +53,27 @@ public:
     void ignoreResult([[maybe_unused]] const std::source_location location = std::source_location::current()) {
 #if (ENABLE_RESULT_CHECKS)
         if (!isValid()) {
-            debugWithLocation(location) << "Ignored error result:" << std::strerror(_error);
+            debug::withLocation(location) << "Ignored error result:" << std::strerror(_error);
         }
         _ignoreError = true;
 #endif
     };
+    // TODO: Mark this as [[deprecated("assertSuccess has effect in debug builds only -- use onFailure instead")]]
     void assertSuccess([[maybe_unused]] const std::source_location location = std::source_location::current()) {
 #if (ENABLE_RESULT_CHECKS)
         if (!isValid()) {
-            debugWithLocation(location) << "Assertion failed:" << std::strerror(_error);
+            debug::withLocation(location) << "Assertion failed:" << std::strerror(_error);
         }
         _ignoreError = true;
 #endif
         assert(isValid());
     };
+    template<typename ExceptionType, typename... Args>
+    void onFailure(Args &&...args) {
+        if (!isValid()) [[unlikely]] {
+            throw ExceptionType(std::forward<Args>(args)...);
+        }
+    }
 
     bool isValid() const {
 #if (ENABLE_RESULT_CHECKS)

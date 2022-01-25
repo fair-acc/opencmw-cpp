@@ -111,9 +111,6 @@ struct TestHandler {
     }
 };
 
-constexpr auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
-constexpr auto static_tag  = MessageFrame::static_bytes_tag{};
-
 TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][majordomoworker][simple_example]") {
     // We run both broker and worker inproc
     Broker broker("TestBroker", testSettings());

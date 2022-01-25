@@ -93,9 +93,6 @@ public:
     // Sending is not const as 0mq nullifies the message
     // See: http://api.zeromq.org/3-2:zmq-msg-send
     [[nodiscard]] auto send(const Socket &socket, int flags) {
-        if (data().size() > 0 && data()[0] == '`') {
-            throw 32;
-        }
         auto result = zmq_invoke(zmq_msg_send, &_message, socket, flags);
         assert(result.isValid());
         _owning = false;
@@ -163,7 +160,14 @@ private:
     friend std::ostream &operator<<(std::ostream &out, const BasicMdpMessage &message) {
         out << '{';
         for (const auto &frame : message._frames) {
-            out << frame.data();
+            for (const char c : frame.data()) {
+                if (c < 0 || !::isprint(c)) {
+                    out << '<' << (c < 0 ? 256 - c : c) << '>';
+                } else {
+                    out << c;
+                }
+            }
+            out << ';';
         }
         out << '}';
         return out;
@@ -184,7 +188,11 @@ private:
 
     template<typename T>
     static constexpr auto index(T value) {
-        return static_cast<std::underlying_type_t<T>>(value);
+        if constexpr (std::numeric_limits<T>::is_integer) {
+            return value;
+        } else {
+            return static_cast<std::underlying_type_t<T>>(value);
+        }
     }
 
     // Just a workaround for items in initializer lists not being
@@ -308,7 +316,7 @@ public:
         }
 
         if (framesReceived != RequiredFrameCount) {
-            debug() << "Received unexpected number of frames: Got " << framesReceived << ", expected " << RequiredFrameCount;
+            debug::log() << "Received unexpected number of frames: Got " << framesReceived << ", expected " << RequiredFrameCount;
             return {};
         }
 
@@ -320,7 +328,7 @@ public:
         const auto &commandStr = _frames[index(Frame::Command)];
 
         if (commandStr.size() != 1) {
-            debugWithLocation() << "Command size is wrong";
+            debug::withLocation() << "Command size is wrong";
             return false;
         }
 
@@ -328,22 +336,22 @@ public:
         const auto  command  = static_cast<unsigned char>(commandStr.data()[0]);
 
         if (command < static_cast<unsigned char>(Command::Invalid) || command > static_cast<unsigned char>(Command::Heartbeat)) {
-            debugWithLocation() << "Message command out of range";
+            debug::withLocation() << "Message command out of range";
             return false;
         }
 
         if (protocol == clientProtocol) {
             if (command == static_cast<unsigned char>(Command::Notify)) {
-                debugWithLocation() << "NOTIFY command invalid for client";
+                debug::withLocation() << "NOTIFY command invalid for client";
                 return false;
             }
         } else if (protocol == workerProtocol) {
             if (command == static_cast<unsigned char>(Command::Subscribe) || command == static_cast<unsigned char>(Command::Unsubscribe)) {
-                debugWithLocation() << "SUBSCRIBE/UNSUBSCRIBE invalid for worker";
+                debug::withLocation() << "SUBSCRIBE/UNSUBSCRIBE invalid for worker";
                 return false;
             }
         } else {
-            debugWithLocation() << "Message has a wrong protocol" << protocol;
+            debug::withLocation() << "Message has a wrong protocol" << protocol;
             return false;
         }
 
@@ -375,7 +383,7 @@ public:
     }
 
     std::size_t availableFrameCount() const { return _frames.size(); }
-    std::size_t requiresFrameCount() const { return RequiredFrameCount; } // TODO: make field public?
+    std::size_t requiredFrameCount() const { return RequiredFrameCount; } // TODO: make field public?
 
     template<typename Field, typename T, typename Tag>
     void setFrameData(Field field, T &&value, Tag tag) { frameAt(field) = MessageFrame(std::forward<T>(value), tag); }
@@ -412,7 +420,10 @@ public:
     [[nodiscard]] std::string_view body() const { return frameAt(Frame::Body).data(); }
 
     template<typename T, typename Tag>
-    void                           setError(T &&error, Tag tag) { setFrameData(Frame::Error, std::forward<T>(error), tag); }
+    void setError(T &&error, Tag tag) {
+        debug::withLocation() << "Returning error" << error;
+        setFrameData(Frame::Error, std::forward<T>(error), tag);
+    }
     [[nodiscard]] std::string_view error() const { return frameAt(Frame::Error).data(); }
 
     template<typename T, typename Tag>

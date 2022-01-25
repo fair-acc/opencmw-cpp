@@ -5,6 +5,7 @@
 #include <majordomo/Message.hpp>
 #include <majordomo/Settings.hpp>
 #include <majordomo/Utils.hpp>
+#include <majordomo/Worker.hpp>
 #include <majordomo/ZmqPtr.hpp>
 
 #include <URI.hpp>
@@ -123,5 +124,46 @@ inline bool waitUntilServiceAvailable(const opencmw::majordomo::Context &context
 
     return false;
 }
+
+constexpr auto static_tag  = opencmw::majordomo::MessageFrame::static_bytes_tag{};
+constexpr auto dynamic_tag = opencmw::majordomo::MessageFrame::dynamic_bytes_tag{};
+
+class TestIntHandler {
+    int _x = 10;
+
+public:
+    explicit TestIntHandler(int initialValue)
+        : _x(initialValue) {
+    }
+
+    void operator()(opencmw::majordomo::RequestContext &context) {
+        if (context.request.command() == opencmw::majordomo::Command::Get) {
+            context.reply.setBody(std::to_string(_x), opencmw::majordomo::MessageFrame::dynamic_bytes_tag{});
+            return;
+        }
+
+        assert(context.request.command() == opencmw::majordomo::Command::Set);
+
+        const auto request = context.request.body();
+        int        value   = 0;
+        const auto result  = std::from_chars(request.begin(), request.end(), value);
+
+        if (result.ec == std::errc::invalid_argument) {
+            context.reply.setError("Not a valid int", opencmw::majordomo::MessageFrame::static_bytes_tag{});
+        } else {
+            _x = value;
+            context.reply.setBody("Value set. All good!", opencmw::majordomo::MessageFrame::static_bytes_tag{});
+        }
+    }
+};
+
+class NonCopyableMovableHandler {
+public:
+    NonCopyableMovableHandler()                                      = default;
+    NonCopyableMovableHandler(NonCopyableMovableHandler &&) noexcept = default;
+    NonCopyableMovableHandler &operator=(NonCopyableMovableHandler &&) noexcept = default;
+
+    void                       operator()(opencmw::majordomo::RequestContext &) {}
+};
 
 #endif

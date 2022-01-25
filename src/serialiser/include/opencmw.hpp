@@ -10,6 +10,8 @@
 #include <units/quantity.h>
 #include <units/quantity_io.h>
 
+#include <MIME.hpp>
+
 #define FWD(x) std::forward<decltype(x)>(x)               // short-hand notation
 #define forceinline inline __attribute__((always_inline)) // use this for hot-spots only <-> may bloat code size, not fit into cache and consequently slow down execution
 #define neverinline __attribute__((noinline))             // primarily used to avoid inlining (rare) exception handling code
@@ -289,10 +291,10 @@ struct Annotated<Rep, Q, description, modifier, groups...> : public units::quant
 
     constexpr auto operator<=>(const Annotated &) const noexcept = default;
     // raw data access
-    [[nodiscard]] constexpr inline rep& value() & noexcept { return this->number(); }
-    [[nodiscard]] constexpr inline const rep& value() const & noexcept { return this->number(); }
-    [[nodiscard]] constexpr inline rep&& value() && noexcept { return std::move(this->number()); }
-    [[nodiscard]] constexpr inline const rep&& value() const && noexcept { return std::move(this->number()); }
+    [[nodiscard]] inline constexpr rep& value() & noexcept { return this->number(); }
+    [[nodiscard]] inline constexpr const rep& value() const & noexcept { return this->number(); }
+    [[nodiscard]] inline constexpr rep&& value() && noexcept { return std::move(this->number()); }
+    [[nodiscard]] inline constexpr const rep&& value() const && noexcept { return std::move(this->number()); }
 
     constexpr operator R&() &{ return *this; }
     constexpr operator const R&() const &{ return *this; }
@@ -332,10 +334,10 @@ struct Annotated<T, Q, description, modifier, groups...> : public T { // inherit
 //    constexpr auto operator<=>(const Annotated &) const noexcept = default; //TODO: conditionally enable if type T allows it (i.e. is 'constexpr')
 
     // raw data access
-    [[nodiscard]] constexpr inline Annotated::rep& value() & noexcept { return *this; }
-    [[nodiscard]] constexpr inline const Annotated::rep& value() const & noexcept { return *this; }
-    [[nodiscard]] constexpr inline Annotated::rep&& value() && noexcept { return std::move(*this); }
-    [[nodiscard]] constexpr inline const Annotated::rep&& value() const && noexcept { return std::move(*this); }
+    [[nodiscard]] inline constexpr Annotated::rep& value() & noexcept { return *this; }
+    [[nodiscard]] inline constexpr const Annotated::rep& value() const & noexcept { return *this; }
+    [[nodiscard]] inline constexpr Annotated::rep&& value() && noexcept { return std::move(*this); }
+    [[nodiscard]] inline constexpr const Annotated::rep&& value() const && noexcept { return std::move(*this); }
 };
 
 template<typename T, std::size_t N, units::Quantity Q, const basic_fixed_string description, const ExternalModifier modifier, const basic_fixed_string... groups>
@@ -391,49 +393,52 @@ constexpr typename T::rep &getAnnotatedMember(T &&annotatedValue) noexcept {
 #pragma ide diagnostic   ignored "misc-definitions-in-headers"
 // clang-format off
 template<typename T> const std::string_view typeName = typeid(T).name(); // safe fall-back
-template<ReflectableClass T> constexpr const std::string_view typeName<T> = refl::reflect<T>().name.data;
+template<ReflectableClass T> inline constexpr const std::string_view typeName<T> = refl::reflect<T>().name.data;
 
-template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, int8_t>    constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int8_t const" : "int8_t";
-template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, int16_t>   constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int16_t const" : "int16_t";
-template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, int32_t>   constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int32_t const" : "int32_t";
-template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, int64_t>   constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int64_t const" : "int64_t";
-template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, long long> constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int128_t const" : "int128_t";
-template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, uint8_t>    constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "uint8_t const" : "uint8_t";
-template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, uint16_t>   constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "uint16_t const" : "uint16_t";
-template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, uint32_t>   constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "uint32_t const" : "uint32_t";
-template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, uint64_t>   constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "uint64_t const" : "uint64_t";
-template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, unsigned long long> constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "uint128_t const" : "uint128_t";
+template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, int8_t>    inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int8_t const" : "int8_t";
+template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, int16_t>   inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int16_t const" : "int16_t";
+template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, int32_t>   inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int32_t const" : "int32_t";
+template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, int64_t>   inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int64_t const" : "int64_t";
+template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, long long> inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int128_t const" : "int128_t";
+template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, uint8_t>    inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "uint8_t const" : "uint8_t";
+template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, uint16_t>   inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "uint16_t const" : "uint16_t";
+template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, uint32_t>   inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "uint32_t const" : "uint32_t";
+template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, uint64_t>   inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "uint64_t const" : "uint64_t";
+template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, unsigned long long> inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "uint128_t const" : "uint128_t";
 
-template<typename T> requires is_same_v<std::remove_const_t<T>, std::byte> constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int8_t const" : "int8_t";
-template<typename T> requires is_same_v<std::remove_const_t<T>, char>      constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "byte const" : "byte";
-template<typename T> requires is_same_v<std::remove_const_t<T>, float_t>   constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "float_t const" : "float_t";
-template<typename T> requires is_same_v<std::remove_const_t<T>, double_t>  constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "double_t const" : "double_t";
+template<typename T> requires is_same_v<std::remove_const_t<T>, std::byte> inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int8_t const" : "int8_t";
+template<typename T> requires is_same_v<std::remove_const_t<T>, char>      inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "byte const" : "byte";
+template<typename T> requires is_same_v<std::remove_const_t<T>, float_t>   inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "float_t const" : "float_t";
+template<typename T> requires is_same_v<std::remove_const_t<T>, double_t>  inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "double_t const" : "double_t";
 
-template<StringLike T> requires units::is_derived_from_specialization_of<T, std::basic_string> constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "string const" : "string";
-template<StringLike T> requires units::is_derived_from_specialization_of<T, std::basic_string_view> constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "string const" : "string";
+template<StringLike T> requires units::is_derived_from_specialization_of<T, std::basic_string> inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "string const" : "string";
+template<StringLike T> requires units::is_derived_from_specialization_of<T, std::basic_string_view> inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "string const" : "string";
 
-template<typename T, std::size_t N> const std::string &typeName<std::array<T,N>> = fmt::format("array<{},{}>", typeName<T>, N);
-template<typename T, std::size_t N> const std::string &typeName<std::array<T,N> const> = fmt::format("array<{},{}> const", typeName<T>, N);
-template<typename T, typename A> const std::string &typeName<std::vector<T,A>> = fmt::format("vector<{}>", typeName<T>);
-template<typename T, typename A> const std::string &typeName<std::vector<T,A> const> = fmt::format("vector<{}> const", typeName<T>);
+template<typename T, std::size_t N> inline const std::string &typeName<std::array<T,N>> = fmt::format("array<{},{}>", typeName<T>, N);
+template<typename T, std::size_t N> inline const std::string &typeName<std::array<T,N> const> = fmt::format("array<{},{}> const", typeName<T>, N);
+template<typename T, typename A> inline const std::string &typeName<std::vector<T,A>> = fmt::format("vector<{}>", typeName<T>);
+template<typename T, typename A> inline const std::string &typeName<std::vector<T,A> const> = fmt::format("vector<{}> const", typeName<T>);
 
-template<typename T, uint32_t N> const std::string &typeName<MultiArray<T,N>> = fmt::format("MultiArray<{},{}>", opencmw::typeName<T>, N);
-template<typename T, uint32_t N> const std::string &typeName<MultiArray<T,N> const> =  fmt::format("MultiArray<{},{}> const", opencmw::typeName<T>, N);
+template<typename T, uint32_t N> inline const std::string &typeName<MultiArray<T,N>> = fmt::format("MultiArray<{},{}>", opencmw::typeName<T>, N);
+template<typename T, uint32_t N> inline const std::string &typeName<MultiArray<T,N> const> =  fmt::format("MultiArray<{},{}> const", opencmw::typeName<T>, N);
 
-template<MapLike T> const std::string &typeName<T> =  fmt::format("map<{},{}>", opencmw::typeName<typename T::key_type>, opencmw::typeName<typename T::mapped_type>);
-template<MapLike T> const std::string &typeName<T const> =  fmt::format("map<{},{}> const", opencmw::typeName<typename T::key_type>, opencmw::typeName<typename T::mapped_type>);
+template<MapLike T> inline const std::string &typeName<T> =  fmt::format("map<{},{}>", opencmw::typeName<typename T::key_type>, opencmw::typeName<typename T::mapped_type>);
+template<MapLike T> inline const std::string &typeName<T const> =  fmt::format("map<{},{}> const", opencmw::typeName<typename T::key_type>, opencmw::typeName<typename T::mapped_type>);
 
 template<typename T, units::Quantity Q, const basic_fixed_string description, const ExternalModifier modifier, const basic_fixed_string... groups>
-const std::string &typeName<Annotated<T, Q, description, modifier, groups...>> = fmt::format("Annotated<{}>", opencmw::typeName<T>);
+inline const std::string &typeName<Annotated<T, Q, description, modifier, groups...>> = fmt::format("Annotated<{}>", opencmw::typeName<T>);
 template<typename T, units::Quantity Q, const basic_fixed_string description, const ExternalModifier modifier, const basic_fixed_string... groups>
-const std::string &typeName<Annotated<T, Q, description, modifier, groups...> const> =  fmt::format("Annotated<{}> const", opencmw::typeName<T>);
+inline const std::string &typeName<Annotated<T, Q, description, modifier, groups...> const> =  fmt::format("Annotated<{}> const", opencmw::typeName<T>);
 
 // legacy arrays
-template<ArithmeticType T, std::size_t size> const std::string &typeName<T[size]> = fmt::format("{}[{}]", opencmw::typeName<T>, size);
-template<ArithmeticType T, std::size_t size> const std::string &typeName<const T[size]> = fmt::format("{}[{}] const", opencmw::typeName<T>, size);
-template<ArithmeticType T> const std::string &typeName<T*> = fmt::format("{}[?]", opencmw::typeName<T>);
-template<ArithmeticType T> const std::string &typeName<const T*> = fmt::format("({} const)[?] ", opencmw::typeName<T>);
-template<ArithmeticType T> const std::string &typeName<T* const> = fmt::format("{} [?] const", opencmw::typeName<T>);
+template<ArithmeticType T, std::size_t size> inline const std::string &typeName<T[size]> = fmt::format("{}[{}]", opencmw::typeName<T>, size);
+template<ArithmeticType T, std::size_t size> inline const std::string &typeName<const T[size]> = fmt::format("{}[{}] const", opencmw::typeName<T>, size);
+template<ArithmeticType T> inline const std::string &typeName<T*> = fmt::format("{}[?]", opencmw::typeName<T>);
+template<ArithmeticType T> inline const std::string &typeName<const T*> = fmt::format("({} const)[?] ", opencmw::typeName<T>);
+template<ArithmeticType T> inline const std::string &typeName<T* const> = fmt::format("{} [?] const", opencmw::typeName<T>);
+
+template<>
+constexpr inline std::string_view typeName<opencmw::MIME::MimeType> = "MimeType";
 
 // clang-format off
 #pragma clang diagnostic pop
@@ -466,6 +471,11 @@ inline constexpr int hash(const std::string_view &string) noexcept {
     }
     return h;
 }
+
+// Exception types
+class startup_error : public std::runtime_error {
+    using runtime_error::runtime_error;
+};
 
 } // namespace opencmw
 #endif //OPENCMW_H
