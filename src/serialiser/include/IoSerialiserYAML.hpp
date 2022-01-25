@@ -32,7 +32,7 @@ constexpr void addSpace(IoBuffer &buffer, const uint8_t hierarchyDepth, const ui
     int            count        = 0;
     constexpr auto isWhiteSpace = [](uint8_t c) noexcept { return c == ' ' || c == '\t' || c == '\r'; };
     while (buffer.position() < buffer.size() && isWhiteSpace(buffer.at<uint8_t>(buffer.position()))) {
-        buffer.set_position(buffer.position() + 1);
+        buffer.skip<false>(1);
         count++;
     }
     return count;
@@ -44,10 +44,10 @@ constexpr void addSpace(IoBuffer &buffer, const uint8_t hierarchyDepth, const ui
     }
     const auto start = buffer.position();
     while (buffer.position() < buffer.size() && buffer.at<char>(buffer.position()) != '\n') {
-        buffer.set_position(buffer.position() + 1);
+        buffer.skip<false>(1);
     }
     if (buffer.at<char>(buffer.position()) == '\n') {
-        buffer.set_position(buffer.position() + 1);
+        buffer.skip<false>(1);
     }
     return static_cast<int>(buffer.position() - start);
 }
@@ -348,10 +348,9 @@ inline DeserialiserInfo checkHeaderInfo<YAML>(IoBuffer &buffer, DeserialiserInfo
             throw ProtocolException("YAML: buffer too small or missing (`---') line: '{}' pos: {}  size: {}", line, position, buffer.size());
         }
     }
-    buffer.set_position(position + 3);
+    buffer.skip<false>(3);
     [[maybe_unused]] const auto nWhitespaces = static_cast<std::size_t>(yaml::detail::consumeWhitespace(buffer));
     [[maybe_unused]] const auto nTillEnd     = static_cast<std::size_t>(yaml::detail::moveToEndOfLine(buffer));
-    buffer.set_position(position + 3 + nWhitespaces + nTillEnd); // move to next line
     if (nTillEnd > 1 || buffer.at<uint8_t>(buffer.position() - 1) != '\n') {
         if (check == ProtocolCheck::LENIENT) {
             info.exceptions.emplace_back("YAML: non-white-space characters after (`---') line: '{}' pos: {}  size: {}", line, position, buffer.size());

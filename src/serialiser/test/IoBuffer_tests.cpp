@@ -329,4 +329,24 @@ TEST_CASE("IoBuffer syntax - arrays", "[IoBuffer]") {
     opencmw::debug::resetStats();
 }
 
+TEST_CASE("IoBuffer syntax - navigation", "[IoBuffer]") {
+    opencmw::debug::resetStats();
+    {
+        opencmw::debug::Timer timer("IoBuffer syntax -array", 30);
+        opencmw::IoBuffer     buffer;
+
+        buffer.put(std::vector<int>{ 1, 2, 3, 4, 5 }); // put some data into the buffer
+        REQUIRE(buffer.position() == 0);
+        buffer.skip(24);
+        REQUIRE(buffer.position() == 24);
+        REQUIRE_THROWS_AS(buffer.skip(5), std::out_of_range);
+        REQUIRE_THROWS_AS(buffer.skip(-25), std::out_of_range);
+        buffer.skip(-24);
+        REQUIRE(buffer.position() == 0);
+        buffer.skip(10);
+        REQUIRE(buffer.position() == 10);
+    }
+    REQUIRE(opencmw::debug::alloc == opencmw::debug::dealloc); // a memory leak occurred
+    opencmw::debug::resetStats();
+}
 #pragma clang diagnostic pop

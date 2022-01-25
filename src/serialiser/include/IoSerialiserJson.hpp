@@ -65,8 +65,8 @@ inline std::string readString(IoBuffer &buffer) {
                 if ((buffer.position() + 4) >= buffer.size() || !isHexNumber(data, 4)) {
                     throw ProtocolException("illegal hex number {} at position {} of {}", buffer.asString(buffer.position(), 4), buffer.position(), buffer.size());
                 }
-                buffer.set_position(buffer.position() + 4); // skip escaped unicode char
-                result += '_';                              // todo: implement parsing the actual unicode characters
+                buffer.skip<false>(4); // skip escaped unicode char
+                result += '_';         // todo: implement parsing the actual unicode characters
                 break;
             }
             default:
@@ -98,7 +98,7 @@ inline std::string_view readKey(IoBuffer &buffer) {
 
 inline constexpr void consumeWhitespace(IoBuffer &buffer) {
     while (buffer.position() < buffer.size() && isWhitespace(buffer.at<uint8_t>(buffer.position()))) {
-        buffer.set_position(buffer.position() + 1);
+        buffer.skip<false>(1);
     }
 }
 
@@ -144,14 +144,14 @@ inline constexpr void skipObject(IoBuffer &buffer) {
         }
         consumeWhitespace(buffer);
     }
-    buffer.set_position(buffer.position() + 1); // skip }
+    buffer.skip(1);
     consumeWhitespace(buffer);
 }
 
 inline constexpr void skipNumber(IoBuffer &buffer) {
     while (isNumberChar(buffer.get<uint8_t>())) {
     }
-    buffer.set_position(buffer.position() - 1);
+    buffer.skip<false>(-1);
 }
 
 inline constexpr void skipArray(IoBuffer &buffer) {
@@ -168,7 +168,7 @@ inline constexpr void skipArray(IoBuffer &buffer) {
         }
         consumeWhitespace(buffer);
     }
-    buffer.set_position(buffer.position() + 1); // skip ]
+    buffer.skip<false>(1);
     consumeWhitespace(buffer);
 }
 
@@ -182,11 +182,11 @@ inline constexpr void skipValue(IoBuffer &buffer) {
     } else if (firstChar == '"') {
         std::ignore = readString(buffer);
     } else if (buffer.size() - buffer.position() > 5 && buffer.asString(buffer.position(), 5) == "false") {
-        buffer.set_position(buffer.position() + 5);
+        buffer.skip<false>(5);
     } else if (buffer.size() - buffer.position() > 4 && buffer.asString(buffer.position(), 4) == "true") {
-        buffer.set_position(buffer.position() + 4);
+        buffer.skip<false>(4);
     } else if (buffer.size() - buffer.position() > 4 && buffer.asString(buffer.position(), 4) == "null") {
-        buffer.set_position(buffer.position() + 4);
+        buffer.skip<false>(4);
     } else { // skip number
         json::skipNumber(buffer);
     }
@@ -264,12 +264,12 @@ struct IoSerialiser<Json, bool> {
     constexpr static void deserialise(IoBuffer &buffer, FieldDescription auto const & /*field*/, bool &value) {
         using namespace std::string_view_literals;
         if (buffer.size() - buffer.position() > 5 && buffer.asString(buffer.position(), 5) == "false"sv) {
-            buffer.set_position(buffer.position() + 5);
+            buffer.skip<false>(5);
             value = false;
             return;
         }
         if (buffer.size() - buffer.position() > 4 && buffer.asString(buffer.position(), 4) == "true"sv) {
-            buffer.set_position(buffer.position() + 4);
+            buffer.skip<false>(4);
             value = false;
             value = true;
             return;
@@ -365,7 +365,7 @@ struct IoSerialiser<Json, T> {
         std::vector<MemberType> result;
         json::consumeWhitespace(buffer);
         if (buffer.get<uint8_t>() != ']') { // empty array
-            buffer.set_position(buffer.position() - 1);
+            buffer.skip<false>(-1);
             while (true) {
                 MemberType entry;
                 IoSerialiser<Json, MemberType>::deserialise(buffer, field, entry);
@@ -415,7 +415,7 @@ struct FieldHeaderReader<Json> {
         result.headerStart = buffer.position();
         json::consumeWhitespace(buffer);
         if (buffer.at<char8_t>(buffer.position()) == ',') { // move to next field
-            buffer.set_position(buffer.position() + 1);
+            buffer.skip<false>(1);
             json::consumeWhitespace(buffer);
             result.headerStart = buffer.position();
         }
@@ -444,7 +444,7 @@ struct FieldHeaderReader<Json> {
             // read value and set type ?
             if (buffer.at<char8_t>(buffer.position()) == '{') { // nested object
                 result.intDataType = IoSerialiser<Json, START_MARKER>::getDataTypeId();
-                buffer.set_position(buffer.position() + 1);
+                buffer.skip<false>(1);
             } else {
                 result.intDataType = IoSerialiser<Json, OTHER>::getDataTypeId(); // value is ignored anyway
             }
