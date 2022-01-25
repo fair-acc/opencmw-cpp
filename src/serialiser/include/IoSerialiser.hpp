@@ -224,7 +224,7 @@ constexpr void serialise(IoBuffer &buffer, ReflectableClass auto const &value) {
 template<SerialiserProtocol protocol>
 struct FieldHeaderReader {
     template<ProtocolCheck check>
-    inline static void get(IoBuffer & /*buffer*/, DeserialiserInfo & /*info*/, const ProtocolCheck & /*check*/, FieldDescriptionLong & /*result*/) {}
+    inline static void get(IoBuffer & /*buffer*/, DeserialiserInfo & /*info*/, FieldDescriptionLong & /*result*/) {}
 };
 
 namespace detail {
@@ -366,7 +366,6 @@ constexpr void deserialise(IoBuffer &buffer, ReflectableClass auto &value, Deser
         });
 
         if (field.intDataType == IoSerialiser<protocol, START_MARKER>::getDataTypeId()) {
-            buffer.set_position(field.headerStart); // reset buffer position for the nested deserialiser to read again
             // reached start of sub-structure -> dive in
             for_each(refl::reflect<ValueType>().members, [&](auto member, int32_t index) {
                 if (index != fieldIndex) {
@@ -374,16 +373,17 @@ constexpr void deserialise(IoBuffer &buffer, ReflectableClass auto &value, Deser
                 }
                 using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(value))))>;
                 if constexpr (isReflectableClass<MemberType>()) {
+                    buffer.set_position(field.headerStart); // reset buffer position for the nested deserialiser to read again
                     field.hierarchyDepth++;
                     field.fieldName = member.name.c_str(); // N.B. needed since member.name is referring to compile-time const string
                     deserialise<protocol, check>(buffer, unwrapPointerCreateIfAbsent(member(value)), info, field);
                     field.hierarchyDepth--;
+                    field.subfields = previousSubFields - 1;
                     if constexpr (check != ProtocolCheck::IGNORE) {
                         info.setFields[parent.fieldName][static_cast<uint64_t>(fieldIndex)] = true;
                     }
                 }
             });
-            field.subfields = previousSubFields - 1;
         }
 
         // skip to data end if field header defines the end
