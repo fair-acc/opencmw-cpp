@@ -43,7 +43,7 @@ private:
                 _buffer = new uint8_t[_capacity];
             }
             // buffer already exists - copy existing content into newly allocated buffer N.B. maybe larger/smaller
-            uint8_t *tBuffer = new uint8_t[_capacity];
+            auto *tBuffer = new uint8_t[_capacity];
             // std::memmove(tBuffer, _buffer, std::min(_size, size) * sizeof(uint8_t));
             std::copy(_buffer, _buffer + std::min(_size, size) * sizeof(uint8_t), tBuffer);
             delete[] _buffer;
@@ -148,6 +148,16 @@ public:
     [[nodiscard]] forceinline constexpr uint8_t           *data() noexcept { return _buffer; }
     [[nodiscard]] forceinline constexpr const uint8_t     *data() const noexcept { return _buffer; }
     constexpr void                                         clear() noexcept { _position = _size = 0; }
+
+    template<bool checkRange = true>
+    forceinline constexpr void skip(int bytes) noexcept(!checkRange) {
+        if constexpr (checkRange) {
+            if (_position + static_cast<std::size_t>(bytes) > size()) { // catches both over and underflow
+                throw std::out_of_range(fmt::format("requested index {} is out-of-range [0,{}]", static_cast<std::ptrdiff_t>(_position) + bytes, _size));
+            }
+        }
+        _position += static_cast<std::size_t>(bytes);
+    }
 
     template<typename R, bool checkRange = true>
     forceinline constexpr R &at(const size_t &index) noexcept(!checkRange) {
