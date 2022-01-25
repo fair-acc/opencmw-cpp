@@ -20,23 +20,26 @@ using namespace std::literals;
 using namespace std::string_view_literals;
 
 struct DataX {
-    bool                   boolValue   = true;
-    int8_t                 byteValue   = 1;
-    int16_t                shortValue  = 2;
-    int32_t                intValue    = 3;
-    int64_t                longValue   = 4;
-    float                  floatValue  = 5.0F;
-    double                 doubleValue = 6.0;
-    std::string            stringValue = "default";
-    std::array<double, 10> doubleArray = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
-    std::vector<float>     floatVector = { 0.1F, 1.1F, 2.1F, 3.1F, 4.1F, 5.1F, 6.1F, 8.1F, 9.1F, 9.1F };
-    // opencmw::MultiArray<double, 2> doubleMatrix{ { 1, 3, 7, 4, 2, 3 }, { 2, 3 } };
-    std::shared_ptr<DataX> nested;
+    bool                           boolValue   = true;
+    int8_t                         byteValue   = 1;
+    int16_t                        shortValue  = 2;
+    int32_t                        intValue    = 3;
+    int64_t                        longValue   = 4;
+    float                          floatValue  = 5.0F;
+    double                         doubleValue = 6.0;
+    std::string                    stringValue = "default";
+    std::array<double, 10>         doubleArray = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+    std::vector<float>             floatVector = { 0.1F, 1.1F, 2.1F, 3.1F, 4.1F, 5.1F, 6.1F, 8.1F, 9.1F, 9.1F };
+    opencmw::MultiArray<double, 2> doubleMatrix{ { 1, 3, 7, 4, 2, 3 }, { 2, 3 } };
+    std::map<std::string, double>  doubleMap{ std::pair<std::string, double>{ "hello", 42.23 }, std::pair<std::string, double>{ "map", 1.337 } };
+    std::shared_ptr<DataX>         nested;
 
-    DataX()                              = default;
-    bool operator==(const DataX &) const = default;
+    DataX() = default;
+    bool operator==(const DataX &other) const { // deep comparison function
+        return boolValue == other.boolValue && byteValue == other.byteValue && shortValue == other.shortValue && intValue == other.intValue && longValue == other.longValue && floatValue == other.floatValue && doubleValue == other.doubleValue && stringValue == other.stringValue && doubleArray == other.doubleArray && floatVector == other.floatVector && doubleMatrix == other.doubleMatrix && ((!nested && !other.nested) || *nested == *(other.nested));
+    }
 };
-ENABLE_REFLECTION_FOR(DataX, boolValue, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, doubleArray, floatVector, /*doubleMatrix,*/ nested)
+ENABLE_REFLECTION_FOR(DataX, boolValue, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, doubleArray, floatVector, doubleMatrix, doubleMap, nested)
 
 struct SimpleInner {
     double           val1;
@@ -157,34 +160,16 @@ TEST_CASE("JsonSerialisation", "[JsonSerialiser]") {
         foo.doubleValue               = 42.23;
         foo.stringValue               = "test";
         foo.nested                    = std::make_shared<DataX>();
+        foo.doubleMatrix[{ 1U, 1U }]  = 42.1337;
         foo.nested.get()->stringValue = "asdf";
+        foo.nested.get()->doubleMap.emplace("key", 99.99);
         opencmw::serialise<opencmw::Json>(buffer, foo);
         std::cout << "serialised: " << buffer.asString() << std::endl;
         DataX bar;
         auto  result = opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buffer, bar);
         opencmw::utils::diffView(std::cout, foo, bar);
         fmt::print(std::cout, "deserialisation finished: {}\n", result);
-        REQUIRE(foo.boolValue == bar.boolValue);
-        REQUIRE(foo.byteValue == bar.byteValue);
-        REQUIRE(foo.shortValue == bar.shortValue);
-        REQUIRE(foo.intValue == bar.intValue);
-        REQUIRE(foo.longValue == bar.longValue);
-        REQUIRE(foo.floatValue == bar.floatValue);
-        REQUIRE(foo.doubleValue == bar.doubleValue);
-        REQUIRE(foo.stringValue == bar.stringValue);
-        REQUIRE(foo.doubleArray == bar.doubleArray);
-        REQUIRE(foo.floatVector == bar.floatVector);
-        REQUIRE(foo.nested->boolValue == bar.nested->boolValue);
-        REQUIRE(foo.nested->byteValue == bar.nested->byteValue);
-        REQUIRE(foo.nested->shortValue == bar.nested->shortValue);
-        REQUIRE(foo.nested->intValue == bar.nested->intValue);
-        REQUIRE(foo.nested->longValue == bar.nested->longValue);
-        REQUIRE(foo.nested->floatValue == bar.nested->floatValue);
-        REQUIRE(foo.nested->doubleValue == bar.nested->doubleValue);
-        REQUIRE(foo.nested->stringValue == bar.nested->stringValue);
-        REQUIRE(foo.nested->doubleArray == bar.nested->doubleArray);
-        REQUIRE(foo.nested->floatVector == bar.nested->floatVector);
-        REQUIRE(foo.nested->nested == bar.nested->nested);
+        REQUIRE(foo == bar);
     }
     REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
     opencmw::debug::resetStats();
