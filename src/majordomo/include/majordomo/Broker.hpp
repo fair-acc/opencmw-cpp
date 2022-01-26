@@ -20,7 +20,6 @@
 #include <opencmw.hpp>
 
 #include <IoSerialiserJson.hpp>
-#include <MustacheSerialiser.hpp>
 
 #include <majordomo/Constants.hpp>
 #include <majordomo/Message.hpp>
