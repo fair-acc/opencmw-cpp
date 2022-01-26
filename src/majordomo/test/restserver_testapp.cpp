@@ -52,16 +52,12 @@ ENABLE_REFLECTION_FOR(AddressEntry, name, street, streetNumber, postalCode, city
  * The handler implementing the MajordomoHandler concept, here holding a single hardcoded address entry.
  */
 struct TestAddressHandler {
-    AddressEntry _entry;
-
-    TestAddressHandler()
-        : _entry{ "Santa Claus", "Elf Road", 123, "88888", "North Pole", true } {
-    }
+    AddressEntry _entry = { "Santa Claus", "Elf Road", 123, "88888", "North Pole", true };
 
     /**
      * The handler function that the handler is required to implement.
      */
-    void operator()(opencmw::majordomo::RequestContext &rawCtx, const TestContext & /*requestContext*/, const AddressRequest &request, TestContext & /*replyContext*/, AddressEntry &output) {
+    void operator()(const opencmw::majordomo::RequestContext &rawCtx, const TestContext & /*requestContext*/, const AddressRequest &request, TestContext & /*replyContext*/, AddressEntry &output) {
         if (rawCtx.request.command() == Command::Get) {
             output = _entry;
         } else if (rawCtx.request.command() == Command::Set) {
@@ -189,7 +185,7 @@ int main(int argc, char **argv) {
             .city         = "Easter Island",
             .isCurrent    = false
         };
-        workerA.notify("/addresses", TestContext{ .ctx = opencmw::TimingCtx(1, {}, {}, {}), .contentType = opencmw::MIME::JSON }, entry);
+        workerA.notify("/addresses", TestContext{ .ctx = opencmw::TimingCtx(1), .contentType = opencmw::MIME::JSON }, entry);
 
         std::this_thread::sleep_for(5s);
     }

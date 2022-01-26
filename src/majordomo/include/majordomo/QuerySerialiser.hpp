@@ -138,7 +138,6 @@ C deserialise(const QueryMap &m) {
             // TODO handle vectors? QueryMap would have to be a multimap
 
             static_assert(!is_smart_pointer<std::remove_reference_t<MemberType>>, "Pointer members not handled");
-            static_assert(!isReflectableClass<MemberType>(), "Nested structures not supported in query");
 
             const std::string fieldName{ member.name.c_str(), member.name.size };
             try {
@@ -168,7 +167,6 @@ QueryMap serialise(const C &context) {
             // TODO handle vectors? QueryMap would have to be a multimap
 
             static_assert(!is_smart_pointer<std::remove_reference_t<MemberType>>, "Pointer members not handled");
-            static_assert(!isReflectableClass<MemberType>(), "Nested structures not supported in query");
 
             const std::string fieldName{ member.name.c_str(), member.name.size };
             QuerySerialiser<MemberType>::serialise(result, fieldName, member(context));
@@ -184,7 +182,6 @@ void registerTypes(const C &context, T &registerAt) {
         if constexpr (is_field(member) && !is_static(member)) {
             using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(context))))>;
             static_assert(!is_smart_pointer<std::remove_reference_t<MemberType>>, "Pointer members not handled");
-            static_assert(!isReflectableClass<MemberType>(), "Nested structures not supported");
 
             const std::string fieldName{ member.name.c_str(), member.name.size };
 

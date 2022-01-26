@@ -3,48 +3,121 @@
 
 #include <fmt/format.h>
 
+#include <algorithm>
 #include <charconv>
 #include <chrono>
 #include <exception>
-#include <optional>
+#include <opencmw.hpp>
+#include <ranges>
 #include <string_view>
 
 namespace opencmw {
 
+namespace detail {
+constexpr uint32_t const_hash(char const *input) noexcept { return *input ? static_cast<uint32_t>(*input) + 33 * const_hash(input + 1) : 5381; } // NOLINT
+} // namespace detail
+
 class TimingCtx {
-private:
-    std::chrono::microseconds _bpcts;
-    int                       _cid = WILDCARD_VALUE;
-    int                       _sid = WILDCARD_VALUE;
-    int                       _pid = WILDCARD_VALUE;
-    int                       _gid = WILDCARD_VALUE;
+    constexpr static auto DEFAULT         = "FAIR.SELECTOR.ALL";
+    constexpr static auto WILDCARD        = std::string_view("ALL");
+    constexpr static auto WILDCARD_VALUE  = -1;
+    constexpr static auto SELECTOR_PREFIX = std::string_view("FAIR.SELECTOR.");
+    constexpr static auto EMPTY_HASH      = detail::const_hash(DEFAULT);
+    mutable std::size_t   _hash           = EMPTY_HASH; // to distinguish already parsed selectors
+    mutable int32_t       _cid            = WILDCARD_VALUE;
+    mutable int32_t       _sid            = WILDCARD_VALUE;
+    mutable int32_t       _pid            = WILDCARD_VALUE;
+    mutable int32_t       _gid            = WILDCARD_VALUE;
 
 public:
-    constexpr explicit TimingCtx(std::chrono::microseconds bpcts = {}) noexcept
-        : _bpcts(bpcts) {}
+    std::string               selector = DEFAULT;
+    std::chrono::microseconds bpcts    = {};
 
-    constexpr explicit TimingCtx(const std::optional<int> &cid, const std::optional<int> &sid, const std::optional<int> &pid, const std::optional<int> &gid, std::chrono::microseconds bpcts = {}) noexcept
-        : _bpcts(bpcts), _cid(cid.value_or(WILDCARD_VALUE)), _sid(sid.value_or(WILDCARD_VALUE)), _pid(pid.value_or(WILDCARD_VALUE)), _gid(gid.value_or(WILDCARD_VALUE)) {}
+    TimingCtx(const std::string_view &selectorToken, std::chrono::microseconds bpcTimeStamp = {})
+        : selector(toUpper(selectorToken)), bpcts(bpcTimeStamp) { parse(); }
 
-    explicit TimingCtx(std::string_view selector, std::chrono::microseconds bpcts = {})
-        : _bpcts(bpcts) {
-        if (selector.empty() || iequal(selector, WILDCARD)) {
+    explicit TimingCtx(const int32_t cid = WILDCARD_VALUE, const int32_t sid = WILDCARD_VALUE, const int32_t pid = WILDCARD_VALUE, const int32_t gid = WILDCARD_VALUE, std::chrono::microseconds bpcTimeStamp = {})
+        : _cid(cid), _sid(sid), _pid(pid), _gid(gid), selector(toString<false>()), bpcts(bpcTimeStamp) { parse(); }
+
+    // clang-format off
+    [[nodiscard]] int32_t cid() const { parse(); return _cid; }
+    [[nodiscard]] int32_t sid() const { parse(); return _sid; }
+    [[nodiscard]] int32_t pid() const { parse(); return _pid; }
+    [[nodiscard]] int32_t gid() const { parse(); return _gid; }
+
+    // these are not commutative, and must not be confused with operator==
+    [[nodiscard]] bool matches(const TimingCtx &other) const { parse(); return wildcardMatch(_cid, other._cid) && wildcardMatch(_sid, other._sid) && wildcardMatch(_pid, other._pid) && wildcardMatch(_gid, other._gid); }
+    [[nodiscard]] bool matchesWithBpcts(const TimingCtx &other) const { parse(); return bpcTimeStampMatch(bpcts, other.bpcts) && matches(other); }
+    // clang-format on
+
+    [[nodiscard]] auto operator<=>(const TimingCtx &other) const {
+        parse();
+        // clang-format off
+        if (_cid != other._cid) { return _cid <=> other._cid; }
+        if (_sid != other._sid) { return _sid <=> other._sid; }
+        if (_pid != other._pid) { return _pid <=> other._pid; }
+        if (_gid != other._gid) { return _gid <=> other._gid; }
+        // clang-format on
+        return bpcts <=> other.bpcts;
+    }
+    [[nodiscard]] bool operator==(const TimingCtx &other) const {
+        parse();
+        return bpcts.count() == other.bpcts.count() && _cid == other._cid && _sid == other._sid && _pid == other._pid && _gid == other._gid;
+    }
+
+    template<bool forceParse = true>
+    [[nodiscard]] std::string toString() const noexcept(forceParse) {
+        if constexpr (forceParse) {
+            parse();
+        }
+        if (isWildcard(_cid) && isWildcard(_sid) && isWildcard(_pid) && isWildcard(_gid)) {
+            auto s = std::string(SELECTOR_PREFIX);
+            s.append(WILDCARD);
+            return s;
+        }
+
+        std::vector<std::string> segments;
+        segments.reserve(4);
+        // clang-format off
+        if (!isWildcard(_cid)) { segments.emplace_back(fmt::format("C={}", _cid)); }
+        if (!isWildcard(_sid)) { segments.emplace_back(fmt::format("S={}", _sid)); }
+        if (!isWildcard(_pid)) { segments.emplace_back(fmt::format("P={}", _pid)); }
+        if (!isWildcard(_gid)) { segments.emplace_back(fmt::format("T={}", _gid)); }
+        // clang-format on
+        return fmt::format("{}{}", SELECTOR_PREFIX, fmt::join(segments, ":"));
+    }
+
+    void parse() const {
+        // lazy revaluation in case selector changed -- not mathematically perfect but should be sufficient given the limited/constraint selector syntax
+        const size_t selectorHash = detail::const_hash(selector.data());
+        if (_hash == selectorHash) {
+            return;
+        }
+        _cid                                = WILDCARD_VALUE;
+        _sid                                = WILDCARD_VALUE;
+        _pid                                = WILDCARD_VALUE;
+        _gid                                = WILDCARD_VALUE;
+        _hash                               = selectorHash;
+        const std::string upperCaseSelector = toUpper(selector);
+        if (upperCaseSelector.empty() || upperCaseSelector == WILDCARD) {
             return;
         }
 
-        if (selector.starts_with(SELECTOR_PREFIX)) { // TODO is a string without the prefix valid?
-            selector.remove_prefix(SELECTOR_PREFIX.length());
+        if (!upperCaseSelector.starts_with(SELECTOR_PREFIX)) {
+            throw std::invalid_argument(fmt::format("Invalid tag '{}'", selector));
         }
+        auto upperCaseSelectorView = std::string_view{ upperCaseSelector.data() + SELECTOR_PREFIX.length(), upperCaseSelector.size() - SELECTOR_PREFIX.length() };
 
-        if (iequal(selector, WILDCARD)) {
+        if (upperCaseSelectorView == WILDCARD) {
             return;
         }
 
         while (true) {
-            const auto posColon = selector.find(':');
-            const auto tag      = posColon != std::string_view::npos ? selector.substr(0, posColon) : selector;
+            const auto posColon = upperCaseSelectorView.find(':');
+            const auto tag      = posColon != std::string_view::npos ? upperCaseSelectorView.substr(0, posColon) : upperCaseSelectorView;
 
             if (tag.length() < 3) {
+                _hash = 0;
                 throw std::invalid_argument(fmt::format("Invalid tag '{}'", tag));
             }
 
@@ -52,19 +125,19 @@ public:
 
             // there must be one char left of the '=', at least one after, and there must be only one '='
             if (posEqual != 1 || tag.find('=', posEqual + 1) != std::string_view::npos) {
+                _hash = 0;
                 throw std::invalid_argument(fmt::format("Tag has invalid format: '{}'", tag));
             }
 
             const auto key         = tag.substr(0, posEqual);
             const auto valueString = tag.substr(posEqual + 1, tag.length() - posEqual - 1);
 
-            int        value       = -1;
+            int32_t    value       = -1;
 
-            if (!iequal(WILDCARD, valueString)) {
-                int        intValue = 0;
-                const auto result   = std::from_chars(valueString.begin(), valueString.end(), intValue);
-
-                if (result.ec == std::errc::invalid_argument) {
+            if (WILDCARD != valueString) {
+                int32_t intValue = 0;
+                if (const auto result = std::from_chars(valueString.begin(), valueString.end(), intValue); result.ec == std::errc::invalid_argument) {
+                    _hash = 0;
                     throw std::invalid_argument(fmt::format("Value: '{}' in '{}' is not a valid integer", valueString, tag));
                 }
 
@@ -85,6 +158,7 @@ public:
                 _gid = value;
                 break;
             default:
+                _hash = 0;
                 throw std::invalid_argument(fmt::format("Unknown key '{}' in '{}'.", key[0], tag));
             }
 
@@ -93,77 +167,26 @@ public:
                 return;
             }
 
-            // otherwise advance to after the ":"
-            selector.remove_prefix(posColon + 1);
+            // otherwise, advance to after the ":"
+            upperCaseSelectorView.remove_prefix(posColon + 1);
         }
-    }
-
-    constexpr std::chrono::microseconds bpcts() const noexcept { return _bpcts; }
-    constexpr std::optional<int>        cid() const noexcept { return asOptional(_cid); }
-    constexpr std::optional<int>        sid() const noexcept { return asOptional(_sid); }
-    constexpr std::optional<int>        pid() const noexcept { return asOptional(_pid); }
-    constexpr std::optional<int>        gid() const noexcept { return asOptional(_gid); }
-
-    // these are not commutative, and must not be confused with operator==
-    constexpr bool matches(const TimingCtx &other) const noexcept {
-        return wildcardMatch(_cid, other._cid) && wildcardMatch(_sid, other._sid) && wildcardMatch(_pid, other._pid) && wildcardMatch(_gid, other._gid);
-    }
-
-    constexpr bool matchesWithBpcts(const TimingCtx &other) const noexcept {
-        return _bpcts == other._bpcts && matches(other);
-    }
-
-    constexpr bool operator==(const TimingCtx &) const noexcept = default;
-
-    std::string    toString() const noexcept {
-        if (isWildcard(_cid) && isWildcard(_sid) && isWildcard(_pid) && isWildcard(_gid)) {
-            auto s = std::string(SELECTOR_PREFIX);
-            s.append(WILDCARD);
-            return s;
-        }
-
-        std::vector<std::string> segments;
-        segments.reserve(4);
-        if (!isWildcard(_cid)) {
-            segments.emplace_back(fmt::format("C={}", _cid));
-        }
-        if (!isWildcard(_sid)) {
-            segments.emplace_back(fmt::format("S={}", _sid));
-        }
-        if (!isWildcard(_pid)) {
-            segments.emplace_back(fmt::format("P={}", _pid));
-        }
-        if (!isWildcard(_gid)) {
-            segments.emplace_back(fmt::format("T={}", _gid));
-        }
-        return fmt::format("{}{}", SELECTOR_PREFIX, fmt::join(segments, ":"));
     }
 
 private:
-    static constexpr inline std::optional<int> asOptional(int x) noexcept {
-        return x == WILDCARD_VALUE ? std::nullopt : std::optional<int>{ x };
-    }
-
-    static inline constexpr bool isWildcard(int x) noexcept {
-        return x == -1;
-    }
-
-    constexpr static auto WILDCARD        = std::string_view("ALL");
-    constexpr static auto WILDCARD_VALUE  = -1;
-    constexpr static auto SELECTOR_PREFIX = std::string_view("FAIR.SELECTOR.");
-
-    template<typename Left, typename Right>
-    static inline bool iequal(const Left &left, const Right &right) noexcept {
-        return std::equal(std::cbegin(left), std::cend(left), std::cbegin(right), std::cend(right),
-                [](auto l, auto r) { return std::tolower(l) == std::tolower(r); });
-    }
-
-    static constexpr inline bool wildcardMatch(int lhs, int rhs) {
-        return isWildcard(rhs) || lhs == rhs;
+    [[nodiscard]] static constexpr std::optional<int> asOptional(int x) noexcept { return x == WILDCARD_VALUE ? std::nullopt : std::optional<int>{ x }; }
+    [[nodiscard]] static constexpr bool               isWildcard(int x) noexcept { return x == -1; }
+    [[nodiscard]] static constexpr bool               wildcardMatch(int lhs, int rhs) { return isWildcard(rhs) || lhs == rhs; }
+    [[nodiscard]] static constexpr bool               bpcTimeStampMatch(std::chrono::microseconds lhs, std::chrono::microseconds rhs) { return rhs.count() == 0 || lhs.count() == rhs.count(); }
+    static inline std::string                         toUpper(const std::string_view &mixedCase) noexcept {
+        std::string retval;
+        retval.reserve(mixedCase.size());
+        std::ranges::transform(mixedCase.cbegin(), mixedCase.cend(), std::back_inserter(retval), [](char c) noexcept { return (c >= 'a' && c <= 'z') ? c - ('a' - 'A') : c; });
+        return retval;
     }
 };
 
 } // namespace opencmw
+ENABLE_REFLECTION_FOR(opencmw::TimingCtx, selector, bpcts);
 
 template<>
 struct fmt::formatter<opencmw::TimingCtx> {
@@ -177,5 +200,9 @@ struct fmt::formatter<opencmw::TimingCtx> {
         return fmt::format_to(ctx.out(), "{}", v.toString());
     }
 };
+
+inline std::ostream &operator<<(std::ostream &os, const opencmw::TimingCtx &v) {
+    return os << fmt::format("{}", v);
+}
 
 #endif
