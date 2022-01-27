@@ -52,13 +52,7 @@ public:
 
     [[nodiscard]] auto operator<=>(const TimingCtx &other) const {
         parse();
-        // clang-format off
-        if (_cid != other._cid) { return _cid <=> other._cid; }
-        if (_sid != other._sid) { return _sid <=> other._sid; }
-        if (_pid != other._pid) { return _pid <=> other._pid; }
-        if (_gid != other._gid) { return _gid <=> other._gid; }
-        // clang-format on
-        return bpcts <=> other.bpcts;
+        return std::tie(_cid, _sid, _pid, _gid, bpcts) <=> std::tie(other._cid, other._sid, other._pid, other._gid, other.bpcts);
     }
     [[nodiscard]] bool operator==(const TimingCtx &other) const {
         parse();
@@ -173,14 +167,13 @@ public:
     }
 
 private:
-    [[nodiscard]] static constexpr std::optional<int> asOptional(int x) noexcept { return x == WILDCARD_VALUE ? std::nullopt : std::optional<int>{ x }; }
-    [[nodiscard]] static constexpr bool               isWildcard(int x) noexcept { return x == -1; }
-    [[nodiscard]] static constexpr bool               wildcardMatch(int lhs, int rhs) { return isWildcard(rhs) || lhs == rhs; }
-    [[nodiscard]] static constexpr bool               bpcTimeStampMatch(std::chrono::microseconds lhs, std::chrono::microseconds rhs) { return rhs.count() == 0 || lhs.count() == rhs.count(); }
-    static inline std::string                         toUpper(const std::string_view &mixedCase) noexcept {
+    [[nodiscard]] static constexpr bool isWildcard(int x) noexcept { return x == -1; }
+    [[nodiscard]] static constexpr bool wildcardMatch(int lhs, int rhs) { return isWildcard(rhs) || lhs == rhs; }
+    [[nodiscard]] static constexpr bool bpcTimeStampMatch(std::chrono::microseconds lhs, std::chrono::microseconds rhs) { return rhs.count() == 0 || lhs.count() == rhs.count(); }
+    static inline std::string           toUpper(const std::string_view &mixedCase) noexcept {
         std::string retval;
-        retval.reserve(mixedCase.size());
-        std::ranges::transform(mixedCase.cbegin(), mixedCase.cend(), std::back_inserter(retval), [](char c) noexcept { return (c >= 'a' && c <= 'z') ? c - ('a' - 'A') : c; });
+        retval.resize(mixedCase.size());
+        std::ranges::transform(mixedCase, retval.begin(), [](char c) noexcept { return (c >= 'a' && c <= 'z') ? c - ('a' - 'A') : c; });
         return retval;
     }
 };
