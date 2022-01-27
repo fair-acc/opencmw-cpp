@@ -66,23 +66,31 @@ TEST_CASE("MustacheSerialization: value with vector of objects", "[Mustache][Mus
 
 TEST_CASE("MustacheSerialization: value with fallback serialisation", "[Mustache][MustacheFallbackValueSerialiser]") {
     {
-        AddressEntry      address;
+        AddressEntry address;
+        address.isCurrent    = false;
+        address.streetNumber = 0;
         std::stringstream str;
+
         opencmw::mustache::serialise("Address", str,
                 std::pair<std::string, const AddressEntry &>{ "result"s, address });
 
         REQUIRE(str.str() == "[name::][street::][streetNumber::0][postalCode::][city::][isCurrent::false]\n");
     }
     {
-        AddressEntry address;
-        address.name         = "Holmes, Sherlock";
-        address.street       = "Baker Street";
-        address.streetNumber = 221; // 221b
+        AddressEntry address{
+            .id           = 0,
+            .name         = "Holmes, Sherlock",
+            .street       = "Baker Street",
+            .streetNumber = 221, // 221b
+            .postalCode   = "",
+            .city         = "London",
+            .isCurrent    = true
+        };
         std::stringstream str;
         opencmw::mustache::serialise("Address", str,
                 std::pair<std::string, const AddressEntry &>{ "result"s, address });
 
-        REQUIRE(str.str() == "[name::Holmes, Sherlock][street::Baker Street][streetNumber::221][postalCode::][city::][isCurrent::false]\n");
+        REQUIRE(str.str() == "[name::Holmes, Sherlock][street::Baker Street][streetNumber::221][postalCode::][city::London][isCurrent::true]\n");
     }
 }
 
