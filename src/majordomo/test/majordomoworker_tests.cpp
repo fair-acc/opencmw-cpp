@@ -292,7 +292,7 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
             .postalCode   = "88888",
             .city         = "Sahara"
         };
-        REQUIRE(worker.notify("/newAddress", TestContext{ .ctx = opencmw::TimingCtx({}, 1, {}, {}), .contentType = opencmw::MIME::JSON }, entry));
+        REQUIRE(worker.notify("/newAddress", TestContext{ .ctx = opencmw::TimingCtx(-1, 1, -1, -1), .contentType = opencmw::MIME::JSON }, entry));
     }
 
     {
@@ -305,7 +305,7 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
             .postalCode   = "88888",
             .city         = "Easter Island"
         };
-        REQUIRE(worker.notify("/newAddress", TestContext{ .ctx = opencmw::TimingCtx(1, {}, {}, {}), .contentType = opencmw::MIME::JSON }, entry));
+        REQUIRE(worker.notify("/newAddress", TestContext{ .ctx = opencmw::TimingCtx(1), .contentType = opencmw::MIME::JSON }, entry));
     }
 
     {
