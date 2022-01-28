@@ -183,7 +183,7 @@ private:
     }
 };
 
-[[nodiscard]] bool   operator==(const TimingCtx &lhs, const std::string_view &rhs) { return (lhs.bpcts == 0) && (lhs.selector.value() == rhs); }
+[[nodiscard]] inline bool   operator==(const TimingCtx &lhs, const std::string_view &rhs) { return (lhs.bpcts == 0) && (lhs.selector.value() == rhs); }
 
 inline std::ostream &operator<<(std::ostream &os, const opencmw::TimingCtx &v) {
     return os << fmt::format("{}", v);
