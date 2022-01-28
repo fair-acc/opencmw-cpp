@@ -178,6 +178,11 @@ public:
         disconnect();
     }
 
+protected:
+    void setHandler(std::function<void(RequestContext &)> handler) {
+        _handler = std::move(handler);
+    }
+
 private:
     std::string makeNotifyAddress() const noexcept {
         return fmt::format("inproc://workers/{}-{}/notify", serviceName.data(), worker_detail::nextWorkerId());
@@ -521,7 +526,6 @@ struct HandlerImpl {
 
     explicit HandlerImpl(CallbackFunction callback)
         : _callback(std::forward<CallbackFunction>(callback)) {
-        assert(_callback);
     }
 
     void operator()(RequestContext &rawCtx) {
@@ -585,6 +589,11 @@ public:
         rawCtx.reply.setTopic(topicURI.str, MessageFrame::dynamic_bytes_tag{});
         worker_detail::writeResult(Worker::name, rawCtx, context, reply);
         return BasicWorker<serviceName, Meta...>::notify(std::move(rawCtx.reply));
+    }
+
+protected:
+    void setCallback(CallbackFunction callback) {
+        BasicWorker<serviceName, Meta...>::setHandler(HandlerImpl(std::move(callback)));
     }
 };
 
