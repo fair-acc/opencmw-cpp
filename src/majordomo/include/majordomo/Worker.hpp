@@ -177,6 +177,11 @@ public:
         disconnect();
     }
 
+protected:
+    void setHandler(std::function<void(RequestContext &)> handler) {
+        _handler = std::move(handler);
+    }
+
 private:
     std::string makeNotifyAddress() const noexcept {
         return fmt::format("inproc://workers/{}-{}/notify", serviceName.data(), worker_detail::nextWorkerId());
@@ -520,7 +525,6 @@ struct HandlerImpl {
 
     explicit HandlerImpl(CallbackFunction callback)
         : _callback(std::forward<CallbackFunction>(callback)) {
-        assert(_callback);
     }
 
     void operator()(RequestContext &rawCtx) {
@@ -585,10 +589,24 @@ public:
         worker_detail::writeResult(Worker::name, rawCtx, context, reply);
         return BasicWorker<serviceName, Meta...>::notify(std::move(rawCtx.reply));
     }
+
+protected:
+    void setCallback(CallbackFunction callback) {
+        BasicWorker<serviceName, Meta...>::setHandler(HandlerImpl(std::move(callback)));
+    }
 };
+
+
+/**
+ * Empty type that can be used e.g. as Input type without parameters
+ */
+struct Empty {};
 
 } // namespace opencmw::majordomo
 
 ENABLE_REFLECTION_FOR(opencmw::majordomo::RequestContext, mimeType);
+// this replaces ENABLE_REFLECTION_FOR for the empty type
+REFL_TYPE(opencmw::majordomo::Empty)
+REFL_END
 
 #endif

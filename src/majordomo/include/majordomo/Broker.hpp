@@ -458,7 +458,7 @@ public:
     template<typename Handler>
     void forEachService(Handler &&handler) const {
         for (const auto &[name, service] : _services) {
-            handler(std::string_view{ name });
+            handler(std::string_view{ name }, std::string_view{ service.description });
         }
     }
 
