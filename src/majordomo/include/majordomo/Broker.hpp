@@ -24,11 +24,11 @@
 
 #include <majordomo/Constants.hpp>
 #include <majordomo/Message.hpp>
-#include <majordomo/QuerySerialiser.hpp>
 #include <majordomo/Settings.hpp>
 #include <majordomo/SubscriptionMatcher.hpp>
 #include <majordomo/Utils.hpp>
 #include <majordomo/ZmqPtr.hpp>
+#include <QuerySerialiser.hpp>
 
 using namespace std::string_literals;
 

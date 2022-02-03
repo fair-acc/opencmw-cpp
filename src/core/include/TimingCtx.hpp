@@ -179,7 +179,8 @@ private:
 };
 
 } // namespace opencmw
-ENABLE_REFLECTION_FOR(opencmw::TimingCtx, selector, bpcts);
+// ENABLE_REFLECTION_FOR(opencmw::TimingCtx, selector, bpcts); //TODO: refactor bpcts to Annotated/mp-units api and re-enable bpcts
+ENABLE_REFLECTION_FOR(opencmw::TimingCtx, selector);
 
 template<>
 struct fmt::formatter<opencmw::TimingCtx> {

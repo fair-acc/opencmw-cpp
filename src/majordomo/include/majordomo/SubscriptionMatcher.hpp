@@ -1,6 +1,7 @@
 #ifndef OPENCMW_MAJORDOMO_SUBSCRIPTIONMATCHER_H
 #define OPENCMW_MAJORDOMO_SUBSCRIPTIONMATCHER_H
 
+#include <Filters.hpp>
 #include <TimingCtx.hpp>
 #include <URI.hpp>
 
@@ -10,15 +11,9 @@
 
 namespace opencmw::majordomo {
 
-class AbstractFilter {
-public:
-    virtual ~AbstractFilter()                                                             = default;
-    virtual bool operator()(std::string_view notified, std::string_view subscribed) const = 0;
-};
-
 class SubscriptionMatcher {
 private:
-    std::unordered_map<std::string, std::unique_ptr<AbstractFilter>> _filters;
+    std::unordered_map<std::string, std::unique_ptr<opencmw::AbstractFilter>> _filters;
 
 public:
     using URI = const opencmw::URI<RELAXED>; // relaxed because we need "*"

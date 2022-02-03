@@ -1,9 +1,9 @@
 #include <catch2/catch.hpp>
 
-#include <majordomo/QuerySerialiser.hpp>
-#include <opencmw.hpp>
 #include <TimingCtx.hpp>
+#include <opencmw.hpp>
 #include <URI.hpp>
+#include <QuerySerialiser.hpp>
 
 #include <optional>
 
@@ -95,25 +95,4 @@ TEST_CASE("extract MIME type", "[QuerySerialiser][mimetype_extraction]") {
     REQUIRE(query::getMimeType(WithOneMimeType()) == opencmw::MIME::HTML);
     REQUIRE(query::getMimeType(WithoutMimeType()) == opencmw::MIME::UNKNOWN);
     REQUIRE(query::getMimeType(WithTwoMimeTypes()) == opencmw::MIME::CMWLIGHT);
-}
-
-struct MatcherTest {
-    opencmw::TimingCtx      ctx;
-    opencmw::MIME::MimeType contentType = opencmw::MIME::UNKNOWN;
-};
-
-ENABLE_REFLECTION_FOR(MatcherTest, ctx, contentType)
-
-TEST_CASE("Register filters", "[QuerySerialiser][register_filters]") {
-    using URI = opencmw::URI<opencmw::RELAXED>;
-
-    opencmw::majordomo::SubscriptionMatcher matcher;
-    opencmw::query::registerTypes(MatcherTest(), matcher);
-
-    // subset of the subscriptionfilter_tests
-    REQUIRE_FALSE(matcher(URI("/property?ctx=FAIR.SELECTOR.ALL"), URI("/property?ctx=FAIR.SELECTOR.C=2")));
-    REQUIRE(matcher(URI("/property?ctx=FAIR.SELECTOR.C=2"), URI("/property?ctx=FAIR.SELECTOR.ALL")));
-    REQUIRE(matcher(URI("/property?ctx=FAIR.SELECTOR.C=2"), URI("/property?ctx=FAIR.SELECTOR.C=2")));
-    REQUIRE_FALSE(matcher(URI("/property?ctx=FAIR.SELECTOR.ALL&contentType=text/html"), URI("/property?ctx=FAIR.SELECTOR.C=2&contentType=text/html")));
-    REQUIRE_FALSE(matcher(URI("/property?ctx=FAIR.SELECTOR.ALL"), URI("/property?ctx=FAIR.SELECTOR.C=2&contentType=text/html")));
 }

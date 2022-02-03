@@ -2,10 +2,10 @@
 #define OPENCMW_QUERYPARAMETERPARSER_HPP
 
 #include <MIME.hpp>
-#include <opencmw.hpp>
 #include <TimingCtx.hpp>
+#include <opencmw.hpp>
 
-#include <majordomo/Filters.hpp>
+#include <Filters.hpp>
 
 #include <fmt/format.h>
 
@@ -24,7 +24,7 @@ using QueryMap = std::unordered_map<std::string, std::optional<std::string>>;
 
 template<typename T>
 struct QuerySerialiser {
-    using FilterType = typename opencmw::majordomo::DomainFilter<std::string_view>;
+    using FilterType = typename opencmw::DomainFilter<std::string_view>;
     // TODO passing the map here is mainly for the bool special case, where we
     // want to insert a nullopt to the map if the value is true.
     // Maybe we should handle that special case directly in the serialiser loop
@@ -39,7 +39,7 @@ struct QuerySerialiser {
 
 template<StringLike T>
 struct QuerySerialiser<T> {
-    using FilterType = typename opencmw::majordomo::DomainFilter<std::string_view>;
+    using FilterType = typename opencmw::DomainFilter<std::string_view>;
 
     inline static void serialise(QueryMap &m, const std::string &key, const T &value) {
         m[key] = value;
@@ -55,7 +55,7 @@ struct QuerySerialiser<T> {
 template<>
 struct QuerySerialiser<bool> {
     // TODO this doesn't consider that an entry <key, std::nullopt> means "true"
-    using FilterType = typename opencmw::majordomo::DomainFilter<std::string_view>;
+    using FilterType = typename opencmw::DomainFilter<std::string_view>;
 
     inline static void serialise(QueryMap &m, const std::string &key, bool value) {
         if (value) {
@@ -74,7 +74,7 @@ struct QuerySerialiser<bool> {
 
 template<Number T>
 struct QuerySerialiser<T> {
-    using FilterType = typename opencmw::majordomo::NumberFilter<T>;
+    using FilterType = typename opencmw::NumberFilter<T>;
 
     inline static void serialise(QueryMap &m, const std::string &key, const T &value) {
         m[key] = std::to_string(value);
@@ -94,7 +94,7 @@ struct QuerySerialiser<T> {
 
 template<>
 struct QuerySerialiser<opencmw::TimingCtx> {
-    using FilterType = typename opencmw::majordomo::TimingCtxFilter;
+    using FilterType = typename opencmw::TimingCtxFilter;
 
     inline static void serialise(QueryMap &m, const std::string &key, const opencmw::TimingCtx &value) {
         m[key] = value.toString();
@@ -111,7 +111,7 @@ struct QuerySerialiser<opencmw::TimingCtx> {
 
 template<>
 struct QuerySerialiser<opencmw::MIME::MimeType> {
-    using FilterType = typename opencmw::majordomo::ContentTypeFilter;
+    using FilterType = typename opencmw::ContentTypeFilter;
 
     inline static void serialise(QueryMap &m, const std::string &key, const opencmw::MIME::MimeType &value) {
         m[key] = std::string(value.typeName());
