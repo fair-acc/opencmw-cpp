@@ -153,7 +153,7 @@ TEST_CASE("JsonArraySerialisation", "[JsonSerialiser]") {
 
 TEST_CASE("JsonSerialisation", "[JsonSerialiser]") {
     opencmw::debug::resetStats();
-    std::cout << opencmw::utils::ClassInfoVerbose;
+    std::cout << opencmw::ClassInfoVerbose;
     {
         opencmw::IoBuffer buffer;
         DataX             foo;
@@ -167,7 +167,7 @@ TEST_CASE("JsonSerialisation", "[JsonSerialiser]") {
         std::cout << "serialised: " << buffer.asString() << std::endl;
         DataX bar;
         auto  result = opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buffer, bar);
-        opencmw::utils::diffView(std::cout, foo, bar);
+        opencmw::diffView(std::cout, foo, bar);
         fmt::print(std::cout, "deserialisation finished: {}\n", result);
         REQUIRE(foo == bar);
     }

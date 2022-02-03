@@ -4,10 +4,10 @@
 #include <majordomo/Broker.hpp>
 #include <majordomo/Constants.hpp>
 #include <majordomo/Debug.hpp>
-#include <majordomo/QuerySerialiser.hpp>
 #include <majordomo/Rbac.hpp>
 #include <majordomo/Settings.hpp>
 #include <majordomo/Utils.hpp>
+#include <QuerySerialiser.hpp>
 
 #include <IoSerialiserCmwLight.hpp>
 #include <IoSerialiserJson.hpp>

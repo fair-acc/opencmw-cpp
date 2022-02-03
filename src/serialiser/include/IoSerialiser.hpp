@@ -417,6 +417,29 @@ DeserialiserInfo deserialise(IoBuffer &buffer, ReflectableClass auto &value, Des
     return info;
 }
 
+inline std::ostream &operator<<(std::ostream &os, const DeserialiserInfo &info) {
+    os << typeName<DeserialiserInfo> << "\nset fields:\n";
+    if (!info.setFields.empty()) {
+        for (auto fieldMask : info.setFields) {
+            os << "   class '" << fieldMask.first << "' bit field: " << fieldMask.second << '\n';
+        }
+    }
+    if (!info.additionalFields.empty()) {
+        os << "additional fields:\n";
+        for (auto e : info.additionalFields) {
+            os << "    field name: " << std::get<0>(e) << " typeID: " << std::get<1>(e) << '\n';
+        }
+    }
+    if (!info.exceptions.empty()) {
+        os << "thrown exceptions:\n";
+        int count = 0;
+        for (auto e : info.exceptions) {
+            os << "    " << (count++) << ": " << e << '\n';
+        }
+    }
+    return os;
+}
+
 } // namespace opencmw
 
 #pragma clang diagnostic pop

@@ -6,7 +6,6 @@
 #include <IoSerialiserJson.hpp>
 #include <MIME.hpp>
 #include <opencmw.hpp>
-#include <TimingCtx.hpp>
 
 #include <cmrc/cmrc.hpp>
 CMRC_DECLARE(assets);
@@ -153,15 +152,6 @@ public:
     template<typename T>
     explicit mustache_data(T val)
         : mustache_data<std::string_view>(val.typeName()) {}
-};
-
-// TODO: Implement serialisation when TimingCtx is changed to
-// fit the Java version
-template<>
-class mustache_data<TimingCtx> : public mustache_data<std::string> {
-public:
-    explicit mustache_data(const auto &)
-        : mustache_data<std::string>("timing context") {}
 };
 
 template<typename T>

@@ -7,7 +7,7 @@ cmrc_add_resource_library(
     ${CMAKE_CURRENT_SOURCE_DIR}/assets/mustache/Services.mustache
     )
 
-add_executable(serialiser_tests catch_main.cpp IoBuffer_tests.cpp IoSerialiserYaS_tests.cpp IoSerialiserJson_tests.cpp IoSerialiserCmwLight_tests.cpp MultiArray_tests.cpp Utils_tests.cpp IoSerialiserYAML_tests.cpp MustacheSerialiser_tests.cpp 00_opencmw_basic_tests.cpp)
+add_executable(serialiser_tests catch_main.cpp IoBuffer_tests.cpp IoSerialiserYaS_tests.cpp IoSerialiserJson_tests.cpp IoSerialiserCmwLight_tests.cpp MultiArray_tests.cpp Utils_tests.cpp IoSerialiserYAML_tests.cpp MustacheSerialiser_tests.cpp queryserialiser_tests.cpp)
 target_link_libraries(serialiser_tests PUBLIC project_warnings project_options CONAN_PKG::catch2 serialiser assets::mustache)
 
 # automatically discover tests that are defined in catch based test files you can modify the unittests. Set TEST_PREFIX to whatever you want, or use different for different binaries

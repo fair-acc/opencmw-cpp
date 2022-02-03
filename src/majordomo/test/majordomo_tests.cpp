@@ -197,7 +197,7 @@ TEST_CASE("Test mmi.dns", "[broker][mmi][mmi_dns]") {
         REQUIRE(reply->isClientMessage());
         REQUIRE(reply->command() == Command::Final);
         REQUIRE(reply->serviceName() == "mmi.dns");
-        REQUIRE(reply->body() == "[testbroker: http://a.service,mds://127.0.0.1:22345,mds://127.0.0.1:22345/a.service,mds://127.0.0.1:22345/mmi.dns,mds://127.0.0.1:22345/mmi.echo,mds://127.0.0.1:22345/mmi.openapi,mds://127.0.0.1:22345/mmi.service]");
+        REQUIRE(reply->body() == "[testbroker: http://a.service,mds://127.0.0.1:22345,mds://127.0.0.1:22345/a.service,mds://127.0.0.1:22345/mmi.dns,mds://127.0.0.1:22345/mmi.echo,mds://127.0.0.1:22345/mmi.openapi,mds://127.0.0.1:22345/mmi.service]"); // TODO: update flaky test (is order & timing-sensitive)
     }
 
     {
