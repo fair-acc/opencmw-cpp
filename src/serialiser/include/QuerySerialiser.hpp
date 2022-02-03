@@ -2,8 +2,8 @@
 #define OPENCMW_QUERYPARAMETERPARSER_HPP
 
 #include <MIME.hpp>
-#include <TimingCtx.hpp>
 #include <opencmw.hpp>
+#include <TimingCtx.hpp>
 
 #include <Filters.hpp>
 

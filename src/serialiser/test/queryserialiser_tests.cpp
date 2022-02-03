@@ -1,7 +1,7 @@
 #include <catch2/catch.hpp>
 
-#include <TimingCtx.hpp>
 #include <opencmw.hpp>
+#include <TimingCtx.hpp>
 #include <URI.hpp>
 #include <QuerySerialiser.hpp>
 

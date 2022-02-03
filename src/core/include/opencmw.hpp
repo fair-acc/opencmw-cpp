@@ -690,10 +690,10 @@ struct fmt::formatter<T> {
     template<typename FormatContext>
     auto format(T const &value, FormatContext &ctx) {
         using namespace opencmw; // for operator<< overloading
-        std::stringstream ss;           // N.B. std::stringstream construct to avoid recursion with 'operator<<' definition
+        std::stringstream ss;    // N.B. std::stringstream construct to avoid recursion with 'operator<<' definition
         ss << value << std::flush;
         return fmt::format_to(ctx.out(), "{}", ss.str());
     }
 };
 
-#endif //OPENCMW_H
+#endif // OPENCMW_H

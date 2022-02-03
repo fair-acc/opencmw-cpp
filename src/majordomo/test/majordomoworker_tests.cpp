@@ -5,8 +5,8 @@
 #include <majordomo/Worker.hpp>
 
 #include <MIME.hpp>
-#include <TimingCtx.hpp>
 #include <opencmw.hpp>
+#include <TimingCtx.hpp>
 
 #include <catch2/catch.hpp>
 #include <fmt/format.h>

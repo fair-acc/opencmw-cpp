@@ -1,8 +1,8 @@
 #ifndef OPENCMW_MAJORDOMO_FILTERS_H
 #define OPENCMW_MAJORDOMO_FILTERS_H
 
-#include <TimingCtx.hpp>
 #include <opencmw.hpp>
+#include <TimingCtx.hpp>
 
 #include <charconv>
 #include <concepts>
@@ -68,6 +68,6 @@ struct TimingCtxMatches {
 using ContentTypeFilter = opencmw::DomainFilter<std::string_view>;
 using TimingCtxFilter   = opencmw::DomainFilter<opencmw::TimingCtx, detail::TimingCtxMatches>;
 
-} // namespace opencmw::majordomo
+} // namespace opencmw
 
 #endif

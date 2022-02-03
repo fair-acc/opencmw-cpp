@@ -59,7 +59,7 @@ TEST_CASE("Test path and query", "[subscription_matcher][path_and_query]") {
     using TestFilter1 = DomainFilter<Int>;
     using TestFilter2 = DomainFilter<std::string_view>;
     using TestFilter3 = DomainFilter<std::string_view, LessThan>;
-    using URI = SubscriptionMatcher::URI;
+    using URI         = SubscriptionMatcher::URI;
     SubscriptionMatcher matcher;
     matcher.addFilter<TestFilter1>("testKey1");
     matcher.addFilter<TestFilter2>("testKey2");
