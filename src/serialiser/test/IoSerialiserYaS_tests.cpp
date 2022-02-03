@@ -7,6 +7,7 @@
 #include <Debug.hpp>
 #include <IoSerialiserYaS.hpp>
 #include <iostream>
+#include <opencmw.hpp>
 #include <string_view>
 #include <Utils.hpp>
 
@@ -22,7 +23,6 @@ using namespace opencmw;
 using namespace units::isq;
 using namespace units::isq::si;
 using namespace std::literals;
-using NoUnit = units::dimensionless<units::one>;
 
 using opencmw::Annotated;
 using opencmw::NoUnit;

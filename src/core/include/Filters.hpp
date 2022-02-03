@@ -4,13 +4,17 @@
 #include <opencmw.hpp>
 #include <TimingCtx.hpp>
 
-#include <majordomo/SubscriptionMatcher.hpp>
-
 #include <charconv>
 #include <concepts>
 #include <string_view>
 
-namespace opencmw::majordomo {
+namespace opencmw {
+
+class AbstractFilter {
+public:
+    virtual ~AbstractFilter()                                                             = default;
+    virtual bool operator()(std::string_view notified, std::string_view subscribed) const = 0;
+};
 
 template<typename T>
 concept DomainObject = std::is_constructible_v<T, std::string_view>;
@@ -61,9 +65,9 @@ struct TimingCtxMatches {
 };
 } // namespace detail
 
-using ContentTypeFilter = opencmw::majordomo::DomainFilter<std::string_view>;
-using TimingCtxFilter   = opencmw::majordomo::DomainFilter<opencmw::TimingCtx, detail::TimingCtxMatches>;
+using ContentTypeFilter = opencmw::DomainFilter<std::string_view>;
+using TimingCtxFilter   = opencmw::DomainFilter<opencmw::TimingCtx, detail::TimingCtxMatches>;
 
-} // namespace opencmw::majordomo
+} // namespace opencmw
 
 #endif
