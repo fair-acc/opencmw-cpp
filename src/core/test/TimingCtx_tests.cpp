@@ -9,11 +9,12 @@ TEST_CASE("Basic TimingCtx tests", "[TimingCtx][basic]") {
     REQUIRE_NOTHROW(TimingCtx());
     REQUIRE_NOTHROW(TimingCtx("FAIR.SELECTOR.ALL"));
     REQUIRE(TimingCtx() == TimingCtx("FAIR.SELECTOR.ALL"));
-    REQUIRE(TimingCtx("ALL").selector == "ALL");
-    REQUIRE(TimingCtx("all").selector == "ALL");
-    REQUIRE(TimingCtx("ALL").bpcts.count() == 0);
+    REQUIRE(TimingCtx("ALL") == "ALL");
+    REQUIRE("ALL" == TimingCtx("ALL"));
+    REQUIRE(TimingCtx("all") == "ALL");
+    REQUIRE(TimingCtx("ALL").bpcts.value() == 0);
     auto changeMyFields = TimingCtx("ALL");
-    REQUIRE(changeMyFields.selector == "ALL");
+    REQUIRE(changeMyFields == "ALL");
     REQUIRE(changeMyFields.cid() == -1);
     REQUIRE(changeMyFields.sid() == -1);
     REQUIRE(changeMyFields.pid() == -1);
@@ -49,7 +50,7 @@ TEST_CASE("Basic TimingCtx tests", "[TimingCtx][basic]") {
     REQUIRE(ctx.sid() == -1);
     REQUIRE(ctx.pid() == -1);
     REQUIRE(ctx.gid() == -1);
-    REQUIRE(ctx.bpcts == timestamp);
+    REQUIRE(ctx.bpcts.value() == timestamp.count());
 
     REQUIRE(TimingCtx("FAIR.SELECTOR.C=0:S=1").toString() == "FAIR.SELECTOR.C=0:S=1");
 }
@@ -77,11 +78,11 @@ TEST_CASE("Basic TimingCtx ALL selector tests", "[TimingCtx][all_selector]") {
     REQUIRE(fromEmptyString == fromAll);
     REQUIRE(fromEmptyString == fromFSA);
 
-    REQUIRE(fromEmptyString.bpcts == timestamp);
-    REQUIRE(fromEmptyString.bpcts == timestamp);
-    REQUIRE(fromOptionals.bpcts == timestamp);
-    REQUIRE(fromAll.bpcts == timestamp);
-    REQUIRE(fromFSA.bpcts == timestamp);
+    REQUIRE(fromEmptyString.bpcts.value() == timestamp.count());
+    REQUIRE(fromEmptyString.bpcts.value() == timestamp.count());
+    REQUIRE(fromOptionals.bpcts.value() == timestamp.count());
+    REQUIRE(fromAll.bpcts.value() == timestamp.count());
+    REQUIRE(fromFSA.bpcts.value() == timestamp.count());
 }
 
 TEST_CASE("TimingCtx equality operator", "[TimingCtx][equality]") {
