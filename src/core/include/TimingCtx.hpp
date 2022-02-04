@@ -1,8 +1,6 @@
 #ifndef OPENCMW_CORE_TIMINGCTX_H
 #define OPENCMW_CORE_TIMINGCTX_H
 
-#include <fmt/format.h>
-
 #include <algorithm>
 #include <charconv>
 #include <chrono>
@@ -11,13 +9,20 @@
 #include <ranges>
 #include <string_view>
 
+#include <fmt/format.h>
+#include <units/chrono.h>
+#include <units/isq/dimensions/time.h>
+#include <units/isq/si/time.h>
+
 namespace opencmw {
 
 namespace detail {
-constexpr uint32_t const_hash(char const *input) noexcept { return *input ? static_cast<uint32_t>(*input) + 33 * const_hash(input + 1) : 5381; } // NOLINT
+constexpr uint32_t           const_hash(char const *input) noexcept { return *input ? static_cast<uint32_t>(*input) + 33 * const_hash(input + 1) : 5381; } // NOLINT
+constexpr basic_fixed_string TIMING_DESCRIPTION = "FAIR Timing Selector (e.g. 'FAIR.SELECTOR.C=1:S=2:P=3:T=4'. 'FAIR.SELECTOR.ALL' or 'ALL'";
 } // namespace detail
 
 class TimingCtx {
+    using timestamp                       = units::isq::si::time<units::isq::si::microsecond>;
     constexpr static auto DEFAULT         = "FAIR.SELECTOR.ALL";
     constexpr static auto WILDCARD        = std::string_view("ALL");
     constexpr static auto WILDCARD_VALUE  = -1;
@@ -30,14 +35,14 @@ class TimingCtx {
     mutable int32_t       _gid            = WILDCARD_VALUE;
 
 public:
-    std::string               selector = DEFAULT;
-    std::chrono::microseconds bpcts    = {};
+    Annotated<std::string, NoUnit, detail::TIMING_DESCRIPTION>                    selector = DEFAULT;
+    Annotated<long, timestamp, "start time-stamp of Beam-Production-Chain (BPC)"> bpcts    = {};
 
     TimingCtx(const std::string_view &selectorToken, std::chrono::microseconds bpcTimeStamp = {})
-        : selector(toUpper(selectorToken)), bpcts(bpcTimeStamp) { parse(); }
+        : selector(toUpper(selectorToken)), bpcts(bpcTimeStamp.count()) { parse(); }
 
     explicit TimingCtx(const int32_t cid = WILDCARD_VALUE, const int32_t sid = WILDCARD_VALUE, const int32_t pid = WILDCARD_VALUE, const int32_t gid = WILDCARD_VALUE, std::chrono::microseconds bpcTimeStamp = {})
-        : _cid(cid), _sid(sid), _pid(pid), _gid(gid), selector(toString<false>()), bpcts(bpcTimeStamp) { parse(); }
+        : _cid(cid), _sid(sid), _pid(pid), _gid(gid), selector(toString<false>()), bpcts(bpcTimeStamp.count()) { parse(); }
 
     // clang-format off
     [[nodiscard]] int32_t cid() const { parse(); return _cid; }
@@ -52,11 +57,11 @@ public:
 
     [[nodiscard]] auto operator<=>(const TimingCtx &other) const {
         parse();
-        return std::tie(_cid, _sid, _pid, _gid, bpcts) <=> std::tie(other._cid, other._sid, other._pid, other._gid, other.bpcts);
+        return std::tie(_cid, _sid, _pid, _gid, bpcts.value()) <=> std::tie(other._cid, other._sid, other._pid, other._gid, other.bpcts.value());
     }
     [[nodiscard]] bool operator==(const TimingCtx &other) const {
         parse();
-        return bpcts.count() == other.bpcts.count() && _cid == other._cid && _sid == other._sid && _pid == other._pid && _gid == other._gid;
+        return bpcts == other.bpcts && _cid == other._cid && _sid == other._sid && _pid == other._pid && _gid == other._gid;
     }
 
     template<bool forceParse = true>
@@ -169,7 +174,7 @@ public:
 private:
     [[nodiscard]] static constexpr bool isWildcard(int x) noexcept { return x == -1; }
     [[nodiscard]] static constexpr bool wildcardMatch(int lhs, int rhs) { return isWildcard(rhs) || lhs == rhs; }
-    [[nodiscard]] static constexpr bool bpcTimeStampMatch(std::chrono::microseconds lhs, std::chrono::microseconds rhs) { return rhs.count() == 0 || lhs.count() == rhs.count(); }
+    [[nodiscard]] static constexpr bool bpcTimeStampMatch(units::isq::Time auto lhs, units::isq::Time auto rhs) { return rhs == 0 || lhs == rhs; }
     static inline std::string           toUpper(const std::string_view &mixedCase) noexcept {
         std::string retval;
         retval.resize(mixedCase.size());
@@ -178,9 +183,14 @@ private:
     }
 };
 
+[[nodiscard]] bool   operator==(const TimingCtx &lhs, const std::string_view &rhs) { return (lhs.bpcts == 0) && (lhs.selector.value() == rhs); }
+
+inline std::ostream &operator<<(std::ostream &os, const opencmw::TimingCtx &v) {
+    return os << fmt::format("{}", v);
+}
+
 } // namespace opencmw
-// ENABLE_REFLECTION_FOR(opencmw::TimingCtx, selector, bpcts); //TODO: refactor bpcts to Annotated/mp-units api and re-enable bpcts
-ENABLE_REFLECTION_FOR(opencmw::TimingCtx, selector);
+ENABLE_REFLECTION_FOR(opencmw::TimingCtx, selector, bpcts);
 
 template<>
 struct fmt::formatter<opencmw::TimingCtx> {
@@ -194,9 +204,5 @@ struct fmt::formatter<opencmw::TimingCtx> {
         return fmt::format_to(ctx.out(), "{}", v.toString());
     }
 };
-
-inline std::ostream &operator<<(std::ostream &os, const opencmw::TimingCtx &v) {
-    return os << fmt::format("{}", v);
-}
 
 #endif
