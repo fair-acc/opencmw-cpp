@@ -1,16 +1,20 @@
 #ifndef OPENCMW_H
 #define OPENCMW_H
-#include "MultiArray.hpp" // TODO: resolve dangerous circular dependency
+
+#include <array>
+#include <concepts>
+#include <map>
+#include <set>
+#include <vector>
+
 #include <fmt/color.h>
 #include <fmt/format.h>
-#include <map>
+#include <fmt/ostream.h>
+#include <fmt/ranges.h>
 #include <refl.hpp>
-#include <set>
 #include <units/concepts.h>
 #include <units/quantity.h>
 #include <units/quantity_io.h>
-
-#include <MIME.hpp>
 
 #define FWD(x) std::forward<decltype(x)>(x)               // short-hand notation
 #define forceinline inline __attribute__((always_inline)) // use this for hot-spots only <-> may bloat code size, not fit into cache and consequently slow down execution
@@ -419,9 +423,6 @@ template<typename T, std::size_t N> inline const std::string &typeName<std::arra
 template<typename T, typename A> inline const std::string &typeName<std::vector<T,A>> = fmt::format("vector<{}>", typeName<T>);
 template<typename T, typename A> inline const std::string &typeName<std::vector<T,A> const> = fmt::format("vector<{}> const", typeName<T>);
 
-template<typename T, uint32_t N> inline const std::string &typeName<MultiArray<T,N>> = fmt::format("MultiArray<{},{}>", opencmw::typeName<T>, N);
-template<typename T, uint32_t N> inline const std::string &typeName<MultiArray<T,N> const> =  fmt::format("MultiArray<{},{}> const", opencmw::typeName<T>, N);
-
 template<MapLike T> inline const std::string &typeName<T> =  fmt::format("map<{},{}>", opencmw::typeName<typename T::key_type>, opencmw::typeName<typename T::mapped_type>);
 template<MapLike T> inline const std::string &typeName<T const> =  fmt::format("map<{},{}> const", opencmw::typeName<typename T::key_type>, opencmw::typeName<typename T::mapped_type>);
 
@@ -436,9 +437,6 @@ template<ArithmeticType T, std::size_t size> inline const std::string &typeName<
 template<ArithmeticType T> inline const std::string &typeName<T*> = fmt::format("{}[?]", opencmw::typeName<T>);
 template<ArithmeticType T> inline const std::string &typeName<const T*> = fmt::format("({} const)[?] ", opencmw::typeName<T>);
 template<ArithmeticType T> inline const std::string &typeName<T* const> = fmt::format("{} [?] const", opencmw::typeName<T>);
-
-template<>
-constexpr inline std::string_view typeName<opencmw::MIME::MimeType> = "MimeType";
 
 // clang-format off
 #pragma clang diagnostic pop

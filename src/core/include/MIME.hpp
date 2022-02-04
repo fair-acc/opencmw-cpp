@@ -11,7 +11,10 @@
 
 #include <fmt/format.h>
 
-namespace opencmw::MIME {
+#include <opencmw.hpp>
+
+namespace opencmw {
+namespace MIME {
 
 class MimeType {
     std::string_view                _typeName; // TODO: replace with case-insensitive constexpr std::string once fully supported by both gcc13 and clang?, see http://www.gotw.ca/gotw/029.htm
@@ -207,7 +210,10 @@ constexpr const MimeType &getTypeByFileName(const std::string_view &fileName) {
 }
 static_assert(getTypeByFileName("TEST.TXT") == TEXT);
 
-} /* namespace opencmw::MIME */
+} // namespace MIME
+
+template<>
+constexpr inline std::string_view typeName<opencmw::MIME::MimeType> = "MimeType";
 
 template<typename T>
 inline std::ostream &operator<<(std::ostream &os, const std::vector<T> &v) {
@@ -241,6 +247,12 @@ inline std::ostream &operator<<(std::ostream &os, const std::span<T> &v) {
     return os << ']';
 }
 
+inline std::ostream &operator<<(std::ostream &os, const opencmw::MIME::MimeType &v) {
+    return os << v.typeName();
+}
+
+} // namespace opencmw
+
 template<>
 struct fmt::formatter<opencmw::MIME::MimeType> {
     template<typename ParseContext>
@@ -253,9 +265,5 @@ struct fmt::formatter<opencmw::MIME::MimeType> {
         return fmt::format_to(ctx.out(), "{}", v.typeName());
     }
 };
-
-inline std::ostream &operator<<(std::ostream &os, const opencmw::MIME::MimeType &v) {
-    return os << v.typeName();
-}
 
 #endif // OPENCMW_CPP_MIME_HPP

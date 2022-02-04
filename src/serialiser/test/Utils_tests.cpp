@@ -1,11 +1,9 @@
 #pragma clang diagnostic push
 #pragma ide diagnostic   ignored "LoopDoesntUseConditionVariableInspection"
 #pragma ide diagnostic   ignored "cppcoreguidelines-avoid-magic-numbers"
-
-#include <Debug.hpp>
-#include <Utils.hpp>
-#include <algorithm>
 #include <catch2/catch.hpp>
+
+#include <algorithm>
 #include <iostream>
 #include <string_view>
 
@@ -16,6 +14,10 @@
 #include <units/isq/si/resistance.h>
 #include <units/isq/si/speed.h>
 #include <units/isq/si/time.h>
+
+#include <Debug.hpp>
+#include <IoSerialiser.hpp>
+#include <opencmw.hpp>
 
 using namespace units::isq;
 using namespace units::isq::si;
@@ -74,7 +76,6 @@ TEST_CASE("diff view test non-nested", "[Utils]") {
     std::cout << std::unitbuf;
     std::cerr << std::unitbuf;
     using namespace opencmw;
-    using namespace opencmw::utils; // for operator<< and fmt::format overloading
     debug::resetStats();
     {
         ClassA data;
@@ -91,7 +92,6 @@ TEST_CASE("diff view test nested", "[Utils]") {
     std::cout << std::unitbuf;
     std::cerr << std::unitbuf;
     using namespace opencmw;
-    using namespace opencmw::utils; // for operator<< and fmt::format overloading
     debug::resetStats();
     {
         ClassB data;
@@ -109,7 +109,6 @@ TEST_CASE("reflectable object stdout flat", "[Utils]") {
     std::cout << std::unitbuf;
     std::cerr << std::unitbuf;
     using namespace opencmw;
-    using namespace opencmw::utils; // for operator<< and fmt::format overloading
     debug::resetStats();
     {
         std::ostringstream os;
@@ -136,7 +135,6 @@ TEST_CASE("Annotated stdout", "[Utils]") {
     std::cout << std::unitbuf;
     std::cerr << std::unitbuf;
     using namespace opencmw;
-    using namespace opencmw::utils; // for operator<< and fmt::format overloading
     debug::resetStats();
     {
         std::ostringstream                                              os;

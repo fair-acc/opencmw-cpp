@@ -3,10 +3,10 @@
 #ifndef OPENCMW_CPP_IOCLASSSERIALISERBENCHMARK_H
 #define OPENCMW_CPP_IOCLASSSERIALISERBENCHMARK_H
 
-#include <IoSerialiser.hpp>
 #include <numeric>
+
+#include <IoSerialiser.hpp>
 #include <opencmw.hpp>
-#include <Utils.hpp>
 
 using opencmw::MultiArray;
 using std::array;
@@ -258,7 +258,6 @@ ENABLE_REFLECTION_FOR(TestDataClass, bool1, bool2, byte1, byte2, char1, char2, s
 volatile bool TestDataClass::cmwCompatibilityMode = false;
 
 using namespace opencmw;
-using namespace opencmw::utils; // for operator<< and fmt::format overloading
 
 template<SerialiserProtocol protocol, ReflectableClass T>
 std::size_t checkSerialiserIdentity(IoBuffer &buffer, const T &inputObject, T &outputObject) {
