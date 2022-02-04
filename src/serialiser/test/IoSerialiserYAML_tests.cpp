@@ -1,16 +1,17 @@
-#include <algorithm>
 #include <catch2/catch.hpp>
-#include <Debug.hpp>
-#include <IoSerialiserYAML.hpp>
+
+#include <algorithm>
 #include <iostream>
 #include <string_view>
-#include <Utils.hpp>
 
 #include <units/isq/si/energy.h>
 #include <units/isq/si/length.h>
 #include <units/isq/si/mass.h>
 #include <units/isq/si/resistance.h>
 #include <units/isq/si/time.h>
+
+#include <Debug.hpp>
+#include <IoSerialiserYAML.hpp>
 
 using namespace opencmw;
 using namespace units::isq;
@@ -97,7 +98,6 @@ TEST_CASE("basic YAML serialisation", "[IoClassSerialiserYAML]") {
     std::cout << std::unitbuf;
     std::cerr << std::unitbuf;
     using namespace opencmw;
-    using namespace opencmw::utils; // for operator<< and fmt::format overloading
     using namespace io_serialiser_yaml_test;
     debug::resetStats();
     {
@@ -158,7 +158,6 @@ ENABLE_REFLECTION_FOR(io_serialiser_yaml_test::StructWithLongMemberName,
         intValueWithAnEvenLongerAnnoyinglyAndAbsurdlyLongNameJustHereToBreakTheSerialiser)
 TEST_CASE("Test Long Member Name", "[IoClassSerialiserYAML]") {
     using namespace opencmw;
-    using namespace opencmw::utils; // for operator<< and fmt::format overloading
     using namespace io_serialiser_yaml_test;
     debug::resetStats();
     {

@@ -1,15 +1,12 @@
 #pragma clang diagnostic push
 #pragma ide diagnostic   ignored "LoopDoesntUseConditionVariableInspection"
 #pragma ide diagnostic   ignored "cppcoreguidelines-avoid-magic-numbers"
+#include <catch2/catch.hpp>
 
 #include <algorithm>
-#include <catch2/catch.hpp>
-#include <Debug.hpp>
-#include <IoSerialiserYaS.hpp>
 #include <iostream>
 #include <opencmw.hpp>
 #include <string_view>
-#include <Utils.hpp>
 
 #include <units/isq/si/electric_current.h>
 #include <units/isq/si/energy.h>
@@ -18,6 +15,9 @@
 #include <units/isq/si/resistance.h>
 #include <units/isq/si/speed.h>
 #include <units/isq/si/time.h>
+
+#include <Debug.hpp>
+#include <IoSerialiserYaS.hpp>
 
 using namespace opencmw;
 using namespace units::isq;
@@ -96,7 +96,6 @@ TEST_CASE("IoClassSerialiser basic syntax", "[IoClassSerialiser]") {
     std::cout << std::unitbuf;
     std::cerr << std::unitbuf;
     using namespace opencmw;
-    using namespace opencmw::utils; // for operator<< and fmt::format overloading
     debug::resetStats();
     {
         debug::Timer timer("IoClassSerialiser basic syntax", 30);
@@ -166,7 +165,6 @@ TEST_CASE("IoClassSerialiser protocol mismatch", "[IoClassSerialiser]") {
     std::cout << std::unitbuf;
     std::cerr << std::unitbuf;
     using namespace opencmw;
-    using namespace opencmw::utils; // for operator<< and fmt::format overloading
     debug::resetStats();
     {
         debug::Timer              timer("IoClassSerialiser protocol mismatch", 30);
@@ -239,7 +237,6 @@ TEST_CASE("IoClassSerialiser basic typeName tests", "[IoClassSerialiser]") {
     std::cout << std::unitbuf;
     std::cerr << std::unitbuf;
     using namespace opencmw;
-    using namespace opencmw::utils; // for operator<< and fmt::format overloading
     debug::resetStats();
     {
         // signed integer values
@@ -328,7 +325,6 @@ TEST_CASE("IoClassSerialiser smart pointer", "[IoClassSerialiser]") {
     std::cout << std::unitbuf;
     std::cerr << std::unitbuf;
     using namespace opencmw;
-    using namespace opencmw::utils; // for operator<< and fmt::format overloading
     debug::resetStats();
     {
         IoBuffer          buffer;
@@ -505,7 +501,6 @@ TEST_CASE("IoSerialiser primitive numbers YaS", "[IoSerialiser]") {
 
 TEST_CASE("IoClassSerialiser protocol error tests", "[IoClassSerialiser]") {
     using namespace opencmw;
-    using namespace opencmw::utils; // for operator<< and fmt::format overloading
     IoBuffer buffer;
     Data     data;
 
@@ -545,7 +540,6 @@ ENABLE_REFLECTION_FOR(SpecialData, map1, map2, map3)
 
 TEST_CASE("IoClassSerialiser map & Co.", "[IoClassSerialiser]") {
     using namespace opencmw;
-    using namespace opencmw::utils; // for operator<< and fmt::format overloading
     IoBuffer    buffer;
     SpecialData data;
 

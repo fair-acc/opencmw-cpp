@@ -2,10 +2,12 @@
 #pragma ide diagnostic   ignored "LoopDoesntUseConditionVariableInspection"
 #pragma ide diagnostic   ignored "cppcoreguidelines-avoid-magic-numbers"
 #include <catch2/catch.hpp>
-#include <Debug.hpp>
-#include <IoBuffer.hpp>
+
 #include <iostream>
 #include <string_view>
+
+#include <Debug.hpp>
+#include <IoBuffer.hpp>
 
 #define N_SAMPLES 500
 

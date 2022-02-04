@@ -6,7 +6,6 @@
 #include <tuple>
 
 using namespace opencmw;
-using namespace opencmw::utils; // for operator<< and fmt::format overloading
 
 /**
  * for comparison (C++/POCO variant ~ 90% feature-complete: YaS header missing, ...):

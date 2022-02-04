@@ -1,13 +1,13 @@
 #pragma clang diagnostic push
 #pragma ide diagnostic   ignored "LoopDoesntUseConditionVariableInspection"
 #pragma ide diagnostic   ignored "cppcoreguidelines-avoid-magic-numbers"
-
 #include <catch2/catch.hpp>
-#include <Debug.hpp>
-#include <IoSerialiserCmwLight.hpp>
+
 #include <iostream>
 #include <string_view>
-#include <Utils.hpp>
+
+#include <Debug.hpp>
+#include <IoSerialiserCmwLight.hpp>
 
 using namespace std::literals;
 
@@ -39,7 +39,6 @@ ENABLE_REFLECTION_FOR(ioserialiser_cmwlight_test::SimpleTestData, a, ab, abc, b,
 
 TEST_CASE("IoClassSerialiserCmwLight simple test", "[IoClassSerialiser]") {
     using namespace opencmw;
-    using namespace opencmw::utils; // for operator<< and fmt::format overloading
     using namespace ioserialiser_cmwlight_test;
     debug::resetStats();
     {
@@ -123,7 +122,6 @@ ENABLE_REFLECTION_FOR(ioserialiser_cmwlight_test::SimpleTestDataMoreFields, a2, 
 #pragma clang diagnostic pop
 TEST_CASE("IoClassSerialiserCmwLight missing field", "[IoClassSerialiser]") {
     using namespace opencmw;
-    using namespace opencmw::utils; // for operator<< and fmt::format overloading
     using namespace ioserialiser_cmwlight_test;
     debug::resetStats();
     {

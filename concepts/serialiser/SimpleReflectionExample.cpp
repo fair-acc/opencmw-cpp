@@ -1,6 +1,6 @@
-#include <IoSerialiserYaS.hpp>
-#include <Utils.hpp>
 #include <iostream>
+
+#include <IoSerialiserYaS.hpp>
 
 // SI units -- include what you need
 #include <units/isq/si/electric_current.h>
@@ -32,7 +32,6 @@ ENABLE_REFLECTION_FOR(otherClass, temperature, current, injectionEnergy)
 
 using namespace std::string_literals;
 using namespace opencmw;
-using namespace opencmw::utils; // for operator<< and fmt::format overloading
 
 int main() {
     className a{ 1, 0.5F, "Hello World!" };
