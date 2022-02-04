@@ -57,15 +57,15 @@ TEST_CASE("IoClassSerialiserCmwLight simple test", "[IoClassSerialiser]") {
             .ce  = { "hallo", "welt" },
             .d   = { { 6, 5, 4, 3, 2, 1 }, { 3, 2 } },
             .e   = std::make_unique<SimpleTestData>(SimpleTestData{
-                    .a   = 40,
-                    .ab  = 2.2f,
-                    .abc = 2.23,
-                    .b   = "abcdef",
-                    .c   = { 9, 8, 7 },
-                    .cd  = { 3.1, 1.2 },
-                    .ce  = { "ei", "gude" },
-                    .d   = { { 6, 5, 4, 3, 2, 1 }, { 3, 2 } },
-                    .e   = nullptr })
+                      .a   = 40,
+                      .ab  = 2.2f,
+                      .abc = 2.23,
+                      .b   = "abcdef",
+                      .c   = { 9, 8, 7 },
+                      .cd  = { 3.1, 1.2 },
+                      .ce  = { "ei", "gude" },
+                      .d   = { { 6, 5, 4, 3, 2, 1 }, { 3, 2 } },
+                      .e   = nullptr })
         };
 
         // check that empty buffer cannot be deserialised
