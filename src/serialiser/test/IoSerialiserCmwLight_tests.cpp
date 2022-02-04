@@ -1,13 +1,13 @@
 #pragma clang diagnostic push
 #pragma ide diagnostic   ignored "LoopDoesntUseConditionVariableInspection"
 #pragma ide diagnostic   ignored "cppcoreguidelines-avoid-magic-numbers"
-
 #include <catch2/catch.hpp>
-#include <Debug.hpp>
-#include <IoSerialiserCmwLight.hpp>
+
 #include <iostream>
 #include <string_view>
-#include <Utils.hpp>
+
+#include <Debug.hpp>
+#include <IoSerialiserCmwLight.hpp>
 
 using namespace std::literals;
 
@@ -39,7 +39,6 @@ ENABLE_REFLECTION_FOR(ioserialiser_cmwlight_test::SimpleTestData, a, ab, abc, b,
 
 TEST_CASE("IoClassSerialiserCmwLight simple test", "[IoClassSerialiser]") {
     using namespace opencmw;
-    using namespace opencmw::utils; // for operator<< and fmt::format overloading
     using namespace ioserialiser_cmwlight_test;
     debug::resetStats();
     {
@@ -58,15 +57,15 @@ TEST_CASE("IoClassSerialiserCmwLight simple test", "[IoClassSerialiser]") {
             .ce  = { "hallo", "welt" },
             .d   = { { 6, 5, 4, 3, 2, 1 }, { 3, 2 } },
             .e   = std::make_unique<SimpleTestData>(SimpleTestData{
-                      .a   = 40,
-                      .ab  = 2.2f,
-                      .abc = 2.23,
-                      .b   = "abcdef",
-                      .c   = { 9, 8, 7 },
-                      .cd  = { 3.1, 1.2 },
-                      .ce  = { "ei", "gude" },
-                      .d   = { { 6, 5, 4, 3, 2, 1 }, { 3, 2 } },
-                      .e   = nullptr })
+                    .a   = 40,
+                    .ab  = 2.2f,
+                    .abc = 2.23,
+                    .b   = "abcdef",
+                    .c   = { 9, 8, 7 },
+                    .cd  = { 3.1, 1.2 },
+                    .ce  = { "ei", "gude" },
+                    .d   = { { 6, 5, 4, 3, 2, 1 }, { 3, 2 } },
+                    .e   = nullptr })
         };
 
         // check that empty buffer cannot be deserialised
@@ -123,7 +122,6 @@ ENABLE_REFLECTION_FOR(ioserialiser_cmwlight_test::SimpleTestDataMoreFields, a2, 
 #pragma clang diagnostic pop
 TEST_CASE("IoClassSerialiserCmwLight missing field", "[IoClassSerialiser]") {
     using namespace opencmw;
-    using namespace opencmw::utils; // for operator<< and fmt::format overloading
     using namespace ioserialiser_cmwlight_test;
     debug::resetStats();
     {

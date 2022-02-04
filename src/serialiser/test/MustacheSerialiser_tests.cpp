@@ -1,13 +1,10 @@
 #pragma clang diagnostic push
 #pragma ide diagnostic   ignored "LoopDoesntUseConditionVariableInspection"
 #pragma ide diagnostic   ignored "cppcoreguidelines-avoid-magic-numbers"
-
 #include <catch2/catch.hpp>
 
 #include <iostream>
 #include <string>
-
-#include <Utils.hpp>
 
 #include <MustacheSerialiser.hpp>
 

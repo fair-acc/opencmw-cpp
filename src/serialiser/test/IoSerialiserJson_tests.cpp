@@ -1,21 +1,20 @@
 #pragma clang diagnostic push
 #pragma ide diagnostic   ignored "LoopDoesntUseConditionVariableInspection"
 #pragma ide diagnostic   ignored "cppcoreguidelines-avoid-magic-numbers"
-
 #include <catch2/catch.hpp>
-#include <Debug.hpp>
-#include <IoSerialiserJson.hpp>
+
 #include <iostream>
 #include <string_view>
-#include <Utils.hpp>
 
 #include <units/isq/si/length.h>
 #include <units/isq/si/speed.h>
 
+#include <Debug.hpp>
+#include <IoSerialiserJson.hpp>
+
 using namespace opencmw;
 using namespace units::isq;
 using namespace units::isq::si;
-using NoUnit = units::dimensionless<units::one>;
 using namespace std::literals;
 using namespace std::string_view_literals;
 

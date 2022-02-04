@@ -1,7 +1,7 @@
-#include <IoSerialiserYaS.hpp>
-#include <Utils.hpp>
 #include <fstream>
 #include <iostream>
+
+#include <IoSerialiserYaS.hpp>
 
 // SI units -- include what you need
 #include <units/isq/si/electric_current.h>
@@ -25,7 +25,6 @@ ENABLE_REFLECTION_FOR(io_opencmw_serialiser_SerialiseToFile_OtherClass, temperat
 
 using namespace std::string_literals;
 using namespace opencmw;
-using namespace opencmw::utils; // for operator<< and fmt::format overloading
 
 /**
  * Serialisation example with nested classes and deserialisation into different type.

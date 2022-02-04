@@ -2,10 +2,13 @@
 #define OPENCMW_CPP_MULTI_ARRAY_HPP
 
 #include <array>
-#include <fmt/color.h>
-#include <fmt/format.h>
 #include <iostream>
 #include <vector>
+
+#include <fmt/color.h>
+#include <fmt/format.h>
+
+#include <opencmw.hpp>
 
 namespace opencmw {
 
@@ -33,7 +36,7 @@ private:
 public:
     /// full control constructor, allowing to realise custom matrix layouts
     [[nodiscard]] constexpr MultiArray(
-            const std::vector<value_type> &    elements,
+            const std::vector<value_type>     &elements,
             const std::array<size_t_, n_dims> &dimensions,
             const std::array<size_t_, n_dims> &strides,
             const std::array<size_t_, n_dims>  offsets)
@@ -258,20 +261,26 @@ public:
     //     // return MultiArray(elements_, ); // todo: implement logic
     // }
     /// extract a sub-matrix
-    //constexpr MultiArrayView<value_type, n_dims> sub_array(const std::array<size_t, n_dims> min_indices, const std::array<size_t, n_dims> max_indices) {
-    //    return nullptr;
-    //}
+    // constexpr MultiArrayView<value_type, n_dims> sub_array(const std::array<size_t, n_dims> min_indices, const std::array<size_t, n_dims> max_indices) {
+    //     return nullptr;
+    // }
     /// sample down a matrix by skipping every nth value in every dimension
-    //constexpr MultiArrayView<value_type, n_dims> downsample(const std::array<size_t, n_dims> strides_) {
-    //    return nullptr;
-    //}
-
-    /// simple print operator for debugging
-    constexpr friend std::ostream &operator<<(std::ostream &output, const MultiArray &array) {
-        //return output << fmt::format("{{dim[{}]:{}, data[{}]:{}}}", n_dims, array.dimensions(), array.element_count(), array.elements()); // does not work
-        return output << fmt::format("{{dim[{}]:{}, data[{}]:data display not implemented}}", n_dims, array.dimensions(), array.element_count()); // does not work
-    }
+    // constexpr MultiArrayView<value_type, n_dims> downsample(const std::array<size_t, n_dims> strides_) {
+    //     return nullptr;
+    // }
 };
+
+template<typename T, uint32_t N>
+inline const std::string &typeName<MultiArray<T, N>> = fmt::format("MultiArray<{},{}>", opencmw::typeName<T>, N);
+template<typename T, uint32_t N>
+inline const std::string &typeName<MultiArray<T, N> const> = fmt::format("MultiArray<{},{}> const", opencmw::typeName<T>, N);
+
+template<typename T, uint32_t n_dims>
+constexpr std::ostream &operator<<(std::ostream &output, const MultiArray<T, n_dims> &array) {
+    using namespace opencmw;
+    // return output << fmt::format("{{dim[{}]:{}, data[{}]:{}}}", n_dims, array.dimensions(), array.element_count(), array.elements()); // does not work
+    return output << fmt::format("{{dim[{}]:{}, data[{}]:data display not implemented}}", n_dims, array.dimensions(), array.element_count()); // does not work
+}
 
 // MultiArrayView -> uses data from Multi Array, but with different layout/number of dimensions -> can represent slices and sampled down views of the data
 // multiArray          // 3d array
@@ -296,4 +305,4 @@ concept MultiArrayType = is_multi_array<T>;
 
 } // namespace opencmw
 
-#endif //OPENCMW_CPP_MULTI_ARRAY_HPP
+#endif // OPENCMW_CPP_MULTI_ARRAY_HPP

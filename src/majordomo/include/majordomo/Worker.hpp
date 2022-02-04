@@ -1,25 +1,5 @@
 #ifndef OPENCMW_MAJORDOMO_WORKER_H
 #define OPENCMW_MAJORDOMO_WORKER_H
-
-#include <majordomo/Broker.hpp>
-#include <majordomo/Constants.hpp>
-#include <majordomo/Debug.hpp>
-#include <majordomo/Rbac.hpp>
-#include <majordomo/Settings.hpp>
-#include <majordomo/Utils.hpp>
-#include <QuerySerialiser.hpp>
-
-#include <IoSerialiserCmwLight.hpp>
-#include <IoSerialiserJson.hpp>
-#include <IoSerialiserYaS.hpp>
-#include <MustacheSerialiser.hpp>
-
-#include <MIME.hpp>
-#include <opencmw.hpp>
-#include <Utils.hpp>
-
-#include <fmt/format.h>
-
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -27,6 +7,22 @@
 #include <shared_mutex>
 #include <string>
 #include <thread>
+
+#include <fmt/format.h>
+
+#include <IoSerialiserCmwLight.hpp>
+#include <IoSerialiserJson.hpp>
+#include <IoSerialiserYaS.hpp>
+#include <majordomo/Broker.hpp>
+#include <majordomo/Constants.hpp>
+#include <majordomo/Debug.hpp>
+#include <majordomo/Rbac.hpp>
+#include <majordomo/Settings.hpp>
+#include <majordomo/Utils.hpp>
+#include <MIME.hpp>
+#include <MustacheSerialiser.hpp>
+#include <opencmw.hpp>
+#include <QuerySerialiser.hpp>
 
 namespace opencmw::majordomo {
 

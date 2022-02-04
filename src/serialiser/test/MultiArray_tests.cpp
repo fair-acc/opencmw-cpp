@@ -1,11 +1,10 @@
-#include <MultiArray.hpp>
-#include <Utils.hpp>
 #include <catch2/catch.hpp>
+
 #include <iostream>
-#include <opencmw.hpp>
+
+#include <MultiArray.hpp>
 
 using namespace opencmw;
-using namespace opencmw::utils;
 
 TEST_CASE("MultiArray.doubleSimple", "[MultiArray]") {
     MultiArray<double, 2> test({ 1, 2, 3, 4, 5, 6 }, { 2, 3 });
@@ -60,15 +59,15 @@ TEST_CASE("MultiArray.doubleSimple", "[MultiArray]") {
     // - copy and mutability
 
     // use with units
-    //using namespace units;
-    //using namespace units::physical;
-    //using namespace units::physical::si;
-    //using namespace units::physical::si;
-    //using namespace units::physical::si::literals;
-    //Length<kilometre> auto blub= 34.5_q_km;
-    //std::cout << quantity_cast<si::metre>(2.0_q_km) << ", " << 24.3 << std::endl;
-    //auto with_units = MultiArray(std::vector<si::length<si::kilometre>>(2.0_q_km, 2.5_q_km, 3.3_q_km), std::array<size_t, 2>{1,3});
-    //std::cout << with_units << std::endl;
+    // using namespace units;
+    // using namespace units::physical;
+    // using namespace units::physical::si;
+    // using namespace units::physical::si;
+    // using namespace units::physical::si::literals;
+    // Length<kilometre> auto blub= 34.5_q_km;
+    // std::cout << quantity_cast<si::metre>(2.0_q_km) << ", " << 24.3 << std::endl;
+    // auto with_units = MultiArray(std::vector<si::length<si::kilometre>>(2.0_q_km, 2.5_q_km, 3.3_q_km), std::array<size_t, 2>{1,3});
+    // std::cout << with_units << std::endl;
 }
 
 TEST_CASE("MultiArray.floatOrder3Offsets", "[MultiArray]") {
