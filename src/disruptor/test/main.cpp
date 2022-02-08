@@ -103,7 +103,8 @@ std::vector<std::shared_ptr<IEventHandler<TestEvent>>> makeHandlers(const Disrup
                     std::visit(overloaded{
                                        [&](TestEvent::ResetTo resetTo) {
                                            value = resetTo.value;
-                                           REQUIRE(resetTo.value % 100 == 1);
+                                           //REQUIRE(resetTo.value % 100 == 1);
+                                           assert(resetTo.value % 100 == 1);
                                        },
                                        [&](TestEvent::Next) { value++; },
                                        [&](TestEvent::Stop) {
@@ -111,7 +112,8 @@ std::vector<std::shared_ptr<IEventHandler<TestEvent>>> makeHandlers(const Disrup
                                            std::cerr << id << "< - Got stop message.\n";
                                        },
                                        [&](TestEvent::Check check) {
-                                           REQUIRE(check.value % 100 == 0);
+                                           assert(check.value % 100 == 0);
+                                           //REQUIRE(check.value % 100 == 0);
                                        } },
                             event.command);
                 });
