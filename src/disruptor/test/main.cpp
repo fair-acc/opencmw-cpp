@@ -111,7 +111,7 @@ std::vector<std::shared_ptr<IEventHandler<TestEvent>>> makeHandlers(const Disrup
                                            value = -1;
                                            std::cerr << id << "< - Got stop message.\n";
                                        },
-                                       [&](TestEvent::Check check) {
+                                       [&]([[maybe_unused]] TestEvent::Check check) {
                                            assert(check.value % 100 == 0);
                                            //REQUIRE(check.value % 100 == 0);
                                        } },
@@ -125,8 +125,7 @@ std::vector<std::shared_ptr<IEventHandler<TestEvent>>> makeHandlers(const Disrup
 }
 
 TEST_CASE("Disruptor stress test", "[Disruptor]") {
-    auto processorsCount = std::thread::hardware_concurrency();
-    processorsCount      = std::max(processorsCount / 2, 1u);
+    auto processorsCount = std::max(std::thread::hardware_concurrency() / 2, 1u);
 
     Disruptor<TestEvent, ProducerType::Multi, RoundRobinThreadAffinedTaskScheduler, BusySpinWaitStrategy>
             testDisruptor(
@@ -145,6 +144,7 @@ TEST_CASE("Disruptor stress test", "[Disruptor]") {
 
     testDisruptor->start();
 
+    const auto time_start = std::chrono::system_clock::now();
     {
         std::vector<std::jthread> threads;
         for (auto &&publisher : publishers) {
@@ -153,4 +153,9 @@ TEST_CASE("Disruptor stress test", "[Disruptor]") {
         std::cerr << "Waiting for publisher threads to finish...\n";
     }
     std::cerr << "Joined threads.\n";
+    const auto time_end = std::chrono::system_clock::now();
+    std::chrono::duration<double, std::ratio<1, 1>> time_elapsed = time_end - time_start;
+    std::cout << "seconds to finish: " << time_elapsed.count() << std::endl;
+    const auto msgPerSeconds = iterations * processorsCount / time_elapsed.count();
+    std::cout << "msgs per second: " << msgPerSeconds << std::endl;
 }
