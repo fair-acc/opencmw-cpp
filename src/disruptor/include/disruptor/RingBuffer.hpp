@@ -75,7 +75,7 @@ public:
         }
 
         m_indexMask = m_bufferSize - 1;
-        m_entries.resize(m_bufferSize + 2 * m_bufferPad);
+        m_entries.resize(static_cast<std::size_t>(m_bufferSize + 2 * m_bufferPad));
 
         fill(eventFactory);
     }
@@ -92,7 +92,7 @@ public:
 
     void fill(const std::function<T()> &eventFactory) {
         for (std::int32_t i = 0; i < m_bufferSize; ++i) {
-            m_entries[m_bufferPad + i] = eventFactory();
+            m_entries[static_cast<std::size_t>(m_bufferPad + i)] = eventFactory();
         }
     }
 
@@ -167,7 +167,7 @@ public:
      * \param sequence sequence for the event
      */
     T &operator[](std::int64_t sequence) const override {
-        return m_entries[m_bufferPad + (static_cast<std::int32_t>(sequence) & m_indexMask)];
+        return m_entries[static_cast<std::size_t>(m_bufferPad + (static_cast<std::int32_t>(sequence) & m_indexMask))];
     }
 
     std::int32_t bufferSize() override {

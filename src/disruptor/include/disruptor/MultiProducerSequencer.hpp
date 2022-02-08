@@ -186,7 +186,7 @@ public:
         auto index = calculateIndex(sequence);
         auto flag  = calculateAvailabilityFlag(sequence);
 
-        return m_availableBuffer[index] == flag;
+        return m_availableBuffer[static_cast<std::size_t>(index)] == flag;
     }
 
     /**
@@ -238,7 +238,7 @@ private:
     }
 
     void setAvailableBufferValue(std::int32_t index, std::int32_t flag) {
-        m_availableBuffer[index] = flag;
+        m_availableBuffer[static_cast<std::size_t>(index)] = flag;
     }
 
     std::int32_t calculateAvailabilityFlag(std::int64_t sequence) {
