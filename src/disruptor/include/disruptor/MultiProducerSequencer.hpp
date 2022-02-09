@@ -26,7 +26,7 @@ private:
     std::int32_t                    m_indexShift;
 
 public:
-    MultiProducerSequencer(std::int32_t bufferSize, const std::shared_ptr<IWaitStrategy> &waitStrategy)
+    MultiProducerSequencer(std::int32_t bufferSize, const std::shared_ptr<WaitStrategy> &waitStrategy)
         : Sequencer<T>(bufferSize, waitStrategy) {
         m_availableBuffer = std::unique_ptr<int[]>(new int[bufferSize]);
         m_indexMask       = bufferSize - 1;
@@ -96,7 +96,9 @@ public:
                 std::int64_t gatingSequence = Util::getMinimumSequence(this->m_gatingSequences, current);
 
                 if (wrapPoint > gatingSequence) {
-                    this->m_waitStrategy->signalAllWhenBlocking();
+                    if constexpr (requires { this->m_waitStrategy->signalAllWhenBlocking(); }) {
+                        this->m_waitStrategy->signalAllWhenBlocking();
+                    }
                     spinWait.spinOnce();
                     continue;
                 }
@@ -163,7 +165,9 @@ public:
      */
     void publish(std::int64_t sequence) override {
         setAvailable(sequence);
-        this->m_waitStrategyRef.signalAllWhenBlocking();
+        if constexpr (requires { this->m_waitStrategy->signalAllWhenBlocking(); }) {
+            this->m_waitStrategyRef.signalAllWhenBlocking();
+        }
     }
 
     /**
@@ -173,7 +177,9 @@ public:
         for (std::int64_t l = lo; l <= hi; l++) {
             setAvailable(l);
         }
-        this->m_waitStrategyRef.signalAllWhenBlocking();
+        if constexpr (requires { this->m_waitStrategy->signalAllWhenBlocking(); }) {
+            this->m_waitStrategyRef.signalAllWhenBlocking();
+        }
     }
 
     /**

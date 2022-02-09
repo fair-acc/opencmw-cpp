@@ -7,11 +7,11 @@
 #include "EventPoller.hpp"
 #include "Exceptions.hpp"
 #include "ISequencer.hpp"
-#include "IWaitStrategy.hpp"
 #include "ProcessingSequenceBarrier.hpp"
 #include "Sequence.hpp"
 #include "SequenceGroups.hpp"
 #include "Util.hpp"
+#include "WaitStrategy.hpp"
 
 namespace opencmw::disruptor {
 
@@ -24,7 +24,7 @@ public:
      * \param bufferSize
      * \param waitStrategy waitStrategy for those waiting on sequences.
      */
-    Sequencer(std::int32_t bufferSize, const std::shared_ptr<IWaitStrategy> &waitStrategy)
+    Sequencer(std::int32_t bufferSize, const std::shared_ptr<WaitStrategy> &waitStrategy)
         : m_bufferSize(bufferSize)
         , m_waitStrategy(waitStrategy)
         , m_cursor(std::make_shared<Sequence>())
@@ -105,7 +105,8 @@ public:
 
     void writeDescriptionTo(std::ostream &stream) const override {
         stream << "WaitStrategy: { ";
-        m_waitStrategy->writeDescriptionTo(stream);
+        // stream << typeName<decltype(m_waitStrategy)>(); //xTODO: change
+        stream << typeid(decltype(m_waitStrategy)).name();
         stream << " }, Cursor: { ";
         m_cursor->writeDescriptionTo(stream);
         stream << " }, GatingSequences: [ ";
@@ -131,9 +132,9 @@ protected:
     std::vector<std::shared_ptr<ISequence>> m_gatingSequences;
 
     std::int32_t                            m_bufferSize;
-    std::shared_ptr<IWaitStrategy>          m_waitStrategy;
+    std::shared_ptr<WaitStrategy>           m_waitStrategy;
     std::shared_ptr<Sequence>               m_cursor;
-    IWaitStrategy                          &m_waitStrategyRef;
+    WaitStrategy                           &m_waitStrategyRef;
     Sequence                               &m_cursorRef;
 };
 

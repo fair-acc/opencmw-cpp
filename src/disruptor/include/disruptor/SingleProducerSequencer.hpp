@@ -3,10 +3,10 @@
 #include <atomic>
 
 #include "Exceptions.hpp"
-#include "IWaitStrategy.hpp"
 #include "Sequencer.hpp"
 #include "SpinWait.hpp"
 #include "Util.hpp"
+#include "WaitStrategy.hpp"
 
 namespace opencmw::disruptor {
 
@@ -24,7 +24,7 @@ class SingleProducerSequencer : public Sequencer<T> {
     };
 
 public:
-    SingleProducerSequencer(std::int32_t bufferSize, const std::shared_ptr<IWaitStrategy> &waitStrategy)
+    SingleProducerSequencer(std::int32_t bufferSize, const std::shared_ptr<WaitStrategy> &waitStrategy)
         : Sequencer<T>(bufferSize, waitStrategy)
         , m_fields(Sequence::InitialCursorValue, Sequence::InitialCursorValue) {}
 
@@ -91,7 +91,9 @@ public:
             SpinWait     spinWait;
             std::int64_t minSequence;
             while (wrapPoint > (minSequence = Util::getMinimumSequence(this->m_gatingSequences, nextValue))) {
-                this->m_waitStrategyRef.signalAllWhenBlocking();
+                if constexpr (requires { this->m_waitStrategyRef.signalAllWhenBlocking(); }) {
+                    this->m_waitStrategyRef.signalAllWhenBlocking();
+                }
                 spinWait.spinOnce();
             }
 
@@ -161,7 +163,9 @@ public:
      */
     void publish(std::int64_t sequence) override {
         this->m_cursorRef.setValue(sequence);
-        this->m_waitStrategyRef.signalAllWhenBlocking();
+        if constexpr (requires { this->m_waitStrategyRef.signalAllWhenBlocking(); }) {
+            this->m_waitStrategyRef.signalAllWhenBlocking();
+        }
     }
 
     /**

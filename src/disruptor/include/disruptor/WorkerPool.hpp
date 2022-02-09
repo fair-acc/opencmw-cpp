@@ -5,11 +5,11 @@
 #include <functional>
 #include <memory>
 
-#include "BlockingWaitStrategy.hpp"
 #include "Exceptions.hpp"
 #include "IExecutor.hpp"
 #include "RingBuffer.hpp"
 #include "Sequence.hpp"
+#include "WaitStrategy.hpp"
 #include "WorkProcessor.hpp"
 
 namespace opencmw::disruptor {

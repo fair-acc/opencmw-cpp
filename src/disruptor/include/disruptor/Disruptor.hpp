@@ -75,7 +75,7 @@ public:
             std::int32_t                           ringBufferSize,
             const std::shared_ptr<ITaskScheduler> &taskScheduler,
             ProducerType                           producerType,
-            const std::shared_ptr<IWaitStrategy>  &waitStrategy)
+            const std::shared_ptr<WaitStrategy>   &waitStrategy)
         : DisruptorCore(RingBuffer<T>::create(producerType, eventFactory, ringBufferSize, waitStrategy), std::make_shared<BasicExecutor>(taskScheduler)) {
     }
 

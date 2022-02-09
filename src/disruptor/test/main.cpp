@@ -4,10 +4,10 @@
 
 #include <variant>
 
-#include <disruptor/BusySpinWaitStrategy.hpp>
 #include <disruptor/Disruptor.hpp>
 #include <disruptor/RingBuffer.hpp>
 #include <disruptor/RoundRobinThreadAffinedTaskScheduler.hpp>
+#include <disruptor/WaitStrategy.hpp>
 
 using namespace opencmw::disruptor;
 
@@ -103,7 +103,7 @@ std::vector<std::shared_ptr<IEventHandler<TestEvent>>> makeHandlers(const Disrup
                     std::visit(overloaded{
                                        [&](TestEvent::ResetTo resetTo) {
                                            value = resetTo.value;
-                                           //REQUIRE(resetTo.value % 100 == 1);
+                                           // REQUIRE(resetTo.value % 100 == 1);
                                            assert(resetTo.value % 100 == 1);
                                        },
                                        [&](TestEvent::Next) { value++; },
@@ -113,7 +113,7 @@ std::vector<std::shared_ptr<IEventHandler<TestEvent>>> makeHandlers(const Disrup
                                        },
                                        [&]([[maybe_unused]] TestEvent::Check check) {
                                            assert(check.value % 100 == 0);
-                                           //REQUIRE(check.value % 100 == 0);
+                                           // REQUIRE(check.value % 100 == 0);
                                        } },
                             event.command);
                 });
@@ -153,7 +153,7 @@ TEST_CASE("Disruptor stress test", "[Disruptor]") {
         std::cerr << "Waiting for publisher threads to finish...\n";
     }
     std::cerr << "Joined threads.\n";
-    const auto time_end = std::chrono::system_clock::now();
+    const auto                                      time_end     = std::chrono::system_clock::now();
     std::chrono::duration<double, std::ratio<1, 1>> time_elapsed = time_end - time_start;
     std::cout << "seconds to finish: " << time_elapsed.count() << std::endl;
     const auto msgPerSeconds = iterations * processorsCount / time_elapsed.count();

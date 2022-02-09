@@ -7,14 +7,13 @@
 #include "FixedSequenceGroup.hpp"
 #include "IHighestPublishedSequenceProvider.hpp"
 #include "ISequenceBarrier.hpp"
-#include "IWaitStrategy.hpp"
 #include "Sequence.hpp"
+#include "WaitStrategy.hpp"
 
 namespace opencmw::disruptor {
 
 class IHighestPublishedSequenceProvider;
 class ISequence;
-class IWaitStrategy;
 class Sequence;
 
 /**
@@ -23,12 +22,12 @@ class Sequence;
  */
 class ProcessingSequenceBarrier : public ISequenceBarrier, public std::enable_shared_from_this<ProcessingSequenceBarrier> {
 private:
-    std::shared_ptr<IWaitStrategy>                     m_waitStrategy;
+    std::shared_ptr<WaitStrategy>                      m_waitStrategy;
     std::shared_ptr<ISequence>                         m_dependentSequence;
     std::shared_ptr<Sequence>                          m_cursorSequence;
     std::shared_ptr<IHighestPublishedSequenceProvider> m_sequenceProvider;
 
-    IWaitStrategy                                     &m_waitStrategyRef;
+    WaitStrategy                                      &m_waitStrategyRef;
     ISequence                                         &m_dependentSequenceRef;
     Sequence                                          &m_cursorSequenceRef;
     IHighestPublishedSequenceProvider                 &m_sequenceProviderRef;
@@ -37,7 +36,7 @@ private:
 
 public:
     ProcessingSequenceBarrier(const std::shared_ptr<IHighestPublishedSequenceProvider> &sequenceProvider,
-            const std::shared_ptr<IWaitStrategy>                                       &waitStrategy,
+            const std::shared_ptr<WaitStrategy>                                        &waitStrategy,
             const std::shared_ptr<Sequence>                                            &cursorSequence,
             const std::vector<std::shared_ptr<ISequence>>                              &dependentSequences)
         : m_waitStrategy(waitStrategy)
@@ -73,7 +72,9 @@ public:
 
     void alert() override {
         m_alerted = true;
-        m_waitStrategyRef.signalAllWhenBlocking();
+        if constexpr (requires { m_waitStrategyRef.signalAllWhenBlocking(); }) {
+            m_waitStrategyRef.signalAllWhenBlocking();
+        }
     }
 
     void clearAlert() override {

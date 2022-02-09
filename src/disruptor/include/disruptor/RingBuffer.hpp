@@ -4,7 +4,6 @@
 #include <ostream>
 #include <type_traits>
 
-#include "BlockingWaitStrategy.hpp"
 #include "Exceptions.hpp"
 #include "ICursored.hpp"
 #include "IEventSequencer.hpp"
@@ -16,6 +15,7 @@
 #include "ProducerType.hpp"
 #include "SingleProducerSequencer.hpp"
 #include "Util.hpp"
+#include "WaitStrategy.hpp"
 
 namespace opencmw::disruptor {
 
@@ -102,7 +102,7 @@ public:
      * \param waitStrategy used to determine how to wait for new elements to become available.
      *
      */
-    static std::shared_ptr<RingBuffer<T>> createMultiProducer(const std::function<T()> &factory, std::int32_t bufferSize, const std::shared_ptr<IWaitStrategy> &waitStrategy) {
+    static std::shared_ptr<RingBuffer<T>> createMultiProducer(const std::function<T()> &factory, std::int32_t bufferSize, const std::shared_ptr<WaitStrategy> &waitStrategy) {
         return std::make_shared<RingBuffer<T>>(factory, std::make_shared<MultiProducerSequencer<T>>(bufferSize, waitStrategy));
     }
 
@@ -124,7 +124,7 @@ public:
      * \param waitStrategy used to determine how to wait for new elements to become available.
      *
      */
-    static std::shared_ptr<RingBuffer<T>> createSingleProducer(const std::function<T()> &factory, std::int32_t bufferSize, const std::shared_ptr<IWaitStrategy> &waitStrategy) {
+    static std::shared_ptr<RingBuffer<T>> createSingleProducer(const std::function<T()> &factory, std::int32_t bufferSize, const std::shared_ptr<WaitStrategy> &waitStrategy) {
         return std::make_shared<RingBuffer<T>>(factory, std::make_shared<SingleProducerSequencer<T>>(bufferSize, waitStrategy));
     }
 
@@ -148,7 +148,7 @@ public:
      * \param waitStrategy used to determine how to wait for new elements to become available.
      *
      */
-    static std::shared_ptr<RingBuffer<T>> create(ProducerType producerType, const std::function<T()> &factory, std::int32_t bufferSize, const std::shared_ptr<IWaitStrategy> &waitStrategy) {
+    static std::shared_ptr<RingBuffer<T>> create(ProducerType producerType, const std::function<T()> &factory, std::int32_t bufferSize, const std::shared_ptr<WaitStrategy> &waitStrategy) {
         switch (producerType) {
         case ProducerType::Single:
             return createSingleProducer(factory, bufferSize, waitStrategy);
