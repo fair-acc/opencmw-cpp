@@ -34,14 +34,14 @@ class RingBuffer : public IEventSequencer<T>, public ICursored, public std::enab
     static_assert(std::is_class<T>::value, "T should be a class");
 
 private:
-    char                           padding0[56];
+    char                           padding0[56] = {};
     mutable std::vector<T>         m_entries;
     std::int32_t                   m_indexMask;
     std::int32_t                   m_bufferSize;
     std::shared_ptr<ISequencer<T>> m_sequencer;
-    char                           padding1[40];
+    char                           padding1[40] = {};
 
-    static const std::int32_t      m_bufferPad = 128 / sizeof(int *);
+    static const std::int32_t      m_bufferPad  = 128 / sizeof(int *);
 
     template<typename... TItem>
     static std::int32_t getGreatestLength(const std::initializer_list<TItem> &...l) {
@@ -62,10 +62,8 @@ public:
      * \param eventFactory eventFactory to create entries for filling the RingBuffer
      * \param sequencer waiting strategy employed by processorsToTrack waiting on entries becoming available.
      */
-    RingBuffer(const std::function<T()> &eventFactory, const std::shared_ptr<ISequencer<T>> &sequencer) {
-        m_sequencer  = sequencer;
-        m_bufferSize = sequencer->bufferSize();
-
+    RingBuffer(const std::function<T()> &eventFactory, const std::shared_ptr<ISequencer<T>> &sequencer)
+        : m_bufferSize(sequencer->bufferSize()), m_sequencer(sequencer) {
         if (m_bufferSize < 1) {
             DISRUPTOR_THROW_ARGUMENT_EXCEPTION("bufferSize must not be less than 1");
         }

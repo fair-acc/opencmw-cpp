@@ -36,10 +36,7 @@ public:
 
     template<typename TEventHandler>
     PollState poll(TEventHandler &&eventHandler) {
-#if DISRUPTOR_CPP_17
-        static_assert(std::is_invocable_r<bool, TEventHandler, T &, std::int64_t, bool>::value,
-                "eventHandler should have the following signature: bool(T&, std::int64_t, bool)");
-#endif
+        static_assert(std::is_invocable_r<bool, TEventHandler, T &, std::int64_t, bool>::value, "eventHandler should have the following signature: bool(T&, std::int64_t, bool)");
 
         auto currentSequence   = m_sequence->value();
         auto nextSequence      = currentSequence + 1;

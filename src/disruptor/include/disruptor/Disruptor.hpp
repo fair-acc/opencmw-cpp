@@ -1,12 +1,14 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <ratio>
+#include <type_traits>
 
 #include "BasicExecutor.hpp"
 #include "BatchEventProcessor.hpp"
-#include "ClockConfig.hpp"
 #include "ConsumerRepository.hpp"
 #include "EventHandlerGroup.hpp"
 #include "ExceptionHandlerSetting.hpp"
@@ -38,7 +40,8 @@ namespace opencmw::disruptor {
  */
 template<typename T>
 class DisruptorCore : public std::enable_shared_from_this<DisruptorCore<T>> {
-private:
+    using Clock                 = std::conditional_t<std::chrono::high_resolution_clock::is_steady, std::chrono::high_resolution_clock, std::chrono::steady_clock>;
+    using Duration              = Clock::duration;
     using EventHandlerGroupType = EventHandlerGroup<T, ::opencmw::disruptor::DisruptorCore>;
 
     std::shared_ptr<RingBuffer<T>>         m_ringBuffer;
@@ -309,7 +312,7 @@ public:
      */
     void shutdown() {
         try {
-            shutdown(ClockConfig::Duration::max());
+            shutdown(Duration::max());
         } catch (TimeoutException &ex) {
             m_exceptionHandler->handleOnShutdownException(ex);
         }
@@ -319,14 +322,14 @@ public:
      * Waits until all events currently in the disruptor have been processed by all event processors and then halts the processors.
      * This method will not shutdown the executor, nor will it await the final termination of the processor threads
      *
-     * \param timeout the amount of time to wait for all events to be processed. ClockConfig::Duration::max() will give an infinite timeout
+     * \param timeout the amount of time to wait for all events to be processed. Duration::max() will give an infinite timeout
      */
-    void shutdown(ClockConfig::Duration timeout) {
-        const auto waitInfinitely = timeout == ClockConfig::Duration::max();
+    void shutdown(Duration timeout) {
+        const auto waitInfinitely = timeout == Duration::max();
 
-        const auto timeoutAt      = ClockConfig::Clock::now() + timeout;
+        const auto timeoutAt      = Clock::now() + timeout;
         while (hasBacklog()) {
-            if (!waitInfinitely && timeout.count() >= 0 && ClockConfig::Clock::now() > timeoutAt)
+            if (!waitInfinitely && timeout.count() >= 0 && Clock::now() > timeoutAt)
                 DISRUPTOR_THROW_TIMEOUT_EXCEPTION();
 
             std::this_thread::yield();
@@ -462,7 +465,7 @@ public:
     template<typename... Args>
     Disruptor(std::size_t threadsCount, Args &&...args) {
         _scheduler = std::make_shared<Scheduler>();
-        _scheduler->start(static_cast<std::int32_t>(threadsCount));
+        _scheduler->start(threadsCount);
 
         _waitStrategy  = std::make_shared<WaitStrategy>();
         _disruptorCore = std::make_shared<DisruptorCore<EventType>>(std::forward<Args>(args)..., _scheduler, ProducerType, _waitStrategy);

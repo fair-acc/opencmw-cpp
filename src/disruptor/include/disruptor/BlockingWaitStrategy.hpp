@@ -2,9 +2,12 @@
 
 #include <condition_variable>
 #include <mutex>
+#include <ostream>
 #include <thread>
 
+#include "ISequenceBarrier.hpp"
 #include "IWaitStrategy.hpp"
+#include "Sequence.hpp"
 
 namespace opencmw::disruptor {
 
@@ -24,14 +27,37 @@ public:
     std::int64_t waitFor(std::int64_t sequence,
             Sequence                 &cursor,
             ISequence                &dependentSequence,
-            ISequenceBarrier         &barrier) override;
+            ISequenceBarrier         &barrier) override {
+        if (cursor.value() < sequence) {
+            std::unique_lock uniqueLock(m_gate);
+
+            while (cursor.value() < sequence) {
+                barrier.checkAlert();
+
+                m_conditionVariable.wait(uniqueLock);
+            }
+        }
+
+        std::int64_t availableSequence;
+        while ((availableSequence = dependentSequence.value()) < sequence) {
+            barrier.checkAlert();
+        }
+
+        return availableSequence;
+    }
 
     /**
      * \see IWaitStrategy::signalAllWhenBlocking
      */
-    void signalAllWhenBlocking() override;
+    void signalAllWhenBlocking() override {
+        std::unique_lock uniqueLock(m_gate);
 
-    void writeDescriptionTo(std::ostream &stream) const override;
+        m_conditionVariable.notify_all();
+    }
+
+    void writeDescriptionTo(std::ostream &stream) const override {
+        stream << "BlockingWaitStrategy";
+    }
 };
 
 } // namespace opencmw::disruptor

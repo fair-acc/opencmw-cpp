@@ -1,7 +1,13 @@
 #pragma once
 
+#include <regex>
 #include <string>
 #include <typeinfo>
+#include <vector>
+
+#if defined(__GNUC__)
+#include <cxxabi.h>
+#endif /* __GNUC__ */
 
 namespace opencmw::disruptor {
 
@@ -12,18 +18,51 @@ private:
     std::string           m_name;
 
 public:
-    explicit TypeInfo(const std::type_info &typeInfo);
+    explicit TypeInfo(const std::type_info &typeInfo)
+        : m_typeInfo(&typeInfo)
+        , m_fullyQualifiedName(dotNetify(demangleTypeName(m_typeInfo->name())))
+        , m_name(unqualifyName(m_fullyQualifiedName)) {
+    }
 
-    const std::type_info &intrinsicTypeInfo() const;
+    const std::type_info &intrinsicTypeInfo() const { return *m_typeInfo; }
+    const std::string    &fullyQualifiedName() const { return m_fullyQualifiedName; }
+    const std::string    &name() const { return m_name; }
 
-    const std::string    &fullyQualifiedName() const;
-    const std::string    &name() const;
+    bool                  operator==(const TypeInfo &rhs) const { return intrinsicTypeInfo() == rhs.intrinsicTypeInfo(); }
 
-    bool                  operator==(const TypeInfo &rhs) const;
+    static std::string    dotNetify(const std::string &typeName) {
+        std::regex pattern("::");
+        return std::regex_replace(typeName, pattern, ".");
+    }
+    static std::string unqualifyName(const std::string &fullyQualifiedName) {
+        auto position = fullyQualifiedName.rfind('.');
+        if (position == std::string::npos) {
+            return {};
+        } else {
+            return fullyQualifiedName.substr(position);
+        }
+    }
+    static std::string demangleTypeName(const std::string &typeName) {
+#if defined(__GNUC__)
+        int  status;
 
-    static std::string    dotNetify(const std::string &typeName);
-    static std::string    unqualifyName(const std::string &fullyQualifiedName);
-    static std::string    demangleTypeName(const std::string &typeName);
+        auto demangledName = abi::__cxa_demangle(typeName.c_str(), 0, 0, &status);
+        if (demangledName == nullptr)
+            return typeName;
+
+        std::string result = demangledName;
+        free(demangledName);
+        return result;
+#else
+        std::string demangled = typeName;
+        demangled             = std::regex_replace(demangled, std::regex("(const\\s+|\\s+const)"), std::string());
+        demangled             = std::regex_replace(demangled, std::regex("(volatile\\s+|\\s+volatile)"), std::string());
+        demangled             = std::regex_replace(demangled, std::regex("(static\\s+|\\s+static)"), std::string());
+        demangled             = std::regex_replace(demangled, std::regex("(class\\s+|\\s+class)"), std::string());
+        demangled             = std::regex_replace(demangled, std::regex("(struct\\s+|\\s+struct)"), std::string());
+        return demangled;
+#endif /* defined(__GNUC__) */
+    }
 };
 
 namespace Utils {

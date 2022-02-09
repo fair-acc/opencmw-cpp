@@ -2,7 +2,9 @@
 
 #include <mutex>
 
+#include "ISequenceBarrier.hpp"
 #include "IWaitStrategy.hpp"
+#include "Sequence.hpp"
 
 namespace opencmw::disruptor {
 
@@ -16,16 +18,26 @@ public:
      * \see IWaitStrategy::waitFor
      */
     std::int64_t waitFor(std::int64_t sequence,
-            Sequence                 &cursor,
-            ISequence                &dependentSequence,
-            ISequenceBarrier         &barrier) override;
+            Sequence & /*cursor*/,
+            ISequence        &dependentSequence,
+            ISequenceBarrier &barrier) override {
+        std::int64_t availableSequence;
+
+        while ((availableSequence = dependentSequence.value()) < sequence) {
+            barrier.checkAlert();
+        }
+
+        return availableSequence;
+    }
 
     /**
      * \see IWaitStrategy::signalAllWhenBlocking
      */
-    void signalAllWhenBlocking() override;
+    void signalAllWhenBlocking() override {}
 
-    void writeDescriptionTo(std::ostream &stream) const override;
+    void writeDescriptionTo(std::ostream &stream) const override {
+        stream << "BusySpinWaitStrategy";
+    }
 };
 
 } // namespace opencmw::disruptor

@@ -1,8 +1,6 @@
-#include "stdafx.hpp"
 #include "ThreadHelper.hpp"
 
-#include "BuildConfig.hpp"
-
+#define DISRUPTOR_OS_FAMILY_LINUX
 #ifdef DISRUPTOR_OS_FAMILY_LINUX
 
 #include <string>

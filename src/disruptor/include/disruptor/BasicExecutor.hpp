@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "IExecutor.hpp"
+#include "ITaskScheduler.hpp"
 
 namespace opencmw::disruptor {
 
@@ -19,16 +20,23 @@ public:
     /**
      * Create a new BasicExecutor with a given TaskScheduler that will handle low-level queuing of commands execution.
      */
-    explicit BasicExecutor(const std::shared_ptr<ITaskScheduler> &taskScheduler);
+    explicit BasicExecutor(const std::shared_ptr<ITaskScheduler> &taskScheduler)
+        : m_taskScheduler(taskScheduler) {
+    }
 
     /**
      * Start a new task executiong the given command in the current taskscheduler
      * \param command
      */
-    std::future<void> execute(const std::function<void()> &command) override;
+    std::future<void> execute(const std::function<void()> &command) override {
+        return m_taskScheduler->scheduleAndStart(std::packaged_task<void()>([this, command] {
+            const std::function<void()> &command1 = command;
+            try {
+                command1();
+            } catch (...) {
 
-private:
-    void executeCommand(const std::function<void()> &command);
+            } }));
+    }
 };
 
 } // namespace opencmw::disruptor

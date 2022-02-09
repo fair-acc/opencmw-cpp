@@ -1,7 +1,4 @@
-#include "stdafx.hpp"
 #include "ThreadHelper.hpp"
-
-#include "BuildConfig.hpp"
 
 #ifdef DISRUPTOR_OS_FAMILY_MACOS
 

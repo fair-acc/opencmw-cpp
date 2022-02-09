@@ -25,11 +25,7 @@ public:
      * \param barrier barrier the IEventProcessor is waiting on.
      * \returns the sequence that is available which may be greater than the requested sequence.
      */
-    virtual std::int64_t waitFor(std::int64_t sequence,
-            Sequence                         &cursor,
-            ISequence                        &dependentSequence,
-            ISequenceBarrier                 &barrier)
-            = 0;
+    virtual std::int64_t waitFor(std::int64_t sequence, Sequence &cursor, ISequence &dependentSequence, ISequenceBarrier &barrier) = 0;
 
     /**
      * Signal those IEventProcessor waiting that the cursor has advanced.
