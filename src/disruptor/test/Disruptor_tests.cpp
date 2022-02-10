@@ -1,6 +1,4 @@
-
-#include <catch2/catch.hpp>
-
+#include <cassert>
 #include <variant>
 
 #include <disruptor/Disruptor.hpp>
@@ -123,7 +121,7 @@ std::vector<std::shared_ptr<IEventHandler<TestEvent>>> makeHandlers(const Disrup
     return result;
 }
 
-TEST_CASE("Disruptor stress test", "[Disruptor]") {
+int main() {
     auto processorsCount = std::max(std::thread::hardware_concurrency() / 2, 1u);
 
     Disruptor<TestEvent, ProducerType::Multi, RoundRobinThreadAffinedTaskScheduler, BusySpinWaitStrategy>

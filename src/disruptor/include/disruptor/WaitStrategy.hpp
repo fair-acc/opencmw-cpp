@@ -3,8 +3,10 @@
 
 #include <condition_variable>
 #include <cstdint>
+#include <mutex>
 #include <thread>
 
+#include "Exceptions.hpp"
 #include "ISequence.hpp"
 #include "ISequenceBarrier.hpp"
 #include "Sequence.hpp"
@@ -27,6 +29,7 @@ template<typename T>
 constexpr bool isWaitStrategy = requires(T /*const*/ t, const std::int64_t sequence, const Sequence &cursor, ISequence &dependentSequence, ISequenceBarrier &barrier) {
     { t.waitFor(sequence, cursor, dependentSequence, barrier) } -> std::same_as<std::int64_t>;
 };
+static_assert(!isWaitStrategy<int>);
 
 template<typename T>
 concept WaitStrategyConcept = isWaitStrategy<T>;
@@ -103,6 +106,7 @@ struct BusySpinWaitStrategy : public WaitStrategy {
     void signalAllWhenBlocking() override { /* does not block by design */
     }
 };
+static_assert(WaitStrategyConcept<BusySpinWaitStrategy>);
 
 /**
  * Sleeping strategy that initially spins, then uses a std::this_thread::yield(), and eventually sleep. This strategy is a good compromise between performance and CPU resource.
@@ -144,6 +148,7 @@ public:
     void signalAllWhenBlocking() override { /* does not block by design */
     }
 };
+static_assert(WaitStrategyConcept<SleepingWaitStrategy>);
 
 /**
  * Spin strategy that uses a SpinWait for IEventProcessors waiting on a barrier.
@@ -165,6 +170,7 @@ struct SpinWaitWaitStrategy : public WaitStrategy {
     void signalAllWhenBlocking() override { /* does not block by design */
     }
 };
+static_assert(WaitStrategyConcept<SpinWaitWaitStrategy>);
 
 class TimeoutBlockingWaitStrategy : public WaitStrategy {
     using Clock = std::conditional_t<std::chrono::high_resolution_clock::is_steady, std::chrono::high_resolution_clock, std::chrono::steady_clock>;
@@ -204,6 +210,7 @@ public:
         m_conditionVariable.notify_all();
     }
 };
+static_assert(WaitStrategyConcept<TimeoutBlockingWaitStrategy>);
 
 /**
  * Yielding strategy that uses a Thread.Yield() for IEventProcessors waiting on a barrier after an initially spinning.
@@ -237,6 +244,7 @@ public:
     void signalAllWhenBlocking() override { /* does not block by design */
     }
 };
+static_assert(WaitStrategyConcept<YieldingWaitStrategy>);
 
 } // namespace opencmw::disruptor
 

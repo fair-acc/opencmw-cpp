@@ -1,8 +1,10 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <ranges>
 #include <vector>
 
 #include "IEventProcessor.hpp"
@@ -65,8 +67,7 @@ inline std::int64_t getMinimumSequence(const std::vector<std::shared_ptr<ISequen
     if (sequences.empty()) {
         return minimum;
     } else {
-        return std::min(minimum,
-                std::ranges::min(sequences, std::less{}, [](auto &&sequence) { return sequence->value(); })->value());
+        return std::min(minimum, std::ranges::min(sequences, std::less{}, [](const auto &sequence) { return sequence->value(); })->value());
     }
 }
 
@@ -79,7 +80,7 @@ inline std::int64_t getMinimumSequence(const std::vector<std::shared_ptr<ISequen
 inline std::vector<std::shared_ptr<ISequence>> getSequencesFor(const std::vector<std::shared_ptr<IEventProcessor>> &processors) {
     // Ah C++20 ranges, no conversions to vector yet
     std::vector<std::shared_ptr<ISequence>> sequences(processors.size());
-    std::ranges::transform(processors, sequences.begin(), [](auto &&processor) { return processor->sequence(); });
+    std::ranges::transform(processors, sequences.begin(), [](const auto &processor) { return processor->sequence(); });
     return sequences;
 }
 
