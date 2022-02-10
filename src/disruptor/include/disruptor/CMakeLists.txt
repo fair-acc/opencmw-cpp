@@ -1,8 +1,5 @@
 
 set(Disruptor_sources
-        ThreadHelper_Linux.cpp
-        ThreadHelper_macOS.cpp
-        ThreadHelper_Windows.cpp
         )
 
 set(Disruptor_headers

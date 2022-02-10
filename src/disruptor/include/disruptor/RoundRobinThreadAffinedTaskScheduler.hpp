@@ -69,9 +69,9 @@ private:
 
         const auto        processorIndex = threadId % processorCount;
 
-        const auto        affinityMask   = ThreadHelper::AffinityMask(1ull << processorIndex);
+        const auto        affinityMask   = thread_helper::AffinityMask(1ULL << processorIndex);
 
-        ThreadHelper::setThreadAffinity(affinityMask);
+        thread_helper::setThreadAffinity(affinityMask);
 
         while (m_started) {
             std::packaged_task<void()> task;
@@ -81,7 +81,7 @@ private:
         }
     }
 
-    void tryExecuteTask(std::packaged_task<void()> &task) {
+    void tryExecuteTask(std::packaged_task<void()> &task) const {
         task();
     }
 };
