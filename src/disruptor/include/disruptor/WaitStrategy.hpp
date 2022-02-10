@@ -246,6 +246,14 @@ public:
 };
 static_assert(WaitStrategyConcept<YieldingWaitStrategy>);
 
+struct NoWaitStrategy {
+    std::int64_t waitFor(const std::int64_t sequence, const Sequence & /*cursor*/, const ISequence &/*dependentSequence*/, const ISequenceBarrier &/*barrier*/) const {
+        // wait for nothing
+        return sequence;
+    }
+};
+static_assert(WaitStrategyConcept<NoWaitStrategy>);
+
 } // namespace opencmw::disruptor
 
 #endif // WAIT_STRATEGY_CPP
