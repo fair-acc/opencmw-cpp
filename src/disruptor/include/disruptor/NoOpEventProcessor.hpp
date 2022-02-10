@@ -5,7 +5,6 @@
 #include <type_traits>
 
 #include "IEventProcessor.hpp"
-#include "InvalidOperationException.hpp"
 #include "ISequence.hpp"
 #include "RingBuffer.hpp"
 
