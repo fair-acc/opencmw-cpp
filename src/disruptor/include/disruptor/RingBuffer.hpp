@@ -31,13 +31,10 @@ concept ContainsEventTranslators = requires(Container container) {
  */
 template<typename T>
 class RingBuffer : public IEventSequencer<T>, public ICursored, public std::enable_shared_from_this<RingBuffer<T>> {
-    static_assert(std::is_class<T>::value, "T should be a class");
-
-private:
     char                           padding0[56] = {};
     mutable std::vector<T>         m_entries;
-    std::int32_t                   m_indexMask;
-    std::int32_t                   m_bufferSize;
+    std::int32_t                   m_indexMask{};
+    std::int32_t                   m_bufferSize{};
     std::shared_ptr<ISequencer<T>> m_sequencer;
     char                           padding1[40] = {};
 
@@ -45,14 +42,8 @@ private:
 
     template<typename... TItem>
     static std::int32_t getGreatestLength(const std::initializer_list<TItem> &...l) {
-        const std::size_t lengths[] = { l.size()... };
-        auto              length    = std::numeric_limits<std::size_t>::min();
-        for (auto i = 0u; i < sizeof...(l); ++i) {
-            if (lengths[i] > length)
-                length = lengths[i];
-        }
-
-        return static_cast<std::int32_t>(length);
+        const std::vector<std::size_t> lengths = { l.size()... };
+        return lengths.empty() ? 0 : static_cast<std::int32_t>(*std::ranges::max_element(lengths.begin(), lengths.end()));
     }
 
 public:
@@ -222,17 +213,6 @@ public:
         m_sequencer->publish(lo, hi);
     }
 
-    // deprecated
-    void resetTo(std::int64_t sequence) {
-        m_sequencer->claim(sequence);
-        m_sequencer->publish(sequence);
-    }
-
-    T &claimAndGetPreallocated(std::int64_t sequence) {
-        m_sequencer->claim(sequence);
-        return (*this)[sequence];
-    }
-
     bool isPublished(std::int64_t sequence) {
         return m_sequencer->isAvailable(sequence);
     }
@@ -287,7 +267,7 @@ public:
             auto sequence = m_sequencer->tryNext();
             translateAndPublish(translator, sequence);
             return true;
-        } catch (InsufficientCapacityException &) {
+        } catch (const InsufficientCapacityException &) {
             return false;
         }
     }
@@ -306,7 +286,7 @@ public:
             auto sequence = m_sequencer->tryNext();
             translateAndPublish(translator, sequence, args...);
             return true;
-        } catch (InsufficientCapacityException &) {
+        } catch (const InsufficientCapacityException &) {
             return false;
         }
     }
@@ -335,7 +315,7 @@ public:
             auto finalSequence = m_sequencer->tryNext(batchSize);
             translateAndPublishBatch(translators, batchStartsAt, batchSize, finalSequence);
             return true;
-        } catch (InsufficientCapacityException &) {
+        } catch (const InsufficientCapacityException &) {
             return false;
         }
     }
@@ -368,7 +348,7 @@ public:
             auto finalSequence = m_sequencer->tryNext(batchSize);
             translateAndPublishBatch(translator, batchStartsAt, batchSize, finalSequence, args...);
             return true;
-        } catch (InsufficientCapacityException &) {
+        } catch (const InsufficientCapacityException &) {
             return false;
         }
     }
@@ -461,10 +441,10 @@ private:
 
 } // namespace opencmw::disruptor
 
-namespace std {
+namespace opencmw {
 
 template<typename T>
-ostream &operator<<(ostream &stream, const opencmw::disruptor::RingBuffer<T> &ringBuffer) {
+std::ostream &operator<<(std::ostream &stream, const opencmw::disruptor::RingBuffer<T> &ringBuffer) {
     stream << "RingBuffer: { ";
     ringBuffer.writeDescriptionTo(stream);
     stream << " }";
@@ -472,4 +452,4 @@ ostream &operator<<(ostream &stream, const opencmw::disruptor::RingBuffer<T> &ri
     return stream;
 }
 
-} // namespace std
+} // namespace opencmw
