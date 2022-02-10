@@ -1,5 +1,3 @@
-#ifndef OPENCMW_CPP_WAITSTRATEGY_TESTS_H
-#define OPENCMW_CPP_WAITSTRATEGY_TESTS_H
 
 #include <catch2/catch.hpp>
 
@@ -17,4 +15,3 @@
 //    REQUIRE(!isWaitStrategy<int>);
 //}
 
-#endif // OPENCMW_CPP_WAITSTRATEGY_TESTS_H
