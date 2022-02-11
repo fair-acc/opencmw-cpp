@@ -53,18 +53,11 @@ public:
     }
 
     /**
-     * Claim the next event in sequence for publishing.
-     */
-    std::int64_t next() override {
-        return next(1);
-    }
-
-    /**
-     * Claim the next n events in sequence for publishing.  This is for batch event producing.  Using batch producing requires a little care and some math.
+     * Claim the next n_slots_to_claim events in sequence for publishing.  This is for batch event producing.  Using batch producing requires a little care and some math.
      * <code>
-     *     int n = 10;
-     *     long hi = sequencer.next(n);
-     *     long lo = hi - (n - 1);
+     *     int n_slots_to_claim = 10;
+     *     long hi = sequencer.next(n_slots_to_claim);
+     *     long lo = hi - (n_slots_to_claim - 1);
      *     for (long sequence = lo; sequence<hi; sequence++)
      *     {
      *         // Do work.
@@ -72,12 +65,12 @@ public:
      *     sequencer.publish(lo, hi);
      * </code>
      *
-     * \param n the number of sequences to claim
+     * \param n_slots_to_claim the number of sequences to claim
      * \returns the highest claimed sequence value
      */
-    std::int64_t next(std::int32_t n) override {
-        if (n < 1) {
-            DISRUPTOR_THROW_ARGUMENT_EXCEPTION("n must be > 0");
+    std::int64_t next(std::int32_t n_slots_to_claim) override {
+        if (n_slots_to_claim < 1) {
+            throw std::out_of_range("n_slots_to_claim must be > 0");
         }
 
         std::int64_t current;
@@ -86,7 +79,7 @@ public:
         SpinWait     spinWait;
         do {
             current                           = this->m_cursor->value();
-            next                              = current + n;
+            next                              = current + n_slots_to_claim;
 
             std::int64_t wrapPoint            = next - this->m_bufferSize;
             std::int64_t cachedGatingSequence = m_gatingSequenceCache->value();
@@ -112,24 +105,15 @@ public:
     }
 
     /**
-     * Attempt to claim the next event in sequence for publishing.  Will return the number of the slot if there is at least requiredCapacity slots available.
-     *
-     * \returns the claimed sequence value
-     */
-    std::int64_t tryNext() override {
-        return tryNext(1);
-    }
-
-    /**
      * Attempt to claim the next event in sequence for publishing.  Will return the number of the slot if there is at least n slots available.
      *
      * \param n
      * \param n the number of sequences to claim
      * \returns the claimed sequence value
      */
-    std::int64_t tryNext(std::int32_t n) override {
-        if (n < 1) {
-            DISRUPTOR_THROW_ARGUMENT_EXCEPTION("n must be > 0");
+    std::int64_t tryNext(std::int32_t n_slots_to_claim = 1) override {
+        if (n_slots_to_claim < 1) {
+            throw std::out_of_range("n_slots_to_claim must be > 0");
         }
 
         std::int64_t current;
@@ -137,10 +121,10 @@ public:
 
         do {
             current = this->m_cursor->value();
-            next    = current + n;
+            next    = current + n_slots_to_claim;
 
-            if (!hasAvailableCapacity(this->m_gatingSequences, n, current)) {
-                DISRUPTOR_THROW_INSUFFICIENT_CAPACITY_EXCEPTION();
+            if (!hasAvailableCapacity(this->m_gatingSequences, n_slots_to_claim, current)) {
+                throw no_capacity_exception();
             }
         } while (!this->m_cursor->compareAndSet(current, next));
 

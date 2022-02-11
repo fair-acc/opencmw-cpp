@@ -112,20 +112,12 @@ public:
         return m_sequencer->hasAvailableCapacity(requiredCapacity);
     }
 
-    std::int64_t next() override {
-        return m_sequencer->next();
+    std::int64_t next(std::int32_t n_slots_to_claim = 1) override {
+        return m_sequencer->next(n_slots_to_claim);
     }
 
-    std::int64_t next(std::int32_t n) override {
-        return m_sequencer->next(n);
-    }
-
-    std::int64_t tryNext() override {
-        return m_sequencer->tryNext();
-    }
-
-    std::int64_t tryNext(std::int32_t n) override {
-        return m_sequencer->tryNext(n);
+    std::int64_t tryNext(std::int32_t n_slots_to_claim = 1) override {
+        return m_sequencer->tryNext(n_slots_to_claim);
     }
 
     /**

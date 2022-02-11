@@ -52,35 +52,28 @@ public:
     }
 
     /**
-     * Claim the next event in sequence for publishing.
-     */
-    std::int64_t next() override {
-        return next(1);
-    }
-
-    /**
-     * Claim the next n events in sequence for publishing. This is for batch event producing. Using batch producing requires a little care and some math.
+     * Claim the next n_slots_to_claim events in sequence for publishing. This is for batch event producing. Using batch producing requires a little care and some math.
      * <code>
-     *   int n = 10;
-     *   long hi = sequencer.next(n);
-     *   long lo = hi - (n - 1);
+     *   int n_slots_to_claim = 10;
+     *   long hi = sequencer.next(n_slots_to_claim);
+     *   long lo = hi - (n_slots_to_claim - 1);
      *   for (long sequence = lo; sequence &lt;= hi; sequence++) {
      *   // Do work.
      *    }
      *   sequencer.publish(lo, hi);
      * </code>
      *
-     * \param n the number of sequences to claim
+     * \param n_slots_to_claim the number of sequences to claim
      * \returns the highest claimed sequence value
      */
-    std::int64_t next(std::int32_t n) override {
-        if (n < 1 || n > this->m_bufferSize) {
-            DISRUPTOR_THROW_ARGUMENT_EXCEPTION("n must be > 0 and < bufferSize");
+    std::int64_t next(std::int32_t n_slots_to_claim = 1) override {
+        if (n_slots_to_claim < 1 || n_slots_to_claim > this->m_bufferSize) {
+            throw std::invalid_argument("n_slots_to_claim must be > 0 and < bufferSize");
         }
 
         auto nextValue            = m_fields.nextValue;
 
-        auto nextSequence         = nextValue + n;
+        auto nextSequence         = nextValue + n_slots_to_claim;
         auto wrapPoint            = nextSequence - this->m_bufferSize;
         auto cachedGatingSequence = m_fields.cachedValue;
 
@@ -105,30 +98,21 @@ public:
     }
 
     /**
-     * Attempt to claim the next event in sequence for publishing. Will return the number of the slot if there is at least requiredCapacity slots available.
-     *
-     * \returns the claimed sequence value
-     */
-    std::int64_t tryNext() override {
-        return tryNext(1);
-    }
-
-    /**
      * Attempt to claim the next event in sequence for publishing. Will return the number of the slot if there is at least availableCapacity slots available.
      *
-     * \param n the number of sequences to claim
+     * \param n_slots_to_claim the number of sequences to claim
      * \returns the claimed sequence value
      */
-    std::int64_t tryNext(std::int32_t n) override {
-        if (n < 1) {
-            DISRUPTOR_THROW_ARGUMENT_EXCEPTION("n must be > 0");
+    std::int64_t tryNext(std::int32_t n_slots_to_claim) override {
+        if (n_slots_to_claim < 1) {
+            throw std::invalid_argument("n_slots_to_claim must be > 0");
         }
 
-        if (!hasAvailableCapacity(n)) {
-            DISRUPTOR_THROW_INSUFFICIENT_CAPACITY_EXCEPTION();
+        if (!hasAvailableCapacity(n_slots_to_claim)) {
+            throw no_capacity_exception();
         }
 
-        auto nextSequence  = m_fields.nextValue + n;
+        auto nextSequence  = m_fields.nextValue + n_slots_to_claim;
         m_fields.nextValue = nextSequence;
 
         return nextSequence;

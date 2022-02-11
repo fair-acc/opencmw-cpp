@@ -30,17 +30,10 @@ public:
     virtual std::int64_t getRemainingCapacity() = 0;
 
     /**
-     * Claim the next event in sequence for publishing.
-     *
-     * \returns the claimed sequence value
-     */
-    virtual std::int64_t next() = 0;
-
-    /**
-     * Claim the next n events in sequence for publishing.  This is for batch event producing. Using batch producing requires a little care and some math.
-     * <code> int n = 10;
-     *      long hi = sequencer.next(n);
-     *      long lo = hi - (n - 1);
+     * Claim the next n_slots_to_claim events in sequence for publishing.  This is for batch event producing. Using batch producing requires a little care and some math.
+     * <code> int n_slots_to_claim = 10;
+     *      long hi = sequencer.next(n_slots_to_claim);
+     *      long lo = hi - (n_slots_to_claim - 1);
      *      for (long sequence = lo; sequence &lt;= hi; sequence++)
      *      {
      *      // Do work.
@@ -48,27 +41,19 @@ public:
      *      sequencer.publish(lo, hi);
      * </code>
      *
-     * \param n the number of sequences to claim
+     * \param n_slots_to_claim the number of sequences to claim
      * \returns the highest claimed sequence value
      */
-    virtual std::int64_t next(std::int32_t n) = 0;
+    virtual std::int64_t next(std::int32_t n_slots_to_claim) = 0;
 
     /**
-     * Attempt to claim the next event in sequence for publishing.  Will return the number of the slot if there is at least
-     * <code>requiredCapacity</code>
-     * slots available.
-     * \returns the claimed sequence value
-     */
-    virtual std::int64_t tryNext() = 0;
-
-    /**
-     * Attempt to claim the next n events in sequence for publishing.  Will return the highest numbered slot if there is at least requiredCapacity slots available.
+     * Attempt to claim the next n_slots_to_claim events in sequence for publishing.  Will return the highest numbered slot if there is at least requiredCapacity slots available.
      * Have a look at Next for a description on how to use this method.
      *
-     * \param n the number of sequences to claim
+     * \param n_slots_to_claim the number of sequences to claim
      * \returns the claimed sequence value
      */
-    virtual std::int64_t tryNext(std::int32_t n) = 0;
+    virtual std::int64_t tryNext(std::int32_t n_slots_to_claim) = 0;
 
     /**
      * Publishes a sequence. Call when the event has been filled.
