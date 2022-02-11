@@ -54,29 +54,28 @@ public:
     /**
      * Create a new Disruptor. Will default to BlockingWaitStrategy and ProducerType::Multi
      *
-     * \param eventFactory the factory to create events in the ring buffer
+
      * \param ringBufferSize the size of the ring buffer
      * \param taskScheduler a TaskSchedule to create threads to for processors
      */
-    DisruptorCore(const std::function<T()> &eventFactory, std::int32_t ringBufferSize, const std::shared_ptr<ITaskScheduler> &taskScheduler)
-        : DisruptorCore(RingBuffer<T>::createMultiProducer(eventFactory, ringBufferSize), std::make_shared<BasicExecutor>(taskScheduler)) {
+    DisruptorCore(std::int32_t ringBufferSize, const std::shared_ptr<ITaskScheduler> &taskScheduler)
+        : DisruptorCore(RingBuffer<T>::createMultiProducer(ringBufferSize), std::make_shared<BasicExecutor>(taskScheduler)) {
     }
 
     /**
      * Create a new Disruptor.
      *
-     * \param eventFactory the factory to create events in the ring buffer
      * \param ringBufferSize the size of the ring buffer, must be power of 2
      * \param taskScheduler a TaskScheduler to create threads to for processors
      * \param producerType the claim strategy to use for the ring buffer
      * \param waitStrategy the wait strategy to use for the ring buffer
      */
-    DisruptorCore(const std::function<T()>        &eventFactory,
+    DisruptorCore(
             std::int32_t                           ringBufferSize,
             const std::shared_ptr<ITaskScheduler> &taskScheduler,
             ProducerType                           producerType,
             const std::shared_ptr<WaitStrategy>   &waitStrategy)
-        : DisruptorCore(RingBuffer<T>::create(producerType, eventFactory, ringBufferSize, waitStrategy), std::make_shared<BasicExecutor>(taskScheduler)) {
+        : DisruptorCore(std::make_shared<RingBuffer<T>>(producerType, ringBufferSize, waitStrategy), std::make_shared<BasicExecutor>(taskScheduler)) {
     }
 
     /**
@@ -86,8 +85,8 @@ public:
      * \param ringBufferSize
      * \param executor
      */
-    DisruptorCore(const std::function<T()> &eventFactory, std::int32_t ringBufferSize, const std::shared_ptr<IExecutor> &executor)
-        : DisruptorCore(RingBuffer<T>::createMultiProducer(eventFactory, ringBufferSize), executor) {
+    DisruptorCore(std::int32_t ringBufferSize, const std::shared_ptr<IExecutor> &executor)
+        : DisruptorCore(RingBuffer<T>::createMultiProducer(ringBufferSize), executor) {
     }
 
     /**

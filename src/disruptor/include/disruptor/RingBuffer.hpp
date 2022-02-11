@@ -4,6 +4,8 @@
 #include <ostream>
 #include <type_traits>
 
+#include <fmt/format.h>
+
 #include "Exceptions.hpp"
 #include "ICursored.hpp"
 #include "IEventSequencer.hpp"
@@ -53,8 +55,8 @@ public:
      * \param eventFactory eventFactory to create entries for filling the RingBuffer
      * \param sequencer waiting strategy employed by processorsToTrack waiting on entries becoming available.
      */
-    RingBuffer(const std::function<T()> &eventFactory, const std::shared_ptr<ISequencer<T>> &sequencer)
-        : m_bufferSize(sequencer->bufferSize()), m_sequencer(sequencer) {
+    explicit RingBuffer(const std::shared_ptr<ISequencer<T>> &sequencer)
+        : m_bufferSize(sequencer->bufferSize()), m_indexMask(sequencer->bufferSize() - 1), m_sequencer(sequencer) {
         if (m_bufferSize < 1) {
             DISRUPTOR_THROW_ARGUMENT_EXCEPTION("bufferSize must not be less than 1");
         }
@@ -63,88 +65,27 @@ public:
             DISRUPTOR_THROW_ARGUMENT_EXCEPTION("bufferSize must be a power of 2");
         }
 
-        m_indexMask = m_bufferSize - 1;
+        m_entries.resize(static_cast<std::size_t>(m_bufferSize + 2 * m_bufferPad));
+    }
+
+    explicit RingBuffer(ProducerType producerType, std::int32_t bufferSize, const std::shared_ptr<WaitStrategy> &waitStrategy)
+        : m_bufferSize(bufferSize), m_indexMask(bufferSize - 1) {
+        if (m_bufferSize < 1) {
+            DISRUPTOR_THROW_ARGUMENT_EXCEPTION("bufferSize must not be less than 1");
+        }
+
+        if (Util::ceilingNextPowerOfTwo(m_bufferSize) != m_bufferSize) {
+            DISRUPTOR_THROW_ARGUMENT_EXCEPTION("bufferSize must be a power of 2");
+        }
         m_entries.resize(static_cast<std::size_t>(m_bufferSize + 2 * m_bufferPad));
 
-        fill(eventFactory);
-    }
-
-    /**
-     * Construct a RingBuffer with default strategies of: MultiThreadedLowContentionClaimStrategy and BlockingWaitStrategy
-     *
-     * \param eventFactory eventFactory to create entries for filling the RingBuffer
-     * \param bufferSize number of elements to create within the ring buffer.
-     */
-    RingBuffer(const std::function<T()> &eventFactory, std::int32_t bufferSize)
-        : RingBuffer(eventFactory, std::make_shared<MultiProducerSequencer<T>>(bufferSize, std::make_shared<BlockingWaitStrategy>())) {
-    }
-
-    void fill(const std::function<T()> &eventFactory) {
-        for (std::int32_t i = 0; i < m_bufferSize; ++i) {
-            m_entries[static_cast<std::size_t>(m_bufferPad + i)] = eventFactory();
-        }
-    }
-
-    /**
-     * Create a new multiple producer RingBuffer using the default wait strategy BlockingWaitStrategy
-     *
-     * \param factory used to create the events within the ring buffer.
-     * \param bufferSize number of elements to create within the ring buffer.
-     * \param waitStrategy used to determine how to wait for new elements to become available.
-     *
-     */
-    static std::shared_ptr<RingBuffer<T>> createMultiProducer(const std::function<T()> &factory, std::int32_t bufferSize, const std::shared_ptr<WaitStrategy> &waitStrategy) {
-        return std::make_shared<RingBuffer<T>>(factory, std::make_shared<MultiProducerSequencer<T>>(bufferSize, waitStrategy));
-    }
-
-    /**
-     *
-     * \param factory
-     * \param bufferSize
-     *
-     */
-    static std::shared_ptr<RingBuffer<T>> createMultiProducer(const std::function<T()> &factory, std::int32_t bufferSize) {
-        return createMultiProducer(factory, bufferSize, std::make_shared<BlockingWaitStrategy>());
-    }
-
-    /**
-     * Create a new single producer RingBuffer with the specified wait strategy.
-     *
-     * \param factory used to create the events within the ring buffer.
-     * \param bufferSize number of elements to create within the ring buffer.
-     * \param waitStrategy used to determine how to wait for new elements to become available.
-     *
-     */
-    static std::shared_ptr<RingBuffer<T>> createSingleProducer(const std::function<T()> &factory, std::int32_t bufferSize, const std::shared_ptr<WaitStrategy> &waitStrategy) {
-        return std::make_shared<RingBuffer<T>>(factory, std::make_shared<SingleProducerSequencer<T>>(bufferSize, waitStrategy));
-    }
-
-    /**
-     * Create a new single producer RingBuffer using the default wait strategy BlockingWaitStrategy
-     *
-     * \param factory used to create the events within the ring buffer.
-     * \param bufferSize number of elements to create within the ring buffer.
-     *
-     */
-    static std::shared_ptr<RingBuffer<T>> createSingleProducer(const std::function<T()> &factory, std::int32_t bufferSize) {
-        return createSingleProducer(factory, bufferSize, std::make_shared<BlockingWaitStrategy>());
-    }
-
-    /**
-     * Create a new Ring Buffer with the specified producer type (SINGLE or MULTI)
-     *
-     * \param producerType producer type to use<see cref="ProducerType"/>
-     * \param factory used to create the events within the ring buffer.
-     * \param bufferSize number of elements to create within the ring buffer.
-     * \param waitStrategy used to determine how to wait for new elements to become available.
-     *
-     */
-    static std::shared_ptr<RingBuffer<T>> create(ProducerType producerType, const std::function<T()> &factory, std::int32_t bufferSize, const std::shared_ptr<WaitStrategy> &waitStrategy) {
         switch (producerType) {
         case ProducerType::Single:
-            return createSingleProducer(factory, bufferSize, waitStrategy);
+            m_sequencer = std::make_shared<SingleProducerSequencer<T>>(bufferSize, waitStrategy);
+            break;
         case ProducerType::Multi:
-            return createMultiProducer(factory, bufferSize, waitStrategy);
+            m_sequencer = std::make_shared<MultiProducerSequencer<T>>(bufferSize, waitStrategy);
+            break;
         default:
             DISRUPTOR_THROW_ARGUMENT_OUT_OF_RANGE_EXCEPTION(producerType);
         }
@@ -161,6 +102,10 @@ public:
 
     std::int32_t bufferSize() override {
         return m_bufferSize;
+    }
+
+    auto getSequencer() {
+        return *m_sequencer;
     }
 
     bool hasAvailableCapacity(std::int32_t requiredCapacity) override {
@@ -353,12 +298,6 @@ public:
         }
     }
 
-    void writeDescriptionTo(std::ostream &stream) const {
-        stream << "BufferSize: " << m_bufferSize << ", Sequencer: { ";
-        m_sequencer->writeDescriptionTo(stream);
-        stream << " }";
-    }
-
 private:
     void checkBounds(std::int32_t argumentCount, std::int32_t batchStartsAt, std::int32_t batchSize) {
         checkBatchSizing(batchStartsAt, batchSize);
@@ -445,11 +384,7 @@ namespace opencmw {
 
 template<typename T>
 std::ostream &operator<<(std::ostream &stream, const opencmw::disruptor::RingBuffer<T> &ringBuffer) {
-    stream << "RingBuffer: { ";
-    ringBuffer.writeDescriptionTo(stream);
-    stream << " }";
-
-    return stream;
+    return stream << fmt::format("RingBuffer: {{ {} }} \", Sequencer: {{ {} }}", ringBuffer.bufferSize(), ringBuffer.getSequencer());
 }
 
 } // namespace opencmw

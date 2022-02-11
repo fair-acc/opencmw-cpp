@@ -122,13 +122,12 @@ std::vector<std::shared_ptr<IEventHandler<TestEvent>>> makeHandlers(const Disrup
 }
 
 int main() {
-    auto processorsCount = std::max(std::thread::hardware_concurrency() / 2, 1u);
+    auto                                                                                                  processorsCount = std::max(std::thread::hardware_concurrency() / 2, 1u);
 
-    Disruptor<TestEvent, ProducerType::Multi, RoundRobinThreadAffinedTaskScheduler, BusySpinWaitStrategy>
-            testDisruptor(
-                    processorsCount, [] { return TestEvent(); }, 1 << 16);
+    auto                                                                                                  bufferSize      = 1 << 16;
+    Disruptor<TestEvent, ProducerType::Multi, RoundRobinThreadAffinedTaskScheduler, BusySpinWaitStrategy> testDisruptor(processorsCount, bufferSize);
 
-    auto ringBuffer = testDisruptor->ringBuffer();
+    auto                                                                                                  ringBuffer = testDisruptor->ringBuffer();
     testDisruptor->setDefaultExceptionHandler(std::make_shared<FatalExceptionHandler<TestEvent>>());
 
     const auto iterations     = 200000;
