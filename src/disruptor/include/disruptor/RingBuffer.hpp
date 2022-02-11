@@ -35,8 +35,8 @@ template<typename T>
 class RingBuffer : public IEventSequencer<T>, public ICursored, public std::enable_shared_from_this<RingBuffer<T>> {
     char                           padding0[56] = {};
     mutable std::vector<T>         m_entries;
-    std::int32_t                   m_indexMask{};
     std::int32_t                   m_bufferSize{};
+    std::int32_t                   m_indexMask{};
     std::shared_ptr<ISequencer<T>> m_sequencer;
     char                           padding1[40] = {};
 

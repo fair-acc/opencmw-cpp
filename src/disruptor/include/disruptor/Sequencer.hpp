@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <ostream>
+#include <utility>
 #include <vector>
 
 #include "EventPoller.hpp"
@@ -23,9 +24,9 @@ public:
      * \param bufferSize
      * \param waitStrategy waitStrategy for those waiting on sequences.
      */
-    Sequencer(std::int32_t bufferSize, const std::shared_ptr<WaitStrategy> &waitStrategy)
+    Sequencer(std::int32_t bufferSize, std::shared_ptr<WaitStrategy> waitStrategy)
         : m_bufferSize(bufferSize)
-        , m_waitStrategy(waitStrategy)
+        , m_waitStrategy(std::move(waitStrategy))
         , m_cursor(std::make_shared<Sequence>())
         , m_waitStrategyRef(*m_waitStrategy)
         , m_cursorRef(*m_cursor) {
@@ -58,7 +59,7 @@ public:
     /**
      * Get the value of the cursor indicating the published sequence.
      */
-    std::int64_t cursor() const override {
+    [[nodiscard]] std::int64_t cursor() const override {
         return m_cursorRef.value();
     }
 

@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <ostream>
+#include <utility>
 #include <vector>
 
 #include "ISequence.hpp"
@@ -21,14 +22,14 @@ public:
      *
      * \param sequences sequences the list of sequences to be tracked under this sequence group
      */
-    explicit FixedSequenceGroup(const std::vector<std::shared_ptr<ISequence>> &sequences)
-        : m_sequences(sequences) {
+    explicit FixedSequenceGroup(std::vector<std::shared_ptr<ISequence>> sequences)
+        : m_sequences(std::move(sequences)) {
     }
 
     /**
      * Get the minimum sequence value for the group.
      */
-    std::int64_t value() const override {
+    [[nodiscard]] std::int64_t value() const override {
         return Util::getMinimumSequence(m_sequences);
     }
 
