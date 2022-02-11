@@ -5,7 +5,6 @@
 #include <vector>
 
 #include "EventPoller.hpp"
-#include "Exceptions.hpp"
 #include "ISequencer.hpp"
 #include "ProcessingSequenceBarrier.hpp"
 #include "Sequence.hpp"
@@ -31,11 +30,11 @@ public:
         , m_waitStrategyRef(*m_waitStrategy)
         , m_cursorRef(*m_cursor) {
         if (bufferSize < 1) {
-            DISRUPTOR_THROW_ARGUMENT_EXCEPTION("bufferSize must not be less than 1");
+            throw std::invalid_argument("bufferSize must not be less than 1"); // replace by constrained NTTP
         }
 
         if (!Util::isPowerOf2(bufferSize)) {
-            DISRUPTOR_THROW_ARGUMENT_EXCEPTION("bufferSize must be a power of 2");
+            throw std::invalid_argument("bufferSize must be a power of 2"); // replace by constrained NTTP
         }
     }
 

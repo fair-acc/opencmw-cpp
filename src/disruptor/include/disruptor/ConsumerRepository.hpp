@@ -4,7 +4,6 @@
 #include <unordered_map>
 
 #include "EventProcessorInfo.hpp"
-#include "Exceptions.hpp"
 #include "IConsumerInfo.hpp"
 #include "IEventHandler.hpp"
 #include "IEventProcessor.hpp"
@@ -62,7 +61,7 @@ public:
     std::shared_ptr<IEventProcessor> getEventProcessorFor(const std::shared_ptr<IEventHandler<T>> &eventHandler) {
         auto it = m_eventProcessorInfoByEventHandler.find(eventHandler);
         if (it == m_eventProcessorInfoByEventHandler.end() || it->second == nullptr) {
-            DISRUPTOR_THROW_ARGUMENT_EXCEPTION("The event handler " << eventHandler << " is not processing events.");
+            throw std::invalid_argument(fmt::format("The event handler {} is not processing events.", eventHandler));
         }
 
         auto &&eventProcessorInfo = it->second;

@@ -4,7 +4,6 @@
 #include <ostream>
 #include <vector>
 
-#include "Exceptions.hpp"
 #include "ISequence.hpp"
 #include "Util.hpp"
 
@@ -37,28 +36,28 @@ public:
      * Not supported.
      */
     void setValue(std::int64_t /*value*/) override {
-        DISRUPTOR_THROW_NOT_SUPPORTED_EXCEPTION();
+        throw std::logic_error("unsupported operation: FixedSequenceGroup::setValue");
     }
 
     /**
      * Not supported.
      */
     bool compareAndSet(std::int64_t /*expectedValue*/, std::int64_t /*newValue*/) override {
-        DISRUPTOR_THROW_NOT_SUPPORTED_EXCEPTION();
+        throw std::logic_error("unsupported operation: FixedSequenceGroup::compareAndSet");
     }
 
     /**
      * Not supported.
      */
     std::int64_t incrementAndGet() override {
-        DISRUPTOR_THROW_NOT_SUPPORTED_EXCEPTION();
+        throw std::logic_error("unsupported operation: FixedSequenceGroup::incrementAndGet");
     }
 
     /**
      * Not supported.
      */
     std::int64_t addAndGet(std::int64_t /*increment*/) override {
-        DISRUPTOR_THROW_NOT_SUPPORTED_EXCEPTION();
+        throw std::logic_error("unsupported operation: FixedSequenceGroup::addAndGet");
     }
 
     void writeDescriptionTo(std::ostream &stream) const override {

@@ -13,7 +13,6 @@
 #include "EventHandlerGroup.hpp"
 #include "ExceptionHandlerSetting.hpp"
 #include "ExceptionHandlerWrapper.hpp"
-#include "Exceptions.hpp"
 #include "IEventHandler.hpp"
 #include "IEventProcessorFactory.hpp"
 #include "ITaskScheduler.hpp"
@@ -312,7 +311,7 @@ public:
     void shutdown() {
         try {
             shutdown(Duration::max());
-        } catch (TimeoutException &ex) {
+        } catch (timeout_exception& ex) {
             m_exceptionHandler->handleOnShutdownException(ex);
         }
     }
@@ -329,8 +328,7 @@ public:
         const auto timeoutAt      = Clock::now() + timeout;
         while (hasBacklog()) {
             if (!waitInfinitely && timeout.count() >= 0 && Clock::now() > timeoutAt)
-                DISRUPTOR_THROW_TIMEOUT_EXCEPTION();
-
+                throw std::runtime_error("timeout encountered during shutdown");
             std::this_thread::yield();
         }
         halt();
@@ -442,13 +440,13 @@ private:
 
     void checkNotStarted() const {
         if (m_started == 1) {
-            DISRUPTOR_THROW_INVALID_OPERATION_EXCEPTION("All event handlers must be added before calling starts.");
+            throw std::logic_error("All event handlers must be added before calling starts.");
         }
     }
 
     void checkOnlyStartedOnce() {
         if (std::atomic_exchange(&m_started, 1) != 0) {
-            DISRUPTOR_THROW_INVALID_OPERATION_EXCEPTION("Disruptor.start() must only be called once.");
+            throw std::logic_error("Disruptor.start() must only be called once.");
         }
     }
 };

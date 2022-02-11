@@ -7,7 +7,6 @@
 #include <vector>
 
 #include "BlockingQueue.hpp"
-#include "Exceptions.hpp"
 #include "ITaskScheduler.hpp"
 #include "ThreadHelper.hpp"
 
@@ -31,7 +30,7 @@ public:
         m_started = true;
 
         if (numberOfThreads < 1) {
-            DISRUPTOR_THROW_ARGUMENT_OUT_OF_RANGE_EXCEPTION(numberOfThreads);
+            throw std::out_of_range("number of threads must be at least 1"); // TODO: replace by concept restriction
         }
 
         createThreads(numberOfThreads);

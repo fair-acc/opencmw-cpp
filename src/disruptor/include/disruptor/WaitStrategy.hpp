@@ -6,7 +6,6 @@
 #include <mutex>
 #include <thread>
 
-#include "Exceptions.hpp"
 #include "ISequence.hpp"
 #include "ISequenceBarrier.hpp"
 #include "Sequence.hpp"
@@ -192,7 +191,7 @@ public:
                 barrier.checkAlert();
 
                 if (m_conditionVariable.wait_for(uniqueLock, timeSpan) == std::cv_status::timeout) {
-                    DISRUPTOR_THROW_TIMEOUT_EXCEPTION();
+                    throw timeout_exception();
                 }
             }
         }

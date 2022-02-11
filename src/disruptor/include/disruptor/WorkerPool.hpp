@@ -5,7 +5,6 @@
 #include <functional>
 #include <memory>
 
-#include "Exceptions.hpp"
 #include "IExecutor.hpp"
 #include "RingBuffer.hpp"
 #include "Sequence.hpp"
@@ -93,7 +92,7 @@ public:
      */
     std::shared_ptr<RingBuffer<T>> start(const std::shared_ptr<IExecutor> &executor) {
         if (std::atomic_exchange(&m_running, 1) != 0) {
-            DISRUPTOR_THROW_INVALID_OPERATION_EXCEPTION("WorkerPool has already been started and cannot be restarted until halted");
+            throw std::logic_error("WorkerPool has already been started and cannot be restarted until halted");
         }
 
         auto cursor = m_ringBuffer->cursor();

@@ -6,7 +6,6 @@
 
 #include <fmt/format.h>
 
-#include "Exceptions.hpp"
 #include "ICursored.hpp"
 #include "IEventSequencer.hpp"
 #include "IEventTranslator.hpp"
@@ -18,6 +17,7 @@
 #include "SingleProducerSequencer.hpp"
 #include "Util.hpp"
 #include "WaitStrategy.hpp"
+#include "exception.hpp"
 
 namespace opencmw::disruptor {
 
@@ -58,11 +58,11 @@ public:
     explicit RingBuffer(const std::shared_ptr<ISequencer<T>> &sequencer)
         : m_bufferSize(sequencer->bufferSize()), m_indexMask(sequencer->bufferSize() - 1), m_sequencer(sequencer) {
         if (m_bufferSize < 1) {
-            DISRUPTOR_THROW_ARGUMENT_EXCEPTION("bufferSize must not be less than 1");
+            throw std::invalid_argument("bufferSize must not be less than 1");// TODO: check with concept
         }
 
         if (Util::ceilingNextPowerOfTwo(m_bufferSize) != m_bufferSize) {
-            DISRUPTOR_THROW_ARGUMENT_EXCEPTION("bufferSize must be a power of 2");
+            throw std::invalid_argument("bufferSize must be a power of 2"); // TODO: check with concept
         }
 
         m_entries.resize(static_cast<std::size_t>(m_bufferSize + 2 * m_bufferPad));
@@ -71,11 +71,11 @@ public:
     explicit RingBuffer(ProducerType producerType, std::int32_t bufferSize, const std::shared_ptr<WaitStrategy> &waitStrategy)
         : m_bufferSize(bufferSize), m_indexMask(bufferSize - 1) {
         if (m_bufferSize < 1) {
-            DISRUPTOR_THROW_ARGUMENT_EXCEPTION("bufferSize must not be less than 1");
+            throw std::invalid_argument("bufferSize must not be less than 1"); // TODO: check with concept
         }
 
         if (Util::ceilingNextPowerOfTwo(m_bufferSize) != m_bufferSize) {
-            DISRUPTOR_THROW_ARGUMENT_EXCEPTION("bufferSize must be a power of 2");
+            throw std::invalid_argument("bufferSize must be a power of 2"); // TODO: check with concept
         }
         m_entries.resize(static_cast<std::size_t>(m_bufferSize + 2 * m_bufferPad));
 
@@ -87,7 +87,7 @@ public:
             m_sequencer = std::make_shared<MultiProducerSequencer<T>>(bufferSize, waitStrategy);
             break;
         default:
-            DISRUPTOR_THROW_ARGUMENT_OUT_OF_RANGE_EXCEPTION(producerType);
+            throw std::invalid_argument(fmt::format("invalid producer type: {}", producerType));
         }
     }
 
@@ -212,7 +212,7 @@ public:
             auto sequence = m_sequencer->tryNext();
             translateAndPublish(translator, sequence);
             return true;
-        } catch (const InsufficientCapacityException &) {
+        } catch (const no_capacity_exception&) {
             return false;
         }
     }
@@ -231,7 +231,7 @@ public:
             auto sequence = m_sequencer->tryNext();
             translateAndPublish(translator, sequence, args...);
             return true;
-        } catch (const InsufficientCapacityException &) {
+        } catch (const no_capacity_exception&) {
             return false;
         }
     }
@@ -260,7 +260,7 @@ public:
             auto finalSequence = m_sequencer->tryNext(batchSize);
             translateAndPublishBatch(translators, batchStartsAt, batchSize, finalSequence);
             return true;
-        } catch (const InsufficientCapacityException &) {
+        } catch (const no_capacity_exception&) {
             return false;
         }
     }
@@ -293,7 +293,7 @@ public:
             auto finalSequence = m_sequencer->tryNext(batchSize);
             translateAndPublishBatch(translator, batchStartsAt, batchSize, finalSequence, args...);
             return true;
-        } catch (const InsufficientCapacityException &) {
+        } catch (const no_capacity_exception&) {
             return false;
         }
     }
@@ -306,17 +306,17 @@ private:
 
     void checkBatchSizing(std::int32_t batchStartsAt, std::int32_t batchSize) {
         if (batchStartsAt < 0 || batchSize < 0) {
-            DISRUPTOR_THROW_ARGUMENT_EXCEPTION("Both batchStartsAt and batchSize must be positive but got: batchStartsAt " << batchStartsAt << " and batchSize " << batchSize);
+            throw std::invalid_argument(fmt::format("Both batchStartsAt and batchSize must be positive but got: batchStartsAt {} and batchSize {}", batchStartsAt, batchSize));
         }
 
         if (batchSize > bufferSize()) {
-            DISRUPTOR_THROW_ARGUMENT_EXCEPTION("The ring buffer cannot accommodate " << batchSize << " it only has space for " << bufferSize() << " entities.");
+            throw std::invalid_argument(fmt::format("The ring buffer cannot accommodate {} it only has space for {} entities.", batchSize, bufferSize()));
         }
     }
 
     static void batchOverRuns(std::int32_t argumentCount, std::int32_t batchStartsAt, std::int32_t batchSize) {
         if (batchStartsAt + batchSize > argumentCount) {
-            DISRUPTOR_THROW_ARGUMENT_EXCEPTION("A batchSize of: " << batchSize << " with batchStartsAt of: " << batchStartsAt << " will overrun the available number of arguments: " << (argumentCount - batchStartsAt));
+            throw std::invalid_argument(fmt::format("A batchSize of: {} with batchStartsAt of: {} will overrun the available number of arguments: {}", batchSize, batchStartsAt, (argumentCount - batchStartsAt)));
         }
     }
 

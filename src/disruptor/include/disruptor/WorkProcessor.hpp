@@ -5,7 +5,6 @@
 #include <limits>
 #include <memory>
 
-#include "Exceptions.hpp"
 #include "IEventProcessor.hpp"
 #include "IEventReleaseAware.hpp"
 #include "IEventReleaser.hpp"
@@ -117,7 +116,7 @@ public:
      */
     void run() override {
         if (std::atomic_exchange(&m_running, 1) != 0) {
-            DISRUPTOR_THROW_INVALID_OPERATION_EXCEPTION("Thread is already running");
+            throw std::logic_error("Thread is already running");
         }
         m_sequenceBarrier->clearAlert();
 
@@ -146,9 +145,9 @@ public:
                 } else {
                     cachedAvailableSequence = m_sequenceBarrier->waitFor(nextSequence);
                 }
-            } catch (TimeoutException &) {
+            } catch (timeout_exception&) {
                 notifyTimeout(m_sequence->value());
-            } catch (AlertException &) {
+            } catch (alert_exception &) {
                 if (m_running == 0) {
                     break;
                 }

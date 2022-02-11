@@ -1,6 +1,5 @@
 #pragma once
 
-#include "Exceptions.hpp"
 #include "IDataProvider.hpp"
 #include "IEventHandler.hpp"
 #include "IEventProcessor.hpp"
@@ -10,6 +9,7 @@
 #include "ISequenceBarrier.hpp"
 #include "ITimeoutHandler.hpp"
 #include "Sequence.hpp"
+#include "exception.hpp"
 
 namespace opencmw::disruptor {
 
@@ -95,7 +95,7 @@ public:
      */
     void setExceptionHandler(const std::shared_ptr<IExceptionHandler<T>> &exceptionHandler) {
         if (exceptionHandler == nullptr)
-            DISRUPTOR_THROW_ARGUMENT_NULL_EXCEPTION(exceptionHandler);
+            throw std::invalid_argument("exception handler cannot be nullptr"); // TODO: do not use shared_ptr argument?
 
         m_exceptionHandler = exceptionHandler;
     }
@@ -105,7 +105,7 @@ public:
      */
     void run() override {
         if (m_running.exchange(true) != false) {
-            DISRUPTOR_THROW_INVALID_OPERATION_EXCEPTION("Thread is already running");
+            throw std::runtime_error("Thread is already running");
         }
 
         m_sequenceBarrierRef.clearAlert();
@@ -127,9 +127,9 @@ public:
                 }
 
                 m_sequenceRef.setValue(availableSequence);
-            } catch (const TimeoutException &) {
+            } catch (const timeout_exception&) {
                 notifyTimeout(m_sequenceRef.value());
-            } catch (const AlertException &) {
+            } catch (const alert_exception&) {
                 if (m_running == false) {
                     break;
                 }

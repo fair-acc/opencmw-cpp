@@ -3,9 +3,9 @@
 #include <iostream>
 #include <sstream>
 
-#include "Exceptions.hpp"
 #include "IExceptionHandler.hpp"
 #include "TypeInfo.hpp"
+#include "exception.hpp"
 
 namespace opencmw::disruptor {
 
@@ -23,13 +23,9 @@ public:
      * \param evt event being processed when the exception occurred.
      */
     void handleEventException(const std::exception &ex, std::int64_t sequence, T & /*evt*/) override {
-        std::stringstream stream;
-        stream << "Exception processing sequence " << sequence << " for event " << Utils::getMetaTypeInfo<T>().fullyQualifiedName() << ": " << ex.what();
-
-        auto message = stream.str();
-        std::cerr << message << std::endl;
-
-        DISRUPTOR_THROW_FATAL_EXCEPTION(message, ex);
+        auto message = fmt::format("Exception processing sequence {} for event {}: {}", sequence, Utils::getMetaTypeInfo<T>().fullyQualifiedName(), ex.what());
+        std::cerr << message;
+        throw wrapped_exception(ex, message);
     }
 
     /**
@@ -38,13 +34,9 @@ public:
      * \param ex ex throw during the starting process.
      */
     void handleOnStartException(const std::exception &ex) override {
-        std::stringstream stream;
-        stream << "Exception during OnStart(): " << ex.what();
-
-        auto message = stream.str();
-        std::cerr << message << std::endl;
-
-        DISRUPTOR_THROW_FATAL_EXCEPTION(message, ex);
+        auto message = fmt::format("Exception during OnStart(): {}", ex.what());
+        std::cerr << message;
+        throw wrapped_exception(ex, message);
     }
 
     /**
@@ -53,13 +45,9 @@ public:
      * \param ex ex throw during the shutdown process.
      */
     void handleOnShutdownException(const std::exception &ex) override {
-        std::stringstream stream;
-        stream << "Exception during OnShutdown(): " << ex.what();
-
-        auto message = stream.str();
-        std::cerr << message << std::endl;
-
-        DISRUPTOR_THROW_FATAL_EXCEPTION(message, ex);
+        auto message = fmt::format("Exception during OnShutdown(): {}", ex.what());
+        std::cerr << message;
+        throw wrapped_exception(ex, message);
     }
 
     /**
@@ -69,13 +57,9 @@ public:
      * \param sequence sequence of the event which cause the exception.
      */
     void handleOnTimeoutException(const std::exception &ex, std::int64_t sequence) override {
-        std::stringstream stream;
-        stream << "Exception during OnTimeout() processing sequence " << sequence << " for event " << Utils::getMetaTypeInfo<T>().fullyQualifiedName() << ": " << ex.what();
-
-        auto message = stream.str();
-        std::cerr << message << std::endl;
-
-        DISRUPTOR_THROW_FATAL_EXCEPTION(message, ex);
+        auto message = fmt::format("Exception during OnTimeout() processing sequence {} for event {}: {}", sequence, Utils::getMetaTypeInfo<T>().fullyQualifiedName(), ex.what());
+        std::cerr << message;
+        throw wrapped_exception(ex, message);
     }
 };
 

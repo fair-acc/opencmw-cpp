@@ -37,7 +37,7 @@ public:
      */
     void run() override {
         if (std::atomic_exchange(&m_running, 1) != 0) {
-            DISRUPTOR_THROW_INVALID_OPERATION_EXCEPTION("Thread is already running");
+            throw std::runtime_error("Thread is already running");
         }
     }
 

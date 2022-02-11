@@ -3,7 +3,6 @@
 #include <atomic>
 #include <vector>
 
-#include "Exceptions.hpp"
 #include "FixedSequenceGroup.hpp"
 #include "IHighestPublishedSequenceProvider.hpp"
 #include "ISequenceBarrier.hpp"
@@ -83,7 +82,7 @@ public:
 
     void checkAlert() override {
         if (m_alerted) {
-            DISRUPTOR_THROW_ALERT_EXCEPTION();
+            throw alert_exception();
         }
     }
 
