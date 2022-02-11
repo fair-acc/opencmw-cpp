@@ -1,51 +1,34 @@
 #pragma once
 
 #include <exception>
+#include <ostream>
 #include <sstream>
 #include <type_traits>
-
-#include "Pragmas.hpp"
-
-#define DISRUPTOR_THROW(DisruptorExceptionType, disruptorMessage) \
-    DISRUPTOR_PRAGMA_PUSH \
-    DISRUPTOR_PRAGMA_IGNORE_CONDITIONAL_EXPRESSION_IS_CONSTANT \
-    do { \
-        std::stringstream disruptorStream; \
-        disruptorStream << disruptorMessage; \
-        throw DisruptorExceptionType(disruptorStream.str(), __FUNCTION__, __FILE__, __LINE__); \
-    } while (0); \
-    DISRUPTOR_PRAGMA_POP
-
-#define DISRUPTOR_DECLARE_EXCEPTION(DisruptorExceptionType) \
-    class DisruptorExceptionType : public ::opencmw::disruptor::ExceptionBase<DisruptorExceptionType> { \
-    public: \
-        explicit DisruptorExceptionType(std::string message  = std::string(), \
-                std::string                         function = std::string(), \
-                std::string                         file     = std::string(), \
-                int                                 line     = -1) \
-            : ExceptionBase<DisruptorExceptionType>(std::move(message), std::move(function), std::move(file), line) { \
-        } \
-\
-        explicit DisruptorExceptionType(std::string message, \
-                const std::exception               &innerException, \
-                std::string                         function = std::string(), \
-                std::string                         file     = std::string(), \
-                int                                 line     = -1) \
-            : ExceptionBase<DisruptorExceptionType>(std::move(message), innerException, std::move(function), std::move(file), line) { \
-        } \
-\
-        explicit DisruptorExceptionType(const std::exception &innerException, \
-                std::string                                   function = std::string(), \
-                std::string                                   file     = std::string(), \
-                int                                           line     = -1) \
-            : ExceptionBase<DisruptorExceptionType>(innerException, std::move(function), std::move(file), line) { \
-        } \
-    }
+#include <utility>
 
 namespace opencmw::disruptor {
 
+class nested_exception : public std::exception {
+private:
+    std::string           message;
+    const std::exception &inner_exception;
+
+public:
+    explicit nested_exception(const std::exception& inner_exception, std::string message): message(std::move(message)), inner_exception(inner_exception) {}
+};
+
+// AlertException;
+// ArgumentException;
+// ArgumentNullException;
+// ArgumentOutOfRangeException;
+// FatalException;
+// InsufficientCapacityException;
+// InvalidOperationException;
+// NotSupportedException;
+// TimeoutException;
+
 template<typename TException>
-class ExceptionBase : public std::exception {
+class exception : public std::exception {
 private:
     std::string           m_message;
     const std::exception &m_innerException;
@@ -55,7 +38,7 @@ private:
     mutable std::string   m_wholeMessage;
 
 public:
-    explicit ExceptionBase(std::string message  = std::string(),
+    explicit exception(std::string message  = std::string(),
             std::string                function = std::string(),
             std::string                file     = std::string(),
             int                        line     = -1)
@@ -67,7 +50,7 @@ public:
         , m_wholeMessage() {
     }
 
-    explicit ExceptionBase(const std::exception &innerException,
+    explicit exception(const std::exception &innerException,
             std::string                          function = std::string(),
             std::string                          file     = std::string(),
             int                                  line     = -1)
@@ -79,7 +62,7 @@ public:
         , m_wholeMessage() {
     }
 
-    explicit ExceptionBase(std::string message,
+    explicit exception(std::string message,
             const std::exception      &innerException,
             std::string                function = std::string(),
             std::string                file     = std::string(),
@@ -93,7 +76,7 @@ public:
     }
 
     // theoricaly not necessary but g++ complains
-    virtual ~ExceptionBase() throw() {}
+    virtual ~exception() throw() {}
 
     const char *what() const throw() override {
         if (m_wholeMessage.empty())
@@ -141,7 +124,7 @@ protected:
 
     // let a chance for a derived exception to provide additional information, such as an api error string.
     virtual std::string getDerivedExceptionMessage() const {
-        return std::string();
+        return {};
     }
 
     void appendThrowLocationInformation(std::stringstream &stream) const {
@@ -155,23 +138,17 @@ protected:
 };
 
 template<typename TException>
-inline std::string toString(const ExceptionBase<TException> &ex) {
+inline std::string toString(const exception<TException> &ex) {
     std::stringstream stream;
     stream << ex;
     return stream.str();
 }
 
-} // namespace opencmw::disruptor
-
-#include <ostream>
-
-namespace std {
-
 template<typename TException>
-inline ostream &operator<<(ostream &os, const opencmw::disruptor::ExceptionBase<TException> &ex) {
+inline std::ostream &operator<<(std::ostream &os, const opencmw::disruptor::exception<TException> &ex) {
     return os
-        << ex.message()
-        << ", InnerException: " << ex.innerException().what();
+            << ex.message()
+            << ", InnerException: " << ex.innerException().what();
 }
 
-} // namespace std
+} // namespace opencmw::disruptor
