@@ -2,7 +2,7 @@
 
 ## ... a High Performance Inter-Thread Messaging Library
 
-This is a C++20 port of the [LMAX Disruptor](https://github.com/LMAX-Exchange/disruptor) initially developed by the LMAX Development Team [[1,2](## References)], 
+This is a C++20 port of the [LMAX Disruptor](https://github.com/LMAX-Exchange/disruptor) initially developed by the LMAX Development Team [[1,2](##-References)], 
 and is a modernised and optimised version based on earlier work by [ABC arbitrage](https://github.com/Abc-Arbitrage/Disruptor-cpp/).
 
 ## Brief Description
