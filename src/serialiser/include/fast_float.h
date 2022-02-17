@@ -4335,7 +4335,7 @@ fastfloat_really_inline void to_float(bool negative, adjusted_mantissa am, T &va
                  ? word | (uint64_t(1) << binary_format<T>::sign_index())
                  : word;
 #if FASTFLOAT_IS_BIG_ENDIAN == 1
-    if (std::is_same<T, float>::value) {
+    if (std::is_same_v<T, float>) {
         ::memcpy(&value, (char *) &word + 4, sizeof(T)); // extract value at offset 4-7 if float on big-endian
     } else {
         ::memcpy(&value, &word, sizeof(T));
@@ -4351,7 +4351,7 @@ fastfloat_really_inline void to_float(bool negative, adjusted_mantissa am, T &va
 template<typename T>
 from_chars_result from_chars(const char *first, const char *last,
         T &value, chars_format fmt /*= chars_format::general*/) noexcept {
-    static_assert(std::is_same<T, double>::value || std::is_same<T, float>::value, "only float and double are supported");
+    static_assert(std::is_same_v<T, double> || std::is_same_v<T, float>, "only float and double are supported");
 
     from_chars_result answer;
     if (first == last) {

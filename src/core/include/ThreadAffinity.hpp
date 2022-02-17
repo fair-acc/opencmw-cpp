@@ -52,7 +52,7 @@ public:
 };
 
 template<class type>
-concept thread_type = std::is_same<type, std::thread>::value || std::is_same<type, std::jthread>::value;
+concept thread_type = std::is_same_v<type, std::thread> || std::is_same_v<type, std::jthread>;
 
 namespace detail{
 #ifdef _POSIX_VERSION
