@@ -492,12 +492,21 @@ inline void writeResultFull(std::string_view workerName, RequestContext &rawCtx,
         using namespace std::string_literals;
         std::stringstream stream;
 
-        mustache::serialise(std::string(workerName), stream,
-                std::pair<std::string, const decltype(output) &>{ "result"s, output },
-                std::pair<std::string, const decltype(input) &>{ "input"s, input },
-                std::pair<std::string, const decltype(requestContext) &>{ "requestContext"s, requestContext },
-                std::pair<std::string, const decltype(replyContext) &>{ "replyContext"s, replyContext });
-        rawCtx.reply.setBody(stream.str(), MessageFrame::dynamic_bytes_tag{});
+        try {
+            mustache::serialise(std::string(workerName), stream,
+                    std::pair<std::string, const decltype(output) &>{ "result"s, output },
+                    std::pair<std::string, const decltype(input) &>{ "input"s, input },
+                    std::pair<std::string, const decltype(requestContext) &>{ "requestContext"s, requestContext },
+                    std::pair<std::string, const decltype(replyContext) &>{ "replyContext"s, replyContext });
+            rawCtx.reply.setBody(stream.str(), MessageFrame::dynamic_bytes_tag{});
+        } catch (const ProtocolException &e) {
+            rawCtx.reply.setError(e.what(), MessageFrame::dynamic_bytes_tag{});
+        } catch (const std::exception &e) {
+            rawCtx.reply.setError(e.what(), MessageFrame::dynamic_bytes_tag{});
+        } catch (...) {
+            rawCtx.reply.setError("Unexpected exception", MessageFrame::static_bytes_tag{});
+        }
+
         return;
     }
 
@@ -529,7 +538,11 @@ struct HandlerImpl {
 
         OutputType output;
         _callback(rawCtx, requestCtx, input, replyCtx, output);
-        writeResultFull(Worker::name, rawCtx, requestCtx, replyCtx, input, output);
+        try {
+            writeResultFull(Worker::name, rawCtx, requestCtx, replyCtx, input, output);
+        } catch (const ProtocolException &e) {
+            throw std::runtime_error(e.what());
+        }
     }
 };
 

@@ -341,6 +341,8 @@ public:
             respondWithError(response, "No response from broker\n");
         } else if (auto responseMessage = MdpMessage::receive(worker.dealer); !responseMessage) {
             respondWithError(response, "Empty response from broker\n");
+        } else if (!responseMessage->error().empty()) {
+            respondWithError(response, responseMessage->error());
         } else {
             response.status = HTTP_OK;
 
