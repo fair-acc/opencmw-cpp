@@ -179,7 +179,7 @@ public:
     }
 
     /// allow access with parenthesis operator (no curly braces)
-    template<typename... R, typename std::enable_if<sizeof...(R) == n_dims && (true && ... && std::convertible_to<R, size_t_>), size_t_>::type = 0>
+    template<typename... R, std::enable_if_t<sizeof...(R) == n_dims && (true && ... && std::convertible_to<R, size_t_>), size_t_> = 0>
     [[nodiscard]] constexpr value_type &operator()(const R... indices) {
         return elements_[index(std::array{ indices... })];
     }
@@ -193,7 +193,7 @@ public:
     [[nodiscard]] constexpr value_type &get(const std::array<size_t_, n_dims> indices) {
         return elements_.at(index(indices));
     }
-    template<typename... R, typename std::enable_if<sizeof...(R) == n_dims && (true && ... && std::convertible_to<R, size_t_>), size_t_>::type = 0>
+    template<typename... R, std::enable_if_t<sizeof...(R) == n_dims && (true && ... && std::convertible_to<R, size_t_>), size_t_> = 0>
     [[nodiscard]] constexpr value_type &get(const R... indices) {
         return elements_.at(index(std::array{ indices... }));
     }
