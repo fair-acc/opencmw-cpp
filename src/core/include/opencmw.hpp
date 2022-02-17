@@ -44,12 +44,12 @@ using units::is_same_v;
 
 constexpr auto &unmove(auto &&t) { return t; } // opposite of std::move(...)
 
-template<typename T, typename Type = typename std::decay<T>::type>
+template<typename T, typename Type = std::remove_cvref_t<T>>
 inline constexpr const bool isStdType = get_name(refl::reflect<Type>()).template substr<0, 5>() == "std::";
 
-template<class T, typename RawType = typename std::decay<T>::type>
+template<class T, typename RawType = std::remove_cvref_t<T>>
 inline constexpr bool isReflectableClass() {
-    if constexpr (std::is_class<RawType>::value && refl::is_reflectable<RawType>() && !std::is_fundamental<RawType>::value && !std::is_array<RawType>::value) {
+    if constexpr (std::is_class_v<RawType> && refl::is_reflectable<RawType>() && !std::is_fundamental_v<RawType> && !std::is_array_v<RawType>) {
         return !isStdType<RawType>; // N.B. check this locally since this is not constexpr (yet)
     }
     return false;
@@ -60,13 +60,13 @@ template<class T>
 concept ReflectableClass = isReflectableClass<T>();
 
 #ifndef OPENCMW_ENABLE_UNSIGNED_SUPPORT
-template<typename T, typename RawType = typename std::decay<T>::type>
+template<typename T, typename RawType = std::remove_cvref_t<T>>
 inline constexpr bool is_supported_number = std::is_signed_v<RawType> || is_same_v<RawType, bool> || is_same_v<RawType, uint8_t>; // int[8, 64]_t || float || double || bool || uint8_t;
 #else
 inline constexpr bool is_supported_number = std::is_arithmetic<Tp>;
 #endif
 
-template<typename T, typename RawType = typename std::decay<T>::type>
+template<typename T, typename RawType = std::remove_cvref_t<T>>
 inline constexpr bool is_stringlike = units::is_derived_from_specialization_of<RawType, std::basic_string> || units::is_derived_from_specialization_of<RawType, std::basic_string_view>;
 
 template<typename T>
@@ -75,13 +75,13 @@ concept StringLike = is_stringlike<T>;
 template<typename T>
 concept Number = is_supported_number<T>;
 
-template<typename T, typename Tp = typename std::remove_const<T>::type>
+template<typename T, typename Tp = std::remove_const_t<T>>
 concept ArithmeticType = std::is_arithmetic_v<Tp>;
 
 template<typename T>
 concept SupportedType = is_supported_number<T> || is_stringlike<T>;
 
-template<typename T, typename RawType = typename std::decay<T>::type>
+template<typename T, typename RawType = std::remove_cvref_t<T>>
 inline constexpr bool is_map_like = units::is_derived_from_specialization_of<RawType, std::map> || units::is_derived_from_specialization_of<RawType, std::unordered_map>;
 
 template<typename T>
@@ -94,7 +94,7 @@ inline constexpr const bool is_array<std::array<T, N>> = true;
 template<typename T, std::size_t N>
 inline constexpr const bool is_array<const std::array<T, N>> = true;
 
-template<typename T, typename Tp = typename std::remove_const<T>::type>
+template<typename T, typename Tp = std::remove_const_t<T>>
 inline constexpr bool is_vector = units::is_derived_from_specialization_of<Tp, std::vector>;
 
 template<typename T>
@@ -201,7 +201,7 @@ using find_type = decltype(std::tuple_cat(std::declval<std::conditional_t<is_ins
  */
 
 template<typename T>
-concept NotRepresentation = units::Quantity<T> || units::QuantityLike<T> || units::wrapped_quantity_<T> || (!std::regular<T>) || (!units::scalable_<T>) || std::is_class<T>::value;
+concept NotRepresentation = units::Quantity<T> || units::QuantityLike<T> || units::wrapped_quantity_<T> || (!std::regular<T>) || (!units::scalable_<T>) || std::is_class_v<T>;
 
 using NoUnit = units::dimensionless<units::one>;
 
@@ -319,15 +319,15 @@ struct Annotated<T, Q, description, modifier, groups...> : public T { // inherit
     template<class... S>
     explicit Annotated(S&&... v) : T{std::forward<S>(v)...} {}
 
-    template<class S , std::enable_if_t<std::is_constructible<T, std::initializer_list<S>>::value, int> = 0>
+    template<class S , std::enable_if_t<std::is_constructible_v<T, std::initializer_list<S>>, int> = 0>
     Annotated(std::initializer_list<S> init) : T(init) {}
 
     template<typename U>
-    requires (std::is_assignable<T, U>::value)
+    requires (std::is_assignable_v<T, U>)
     Annotated(const U& u) : T(u) {}
 
     template<typename U>
-    requires (std::is_assignable<T, U>::value)
+    requires (std::is_assignable_v<T, U>)
     Annotated(U&& u) : T(std::move(u)) {}
 
     [[nodiscard]] constexpr std::string_view getUnit() const noexcept { return unitStr.c_str(); }
@@ -477,11 +477,6 @@ class startup_error : public std::runtime_error {
 
 
 /***************** operator<< and other print overloads ***********************/
-// TODO: evaluate/discuss if these should be in the opencmw or global namespace
-
-namespace detail {
-
-}
 
 inline int            getClassInfoVerbose() {
     static int i = std::ios_base::xalloc();
