@@ -6,6 +6,7 @@
 
 #include <fmt/format.h>
 
+#include "Exception.hpp"
 #include "ICursored.hpp"
 #include "IEventSequencer.hpp"
 #include "IEventTranslator.hpp"
@@ -17,7 +18,6 @@
 #include "SingleProducerSequencer.hpp"
 #include "Util.hpp"
 #include "WaitStrategy.hpp"
-#include "exception.hpp"
 
 namespace opencmw::disruptor {
 
@@ -58,7 +58,7 @@ public:
     explicit RingBuffer(const std::shared_ptr<ISequencer<T>> &sequencer)
         : m_bufferSize(sequencer->bufferSize()), m_indexMask(sequencer->bufferSize() - 1), m_sequencer(sequencer) {
         if (m_bufferSize < 1) {
-            throw std::invalid_argument("bufferSize must not be less than 1");// TODO: check with concept
+            throw std::invalid_argument("bufferSize must not be less than 1"); // TODO: check with concept
         }
 
         if (util::ceilingNextPowerOfTwo(m_bufferSize) != m_bufferSize) {
@@ -204,7 +204,7 @@ public:
             auto sequence = m_sequencer->tryNext();
             translateAndPublish(translator, sequence);
             return true;
-        } catch (const no_capacity_exception&) {
+        } catch (const NoCapacityException &) {
             return false;
         }
     }
@@ -223,7 +223,7 @@ public:
             auto sequence = m_sequencer->tryNext();
             translateAndPublish(translator, sequence, args...);
             return true;
-        } catch (const no_capacity_exception&) {
+        } catch (const NoCapacityException &) {
             return false;
         }
     }
@@ -252,7 +252,7 @@ public:
             auto finalSequence = m_sequencer->tryNext(batchSize);
             translateAndPublishBatch(translators, batchStartsAt, batchSize, finalSequence);
             return true;
-        } catch (const no_capacity_exception&) {
+        } catch (const NoCapacityException &) {
             return false;
         }
     }
@@ -285,7 +285,7 @@ public:
             auto finalSequence = m_sequencer->tryNext(batchSize);
             translateAndPublishBatch(translator, batchStartsAt, batchSize, finalSequence, args...);
             return true;
-        } catch (const no_capacity_exception&) {
+        } catch (const NoCapacityException &) {
             return false;
         }
     }

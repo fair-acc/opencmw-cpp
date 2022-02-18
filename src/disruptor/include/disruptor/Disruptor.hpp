@@ -311,7 +311,7 @@ public:
     void shutdown() {
         try {
             shutdown(Duration::max());
-        } catch (timeout_exception& ex) {
+        } catch (TimeoutException &ex) {
             m_exceptionHandler->handleOnShutdownException(ex);
         }
     }

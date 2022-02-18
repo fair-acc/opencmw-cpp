@@ -82,7 +82,7 @@ public:
 
     void checkAlert() override {
         if (m_alerted) {
-            throw alert_exception();
+            throw AlertException();
         }
     }
 

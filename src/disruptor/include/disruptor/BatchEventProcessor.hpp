@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Exception.hpp"
 #include "IDataProvider.hpp"
 #include "IEventHandler.hpp"
 #include "IEventProcessor.hpp"
@@ -9,7 +10,6 @@
 #include "ISequenceBarrier.hpp"
 #include "ITimeoutHandler.hpp"
 #include "Sequence.hpp"
-#include "exception.hpp"
 
 namespace opencmw::disruptor {
 
@@ -127,9 +127,9 @@ public:
                 }
 
                 m_sequenceRef.setValue(availableSequence);
-            } catch (const timeout_exception&) {
+            } catch (const TimeoutException &) {
                 notifyTimeout(m_sequenceRef.value());
-            } catch (const alert_exception&) {
+            } catch (const AlertException &) {
                 if (m_running == false) {
                     break;
                 }

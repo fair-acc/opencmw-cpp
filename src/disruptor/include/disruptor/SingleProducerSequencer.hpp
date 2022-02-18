@@ -109,7 +109,7 @@ public:
         }
 
         if (!hasAvailableCapacity(n_slots_to_claim)) {
-            throw no_capacity_exception();
+            throw NoCapacityException();
         }
 
         auto nextSequence  = m_fields.nextValue + n_slots_to_claim;

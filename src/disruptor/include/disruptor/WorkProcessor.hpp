@@ -145,9 +145,9 @@ public:
                 } else {
                     cachedAvailableSequence = m_sequenceBarrier->waitFor(nextSequence);
                 }
-            } catch (timeout_exception&) {
+            } catch (TimeoutException &) {
                 notifyTimeout(m_sequence->value());
-            } catch (alert_exception &) {
+            } catch (AlertException &) {
                 if (m_running == 0) {
                     break;
                 }

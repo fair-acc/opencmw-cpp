@@ -124,7 +124,7 @@ public:
             next    = current + n_slots_to_claim;
 
             if (!hasAvailableCapacity(this->m_gatingSequences, n_slots_to_claim, current)) {
-                throw no_capacity_exception();
+                throw NoCapacityException();
             }
         } while (!this->m_cursor->compareAndSet(current, next));
 

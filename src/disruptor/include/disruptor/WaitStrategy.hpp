@@ -191,7 +191,7 @@ public:
                 barrier.checkAlert();
 
                 if (m_conditionVariable.wait_for(uniqueLock, timeSpan) == std::cv_status::timeout) {
-                    throw timeout_exception();
+                    throw TimeoutException();
                 }
             }
         }
@@ -246,7 +246,7 @@ public:
 static_assert(WaitStrategyConcept<YieldingWaitStrategy>);
 
 struct NoWaitStrategy {
-    std::int64_t waitFor(const std::int64_t sequence, const Sequence & /*cursor*/, const ISequence &/*dependentSequence*/, const ISequenceBarrier &/*barrier*/) const {
+    std::int64_t waitFor(const std::int64_t sequence, const Sequence & /*cursor*/, const ISequence & /*dependentSequence*/, const ISequenceBarrier & /*barrier*/) const {
         // wait for nothing
         return sequence;
     }

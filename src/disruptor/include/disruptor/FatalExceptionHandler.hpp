@@ -3,9 +3,9 @@
 #include <iostream>
 #include <sstream>
 
+#include "Exception.hpp"
 #include "IExceptionHandler.hpp"
 #include "TypeInfo.hpp"
-#include "exception.hpp"
 
 namespace opencmw::disruptor {
 
@@ -25,7 +25,7 @@ public:
     void handleEventException(const std::exception &ex, std::int64_t sequence, T & /*evt*/) override {
         auto message = fmt::format("Exception processing sequence {} for event {}: {}", sequence, Utils::getMetaTypeInfo<T>().fullyQualifiedName(), ex.what());
         std::cerr << message;
-        throw wrapped_exception(ex, message);
+        throw WrappedException(ex, message);
     }
 
     /**
@@ -36,7 +36,7 @@ public:
     void handleOnStartException(const std::exception &ex) override {
         auto message = fmt::format("Exception during OnStart(): {}", ex.what());
         std::cerr << message;
-        throw wrapped_exception(ex, message);
+        throw WrappedException(ex, message);
     }
 
     /**
@@ -47,7 +47,7 @@ public:
     void handleOnShutdownException(const std::exception &ex) override {
         auto message = fmt::format("Exception during OnShutdown(): {}", ex.what());
         std::cerr << message;
-        throw wrapped_exception(ex, message);
+        throw WrappedException(ex, message);
     }
 
     /**
@@ -59,7 +59,7 @@ public:
     void handleOnTimeoutException(const std::exception &ex, std::int64_t sequence) override {
         auto message = fmt::format("Exception during OnTimeout() processing sequence {} for event {}: {}", sequence, Utils::getMetaTypeInfo<T>().fullyQualifiedName(), ex.what());
         std::cerr << message;
-        throw wrapped_exception(ex, message);
+        throw WrappedException(ex, message);
     }
 };
 
