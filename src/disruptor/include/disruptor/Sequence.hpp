@@ -13,9 +13,9 @@ namespace opencmw::disruptor {
  */
 class Sequence : public ISequence {
 private:
-    char                      m_padding0[56] = {};
-    std::atomic<std::int64_t> m_fieldsValue;
-    char                      m_padding1[56] = {};
+    char                      _padding0[56] = {};
+    std::atomic<std::int64_t> _fieldsValue;
+    char                      _padding1[56] = {};
 
 public:
     /**
@@ -24,13 +24,13 @@ public:
      * \param initialValue initial value for the counter
      */
     explicit Sequence(std::int64_t initialValue = InitialCursorValue)
-        : m_fieldsValue(initialValue) {}
+        : _fieldsValue(initialValue) {}
 
     /**
      * Current sequence number
      */
     std::int64_t value() const override {
-        return std::atomic_load_explicit(&m_fieldsValue, std::memory_order_acquire);
+        return std::atomic_load_explicit(&_fieldsValue, std::memory_order_acquire);
     }
 
     /**
@@ -39,7 +39,7 @@ public:
      * \param value The new value for the sequence.
      */
     void setValue(std::int64_t value) override {
-        std::atomic_store_explicit(&m_fieldsValue, value, std::memory_order_release);
+        std::atomic_store_explicit(&_fieldsValue, value, std::memory_order_release);
     }
 
     /**
@@ -50,7 +50,7 @@ public:
      * \returns true if successful. False return indicates that the actual value was not equal to the expected value.
      */
     bool compareAndSet(std::int64_t expectedSequence, std::int64_t nextSequence) override {
-        return std::atomic_compare_exchange_strong(&m_fieldsValue, &expectedSequence, nextSequence);
+        return std::atomic_compare_exchange_strong(&_fieldsValue, &expectedSequence, nextSequence);
     }
 
     /**
@@ -59,7 +59,7 @@ public:
      * \returns incremented sequence
      */
     std::int64_t incrementAndGet() override {
-        return std::atomic_fetch_add(&m_fieldsValue, std::int64_t(1)) + 1;
+        return std::atomic_fetch_add(&_fieldsValue, std::int64_t(1)) + 1;
     }
 
     /**
@@ -68,11 +68,11 @@ public:
      * \returns incremented sequence
      */
     std::int64_t addAndGet(std::int64_t value) override {
-        return std::atomic_fetch_add(&m_fieldsValue, value) + value;
+        return std::atomic_fetch_add(&_fieldsValue, value) + value;
     }
 
     void writeDescriptionTo(std::ostream &stream) const override {
-        stream << m_fieldsValue.load();
+        stream << _fieldsValue.load();
     }
 
     /**

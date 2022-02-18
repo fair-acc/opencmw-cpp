@@ -9,26 +9,26 @@ namespace opencmw::disruptor {
 
 class ThreadPerTaskScheduler : public ITaskScheduler {
 private:
-    std::atomic<bool>         m_started{ false };
-    std::vector<std::jthread> m_threads;
+    std::atomic<bool>         _started{ false };
+    std::vector<std::jthread> _threads;
 
 public:
     void start(std::size_t numberOfThreads = 0U) override {
-        if (m_started) {
+        if (_started) {
             return;
         }
 
-        m_started = true;
+        _started = true;
     }
 
     void stop() override {
-        if (!m_started) {
+        if (!_started) {
             return;
         }
 
-        m_started = false;
+        _started = false;
 
-        for (auto &&thread : m_threads) {
+        for (auto &&thread : _threads) {
             if (thread.joinable()) {
                 thread.join();
             }
@@ -38,8 +38,8 @@ public:
     std::future<void> scheduleAndStart(std::packaged_task<void()> &&task) override {
         auto result = task.get_future();
 
-        m_threads.emplace_back([this, task{ move(task) }]() mutable {
-            while (m_started) {
+        _threads.emplace_back([this, task{ move(task) }]() mutable {
+            while (_started) {
                 try {
                     task();
                 } catch (...) {

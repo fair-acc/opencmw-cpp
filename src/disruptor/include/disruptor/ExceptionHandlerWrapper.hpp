@@ -10,27 +10,27 @@ namespace opencmw::disruptor {
 template<typename T>
 class ExceptionHandlerWrapper : public IExceptionHandler<T> {
 private:
-    std::shared_ptr<IExceptionHandler<T>> m_handler = std::make_shared<FatalExceptionHandler<T>>();
+    std::shared_ptr<IExceptionHandler<T>> _handler = std::make_shared<FatalExceptionHandler<T>>();
 
 public:
     void switchTo(const std::shared_ptr<IExceptionHandler<T>> &exceptionHandler) {
-        m_handler = exceptionHandler;
+        _handler = exceptionHandler;
     }
 
     void handleEventException(const std::exception &ex, std::int64_t sequence, T &evt) override {
-        m_handler->handleEventException(ex, sequence, evt);
+        _handler->handleEventException(ex, sequence, evt);
     }
 
     void handleOnStartException(const std::exception &ex) override {
-        m_handler->handleOnStartException(ex);
+        _handler->handleOnStartException(ex);
     }
 
     void handleOnShutdownException(const std::exception &ex) override {
-        m_handler->handleOnShutdownException(ex);
+        _handler->handleOnShutdownException(ex);
     }
 
     void handleOnTimeoutException(const std::exception &ex, std::int64_t sequence) override {
-        m_handler->handleOnTimeoutException(ex, sequence);
+        _handler->handleOnTimeoutException(ex, sequence);
     }
 };
 

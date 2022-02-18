@@ -34,13 +34,13 @@ concept ContainsEventTranslators = requires(Container container) {
 template<typename T>
 class RingBuffer : public IEventSequencer<T>, public ICursored, public std::enable_shared_from_this<RingBuffer<T>> {
     char                           padding0[56] = {};
-    mutable std::vector<T>         m_entries;
-    std::int32_t                   m_bufferSize{};
-    std::int32_t                   m_indexMask{};
-    std::shared_ptr<ISequencer<T>> m_sequencer;
+    mutable std::vector<T>         _entries;
+    std::int32_t                   _bufferSize{};
+    std::int32_t                   _indexMask{};
+    std::shared_ptr<ISequencer<T>> _sequencer;
     char                           padding1[40] = {};
 
-    static const std::int32_t      m_bufferPad  = 128 / sizeof(int *);
+    static const std::int32_t      _bufferPad   = 128 / sizeof(int *);
 
     template<typename... TItem>
     static std::int32_t getGreatestLength(const std::initializer_list<TItem> &...l) {
@@ -56,35 +56,35 @@ public:
      * \param sequencer waiting strategy employed by processorsToTrack waiting on entries becoming available.
      */
     explicit RingBuffer(const std::shared_ptr<ISequencer<T>> &sequencer)
-        : m_bufferSize(sequencer->bufferSize()), m_indexMask(sequencer->bufferSize() - 1), m_sequencer(sequencer) {
-        if (m_bufferSize < 1) {
+        : _bufferSize(sequencer->bufferSize()), _indexMask(sequencer->bufferSize() - 1), _sequencer(sequencer) {
+        if (_bufferSize < 1) {
             throw std::invalid_argument("bufferSize must not be less than 1"); // TODO: check with concept
         }
 
-        if (util::ceilingNextPowerOfTwo(m_bufferSize) != m_bufferSize) {
+        if (util::ceilingNextPowerOfTwo(_bufferSize) != _bufferSize) {
             throw std::invalid_argument("bufferSize must be a power of 2"); // TODO: check with concept
         }
 
-        m_entries.resize(static_cast<std::size_t>(m_bufferSize + 2 * m_bufferPad));
+        _entries.resize(static_cast<std::size_t>(_bufferSize + 2 * _bufferPad));
     }
 
     explicit RingBuffer(ProducerType producerType, std::int32_t bufferSize, const std::shared_ptr<WaitStrategy> &waitStrategy)
-        : m_bufferSize(bufferSize), m_indexMask(bufferSize - 1) {
-        if (m_bufferSize < 1) {
+        : _bufferSize(bufferSize), _indexMask(bufferSize - 1) {
+        if (_bufferSize < 1) {
             throw std::invalid_argument("bufferSize must not be less than 1"); // TODO: check with concept
         }
 
-        if (util::ceilingNextPowerOfTwo(m_bufferSize) != m_bufferSize) {
+        if (util::ceilingNextPowerOfTwo(_bufferSize) != _bufferSize) {
             throw std::invalid_argument("bufferSize must be a power of 2"); // TODO: check with concept
         }
-        m_entries.resize(static_cast<std::size_t>(m_bufferSize + 2 * m_bufferPad));
+        _entries.resize(static_cast<std::size_t>(_bufferSize + 2 * _bufferPad));
 
         switch (producerType) {
         case ProducerType::Single:
-            m_sequencer = std::make_shared<SingleProducerSequencer<T>>(bufferSize, waitStrategy);
+            _sequencer = std::make_shared<SingleProducerSequencer<T>>(bufferSize, waitStrategy);
             break;
         case ProducerType::Multi:
-            m_sequencer = std::make_shared<MultiProducerSequencer<T>>(bufferSize, waitStrategy);
+            _sequencer = std::make_shared<MultiProducerSequencer<T>>(bufferSize, waitStrategy);
             break;
         default:
             throw std::invalid_argument(fmt::format("invalid producer type: {}", producerType));
@@ -97,34 +97,34 @@ public:
      * \param sequence sequence for the event
      */
     T &operator[](std::int64_t sequence) const override {
-        return m_entries[static_cast<std::size_t>(m_bufferPad + (static_cast<std::int32_t>(sequence) & m_indexMask))];
+        return _entries[static_cast<std::size_t>(_bufferPad + (static_cast<std::int32_t>(sequence) & _indexMask))];
     }
 
     std::int32_t bufferSize() override {
-        return m_bufferSize;
+        return _bufferSize;
     }
 
     auto getSequencer() {
-        return *m_sequencer;
+        return *_sequencer;
     }
 
     bool hasAvailableCapacity(std::int32_t requiredCapacity) override {
-        return m_sequencer->hasAvailableCapacity(requiredCapacity);
+        return _sequencer->hasAvailableCapacity(requiredCapacity);
     }
 
     std::int64_t next(std::int32_t n_slots_to_claim = 1) override {
-        return m_sequencer->next(n_slots_to_claim);
+        return _sequencer->next(n_slots_to_claim);
     }
 
     std::int64_t tryNext(std::int32_t n_slots_to_claim = 1) override {
-        return m_sequencer->tryNext(n_slots_to_claim);
+        return _sequencer->tryNext(n_slots_to_claim);
     }
 
     /**
      * Get the current cursor value for the ring buffer.  The actual value received will depend on the type of ISequencer that is being used.
      */
     std::int64_t cursor() const override {
-        return m_sequencer->cursor();
+        return _sequencer->cursor();
     }
 
     /**
@@ -133,11 +133,11 @@ public:
      * \returns The number of slots remaining.
      */
     std::int64_t getRemainingCapacity() override {
-        return m_sequencer->getRemainingCapacity();
+        return _sequencer->getRemainingCapacity();
     }
 
     void publish(std::int64_t sequence) override {
-        m_sequencer->publish(sequence);
+        _sequencer->publish(sequence);
     }
 
     /**
@@ -147,19 +147,19 @@ public:
      * \param hi the highest sequence number to be published
      */
     void publish(std::int64_t lo, std::int64_t hi) override {
-        m_sequencer->publish(lo, hi);
+        _sequencer->publish(lo, hi);
     }
 
     bool isPublished(std::int64_t sequence) {
-        return m_sequencer->isAvailable(sequence);
+        return _sequencer->isAvailable(sequence);
     }
 
     void addGatingSequences(const std::vector<std::shared_ptr<ISequence>> &gatingSequences) {
-        m_sequencer->addGatingSequences(gatingSequences);
+        _sequencer->addGatingSequences(gatingSequences);
     }
 
     std::int64_t getMinimumGatingSequence() {
-        return m_sequencer->getMinimumSequence();
+        return _sequencer->getMinimumSequence();
     }
 
     /**
@@ -169,7 +169,7 @@ public:
      * \returns true if this sequence was found, false otherwise.
      */
     bool removeGatingSequence(const std::shared_ptr<ISequence> &sequence) {
-        return m_sequencer->removeGatingSequence(sequence);
+        return _sequencer->removeGatingSequence(sequence);
     }
 
     /**
@@ -179,7 +179,7 @@ public:
      * \returns A sequence barrier that will track the specified sequences.
      */
     std::shared_ptr<ISequenceBarrier> newBarrier(const std::vector<std::shared_ptr<ISequence>> &sequencesToTrack = {}) {
-        return m_sequencer->newBarrier(sequencesToTrack);
+        return _sequencer->newBarrier(sequencesToTrack);
     }
 
     /**
@@ -189,19 +189,19 @@ public:
      * \returns A poller that will gate on this ring buffer and the supplied sequences.
      */
     std::shared_ptr<EventPoller<T>> newPoller(const std::vector<std::shared_ptr<ISequence>> &gatingSequences = {}) {
-        return m_sequencer->newPoller(this->shared_from_this(), gatingSequences);
+        return _sequencer->newPoller(this->shared_from_this(), gatingSequences);
     }
 
     template<std::derived_from<IEventTranslator<T>> TTranslator>
     void publishEvent(const std::shared_ptr<TTranslator> &translator) {
-        auto sequence = m_sequencer->next();
+        auto sequence = _sequencer->next();
         translateAndPublish(translator, sequence);
     }
 
     template<std::derived_from<IEventTranslator<T>> TTranslator>
     bool tryPublishEvent(const std::shared_ptr<TTranslator> &translator) {
         try {
-            auto sequence = m_sequencer->tryNext();
+            auto sequence = _sequencer->tryNext();
             translateAndPublish(translator, sequence);
             return true;
         } catch (const NoCapacityException &) {
@@ -212,7 +212,7 @@ public:
     template<typename TTranslator, typename... TArgs>
     requires std::derived_from<TTranslator, IEventTranslatorVararg<T, TArgs...>>
     void publishEvent(const std::shared_ptr<TTranslator> &translator, const TArgs &...args) {
-        auto sequence = m_sequencer->next();
+        auto sequence = _sequencer->next();
         translateAndPublish(translator, sequence, args...);
     }
 
@@ -220,7 +220,7 @@ public:
     requires std::derived_from<TTranslator, IEventTranslatorVararg<T, TArgs...>>
     bool tryPublishEvent(const std::shared_ptr<TTranslator> &translator, const TArgs &...args) {
         try {
-            auto sequence = m_sequencer->tryNext();
+            auto sequence = _sequencer->tryNext();
             translateAndPublish(translator, sequence, args...);
             return true;
         } catch (const NoCapacityException &) {
@@ -236,7 +236,7 @@ public:
     template<ContainsEventTranslators<T> TTranslators>
     void publishEvents(const TTranslators &translators, std::int32_t batchStartsAt, std::int32_t batchSize) {
         checkBounds(static_cast<std::int32_t>(translators.size()), batchStartsAt, batchSize);
-        std::int64_t finalSequence = m_sequencer->next(batchSize);
+        std::int64_t finalSequence = _sequencer->next(batchSize);
         translateAndPublishBatch(translators, batchStartsAt, batchSize, finalSequence);
     }
 
@@ -249,7 +249,7 @@ public:
     bool tryPublishEvents(const TTranslators &translators, std::int32_t batchStartsAt, std::int32_t batchSize) {
         checkBounds(static_cast<std::int32_t>(translators.size()), batchStartsAt, batchSize);
         try {
-            auto finalSequence = m_sequencer->tryNext(batchSize);
+            auto finalSequence = _sequencer->tryNext(batchSize);
             translateAndPublishBatch(translators, batchStartsAt, batchSize, finalSequence);
             return true;
         } catch (const NoCapacityException &) {
@@ -267,7 +267,7 @@ public:
     requires std::derived_from<TTranslator, IEventTranslatorVararg<T, TArgs...>>
     void publishEvents(const std::shared_ptr<TTranslator> &translator, std::int32_t batchStartsAt, std::int32_t batchSize, const std::initializer_list<TArgs> &...args) {
         checkBounds(getGreatestLength(args...), batchStartsAt, batchSize);
-        std::int64_t finalSequence = m_sequencer->next(batchSize);
+        std::int64_t finalSequence = _sequencer->next(batchSize);
         translateAndPublishBatch(translator, batchStartsAt, batchSize, finalSequence, args...);
     }
 
@@ -282,7 +282,7 @@ public:
     auto tryPublishEvents(const std::shared_ptr<TTranslator> &translator, std::int32_t batchStartsAt, std::int32_t batchSize, const std::initializer_list<TArgs> &...args) {
         checkBounds(getGreatestLength(args...), batchStartsAt, batchSize);
         try {
-            auto finalSequence = m_sequencer->tryNext(batchSize);
+            auto finalSequence = _sequencer->tryNext(batchSize);
             translateAndPublishBatch(translator, batchStartsAt, batchSize, finalSequence, args...);
             return true;
         } catch (const NoCapacityException &) {
@@ -319,7 +319,7 @@ private:
         } catch (...) {
         }
 
-        m_sequencer->publish(sequence);
+        _sequencer->publish(sequence);
     }
 
     template<std::derived_from<IEventTranslator<T>> TTranslator, typename... TArgs>
@@ -329,7 +329,7 @@ private:
         } catch (...) {
         }
 
-        m_sequencer->publish(sequence);
+        _sequencer->publish(sequence);
     }
 
     template<ContainsEventTranslators<T> TTranslators>
@@ -346,7 +346,7 @@ private:
         } catch (...) {
         }
 
-        m_sequencer->publish(initialSequence, finalSequence);
+        _sequencer->publish(initialSequence, finalSequence);
     }
 
     template<typename TTranslator, typename... TArgs>
@@ -366,7 +366,7 @@ private:
         } catch (...) {
         }
 
-        m_sequencer->publish(initialSequence, finalSequence);
+        _sequencer->publish(initialSequence, finalSequence);
     }
 };
 

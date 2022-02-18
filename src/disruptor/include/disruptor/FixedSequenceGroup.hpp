@@ -15,7 +15,7 @@ namespace opencmw::disruptor {
  */
 class FixedSequenceGroup : public ISequence {
 private:
-    std::vector<std::shared_ptr<ISequence>> m_sequences;
+    std::vector<std::shared_ptr<ISequence>> _sequences;
 
 public:
     /**
@@ -23,14 +23,14 @@ public:
      * \param sequences sequences the list of sequences to be tracked under this sequence group
      */
     explicit FixedSequenceGroup(std::vector<std::shared_ptr<ISequence>> sequences)
-        : m_sequences(std::move(sequences)) {
+        : _sequences(std::move(sequences)) {
     }
 
     /**
      * Get the minimum sequence value for the group.
      */
     [[nodiscard]] std::int64_t value() const override {
-        return util::getMinimumSequence(m_sequences);
+        return util::getMinimumSequence(_sequences);
     }
 
     /**
@@ -63,7 +63,7 @@ public:
 
     void writeDescriptionTo(std::ostream &stream) const override {
         auto firstItem = true;
-        for (auto &&sequence : m_sequences) {
+        for (auto &&sequence : _sequences) {
             if (firstItem) {
                 firstItem = false;
             } else {

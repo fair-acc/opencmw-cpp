@@ -43,11 +43,11 @@ class DisruptorCore : public std::enable_shared_from_this<DisruptorCore<T>> {
     using Duration              = Clock::duration;
     using EventHandlerGroupType = EventHandlerGroup<T, ::opencmw::disruptor::DisruptorCore>;
 
-    std::shared_ptr<RingBuffer<T>>         m_ringBuffer;
-    std::shared_ptr<IExecutor>             m_executor;
-    std::shared_ptr<ConsumerRepository<T>> m_consumerRepository = std::make_shared<ConsumerRepository<T>>();
-    std::shared_ptr<IExceptionHandler<T>>  m_exceptionHandler   = std::make_shared<ExceptionHandlerWrapper<T>>();
-    std::atomic<int>                       m_started{ 0 };
+    std::shared_ptr<RingBuffer<T>>         _ringBuffer;
+    std::shared_ptr<IExecutor>             _executor;
+    std::shared_ptr<ConsumerRepository<T>> _consumerRepository = std::make_shared<ConsumerRepository<T>>();
+    std::shared_ptr<IExceptionHandler<T>>  _exceptionHandler   = std::make_shared<ExceptionHandlerWrapper<T>>();
+    std::atomic<int>                       _started{ 0 };
 
 public:
     /**
@@ -151,9 +151,9 @@ public:
      */
     std::shared_ptr<EventHandlerGroupType> handleEventsWith(const std::vector<std::shared_ptr<IEventProcessor>> &processors) {
         for (auto &&processor : processors) {
-            m_consumerRepository->add(processor);
+            _consumerRepository->add(processor);
         }
-        return std::make_shared<EventHandlerGroupType>(this->shared_from_this(), m_consumerRepository, util::getSequencesFor(processors));
+        return std::make_shared<EventHandlerGroupType>(this->shared_from_this(), _consumerRepository, util::getSequencesFor(processors));
     }
 
     /**
@@ -196,7 +196,7 @@ public:
      */
     //[Obsolete("This method only applies to future event handlers. Use setDefaultExceptionHandler instead which applies to existing and new event handlers.")]
     void handleExceptionsWith(const std::shared_ptr<IExceptionHandler<T>> &exceptionHandler) {
-        m_exceptionHandler = exceptionHandler;
+        _exceptionHandler = exceptionHandler;
     }
 
     /**
@@ -207,7 +207,7 @@ public:
      */
     void setDefaultExceptionHandler(const std::shared_ptr<IExceptionHandler<T>> &exceptionHandler) {
         checkNotStarted();
-        std::dynamic_pointer_cast<ExceptionHandlerWrapper<T>>(m_exceptionHandler)->switchTo(exceptionHandler);
+        std::dynamic_pointer_cast<ExceptionHandlerWrapper<T>>(_exceptionHandler)->switchTo(exceptionHandler);
     }
 
     /**
@@ -217,7 +217,7 @@ public:
      * \returns ExceptionHandlerSetting<T> dsl object - intended to be used by chaining the with method call
      */
     std::shared_ptr<ExceptionHandlerSetting<T>> handleExceptionsFor(const std::shared_ptr<IEventHandler<T>> &eventHandler) {
-        return std::make_shared<ExceptionHandlerSetting<T>>(eventHandler, m_consumerRepository);
+        return std::make_shared<ExceptionHandlerSetting<T>>(eventHandler, _consumerRepository);
     }
 
     /**
@@ -229,9 +229,9 @@ public:
     std::shared_ptr<EventHandlerGroupType> after(const std::vector<std::shared_ptr<IEventHandler<T>>> &handlers) {
         std::vector<std::shared_ptr<ISequence>> sequences;
         for (auto &&handler : handlers)
-            sequences.push_back(m_consumerRepository->getSequenceFor(handler));
+            sequences.push_back(_consumerRepository->getSequenceFor(handler));
 
-        return std::make_shared<EventHandlerGroupType>(this->shared_from_this(), m_consumerRepository, sequences);
+        return std::make_shared<EventHandlerGroupType>(this->shared_from_this(), _consumerRepository, sequences);
     }
 
     /**
@@ -252,10 +252,10 @@ public:
      */
     std::shared_ptr<EventHandlerGroupType> after(const std::vector<std::shared_ptr<IEventProcessor>> &processors) {
         for (auto &&processor : processors) {
-            m_consumerRepository->add(processor);
+            _consumerRepository->add(processor);
         }
 
-        return std::make_shared<EventHandlerGroupType>(this->shared_from_this(), m_consumerRepository, util::getSequencesFor(processors));
+        return std::make_shared<EventHandlerGroupType>(this->shared_from_this(), _consumerRepository, util::getSequencesFor(processors));
     }
 
     /**
@@ -274,7 +274,7 @@ public:
      * \param eventTranslator the translator that will load data into the event
      */
     void publishEvent(const std::shared_ptr<IEventTranslator<T>> &eventTranslator) {
-        m_ringBuffer->publishEvent(eventTranslator);
+        _ringBuffer->publishEvent(eventTranslator);
     }
 
     /**
@@ -284,21 +284,21 @@ public:
      * \returns the configured ring buffer
      */
     std::shared_ptr<RingBuffer<T>> start() {
-        m_ringBuffer->addGatingSequences(m_consumerRepository->getLastSequenceInChain(true));
+        _ringBuffer->addGatingSequences(_consumerRepository->getLastSequenceInChain(true));
 
         checkOnlyStartedOnce();
-        for (auto &&consumerInfo : *m_consumerRepository) {
-            consumerInfo->start(m_executor);
+        for (auto &&consumerInfo : *_consumerRepository) {
+            consumerInfo->start(_executor);
         }
 
-        return m_ringBuffer;
+        return _ringBuffer;
     }
 
     /**
      * Calls IEventProcessor.halt on all of the event processors created via this disruptor.
      */
     void halt() {
-        for (auto &&consumerInfo : *m_consumerRepository) {
+        for (auto &&consumerInfo : *_consumerRepository) {
             consumerInfo->halt();
         }
     }
@@ -312,7 +312,7 @@ public:
         try {
             shutdown(Duration::max());
         } catch (TimeoutException &ex) {
-            m_exceptionHandler->handleOnShutdownException(ex);
+            _exceptionHandler->handleOnShutdownException(ex);
         }
     }
 
@@ -338,21 +338,21 @@ public:
      * The RingBuffer<T> used by this Disruptor. This is useful for creating custom event processors if the behaviour of BatchEventProcessor<T> is not suitable.
      */
     std::shared_ptr<RingBuffer<T>> ringBuffer() const {
-        return m_ringBuffer;
+        return _ringBuffer;
     }
 
     /**
      * Get the value of the cursor indicating the published sequence.
      */
     std::int64_t cursor() const {
-        return m_ringBuffer->cursor();
+        return _ringBuffer->cursor();
     }
 
     /**
      * The capacity of the data structure to hold entries.
      */
     std::int64_t bufferSize() const {
-        return m_ringBuffer->bufferSize();
+        return _ringBuffer->bufferSize();
     }
 
     /**
@@ -362,7 +362,7 @@ public:
      * \returns event for the sequence
      */
     T &operator[](std::int64_t sequence) const {
-        return m_ringBuffer[sequence];
+        return _ringBuffer[sequence];
     }
 
     /**
@@ -372,7 +372,7 @@ public:
      * \returns the SequenceBarrier used by the given handler
      */
     std::shared_ptr<ISequenceBarrier> getBarrierFor(const std::shared_ptr<IEventHandler<T>> &handler) {
-        return m_consumerRepository->getBarrierFor(handler);
+        return _consumerRepository->getBarrierFor(handler);
     }
 
     std::shared_ptr<EventHandlerGroupType> createEventProcessors(const std::vector<std::shared_ptr<ISequence>> &barrierSequences,
@@ -382,38 +382,38 @@ public:
         std::vector<std::shared_ptr<ISequence>> processorSequences;
         processorSequences.reserve(eventHandlers.size());
 
-        auto barrier = m_ringBuffer->newBarrier(barrierSequences);
+        auto barrier = _ringBuffer->newBarrier(barrierSequences);
 
         for (auto &&eventHandler : eventHandlers) {
-            auto batchEventProcessor = std::make_shared<BatchEventProcessor<T>>(m_ringBuffer, barrier, eventHandler);
-            if (m_exceptionHandler != nullptr)
-                batchEventProcessor->setExceptionHandler(m_exceptionHandler);
+            auto batchEventProcessor = std::make_shared<BatchEventProcessor<T>>(_ringBuffer, barrier, eventHandler);
+            if (_exceptionHandler != nullptr)
+                batchEventProcessor->setExceptionHandler(_exceptionHandler);
 
-            m_consumerRepository->add(batchEventProcessor, eventHandler, barrier);
+            _consumerRepository->add(batchEventProcessor, eventHandler, barrier);
             processorSequences.push_back(batchEventProcessor->sequence());
         }
 
         if (!processorSequences.empty()) {
-            m_consumerRepository->unMarkEventProcessorsAsEndOfChain(barrierSequences);
+            _consumerRepository->unMarkEventProcessorsAsEndOfChain(barrierSequences);
         }
 
-        return std::make_shared<EventHandlerGroupType>(this->shared_from_this(), m_consumerRepository, processorSequences);
+        return std::make_shared<EventHandlerGroupType>(this->shared_from_this(), _consumerRepository, processorSequences);
     }
 
     std::shared_ptr<EventHandlerGroupType> createWorkerPool(const std::vector<std::shared_ptr<ISequence>> &barrierSequences,
             const std::vector<std::shared_ptr<IWorkHandler<T>>>                                           &workHandlers) {
-        auto sequenceBarrier = m_ringBuffer->newBarrier(barrierSequences);
-        auto workerPool      = std::make_shared<WorkerPool<T>>(m_ringBuffer, sequenceBarrier, m_exceptionHandler, workHandlers);
-        m_consumerRepository->add(workerPool, sequenceBarrier);
+        auto sequenceBarrier = _ringBuffer->newBarrier(barrierSequences);
+        auto workerPool      = std::make_shared<WorkerPool<T>>(_ringBuffer, sequenceBarrier, _exceptionHandler, workHandlers);
+        _consumerRepository->add(workerPool, sequenceBarrier);
 
-        return std::make_shared<EventHandlerGroupType>(this->shared_from_this(), m_consumerRepository, workerPool->getWorkerSequences());
+        return std::make_shared<EventHandlerGroupType>(this->shared_from_this(), _consumerRepository, workerPool->getWorkerSequences());
     }
 
     std::shared_ptr<EventHandlerGroupType> createEventProcessors(const std::vector<std::shared_ptr<ISequence>> &barrierSequences,
             const std::vector<std::shared_ptr<IEventProcessorFactory<T>>>                                      &processorFactories) {
         std::vector<std::shared_ptr<IEventProcessor>> processors;
         for (auto &&processorFactory : processorFactories) {
-            processors.push_back(processorFactory->createEventProcessor(m_ringBuffer, barrierSequences));
+            processors.push_back(processorFactory->createEventProcessor(_ringBuffer, barrierSequences));
         }
 
         return handleEventsWith(processors);
@@ -424,14 +424,14 @@ private:
      * Private constructor helper
      */
     DisruptorCore(const std::shared_ptr<RingBuffer<T>> &ringBuffer, const std::shared_ptr<IExecutor> &executor)
-        : m_ringBuffer(ringBuffer)
-        , m_executor(executor) {
+        : _ringBuffer(ringBuffer)
+        , _executor(executor) {
     }
 
     // Confirms if all messages have been consumed by all event processors
     bool hasBacklog() {
-        auto cursor = m_ringBuffer->cursor();
-        for (auto &&sequence : m_consumerRepository->getLastSequenceInChain(false)) {
+        auto cursor = _ringBuffer->cursor();
+        for (auto &&sequence : _consumerRepository->getLastSequenceInChain(false)) {
             if (cursor > sequence->value())
                 return true;
         }
@@ -439,13 +439,13 @@ private:
     }
 
     void checkNotStarted() const {
-        if (m_started == 1) {
+        if (_started == 1) {
             throw std::logic_error("All event handlers must be added before calling starts.");
         }
     }
 
     void checkOnlyStartedOnce() {
-        if (std::atomic_exchange(&m_started, 1) != 0) {
+        if (std::atomic_exchange(&_started, 1) != 0) {
             throw std::logic_error("Disruptor.start() must only be called once.");
         }
     }

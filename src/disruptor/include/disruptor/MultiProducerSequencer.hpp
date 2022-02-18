@@ -16,20 +16,20 @@ namespace opencmw::disruptor {
 template<typename T>
 class MultiProducerSequencer : public Sequencer<T> {
 private:
-    std::shared_ptr<Sequence> m_gatingSequenceCache = std::make_shared<Sequence>();
+    std::shared_ptr<Sequence> _gatingSequenceCache = std::make_shared<Sequence>();
 
     // availableBuffer tracks the state of each ringbuffer slot
     // see below for more details on the approach
-    std::unique_ptr<std::int32_t[]> m_availableBuffer;
-    std::int32_t                    m_indexMask;
-    std::int32_t                    m_indexShift;
+    std::unique_ptr<std::int32_t[]> _availableBuffer;
+    std::int32_t                    _indexMask;
+    std::int32_t                    _indexShift;
 
 public:
     MultiProducerSequencer(std::int32_t bufferSize, const std::shared_ptr<WaitStrategy> &waitStrategy)
         : Sequencer<T>(bufferSize, waitStrategy) {
-        m_availableBuffer = std::unique_ptr<int[]>(new int[bufferSize]);
-        m_indexMask       = bufferSize - 1;
-        m_indexShift      = util::log2(bufferSize);
+        _availableBuffer = std::unique_ptr<int[]>(new int[bufferSize]);
+        _indexMask       = bufferSize - 1;
+        _indexShift      = util::log2(bufferSize);
         initializeAvailableBuffer();
     }
 
@@ -40,7 +40,7 @@ public:
      * \returns true if the buffer has the capacity to allocate the next sequence otherwise false.
      */
     bool hasAvailableCapacity(std::int32_t requiredCapacity) override {
-        return hasAvailableCapacity(this->m_gatingSequences, requiredCapacity, this->m_cursor->value());
+        return hasAvailableCapacity(this->_gatingSequences, requiredCapacity, this->_cursor->value());
     }
 
     /**
@@ -49,7 +49,7 @@ public:
      * \param sequence sequence to be claimed.
      */
     void claim(std::int64_t sequence) override {
-        this->m_cursor->setValue(sequence);
+        this->_cursor->setValue(sequence);
     }
 
     /**
@@ -78,25 +78,25 @@ public:
 
         SpinWait     spinWait;
         do {
-            current                           = this->m_cursor->value();
+            current                           = this->_cursor->value();
             next                              = current + n_slots_to_claim;
 
-            std::int64_t wrapPoint            = next - this->m_bufferSize;
-            std::int64_t cachedGatingSequence = m_gatingSequenceCache->value();
+            std::int64_t wrapPoint            = next - this->_bufferSize;
+            std::int64_t cachedGatingSequence = _gatingSequenceCache->value();
 
             if (wrapPoint > cachedGatingSequence || cachedGatingSequence > current) {
-                std::int64_t gatingSequence = util::getMinimumSequence(this->m_gatingSequences, current);
+                std::int64_t gatingSequence = util::getMinimumSequence(this->_gatingSequences, current);
 
                 if (wrapPoint > gatingSequence) {
-                    if constexpr (requires { this->m_waitStrategy->signalAllWhenBlocking(); }) {
-                        this->m_waitStrategy->signalAllWhenBlocking();
+                    if constexpr (requires { this->_waitStrategy->signalAllWhenBlocking(); }) {
+                        this->_waitStrategy->signalAllWhenBlocking();
                     }
                     spinWait.spinOnce();
                     continue;
                 }
 
-                m_gatingSequenceCache->setValue(gatingSequence);
-            } else if (this->m_cursor->compareAndSet(current, next)) {
+                _gatingSequenceCache->setValue(gatingSequence);
+            } else if (this->_cursor->compareAndSet(current, next)) {
                 break;
             }
         } while (true);
@@ -120,13 +120,13 @@ public:
         std::int64_t next;
 
         do {
-            current = this->m_cursor->value();
+            current = this->_cursor->value();
             next    = current + n_slots_to_claim;
 
-            if (!hasAvailableCapacity(this->m_gatingSequences, n_slots_to_claim, current)) {
+            if (!hasAvailableCapacity(this->_gatingSequences, n_slots_to_claim, current)) {
                 throw NoCapacityException();
             }
-        } while (!this->m_cursor->compareAndSet(current, next));
+        } while (!this->_cursor->compareAndSet(current, next));
 
         return next;
     }
@@ -135,8 +135,8 @@ public:
      * Get the remaining capacity for this sequencer. return The number of slots remaining.
      */
     std::int64_t getRemainingCapacity() override {
-        auto consumed = util::getMinimumSequence(this->m_gatingSequences, this->m_cursorRef.value());
-        auto produced = this->m_cursorRef.value();
+        auto consumed = util::getMinimumSequence(this->_gatingSequences, this->_cursorRef.value());
+        auto produced = this->_cursorRef.value();
 
         return this->bufferSize() - (produced - consumed);
     }
@@ -148,8 +148,8 @@ public:
      */
     void publish(std::int64_t sequence) override {
         setAvailable(sequence);
-        if constexpr (requires { this->m_waitStrategy->signalAllWhenBlocking(); }) {
-            this->m_waitStrategyRef.signalAllWhenBlocking();
+        if constexpr (requires { this->_waitStrategy->signalAllWhenBlocking(); }) {
+            this->_waitStrategyRef.signalAllWhenBlocking();
         }
     }
 
@@ -160,8 +160,8 @@ public:
         for (std::int64_t l = lo; l <= hi; l++) {
             setAvailable(l);
         }
-        if constexpr (requires { this->m_waitStrategy->signalAllWhenBlocking(); }) {
-            this->m_waitStrategyRef.signalAllWhenBlocking();
+        if constexpr (requires { this->_waitStrategy->signalAllWhenBlocking(); }) {
+            this->_waitStrategyRef.signalAllWhenBlocking();
         }
     }
 
@@ -175,7 +175,7 @@ public:
         auto index = calculateIndex(sequence);
         auto flag  = calculateAvailabilityFlag(sequence);
 
-        return m_availableBuffer[static_cast<std::size_t>(index)] == flag;
+        return _availableBuffer[static_cast<std::size_t>(index)] == flag;
     }
 
     /**
@@ -199,12 +199,12 @@ public:
 
 private:
     bool hasAvailableCapacity(const std::vector<std::shared_ptr<ISequence>> &gatingSequences, std::int32_t requiredCapacity, std::int64_t cursorValue) {
-        auto wrapPoint            = (cursorValue + requiredCapacity) - this->m_bufferSize;
-        auto cachedGatingSequence = m_gatingSequenceCache->value();
+        auto wrapPoint            = (cursorValue + requiredCapacity) - this->_bufferSize;
+        auto cachedGatingSequence = _gatingSequenceCache->value();
 
         if (wrapPoint > cachedGatingSequence || cachedGatingSequence > cursorValue) {
             auto minSequence = util::getMinimumSequence(gatingSequences, cursorValue);
-            m_gatingSequenceCache->setValue(minSequence);
+            _gatingSequenceCache->setValue(minSequence);
 
             if (wrapPoint > minSequence) {
                 return false;
@@ -215,7 +215,7 @@ private:
     }
 
     void initializeAvailableBuffer() {
-        for (std::int32_t i = this->m_bufferSize - 1; i != 0; i--) {
+        for (std::int32_t i = this->_bufferSize - 1; i != 0; i--) {
             setAvailableBufferValue(i, -1);
         }
 
@@ -227,15 +227,15 @@ private:
     }
 
     void setAvailableBufferValue(std::int32_t index, std::int32_t flag) {
-        m_availableBuffer[static_cast<std::size_t>(index)] = flag;
+        _availableBuffer[static_cast<std::size_t>(index)] = flag;
     }
 
     std::int32_t calculateAvailabilityFlag(std::int64_t sequence) {
-        return static_cast<std::int32_t>(static_cast<std::uint64_t>(sequence) >> m_indexShift);
+        return static_cast<std::int32_t>(static_cast<std::uint64_t>(sequence) >> _indexShift);
     }
 
     std::int32_t calculateIndex(std::int64_t sequence) {
-        return static_cast<std::int32_t>(sequence) & m_indexMask;
+        return static_cast<std::int32_t>(sequence) & _indexMask;
     }
 };
 

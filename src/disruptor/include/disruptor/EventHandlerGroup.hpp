@@ -22,17 +22,17 @@ class EventHandlerGroup {
 private:
     using EventHandlerGroupType = EventHandlerGroup<T, TDisruptor>;
 
-    std::shared_ptr<TDisruptor<T>>          m_disruptor;
-    std::shared_ptr<ConsumerRepository<T>>  m_consumerRepository;
-    std::vector<std::shared_ptr<ISequence>> m_sequences;
+    std::shared_ptr<TDisruptor<T>>          _disruptor;
+    std::shared_ptr<ConsumerRepository<T>>  _consumerRepository;
+    std::vector<std::shared_ptr<ISequence>> _sequences;
 
 public:
     EventHandlerGroup(const std::shared_ptr<TDisruptor<T>> &disruptor,
             const std::shared_ptr<ConsumerRepository<T>>   &consumerRepository,
             const std::vector<std::shared_ptr<ISequence>>  &sequences)
-        : m_disruptor(disruptor)
-        , m_consumerRepository(consumerRepository)
-        , m_sequences(sequences) {
+        : _disruptor(disruptor)
+        , _consumerRepository(consumerRepository)
+        , _sequences(sequences) {
     }
 
     /**
@@ -42,10 +42,10 @@ public:
      * \returns a new EventHandlerGroup combining the existing and new consumers into a single dependency group
      */
     std::shared_ptr<EventHandlerGroupType> And(const std::shared_ptr<EventHandlerGroupType> &otherHandlerGroup) {
-        std::vector<std::shared_ptr<ISequence>> sequences(m_sequences);
-        std::copy(otherHandlerGroup->m_sequences.begin(), otherHandlerGroup->m_sequences.end(), std::back_inserter(sequences));
+        std::vector<std::shared_ptr<ISequence>> sequences(_sequences);
+        std::copy(otherHandlerGroup->_sequences.begin(), otherHandlerGroup->_sequences.end(), std::back_inserter(sequences));
 
-        return std::make_shared<EventHandlerGroupType>(m_disruptor, m_consumerRepository, sequences);
+        return std::make_shared<EventHandlerGroupType>(_disruptor, _consumerRepository, sequences);
     }
 
     /**
@@ -58,13 +58,13 @@ public:
         std::vector<std::shared_ptr<ISequence>> sequences;
 
         for (auto &&eventProcessor : processors) {
-            m_consumerRepository->add(eventProcessor);
+            _consumerRepository->add(eventProcessor);
             sequences.push_back(eventProcessor->sequence());
         }
 
-        std::copy(m_sequences.begin(), m_sequences.end(), std::back_inserter(sequences));
+        std::copy(_sequences.begin(), _sequences.end(), std::back_inserter(sequences));
 
-        return std::make_shared<EventHandlerGroupType>(m_disruptor, m_consumerRepository, sequences);
+        return std::make_shared<EventHandlerGroupType>(_disruptor, _consumerRepository, sequences);
     }
 
     /**
@@ -141,7 +141,7 @@ public:
      * \returns EventHandlerGroupType that can be used to set up a event processor barrier over the created event processors.
      */
     std::shared_ptr<EventHandlerGroupType> handleEventsWith(const std::vector<std::shared_ptr<IEventHandler<T>>> &handlers) {
-        return m_disruptor->createEventProcessors(m_sequences, handlers);
+        return _disruptor->createEventProcessors(_sequences, handlers);
     }
 
     /**
@@ -163,7 +163,7 @@ public:
      * \returns EventHandlerGroupType that can be used to chain dependencies.
      */
     std::shared_ptr<EventHandlerGroupType> handleEventsWith(const std::vector<std::shared_ptr<IEventProcessorFactory<T>>> &eventProcessorFactories) {
-        return m_disruptor->createEventProcessors(m_sequences, eventProcessorFactories);
+        return _disruptor->createEventProcessors(_sequences, eventProcessorFactories);
     }
 
     /**
@@ -187,7 +187,7 @@ public:
      * \returns a\returns <see cref="EventHandlerGroup{T}"/>\returns that can be used to set up a event processor barrier over the created event processors.
      */
     std::shared_ptr<EventHandlerGroupType> handleEventsWithWorkerPool(const std::vector<std::shared_ptr<IWorkHandler<T>>> &handlers) {
-        return m_disruptor->createWorkerPool(m_sequences, handlers);
+        return _disruptor->createWorkerPool(_sequences, handlers);
     }
 
     /**
@@ -196,7 +196,7 @@ public:
      * \returns ISequenceBarrier including all the processors in this group.
      */
     std::shared_ptr<ISequenceBarrier> asSequenceBarrier() {
-        return m_disruptor->ringBuffer()->newBarrier(m_sequences);
+        return _disruptor->ringBuffer()->newBarrier(_sequences);
     }
 };
 

@@ -25,11 +25,11 @@ public:
      * \param waitStrategy waitStrategy for those waiting on sequences.
      */
     Sequencer(std::int32_t bufferSize, std::shared_ptr<WaitStrategy> waitStrategy)
-        : m_bufferSize(bufferSize)
-        , m_waitStrategy(std::move(waitStrategy))
-        , m_cursor(std::make_shared<Sequence>())
-        , m_waitStrategyRef(*m_waitStrategy)
-        , m_cursorRef(*m_cursor) {
+        : _bufferSize(bufferSize)
+        , _waitStrategy(std::move(waitStrategy))
+        , _cursor(std::make_shared<Sequence>())
+        , _waitStrategyRef(*_waitStrategy)
+        , _cursorRef(*_cursor) {
         if (bufferSize < 1) {
             throw std::invalid_argument("bufferSize must not be less than 1"); // replace by constrained NTTP
         }
@@ -46,21 +46,21 @@ public:
      *
      */
     std::shared_ptr<ISequenceBarrier> newBarrier(const std::vector<std::shared_ptr<ISequence>> &sequencesToTrack) override {
-        return std::make_shared<ProcessingSequenceBarrier>(this->shared_from_this(), m_waitStrategy, m_cursor, sequencesToTrack);
+        return std::make_shared<ProcessingSequenceBarrier>(this->shared_from_this(), _waitStrategy, _cursor, sequencesToTrack);
     }
 
     /**
      * The capacity of the data structure to hold entries.
      */
     std::int32_t bufferSize() override {
-        return m_bufferSize;
+        return _bufferSize;
     }
 
     /**
      * Get the value of the cursor indicating the published sequence.
      */
     [[nodiscard]] std::int64_t cursor() const override {
-        return m_cursorRef.value();
+        return _cursorRef.value();
     }
 
     /**
@@ -69,7 +69,7 @@ public:
      * \param gatingSequences The sequences to add.
      */
     void addGatingSequences(const std::vector<std::shared_ptr<ISequence>> &gatingSequences) override {
-        SequenceGroups::addSequences(m_gatingSequences, *this, gatingSequences);
+        SequenceGroups::addSequences(_gatingSequences, *this, gatingSequences);
     }
 
     /**
@@ -79,7 +79,7 @@ public:
      * \returns true if this sequence was found, false otherwise.
      */
     bool removeGatingSequence(const std::shared_ptr<ISequence> &sequence) override {
-        return SequenceGroups::removeSequence(m_gatingSequences, sequence);
+        return SequenceGroups::removeSequence(_gatingSequences, sequence);
     }
 
     /**
@@ -88,7 +88,7 @@ public:
      * \returns The minimum gating sequence or the cursor sequence if no sequences have been added.
      */
     std::int64_t getMinimumSequence() override {
-        return util::getMinimumSequence(m_gatingSequences, m_cursorRef.value());
+        return util::getMinimumSequence(_gatingSequences, _cursorRef.value());
     }
 
     /**
@@ -100,19 +100,19 @@ public:
      * \returns A poller that will gate on this ring buffer and the supplied sequences.
      */
     std::shared_ptr<EventPoller<T>> newPoller(const std::shared_ptr<IDataProvider<T>> &provider, const std::vector<std::shared_ptr<ISequence>> &gatingSequences) override {
-        return EventPoller<T>::newInstance(provider, this->shared_from_this(), std::make_shared<Sequence>(), m_cursor, gatingSequences);
+        return EventPoller<T>::newInstance(provider, this->shared_from_this(), std::make_shared<Sequence>(), _cursor, gatingSequences);
     }
 
     void writeDescriptionTo(std::ostream &stream) const override {
         stream << "WaitStrategy: { ";
-        // stream << typeName<decltype(m_waitStrategy)>(); //xTODO: change
-        stream << typeid(decltype(m_waitStrategy)).name();
+        // stream << typeName<decltype(_waitStrategy)>(); //xTODO: change
+        stream << typeid(decltype(_waitStrategy)).name();
         stream << " }, Cursor: { ";
-        m_cursor->writeDescriptionTo(stream);
+        _cursor->writeDescriptionTo(stream);
         stream << " }, GatingSequences: [ ";
 
         auto firstItem = true;
-        for (auto &&sequence : m_gatingSequences) {
+        for (auto &&sequence : _gatingSequences) {
             if (firstItem)
                 firstItem = false;
             else
@@ -129,13 +129,13 @@ protected:
     /**
      * Volatile in the Java version => always use Volatile.Read/Write or Interlocked methods to access this field.
      */
-    std::vector<std::shared_ptr<ISequence>> m_gatingSequences;
+    std::vector<std::shared_ptr<ISequence>> _gatingSequences;
 
-    std::int32_t                            m_bufferSize;
-    std::shared_ptr<WaitStrategy>           m_waitStrategy;
-    std::shared_ptr<Sequence>               m_cursor;
-    WaitStrategy                           &m_waitStrategyRef;
-    Sequence                               &m_cursorRef;
+    std::int32_t                            _bufferSize;
+    std::shared_ptr<WaitStrategy>           _waitStrategy;
+    std::shared_ptr<Sequence>               _cursor;
+    WaitStrategy                           &_waitStrategyRef;
+    Sequence                               &_cursorRef;
 };
 
 } // namespace opencmw::disruptor

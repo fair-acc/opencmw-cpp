@@ -10,43 +10,43 @@ namespace opencmw::disruptor {
 template<typename T>
 class WorkerPoolInfo : public IConsumerInfo {
 private:
-    std::shared_ptr<WorkerPool<T>>    m_workerPool;
-    std::shared_ptr<ISequenceBarrier> m_barrier;
-    bool                              m_isEndOfChain;
+    std::shared_ptr<WorkerPool<T>>    _workerPool;
+    std::shared_ptr<ISequenceBarrier> _barrier;
+    bool                              _isEndOfChain;
 
 public:
     WorkerPoolInfo(const std::shared_ptr<WorkerPool<T>> &workerPool, const std::shared_ptr<ISequenceBarrier> &barrier)
-        : m_workerPool(workerPool)
-        , m_barrier(barrier)
-        , m_isEndOfChain(true) {
+        : _workerPool(workerPool)
+        , _barrier(barrier)
+        , _isEndOfChain(true) {
     }
 
     std::vector<std::shared_ptr<ISequence>> sequences() const override {
-        return m_workerPool->getWorkerSequences();
+        return _workerPool->getWorkerSequences();
     }
 
     const std::shared_ptr<ISequenceBarrier> &barrier() const override {
-        return m_barrier;
+        return _barrier;
     }
 
     bool isEndOfChain() const override {
-        return m_isEndOfChain;
+        return _isEndOfChain;
     }
 
     void start(const std::shared_ptr<IExecutor> &executor) override {
-        m_workerPool->start(executor);
+        _workerPool->start(executor);
     }
 
     void halt() override {
-        m_workerPool->halt();
+        _workerPool->halt();
     }
 
     void markAsUsedInBarrier() override {
-        m_isEndOfChain = false;
+        _isEndOfChain = false;
     }
 
     bool isRunning() const override {
-        return m_workerPool->isRunning();
+        return _workerPool->isRunning();
     }
 };
 

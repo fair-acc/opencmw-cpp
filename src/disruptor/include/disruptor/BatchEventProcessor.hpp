@@ -23,17 +23,17 @@ namespace opencmw::disruptor {
 template<typename T>
 class BatchEventProcessor : public IEventProcessor {
 private:
-    std::atomic<bool>                     m_running;
-    std::shared_ptr<IDataProvider<T>>     m_dataProvider;
-    IDataProvider<T>                     &m_dataProviderRef;
-    std::shared_ptr<ISequenceBarrier>     m_sequenceBarrier;
-    ISequenceBarrier                     &m_sequenceBarrierRef;
-    std::shared_ptr<IEventHandler<T>>     m_eventHandler;
-    IEventHandler<T>                     &m_eventHandlerRef;
-    std::shared_ptr<Sequence>             m_sequence;
-    Sequence                             &m_sequenceRef;
-    std::shared_ptr<ITimeoutHandler>      m_timeoutHandler;
-    std::shared_ptr<IExceptionHandler<T>> m_exceptionHandler;
+    std::atomic<bool>                     _running;
+    std::shared_ptr<IDataProvider<T>>     _dataProvider;
+    IDataProvider<T>                     &_dataProviderRef;
+    std::shared_ptr<ISequenceBarrier>     _sequenceBarrier;
+    ISequenceBarrier                     &_sequenceBarrierRef;
+    std::shared_ptr<IEventHandler<T>>     _eventHandler;
+    IEventHandler<T>                     &_eventHandlerRef;
+    std::shared_ptr<Sequence>             _sequence;
+    Sequence                             &_sequenceRef;
+    std::shared_ptr<ITimeoutHandler>      _timeoutHandler;
+    std::shared_ptr<IExceptionHandler<T>> _exceptionHandler;
 
 public:
     /**
@@ -47,27 +47,27 @@ public:
     BatchEventProcessor(const std::shared_ptr<IDataProvider<T>> &dataProvider,
             const std::shared_ptr<ISequenceBarrier>             &sequenceBarrier,
             const std::shared_ptr<IEventHandler<T>>             &eventHandler)
-        : m_running(false)
-        , m_dataProvider(dataProvider)
-        , m_dataProviderRef(*m_dataProvider)
-        , m_sequenceBarrier(sequenceBarrier)
-        , m_sequenceBarrierRef(*m_sequenceBarrier)
-        , m_eventHandler(eventHandler)
-        , m_eventHandlerRef(*m_eventHandler)
-        , m_sequence(std::make_shared<Sequence>())
-        , m_sequenceRef(*m_sequence) {
+        : _running(false)
+        , _dataProvider(dataProvider)
+        , _dataProviderRef(*_dataProvider)
+        , _sequenceBarrier(sequenceBarrier)
+        , _sequenceBarrierRef(*_sequenceBarrier)
+        , _eventHandler(eventHandler)
+        , _eventHandlerRef(*_eventHandler)
+        , _sequence(std::make_shared<Sequence>())
+        , _sequenceRef(*_sequence) {
         auto processorSequenceAware = std::dynamic_pointer_cast<IEventProcessorSequenceAware>(eventHandler);
         if (processorSequenceAware != nullptr)
-            processorSequenceAware->setSequenceCallback(m_sequence);
+            processorSequenceAware->setSequenceCallback(_sequence);
 
-        m_timeoutHandler = std::dynamic_pointer_cast<ITimeoutHandler>(eventHandler);
+        _timeoutHandler = std::dynamic_pointer_cast<ITimeoutHandler>(eventHandler);
     }
 
     /**
      * \see IEventProcessor::Sequence
      */
     std::shared_ptr<ISequence> sequence() const override {
-        return m_sequence;
+        return _sequence;
     };
 
     /**
@@ -77,15 +77,15 @@ public:
      * \see ISequenceBarrier::Alert
      */
     void halt() override {
-        m_running = false;
-        m_sequenceBarrier->alert();
+        _running = false;
+        _sequenceBarrier->alert();
     }
 
     /**
      * \see IEventProcessor::IsRunning
      */
     bool isRunning() const override {
-        return m_running;
+        return _running;
     }
 
     /**
@@ -97,84 +97,84 @@ public:
         if (exceptionHandler == nullptr)
             throw std::invalid_argument("exception handler cannot be nullptr"); // TODO: do not use shared_ptr argument?
 
-        m_exceptionHandler = exceptionHandler;
+        _exceptionHandler = exceptionHandler;
     }
 
     /**
      * It is ok to have another thread rerun this method after a halt().
      */
     void run() override {
-        if (m_running.exchange(true) != false) {
+        if (_running.exchange(true) != false) {
             throw std::runtime_error("Thread is already running");
         }
 
-        m_sequenceBarrierRef.clearAlert();
+        _sequenceBarrierRef.clearAlert();
 
         notifyStart();
 
-        auto nextSequence = m_sequenceRef.value() + 1;
+        auto nextSequence = _sequenceRef.value() + 1;
 
         T   *evt          = nullptr;
 
         while (true) {
             try {
-                auto availableSequence = m_sequenceBarrierRef.waitFor(nextSequence);
+                auto availableSequence = _sequenceBarrierRef.waitFor(nextSequence);
 
                 while (nextSequence <= availableSequence) {
-                    evt = &m_dataProviderRef[nextSequence];
-                    m_eventHandlerRef.onEvent(*evt, nextSequence, nextSequence == availableSequence);
+                    evt = &_dataProviderRef[nextSequence];
+                    _eventHandlerRef.onEvent(*evt, nextSequence, nextSequence == availableSequence);
                     nextSequence++;
                 }
 
-                m_sequenceRef.setValue(availableSequence);
+                _sequenceRef.setValue(availableSequence);
             } catch (const TimeoutException &) {
-                notifyTimeout(m_sequenceRef.value());
+                notifyTimeout(_sequenceRef.value());
             } catch (const AlertException &) {
-                if (m_running == false) {
+                if (_running == false) {
                     break;
                 }
             } catch (const std::exception &ex) {
-                m_exceptionHandler->handleEventException(ex, nextSequence, *evt);
-                m_sequenceRef.setValue(nextSequence);
+                _exceptionHandler->handleEventException(ex, nextSequence, *evt);
+                _sequenceRef.setValue(nextSequence);
                 nextSequence++;
             }
         }
 
         notifyShutdown();
-        m_running = false;
+        _running = false;
     }
 
 private:
     void notifyTimeout(std::int64_t availableSequence) const {
         try {
-            if (m_timeoutHandler)
-                m_timeoutHandler->onTimeout(availableSequence);
+            if (_timeoutHandler)
+                _timeoutHandler->onTimeout(availableSequence);
         } catch (std::exception &ex) {
-            if (m_exceptionHandler)
-                m_exceptionHandler->handleOnTimeoutException(ex, availableSequence);
+            if (_exceptionHandler)
+                _exceptionHandler->handleOnTimeoutException(ex, availableSequence);
         }
     }
 
     void notifyStart() {
-        auto sequenceReportingHandler = std::dynamic_pointer_cast<ILifecycleAware>(m_eventHandler);
+        auto sequenceReportingHandler = std::dynamic_pointer_cast<ILifecycleAware>(_eventHandler);
         if (sequenceReportingHandler != nullptr) {
             try {
                 sequenceReportingHandler->onStart();
             } catch (std::exception &ex) {
-                if (m_exceptionHandler)
-                    m_exceptionHandler->handleOnStartException(ex);
+                if (_exceptionHandler)
+                    _exceptionHandler->handleOnStartException(ex);
             }
         }
     }
 
     void notifyShutdown() {
-        auto sequenceReportingHandler = std::dynamic_pointer_cast<ILifecycleAware>(m_eventHandler);
+        auto sequenceReportingHandler = std::dynamic_pointer_cast<ILifecycleAware>(_eventHandler);
         if (sequenceReportingHandler != nullptr) {
             try {
                 sequenceReportingHandler->onShutdown();
             } catch (std::exception &ex) {
-                if (m_exceptionHandler)
-                    m_exceptionHandler->handleOnShutdownException(ex);
+                if (_exceptionHandler)
+                    _exceptionHandler->handleOnShutdownException(ex);
             }
         }
     }

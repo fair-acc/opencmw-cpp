@@ -21,67 +21,67 @@ class Sequence;
  */
 class ProcessingSequenceBarrier : public ISequenceBarrier, public std::enable_shared_from_this<ProcessingSequenceBarrier> {
 private:
-    std::shared_ptr<WaitStrategy>                      m_waitStrategy;
-    std::shared_ptr<ISequence>                         m_dependentSequence;
-    std::shared_ptr<Sequence>                          m_cursorSequence;
-    std::shared_ptr<IHighestPublishedSequenceProvider> m_sequenceProvider;
+    std::shared_ptr<WaitStrategy>                      _waitStrategy;
+    std::shared_ptr<ISequence>                         _dependentSequence;
+    std::shared_ptr<Sequence>                          _cursorSequence;
+    std::shared_ptr<IHighestPublishedSequenceProvider> _sequenceProvider;
 
-    WaitStrategy                                      &m_waitStrategyRef;
-    ISequence                                         &m_dependentSequenceRef;
-    Sequence                                          &m_cursorSequenceRef;
-    IHighestPublishedSequenceProvider                 &m_sequenceProviderRef;
+    WaitStrategy                                      &_waitStrategyRef;
+    ISequence                                         &_dependentSequenceRef;
+    Sequence                                          &_cursorSequenceRef;
+    IHighestPublishedSequenceProvider                 &_sequenceProviderRef;
 
-    bool                                               m_alerted;
+    bool                                               _alerted;
 
 public:
     ProcessingSequenceBarrier(const std::shared_ptr<IHighestPublishedSequenceProvider> &sequenceProvider,
             const std::shared_ptr<WaitStrategy>                                        &waitStrategy,
             const std::shared_ptr<Sequence>                                            &cursorSequence,
             const std::vector<std::shared_ptr<ISequence>>                              &dependentSequences)
-        : m_waitStrategy(waitStrategy)
-        , m_dependentSequence(getDependentSequence(cursorSequence, dependentSequences))
-        , m_cursorSequence(cursorSequence)
-        , m_sequenceProvider(sequenceProvider)
-        , m_waitStrategyRef(*m_waitStrategy)
-        , m_dependentSequenceRef(*m_dependentSequence)
-        , m_cursorSequenceRef(*m_cursorSequence)
-        , m_sequenceProviderRef(*m_sequenceProvider) {
-        m_alerted = false;
+        : _waitStrategy(waitStrategy)
+        , _dependentSequence(getDependentSequence(cursorSequence, dependentSequences))
+        , _cursorSequence(cursorSequence)
+        , _sequenceProvider(sequenceProvider)
+        , _waitStrategyRef(*_waitStrategy)
+        , _dependentSequenceRef(*_dependentSequence)
+        , _cursorSequenceRef(*_cursorSequence)
+        , _sequenceProviderRef(*_sequenceProvider) {
+        _alerted = false;
     }
 
     std::int64_t waitFor(std::int64_t sequence) override {
         checkAlert();
 
-        auto availableSequence = m_waitStrategyRef.waitFor(sequence, *m_cursorSequence, *m_dependentSequence, *shared_from_this());
+        auto availableSequence = _waitStrategyRef.waitFor(sequence, *_cursorSequence, *_dependentSequence, *shared_from_this());
 
         if (availableSequence < sequence) {
             return availableSequence;
         }
 
-        return m_sequenceProviderRef.getHighestPublishedSequence(sequence, availableSequence);
+        return _sequenceProviderRef.getHighestPublishedSequence(sequence, availableSequence);
     }
 
     std::int64_t cursor() override {
-        return m_dependentSequenceRef.value();
+        return _dependentSequenceRef.value();
     }
 
     bool isAlerted() override {
-        return m_alerted;
+        return _alerted;
     }
 
     void alert() override {
-        m_alerted = true;
-        if constexpr (requires { m_waitStrategyRef.signalAllWhenBlocking(); }) {
-            m_waitStrategyRef.signalAllWhenBlocking();
+        _alerted = true;
+        if constexpr (requires { _waitStrategyRef.signalAllWhenBlocking(); }) {
+            _waitStrategyRef.signalAllWhenBlocking();
         }
     }
 
     void clearAlert() override {
-        m_alerted = false;
+        _alerted = false;
     }
 
     void checkAlert() override {
-        if (m_alerted) {
+        if (_alerted) {
             throw AlertException();
         }
     }

@@ -14,14 +14,14 @@ class ITaskScheduler;
  */
 class BasicExecutor : public IExecutor {
 private:
-    std::shared_ptr<ITaskScheduler> m_taskScheduler;
+    std::shared_ptr<ITaskScheduler> _taskScheduler;
 
 public:
     /**
      * Create a new BasicExecutor with a given TaskScheduler that will handle low-level queuing of commands execution.
      */
     explicit BasicExecutor(const std::shared_ptr<ITaskScheduler> &taskScheduler)
-        : m_taskScheduler(taskScheduler) {
+        : _taskScheduler(taskScheduler) {
     }
 
     /**
@@ -29,7 +29,7 @@ public:
      * \param command
      */
     std::future<void> execute(const std::function<void()> &command) override {
-        return m_taskScheduler->scheduleAndStart(std::packaged_task<void()>([this, command] {
+        return _taskScheduler->scheduleAndStart(std::packaged_task<void()>([this, command] {
             const std::function<void()> &command1 = command;
             try {
                 command1();

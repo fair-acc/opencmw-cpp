@@ -13,20 +13,20 @@ namespace opencmw::disruptor {
 
 struct TypeInfo {
 private:
-    const std::type_info *m_typeInfo;
-    std::string           m_fullyQualifiedName;
-    std::string           m_name;
+    const std::type_info *_typeInfo;
+    std::string           _fullyQualifiedName;
+    std::string           _name;
 
 public:
     explicit TypeInfo(const std::type_info &typeInfo)
-        : m_typeInfo(&typeInfo)
-        , m_fullyQualifiedName(dotNetify(demangleTypeName(m_typeInfo->name())))
-        , m_name(unqualifyName(m_fullyQualifiedName)) {
+        : _typeInfo(&typeInfo)
+        , _fullyQualifiedName(dotNetify(demangleTypeName(_typeInfo->name())))
+        , _name(unqualifyName(_fullyQualifiedName)) {
     }
 
-    const std::type_info &intrinsicTypeInfo() const { return *m_typeInfo; }
-    const std::string    &fullyQualifiedName() const { return m_fullyQualifiedName; }
-    const std::string    &name() const { return m_name; }
+    const std::type_info &intrinsicTypeInfo() const { return *_typeInfo; }
+    const std::string    &fullyQualifiedName() const { return _fullyQualifiedName; }
+    const std::string    &name() const { return _name; }
 
     bool                  operator==(const TypeInfo &rhs) const { return intrinsicTypeInfo() == rhs.intrinsicTypeInfo(); }
 

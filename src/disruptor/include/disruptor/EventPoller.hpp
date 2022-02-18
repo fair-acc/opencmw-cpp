@@ -19,28 +19,28 @@ enum class PollState {
 template<typename T>
 class EventPoller {
 private:
-    std::shared_ptr<IDataProvider<T>> m_dataProvider;
-    std::shared_ptr<ISequencer<T>>    m_sequencer;
-    std::shared_ptr<ISequence>        m_sequence;
-    std::shared_ptr<ISequence>        m_gatingSequence;
+    std::shared_ptr<IDataProvider<T>> _dataProvider;
+    std::shared_ptr<ISequencer<T>>    _sequencer;
+    std::shared_ptr<ISequence>        _sequence;
+    std::shared_ptr<ISequence>        _gatingSequence;
 
 public:
     EventPoller(const std::shared_ptr<IDataProvider<T>> &dataProvider,
             const std::shared_ptr<ISequencer<T>>        &sequencer,
             const std::shared_ptr<ISequence>            &sequence,
             const std::shared_ptr<ISequence>            &gatingSequence)
-        : m_dataProvider(dataProvider)
-        , m_sequencer(sequencer)
-        , m_sequence(sequence)
-        , m_gatingSequence(gatingSequence) {}
+        : _dataProvider(dataProvider)
+        , _sequencer(sequencer)
+        , _sequence(sequence)
+        , _gatingSequence(gatingSequence) {}
 
     template<typename TEventHandler>
     PollState poll(TEventHandler &&eventHandler) {
         static_assert(std::is_invocable_r<bool, TEventHandler, T &, std::int64_t, bool>::value, "eventHandler should have the following signature: bool(T&, std::int64_t, bool)");
 
-        auto currentSequence   = m_sequence->value();
+        auto currentSequence   = _sequence->value();
         auto nextSequence      = currentSequence + 1;
-        auto availableSequence = m_sequencer->getHighestPublishedSequence(nextSequence, m_gatingSequence->value());
+        auto availableSequence = _sequencer->getHighestPublishedSequence(nextSequence, _gatingSequence->value());
 
         if (nextSequence <= availableSequence) {
             bool processNextEvent;
@@ -48,22 +48,22 @@ public:
 
             try {
                 do {
-                    auto &event       = (*m_dataProvider)[nextSequence];
+                    auto &event       = (*_dataProvider)[nextSequence];
                     processNextEvent  = eventHandler(event, nextSequence, nextSequence == availableSequence);
                     processedSequence = nextSequence;
                     nextSequence++;
                 } while (nextSequence <= availableSequence && processNextEvent);
             } catch (...) {
-                m_sequence->setValue(processedSequence);
+                _sequence->setValue(processedSequence);
                 throw;
             }
 
-            m_sequence->setValue(processedSequence);
+            _sequence->setValue(processedSequence);
 
             return PollState::Processing;
         }
 
-        if (m_sequencer->cursor() >= nextSequence) {
+        if (_sequencer->cursor() >= nextSequence) {
             return PollState::Gating;
         }
 
@@ -89,7 +89,7 @@ public:
     }
 
     std::shared_ptr<ISequence> sequence() const {
-        return m_sequence;
+        return _sequence;
     };
 };
 

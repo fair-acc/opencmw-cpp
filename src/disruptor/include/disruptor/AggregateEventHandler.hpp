@@ -15,7 +15,7 @@ namespace opencmw::disruptor {
 template<typename T>
 class AggregateEventHandler : public IEventHandler<T>, public ILifecycleAware {
 private:
-    std::vector<std::shared_ptr<IEventHandler<T>>> m_eventHandlers;
+    std::vector<std::shared_ptr<IEventHandler<T>>> _eventHandlers;
 
 public:
     /**
@@ -24,7 +24,7 @@ public:
      * \param eventHandlers to be called in sequence
      */
     explicit AggregateEventHandler(const std::vector<std::shared_ptr<IEventHandler<T>>> &eventHandlers = {})
-        : m_eventHandlers(eventHandlers) {
+        : _eventHandlers(eventHandlers) {
     }
 
     /**
@@ -35,8 +35,8 @@ public:
      * \param endOfBatch flag to indicate if this is the last event in a batch from theRingBuffer<T>/>
      */
     void onEvent(T &data, std::int64_t sequence, bool endOfBatch) override {
-        for (auto i = 0u; i < m_eventHandlers.size(); ++i) {
-            m_eventHandlers[i]->onEvent(data, sequence, endOfBatch);
+        for (auto i = 0u; i < _eventHandlers.size(); ++i) {
+            _eventHandlers[i]->onEvent(data, sequence, endOfBatch);
         }
     }
 
@@ -44,7 +44,7 @@ public:
      * Called once on thread start before first event is available.
      */
     void onStart() override {
-        for (auto &&eventHandler : m_eventHandlers) {
+        for (auto &&eventHandler : _eventHandlers) {
             auto handler = std::dynamic_pointer_cast<ILifecycleAware>(eventHandler);
             if (handler != nullptr)
                 handler->onStart();
@@ -55,7 +55,7 @@ public:
      * Called once just before the thread is shutdown.
      */
     void onShutdown() override {
-        for (auto &&eventHandler : m_eventHandlers) {
+        for (auto &&eventHandler : _eventHandlers) {
             auto handler = std::dynamic_pointer_cast<ILifecycleAware>(eventHandler);
             if (handler != nullptr)
                 handler->onShutdown();

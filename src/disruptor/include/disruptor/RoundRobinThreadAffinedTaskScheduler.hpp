@@ -17,17 +17,17 @@ namespace opencmw::disruptor {
  */
 class RoundRobinThreadAffinedTaskScheduler : public ITaskScheduler {
 private:
-    BlockingQueue<std::packaged_task<void()>> m_tasks;
-    std::atomic<bool>                         m_started{ false };
-    std::vector<std::jthread>                 m_threads;
+    BlockingQueue<std::packaged_task<void()>> _tasks;
+    std::atomic<bool>                         _started{ false };
+    std::vector<std::jthread>                 _threads;
 
 public:
     void start(std::size_t numberOfThreads) override {
-        if (m_started) {
+        if (_started) {
             return;
         }
 
-        m_started = true;
+        _started = true;
 
         if (numberOfThreads < 1) {
             throw std::out_of_range("number of threads must be at least 1"); // TODO: replace by concept restriction
@@ -36,13 +36,13 @@ public:
         createThreads(numberOfThreads);
     }
     void stop() override {
-        if (!m_started) {
+        if (!_started) {
             return;
         }
 
-        m_started = false;
+        _started = false;
 
-        for (auto &&thread : m_threads) {
+        for (auto &&thread : _threads) {
             if (thread.joinable()) {
                 thread.join();
             }
@@ -51,7 +51,7 @@ public:
 
     std::future<void> scheduleAndStart(std::packaged_task<void()> &&task) override {
         auto future = task.get_future();
-        m_tasks.push(std::move(task));
+        _tasks.push(std::move(task));
 
         return future;
     }
@@ -59,7 +59,7 @@ public:
 private:
     void createThreads(std::size_t numberOfThreads) {
         for (auto i = 0U; i < numberOfThreads; ++i) {
-            m_threads.emplace_back([this, i]() { workingLoop(i); });
+            _threads.emplace_back([this, i]() { workingLoop(i); });
         }
     }
 
@@ -72,9 +72,9 @@ private:
 
         thread_helper::setThreadAffinity(affinityMask);
 
-        while (m_started) {
+        while (_started) {
             std::packaged_task<void()> task;
-            while (m_tasks.timedWaitAndPop(task, std::chrono::milliseconds(100))) {
+            while (_tasks.timedWaitAndPop(task, std::chrono::milliseconds(100))) {
                 tryExecuteTask(task);
             }
         }

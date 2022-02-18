@@ -15,14 +15,14 @@ namespace opencmw::disruptor {
 template<typename T>
 class ExceptionHandlerSetting {
 private:
-    std::shared_ptr<IEventHandler<T>>      m_eventHandler;
-    std::shared_ptr<ConsumerRepository<T>> m_consumerRepository;
+    std::shared_ptr<IEventHandler<T>>      _eventHandler;
+    std::shared_ptr<ConsumerRepository<T>> _consumerRepository;
 
 public:
     ExceptionHandlerSetting(const std::shared_ptr<IEventHandler<T>> &eventHandler,
             const std::shared_ptr<ConsumerRepository<T>>            &consumerRepository)
-        : m_eventHandler(eventHandler)
-        , m_consumerRepository(consumerRepository) {
+        : _eventHandler(eventHandler)
+        , _consumerRepository(consumerRepository) {
     }
 
     /**
@@ -31,8 +31,8 @@ public:
      * \param exceptionHandler exceptionHandler the exception handler to use.
      */
     void with(const std::shared_ptr<IExceptionHandler<T>> &exceptionHandler) {
-        std::dynamic_pointer_cast<BatchEventProcessor<T>>(m_consumerRepository->getEventProcessorFor(m_eventHandler))->setExceptionHandler(exceptionHandler);
-        m_consumerRepository->getBarrierFor(m_eventHandler)->alert();
+        std::dynamic_pointer_cast<BatchEventProcessor<T>>(_consumerRepository->getEventProcessorFor(_eventHandler))->setExceptionHandler(exceptionHandler);
+        _consumerRepository->getBarrierFor(_eventHandler)->alert();
     }
 };
 

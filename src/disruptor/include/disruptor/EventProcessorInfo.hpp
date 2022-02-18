@@ -11,55 +11,55 @@ namespace opencmw::disruptor {
 template<typename T>
 class EventProcessorInfo : public IConsumerInfo {
 private:
-    std::shared_ptr<IEventProcessor>  m_eventProcessor;
-    std::shared_ptr<IEventHandler<T>> m_eventHandler;
-    std::shared_ptr<ISequenceBarrier> m_barrier;
-    bool                              m_isEndOfChain = true;
+    std::shared_ptr<IEventProcessor>  _eventProcessor;
+    std::shared_ptr<IEventHandler<T>> _eventHandler;
+    std::shared_ptr<ISequenceBarrier> _barrier;
+    bool                              _isEndOfChain = true;
 
 public:
     EventProcessorInfo(const std::shared_ptr<IEventProcessor> &eventProcessor,
             const std::shared_ptr<IEventHandler<T>>           &eventHandler,
             const std::shared_ptr<ISequenceBarrier>           &barrier)
-        : m_eventProcessor(eventProcessor)
-        , m_eventHandler(eventHandler)
-        , m_barrier(barrier)
-        , m_isEndOfChain(true) {
+        : _eventProcessor(eventProcessor)
+        , _eventHandler(eventHandler)
+        , _barrier(barrier)
+        , _isEndOfChain(true) {
     }
 
     const std::shared_ptr<IEventProcessor> &eventProcessor() const {
-        return m_eventProcessor;
+        return _eventProcessor;
     }
 
     std::vector<std::shared_ptr<ISequence>> sequences() const override {
-        return { m_eventProcessor->sequence() };
+        return { _eventProcessor->sequence() };
     }
 
     std::shared_ptr<IEventHandler<T>> handler() const {
-        return m_eventHandler;
+        return _eventHandler;
     }
 
     const std::shared_ptr<ISequenceBarrier> &barrier() const override {
-        return m_barrier;
+        return _barrier;
     }
 
     bool isEndOfChain() const override {
-        return m_isEndOfChain;
+        return _isEndOfChain;
     }
 
     void start(const std::shared_ptr<IExecutor> &executor) override {
-        executor->execute([this] { m_eventProcessor->run(); });
+        executor->execute([this] { _eventProcessor->run(); });
     }
 
     void halt() override {
-        m_eventProcessor->halt();
+        _eventProcessor->halt();
     }
 
     void markAsUsedInBarrier() override {
-        m_isEndOfChain = false;
+        _isEndOfChain = false;
     }
 
     bool isRunning() const override {
-        return m_eventProcessor->isRunning();
+        return _eventProcessor->isRunning();
     }
 };
 

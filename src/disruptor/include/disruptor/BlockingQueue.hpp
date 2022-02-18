@@ -11,41 +11,41 @@ template<
         class TQueue = std::deque<T>>
 class BlockingQueue {
 private:
-    TQueue                  m_queue;
-    mutable std::mutex      m_mutex;
-    std::condition_variable m_conditionVariable;
+    TQueue                  _queue;
+    mutable std::mutex      _mutex;
+    std::condition_variable _conditionVariable;
 
 public:
     void push(const T &value) {
         {
-            std::unique_lock lock(m_mutex);
-            m_queue.push_back(value);
+            std::unique_lock lock(_mutex);
+            _queue.push_back(value);
         }
-        m_conditionVariable.notify_one();
+        _conditionVariable.notify_one();
     }
 
     void push(T &&value) {
         {
-            std::unique_lock lock(m_mutex);
-            m_queue.push_back(std::move(value));
+            std::unique_lock lock(_mutex);
+            _queue.push_back(std::move(value));
         }
-        m_conditionVariable.notify_one();
+        _conditionVariable.notify_one();
     }
 
     bool empty() const {
-        std::unique_lock lock(m_mutex);
-        return m_queue.empty();
+        std::unique_lock lock(_mutex);
+        return _queue.empty();
     }
 
     template<typename TDuration>
     bool timedWaitAndPop(T &value, const TDuration &duration) {
-        std::unique_lock lock(m_mutex);
+        std::unique_lock lock(_mutex);
 
-        if (!m_conditionVariable.wait_for(lock, duration, [this]() -> bool { return !m_queue.empty(); }))
+        if (!_conditionVariable.wait_for(lock, duration, [this]() -> bool { return !_queue.empty(); }))
             return false;
 
-        value = std::move(m_queue.front());
-        m_queue.pop_front();
+        value = std::move(_queue.front());
+        _queue.pop_front();
         return true;
     }
 };

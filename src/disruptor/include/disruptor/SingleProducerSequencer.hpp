@@ -25,7 +25,7 @@ class SingleProducerSequencer : public Sequencer<T> {
 public:
     SingleProducerSequencer(std::int32_t bufferSize, const std::shared_ptr<WaitStrategy> &waitStrategy)
         : Sequencer<T>(bufferSize, waitStrategy)
-        , m_fields(Sequence::InitialCursorValue, Sequence::InitialCursorValue) {}
+        , _fields(Sequence::InitialCursorValue, Sequence::InitialCursorValue) {}
 
     /**
      * Has the buffer got capacity to allocate another sequence.  This is a concurrent method so the response should only be taken as an indication of available capacity.
@@ -34,14 +34,14 @@ public:
      * \returns true if the buffer has the capacity to allocate the next sequence otherwise false.
      */
     bool hasAvailableCapacity(int requiredCapacity) override {
-        std::int64_t nextValue            = m_fields.nextValue;
+        std::int64_t nextValue            = _fields.nextValue;
 
-        std::int64_t wrapPoint            = (nextValue + requiredCapacity) - this->m_bufferSize;
-        std::int64_t cachedGatingSequence = m_fields.cachedValue;
+        std::int64_t wrapPoint            = (nextValue + requiredCapacity) - this->_bufferSize;
+        std::int64_t cachedGatingSequence = _fields.cachedValue;
 
         if (wrapPoint > cachedGatingSequence || cachedGatingSequence > nextValue) {
-            auto minSequence     = util::getMinimumSequence(this->m_gatingSequences, nextValue);
-            m_fields.cachedValue = minSequence;
+            auto minSequence    = util::getMinimumSequence(this->_gatingSequences, nextValue);
+            _fields.cachedValue = minSequence;
 
             if (wrapPoint > minSequence) {
                 return false;
@@ -67,32 +67,32 @@ public:
      * \returns the highest claimed sequence value
      */
     std::int64_t next(std::int32_t n_slots_to_claim = 1) override {
-        if (n_slots_to_claim < 1 || n_slots_to_claim > this->m_bufferSize) {
+        if (n_slots_to_claim < 1 || n_slots_to_claim > this->_bufferSize) {
             throw std::invalid_argument("n_slots_to_claim must be > 0 and < bufferSize");
         }
 
-        auto nextValue            = m_fields.nextValue;
+        auto nextValue            = _fields.nextValue;
 
         auto nextSequence         = nextValue + n_slots_to_claim;
-        auto wrapPoint            = nextSequence - this->m_bufferSize;
-        auto cachedGatingSequence = m_fields.cachedValue;
+        auto wrapPoint            = nextSequence - this->_bufferSize;
+        auto cachedGatingSequence = _fields.cachedValue;
 
         if (wrapPoint > cachedGatingSequence || cachedGatingSequence > nextValue) {
-            this->m_cursor->setValue(nextValue);
+            this->_cursor->setValue(nextValue);
 
             SpinWait     spinWait;
             std::int64_t minSequence;
-            while (wrapPoint > (minSequence = util::getMinimumSequence(this->m_gatingSequences, nextValue))) {
-                if constexpr (requires { this->m_waitStrategyRef.signalAllWhenBlocking(); }) {
-                    this->m_waitStrategyRef.signalAllWhenBlocking();
+            while (wrapPoint > (minSequence = util::getMinimumSequence(this->_gatingSequences, nextValue))) {
+                if constexpr (requires { this->_waitStrategyRef.signalAllWhenBlocking(); }) {
+                    this->_waitStrategyRef.signalAllWhenBlocking();
                 }
                 spinWait.spinOnce();
             }
 
-            m_fields.cachedValue = minSequence;
+            _fields.cachedValue = minSequence;
         }
 
-        m_fields.nextValue = nextSequence;
+        _fields.nextValue = nextSequence;
 
         return nextSequence;
     }
@@ -112,8 +112,8 @@ public:
             throw NoCapacityException();
         }
 
-        auto nextSequence  = m_fields.nextValue + n_slots_to_claim;
-        m_fields.nextValue = nextSequence;
+        auto nextSequence = _fields.nextValue + n_slots_to_claim;
+        _fields.nextValue = nextSequence;
 
         return nextSequence;
     }
@@ -122,9 +122,9 @@ public:
      * Get the remaining capacity for this sequencer. return The number of slots remaining.
      */
     std::int64_t getRemainingCapacity() override {
-        auto nextValue = m_fields.nextValue;
+        auto nextValue = _fields.nextValue;
 
-        auto consumed  = util::getMinimumSequence(this->m_gatingSequences, nextValue);
+        auto consumed  = util::getMinimumSequence(this->_gatingSequences, nextValue);
         auto produced  = nextValue;
 
         return this->bufferSize() - (produced - consumed);
@@ -136,7 +136,7 @@ public:
      * \param sequence sequence to be claimed.
      */
     void claim(std::int64_t sequence) override {
-        m_fields.nextValue = sequence;
+        _fields.nextValue = sequence;
     }
 
     /**
@@ -145,9 +145,9 @@ public:
      * \param sequence sequence to be published
      */
     void publish(std::int64_t sequence) override {
-        this->m_cursorRef.setValue(sequence);
-        if constexpr (requires { this->m_waitStrategyRef.signalAllWhenBlocking(); }) {
-            this->m_waitStrategyRef.signalAllWhenBlocking();
+        this->_cursorRef.setValue(sequence);
+        if constexpr (requires { this->_waitStrategyRef.signalAllWhenBlocking(); }) {
+            this->_waitStrategyRef.signalAllWhenBlocking();
         }
     }
 
@@ -168,7 +168,7 @@ public:
      * \returns true if the sequence is available for use, false if not
      */
     bool isAvailable(std::int64_t sequence) override {
-        return sequence <= this->m_cursorRef.value();
+        return sequence <= this->_cursorRef.value();
     }
 
     /**
@@ -185,7 +185,7 @@ public:
     }
 
 protected:
-    Fields m_fields;
+    Fields _fields;
 };
 
 } // namespace opencmw::disruptor

@@ -19,8 +19,8 @@ class NoOpEventProcessor : public IEventProcessor {
 
 private:
     class SequencerFollowingSequence;
-    std::shared_ptr<SequencerFollowingSequence> m_sequence;
-    std::atomic<std::int32_t>                   m_running;
+    std::shared_ptr<SequencerFollowingSequence> _sequence;
+    std::atomic<std::int32_t>                   _running;
 
 public:
     /**
@@ -29,14 +29,14 @@ public:
      * \param sequencer sequencer to track.
      */
     explicit NoOpEventProcessor(const std::shared_ptr<RingBuffer<T>> &sequencer)
-        : m_sequence(std::make_shared<SequencerFollowingSequence>(sequencer)) {
+        : _sequence(std::make_shared<SequencerFollowingSequence>(sequencer)) {
     }
 
     /**
      * NoOp
      */
     void run() override {
-        if (std::atomic_exchange(&m_running, 1) != 0) {
+        if (std::atomic_exchange(&_running, 1) != 0) {
             throw std::runtime_error("Thread is already running");
         }
     }
@@ -47,14 +47,14 @@ public:
      *
      */
     std::shared_ptr<ISequence> sequence() const override {
-        return m_sequence;
+        return _sequence;
     }
 
     /**
      * NoOp
      */
     void halt() override {
-        m_running = 0;
+        _running = 0;
     }
 
     /**
@@ -63,22 +63,22 @@ public:
      *
      */
     bool isRunning() const override {
-        return m_running == 1;
+        return _running == 1;
     }
 };
 
 template<typename T>
 class NoOpEventProcessor<T>::SequencerFollowingSequence : public ISequence {
 private:
-    std::shared_ptr<RingBuffer<T>> m_sequencer;
+    std::shared_ptr<RingBuffer<T>> _sequencer;
 
 public:
     explicit SequencerFollowingSequence(const std::shared_ptr<RingBuffer<T>> &sequencer)
-        : m_sequencer(sequencer) {
+        : _sequencer(sequencer) {
     }
 
     std::int64_t value() const override {
-        return m_sequencer->cursor();
+        return _sequencer->cursor();
     }
 
     void setValue(std::int64_t /*value*/) override {

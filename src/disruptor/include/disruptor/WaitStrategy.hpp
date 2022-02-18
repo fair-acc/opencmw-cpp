@@ -60,17 +60,17 @@ struct WaitStrategy {
  * This strategy should be used when performance and low-latency are not as important as CPU resource.
  */
 class BlockingWaitStrategy : public WaitStrategy {
-    std::recursive_mutex        m_gate;
-    std::condition_variable_any m_conditionVariable;
+    std::recursive_mutex        _gate;
+    std::condition_variable_any _conditionVariable;
 
 public:
     std::int64_t waitFor(const std::int64_t sequence, const Sequence &cursor, ISequence &dependentSequence, ISequenceBarrier &barrier) override {
         if (cursor.value() < sequence) {
-            std::unique_lock uniqueLock(m_gate);
+            std::unique_lock uniqueLock(_gate);
 
             while (cursor.value() < sequence) {
                 barrier.checkAlert();
-                m_conditionVariable.wait(uniqueLock);
+                _conditionVariable.wait(uniqueLock);
             }
         }
 
@@ -83,8 +83,8 @@ public:
     }
 
     void signalAllWhenBlocking() override {
-        std::unique_lock uniqueLock(m_gate);
-        m_conditionVariable.notify_all();
+        std::unique_lock uniqueLock(_gate);
+        _conditionVariable.notify_all();
     }
 };
 static_assert(WaitStrategyConcept<BlockingWaitStrategy>);
@@ -112,16 +112,16 @@ static_assert(WaitStrategyConcept<BusySpinWaitStrategy>);
  * Latency spikes can occur after quiet periods.
  */
 class SleepingWaitStrategy : public WaitStrategy {
-    static const std::int32_t m_defaultRetries = 200;
-    std::int32_t              m_retries        = 0;
+    static const std::int32_t _defaultRetries = 200;
+    std::int32_t              _retries        = 0;
 
 public:
-    explicit SleepingWaitStrategy(std::int32_t retries = m_defaultRetries)
-        : m_retries(retries) {
+    explicit SleepingWaitStrategy(std::int32_t retries = _defaultRetries)
+        : _retries(retries) {
     }
 
     std::int64_t waitFor(const std::int64_t sequence, const Sequence & /*cursor*/, ISequence &dependentSequence, ISequenceBarrier &barrier) override {
-        auto       counter    = m_retries;
+        auto       counter    = _retries;
         const auto waitMethod = [&]() {
             barrier.checkAlert();
 
@@ -173,24 +173,24 @@ static_assert(WaitStrategyConcept<SpinWaitWaitStrategy>);
 
 class TimeoutBlockingWaitStrategy : public WaitStrategy {
     using Clock = std::conditional_t<std::chrono::high_resolution_clock::is_steady, std::chrono::high_resolution_clock, std::chrono::steady_clock>;
-    Clock::duration             m_timeout;
-    std::recursive_mutex        m_gate;
-    std::condition_variable_any m_conditionVariable;
+    Clock::duration             _timeout;
+    std::recursive_mutex        _gate;
+    std::condition_variable_any _conditionVariable;
 
 public:
     explicit TimeoutBlockingWaitStrategy(Clock::duration timeout)
-        : m_timeout(timeout) {}
+        : _timeout(timeout) {}
 
     std::int64_t waitFor(const std::int64_t sequence, const Sequence &cursor, ISequence &dependentSequence, ISequenceBarrier &barrier) override {
-        auto timeSpan = std::chrono::microseconds(std::chrono::duration_cast<std::chrono::microseconds>(m_timeout).count());
+        auto timeSpan = std::chrono::microseconds(std::chrono::duration_cast<std::chrono::microseconds>(_timeout).count());
 
         if (cursor.value() < sequence) {
-            std::unique_lock uniqueLock(m_gate);
+            std::unique_lock uniqueLock(_gate);
 
             while (cursor.value() < sequence) {
                 barrier.checkAlert();
 
-                if (m_conditionVariable.wait_for(uniqueLock, timeSpan) == std::cv_status::timeout) {
+                if (_conditionVariable.wait_for(uniqueLock, timeSpan) == std::cv_status::timeout) {
                     throw TimeoutException();
                 }
             }
@@ -205,8 +205,8 @@ public:
     }
 
     void signalAllWhenBlocking() override {
-        std::unique_lock uniqueLock(m_gate);
-        m_conditionVariable.notify_all();
+        std::unique_lock uniqueLock(_gate);
+        _conditionVariable.notify_all();
     }
 };
 static_assert(WaitStrategyConcept<TimeoutBlockingWaitStrategy>);
@@ -216,11 +216,11 @@ static_assert(WaitStrategyConcept<TimeoutBlockingWaitStrategy>);
  * This strategy is a good compromise between performance and CPU resource without incurring significant latency spikes.
  */
 class YieldingWaitStrategy : public WaitStrategy {
-    const std::size_t m_spinTries = 100;
+    const std::size_t _spinTries = 100;
 
 public:
     std::int64_t waitFor(const std::int64_t sequence, const Sequence & /*cursor*/, ISequence &dependentSequence, ISequenceBarrier &barrier) override {
-        auto       counter    = m_spinTries;
+        auto       counter    = _spinTries;
         const auto waitMethod = [&]() {
             barrier.checkAlert();
 
