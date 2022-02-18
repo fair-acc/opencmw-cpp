@@ -1,7 +1,7 @@
 # setup header only library
 add_library(disruptor INTERFACE)
 target_include_directories(disruptor INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include/>)
-target_link_libraries(disruptor INTERFACE CONAN_PKG::mp-units CONAN_PKG::fmt refl-cpp::refl-cpp utils pthread)
+target_link_libraries(disruptor INTERFACE CONAN_PKG::fmt utils pthread)
 
 install(
         TARGETS disruptor
