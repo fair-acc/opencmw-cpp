@@ -165,13 +165,13 @@ auto to_instance(From<Items...> from) -> To<Items...>;
 namespace detail {
 
 template<typename Out, typename... Ts>
-struct filter_tuple1 : std::type_identity<Out> {};
+struct filter_tuple : std::type_identity<Out> {};
 
 template<typename... Out, typename InCar, typename... InCdr> // template for std::tuple arguments
-struct filter_tuple1<std::tuple<Out...>, std::tuple<InCar, InCdr...>>
+struct filter_tuple<std::tuple<Out...>, std::tuple<InCar, InCdr...>>
     : std::conditional_t<(std::is_same_v<InCar, Out> || ...),
-              filter_tuple1<std::tuple<Out...>, std::tuple<InCdr...>>,
-              filter_tuple1<std::tuple<Out..., InCar>, std::tuple<InCdr...>>> {};
+              filter_tuple<std::tuple<Out...>, std::tuple<InCdr...>>,
+              filter_tuple<std::tuple<Out..., InCar>, std::tuple<InCdr...>>> {};
 
 template<typename Out, typename... Ts>
 struct filter_tuple2 : std::type_identity<Out> {};
@@ -190,7 +190,7 @@ template<typename... T>
 constexpr bool is_tuple<std::tuple<T...>> = true;
 
 template<class T>
-requires(is_tuple<T>) using tuple_unique = typename detail::filter_tuple1<std::tuple<>, T>::type;
+requires(is_tuple<T>) using tuple_unique = typename detail::filter_tuple<std::tuple<>, T>::type;
 
 template<template<typename...> typename Type, typename... Items>
 using find_type = decltype(std::tuple_cat(std::declval<std::conditional_t<is_instance_of_v<Items, Type>, std::tuple<Items>, std::tuple<>>>()...));
