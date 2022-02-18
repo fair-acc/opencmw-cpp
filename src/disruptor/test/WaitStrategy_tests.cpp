@@ -2,21 +2,21 @@
 #include <catch2/catch.hpp>
 
 #include <disruptor/WaitStrategy.hpp>
- using namespace opencmw::disruptor;
+using namespace opencmw::disruptor;
 
- template<WaitStrategyConcept auto wait = NoWaitStrategy()>
- struct TestStruct {
-     [[nodiscard]] constexpr bool test() const noexcept {
-         //wait.waitFor(std::declval<std::int64_t>(), std::declval<Sequence &>(), std::declval<ISequence &>(), std::declval<ISequenceBarrier &>());
-//         wait.waitFor(std::int64_t{}, Sequence{}, std::declval<ISequence &>(), std::declval<ISequenceBarrier &>());
-//         if constexpr ( requires { wait.test();}) {
-//             return true;
-//         }
-         return true;
-     }
- };
+template<WaitStrategyConcept auto wait = NoWaitStrategy()>
+struct TestStruct {
+    [[nodiscard]] constexpr bool test() const noexcept {
+        // wait.waitFor(std::declval<std::int64_t>(), std::declval<Sequence &>(), std::declval<ISequence &>(), std::declval<ISequenceBarrier &>());
+        //         wait.waitFor(std::int64_t{}, Sequence{}, std::declval<ISequence &>(), std::declval<ISequenceBarrier &>());
+        //         if constexpr ( requires { wait.test();}) {
+        //             return true;
+        //         }
+        return true;
+    }
+};
 
- TEST_CASE("WaitStrategy concept tests", "[Disruptor]") {
+TEST_CASE("WaitStrategy concept tests", "[Disruptor]") {
     REQUIRE(isWaitStrategy<BlockingWaitStrategy>);
     REQUIRE(isWaitStrategy<BusySpinWaitStrategy>);
     REQUIRE(isWaitStrategy<SleepingWaitStrategy>);
@@ -38,4 +38,3 @@
     TestStruct a;
     REQUIRE(a.test());
 }
-
