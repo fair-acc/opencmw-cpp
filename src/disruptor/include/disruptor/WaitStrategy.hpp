@@ -6,6 +6,7 @@
 #include <mutex>
 #include <thread>
 
+#include "Exception.hpp"
 #include "ISequence.hpp"
 #include "ISequenceBarrier.hpp"
 #include "Sequence.hpp"
