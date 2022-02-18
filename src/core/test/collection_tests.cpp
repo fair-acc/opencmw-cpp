@@ -75,7 +75,7 @@ TEST_CASE("basic tests", "[collection]") {
     counter4.store(0);
     collection testCollection8(1, 1U, static_cast<short>(42));
     // test concept constraint
-    auto testFunction = [&counter4]<std::integral... Ts>(collection<Ts...> &integralCollection) {
+    auto testFunction = [&counter4]<std::integral... Ts>(collection<Ts...> & integralCollection) {
         integralCollection.visit([&counter4]<std::integral T>(const T &) noexcept {
             REQUIRE(std::is_integral_v<T>);
             counter4++; });
