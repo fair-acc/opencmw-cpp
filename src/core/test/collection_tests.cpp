@@ -71,6 +71,17 @@ TEST_CASE("basic tests", "[collection]") {
 
     REQUIRE_NOTHROW(testCollection7.reserve(100));
     REQUIRE(testCollection7.capacity() == 100);
+
+    counter4.store(0);
+    collection testCollection8(1, 1U, static_cast<short>(42));
+    // test concept constraint
+    auto testFunction = [&counter4]<std::integral... Ts>(collection<Ts...> & integralCollection) {
+        integralCollection.visit([&counter4]<std::integral T>(const T &) noexcept {
+            REQUIRE(std::is_integral_v<T>);
+            counter4++; });
+    };
+    testFunction(testCollection8);
+    REQUIRE(counter4 == 3);
 }
 
 TEST_CASE("mini collection benchmark", "[!benchmark]") {
