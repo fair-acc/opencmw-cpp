@@ -51,15 +51,18 @@ public:
     // clang-format on
 
     template<typename T>
-    requires std::disjunction_v<std::is_same<std::decay_t<T>, Ts>...>
-    void push_back(T &&e) noexcept {
+    requires std::disjunction_v<std::is_same<std::remove_cvref_t<T>, Ts>...>
+    void push_back(T &&e) {
         std::get<std::vector<std::remove_cvref_t<T>>>(_items).push_back(std::forward<T>(e));
     }
 
     template<typename T>
-    requires std::disjunction_v<std::is_same<std::decay_t<T>, Ts>...>
+    requires std::disjunction_v<std::is_same<std::remove_cvref_t<T>, Ts>...>
     void remove(T &&e) noexcept {
-        std::get<std::vector<std::remove_cvref_t<T>>>(_items).remove(std::forward<T>(e));
+        auto &vec = std::get<std::vector<std::remove_cvref_t<T>>>(_items);
+        if (const auto pos = std::ranges::find(vec.begin(), vec.end(), e); pos != vec.end()) {
+            vec.erase(pos, pos + 1);
+        }
     }
 
     template<typename... F>

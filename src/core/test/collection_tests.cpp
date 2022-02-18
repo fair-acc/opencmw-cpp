@@ -50,7 +50,13 @@ TEST_CASE("basic tests", "[collection]") {
     REQUIRE(testCollection5 == testCollection1);
     testCollection1.push_back('b');
     REQUIRE(testCollection5 != testCollection1);
+    REQUIRE(testCollection5.size() != testCollection1.size());
+    REQUIRE_NOTHROW(testCollection1.remove('b'));
+    REQUIRE_NOTHROW(testCollection1.remove('x'));
+    REQUIRE(testCollection5.size() == testCollection1.size());
+    REQUIRE(testCollection5 == testCollection1);
 
+    testCollection1.push_back('b');
     auto testCollection6 = collection{ 1LU, 1.0f, 'c', 'b' };
     REQUIRE(testCollection6 == testCollection1);
     testCollection1.push_back('d');
