@@ -29,7 +29,7 @@ public:
         : Sequencer<T>(bufferSize, waitStrategy) {
         m_availableBuffer = std::unique_ptr<int[]>(new int[bufferSize]);
         m_indexMask       = bufferSize - 1;
-        m_indexShift      = Util::log2(bufferSize);
+        m_indexShift      = util::log2(bufferSize);
         initializeAvailableBuffer();
     }
 
@@ -85,7 +85,7 @@ public:
             std::int64_t cachedGatingSequence = m_gatingSequenceCache->value();
 
             if (wrapPoint > cachedGatingSequence || cachedGatingSequence > current) {
-                std::int64_t gatingSequence = Util::getMinimumSequence(this->m_gatingSequences, current);
+                std::int64_t gatingSequence = util::getMinimumSequence(this->m_gatingSequences, current);
 
                 if (wrapPoint > gatingSequence) {
                     if constexpr (requires { this->m_waitStrategy->signalAllWhenBlocking(); }) {
@@ -135,7 +135,7 @@ public:
      * Get the remaining capacity for this sequencer. return The number of slots remaining.
      */
     std::int64_t getRemainingCapacity() override {
-        auto consumed = Util::getMinimumSequence(this->m_gatingSequences, this->m_cursorRef.value());
+        auto consumed = util::getMinimumSequence(this->m_gatingSequences, this->m_cursorRef.value());
         auto produced = this->m_cursorRef.value();
 
         return this->bufferSize() - (produced - consumed);
@@ -203,7 +203,7 @@ private:
         auto cachedGatingSequence = m_gatingSequenceCache->value();
 
         if (wrapPoint > cachedGatingSequence || cachedGatingSequence > cursorValue) {
-            auto minSequence = Util::getMinimumSequence(gatingSequences, cursorValue);
+            auto minSequence = util::getMinimumSequence(gatingSequences, cursorValue);
             m_gatingSequenceCache->setValue(minSequence);
 
             if (wrapPoint > minSequence) {

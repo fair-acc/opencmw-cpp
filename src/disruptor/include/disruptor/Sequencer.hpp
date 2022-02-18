@@ -34,7 +34,7 @@ public:
             throw std::invalid_argument("bufferSize must not be less than 1"); // replace by constrained NTTP
         }
 
-        if (!Util::isPowerOf2(bufferSize)) {
+        if (!util::isPowerOf2(bufferSize)) {
             throw std::invalid_argument("bufferSize must be a power of 2"); // replace by constrained NTTP
         }
     }
@@ -88,7 +88,7 @@ public:
      * \returns The minimum gating sequence or the cursor sequence if no sequences have been added.
      */
     std::int64_t getMinimumSequence() override {
-        return Util::getMinimumSequence(m_gatingSequences, m_cursorRef.value());
+        return util::getMinimumSequence(m_gatingSequences, m_cursorRef.value());
     }
 
     /**

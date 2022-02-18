@@ -153,7 +153,7 @@ public:
         for (auto &&processor : processors) {
             m_consumerRepository->add(processor);
         }
-        return std::make_shared<EventHandlerGroupType>(this->shared_from_this(), m_consumerRepository, Util::getSequencesFor(processors));
+        return std::make_shared<EventHandlerGroupType>(this->shared_from_this(), m_consumerRepository, util::getSequencesFor(processors));
     }
 
     /**
@@ -255,7 +255,7 @@ public:
             m_consumerRepository->add(processor);
         }
 
-        return std::make_shared<EventHandlerGroupType>(this->shared_from_this(), m_consumerRepository, Util::getSequencesFor(processors));
+        return std::make_shared<EventHandlerGroupType>(this->shared_from_this(), m_consumerRepository, util::getSequencesFor(processors));
     }
 
     /**

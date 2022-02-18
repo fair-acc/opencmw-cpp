@@ -30,7 +30,7 @@ public:
      * Get the minimum sequence value for the group.
      */
     [[nodiscard]] std::int64_t value() const override {
-        return Util::getMinimumSequence(m_sequences);
+        return util::getMinimumSequence(m_sequences);
     }
 
     /**

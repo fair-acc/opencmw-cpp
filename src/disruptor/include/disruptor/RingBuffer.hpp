@@ -61,7 +61,7 @@ public:
             throw std::invalid_argument("bufferSize must not be less than 1");// TODO: check with concept
         }
 
-        if (Util::ceilingNextPowerOfTwo(m_bufferSize) != m_bufferSize) {
+        if (util::ceilingNextPowerOfTwo(m_bufferSize) != m_bufferSize) {
             throw std::invalid_argument("bufferSize must be a power of 2"); // TODO: check with concept
         }
 
@@ -74,7 +74,7 @@ public:
             throw std::invalid_argument("bufferSize must not be less than 1"); // TODO: check with concept
         }
 
-        if (Util::ceilingNextPowerOfTwo(m_bufferSize) != m_bufferSize) {
+        if (util::ceilingNextPowerOfTwo(m_bufferSize) != m_bufferSize) {
             throw std::invalid_argument("bufferSize must be a power of 2"); // TODO: check with concept
         }
         m_entries.resize(static_cast<std::size_t>(m_bufferSize + 2 * m_bufferPad));

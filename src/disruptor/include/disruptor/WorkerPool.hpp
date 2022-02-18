@@ -111,7 +111,7 @@ public:
      */
     void drainAndHalt() {
         auto workerSequences = getWorkerSequences();
-        while (m_ringBuffer->cursor() > Util::getMinimumSequence(workerSequences)) {
+        while (m_ringBuffer->cursor() > util::getMinimumSequence(workerSequences)) {
             std::this_thread::sleep_for(std::chrono::milliseconds(0));
         }
 

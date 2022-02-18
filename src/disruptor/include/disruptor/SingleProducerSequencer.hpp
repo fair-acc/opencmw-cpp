@@ -40,7 +40,7 @@ public:
         std::int64_t cachedGatingSequence = m_fields.cachedValue;
 
         if (wrapPoint > cachedGatingSequence || cachedGatingSequence > nextValue) {
-            auto minSequence     = Util::getMinimumSequence(this->m_gatingSequences, nextValue);
+            auto minSequence     = util::getMinimumSequence(this->m_gatingSequences, nextValue);
             m_fields.cachedValue = minSequence;
 
             if (wrapPoint > minSequence) {
@@ -82,7 +82,7 @@ public:
 
             SpinWait     spinWait;
             std::int64_t minSequence;
-            while (wrapPoint > (minSequence = Util::getMinimumSequence(this->m_gatingSequences, nextValue))) {
+            while (wrapPoint > (minSequence = util::getMinimumSequence(this->m_gatingSequences, nextValue))) {
                 if constexpr (requires { this->m_waitStrategyRef.signalAllWhenBlocking(); }) {
                     this->m_waitStrategyRef.signalAllWhenBlocking();
                 }
@@ -124,7 +124,7 @@ public:
     std::int64_t getRemainingCapacity() override {
         auto nextValue = m_fields.nextValue;
 
-        auto consumed  = Util::getMinimumSequence(this->m_gatingSequences, nextValue);
+        auto consumed  = util::getMinimumSequence(this->m_gatingSequences, nextValue);
         auto produced  = nextValue;
 
         return this->bufferSize() - (produced - consumed);

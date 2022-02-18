@@ -15,7 +15,7 @@ namespace opencmw::disruptor {
 class IEventProcessor;
 class ISequence;
 
-namespace Util {
+namespace util {
 
 /**
  * Calculate the next power of 2, greater than or equal to x.
@@ -84,5 +84,5 @@ inline std::vector<std::shared_ptr<ISequence>> getSequencesFor(const std::vector
     return sequences;
 }
 
-} // namespace Util
+} // namespace util
 } // namespace opencmw::disruptor
