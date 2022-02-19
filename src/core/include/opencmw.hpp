@@ -195,6 +195,48 @@ requires(is_tuple<T>) using tuple_unique = typename detail::filter_tuple<std::tu
 template<template<typename...> typename Type, typename... Items>
 using find_type = decltype(std::tuple_cat(std::declval<std::conditional_t<is_instance_of_v<Items, Type>, std::tuple<Items>, std::tuple<>>>()...));
 
+template<typename T, typename... List>
+struct is_in_list : std::disjunction<std::is_same<T, List>...> {};
+
+template<typename... Ts>
+struct is_uniq : std::false_type {};
+
+template<>
+struct is_uniq<> : std::true_type {};
+
+template<typename T0, typename... Ts>
+requires(!is_in_list<T0, Ts...>::value) struct is_uniq<T0, Ts...> : is_uniq<Ts...> {};
+
+template<typename... Ts>
+struct type_list {};
+
+namespace detail {
+
+template<template<typename...> class C, typename Uniq, typename Input>
+struct filter_dups_impl {};
+
+template<template<typename...> class C, typename... Uniqs>
+struct filter_dups_impl<C, type_list<Uniqs...>, type_list<>> {
+    using type = C<Uniqs...>;
+};
+
+template<template<typename...> class C, typename... Uniqs, typename Input0, typename... Inputs>
+requires(... && !std::same_as<Input0, Uniqs>) struct filter_dups_impl<C, type_list<Uniqs...>, type_list<Input0, Inputs...>>
+    : filter_dups_impl<C, type_list<Uniqs..., Input0>, type_list<Inputs...>> {
+};
+
+template<template<typename...> class C, typename... Uniqs, typename Input0, typename... Inputs>
+requires(... || std::same_as<Input0, Uniqs>) struct filter_dups_impl<C, type_list<Uniqs...>, type_list<Input0, Inputs...>>
+    : filter_dups_impl<C, type_list<Uniqs...>, type_list<Inputs...>> {};
+
+template<template<typename...> class C, typename... Ts>
+struct filter_duplicates : filter_dups_impl<C, type_list<>, type_list<Ts...>> {
+};
+} // namespace detail
+
+template<template<typename...> class C, typename... Ts>
+using filter_duplicates_t = typename detail::filter_duplicates<C, Ts...>::type;
+
 // clang-format off
 /*
  * unit-/description-type annotation
