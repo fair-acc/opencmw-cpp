@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.19)
 set(CMAKE_CXX_STANDARD 20)
 
 project(opencmw-cpp CXX)
@@ -7,6 +7,19 @@ include(cmake/PreventInSourceBuilds.cmake)
 include(GNUInstallDirs)
 
 include(cmake/CMakeRC.cmake)
+
+# Check for supported compiler versions
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+  if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 11.1.0)
+    message(FATAL_ERROR "GCC>=11.1.0 required, but gcc ${CMAKE_CXX_COMPILER_VERSION} detected.")
+  endif()
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 13.0.0)
+    message(FATAL_ERROR "Clang>=13.0.0 required, but clang ${CMAKE_CXX_COMPILER_VERSION} detected.")
+  endif()
+else()
+  message(WARN "No version check for your compiler (${CMAKE_CXX_COMPILER_ID}) implemented, in case of build problems consider updating your compiler or check if you can switch to gcc or clang")
+endif()
 
 # Link this 'library' to set the c++ standard / compile-time options requested
 add_library(project_options INTERFACE)
