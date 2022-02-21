@@ -1,2 +1,5 @@
+add_executable(collection_example collection_example.cpp)
+target_link_libraries(collection_example PRIVATE core project_options project_warnings)
+
 add_executable(URI_example URI_example.cpp)
 target_link_libraries(URI_example PRIVATE core project_options project_warnings)
