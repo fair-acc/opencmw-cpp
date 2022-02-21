@@ -18,7 +18,10 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     message(FATAL_ERROR "Clang>=13.0.0 required, but clang ${CMAKE_CXX_COMPILER_VERSION} detected.")
   endif()
 else()
-  message(WARN "No version check for your compiler (${CMAKE_CXX_COMPILER_ID}) implemented, in case of build problems consider updating your compiler or check if you can switch to gcc or clang")
+  message(
+    WARN
+    "No version check for your compiler (${CMAKE_CXX_COMPILER_ID}) implemented, in case of build problems consider updating your compiler or check if you can switch to gcc or clang"
+  )
 endif()
 
 # Link this 'library' to set the c++ standard / compile-time options requested
@@ -55,7 +58,7 @@ enable_doxygen()
 include(cmake/StaticAnalyzers.cmake)
 
 option(ENABLE_TESTING "Enable Test Builds" ON)
-if (CMAKE_BUILD_TYPE STREQUAL "Debug" OR GENERATOR_IS_MULTI_CONFIG)
+if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR GENERATOR_IS_MULTI_CONFIG)
   option(ENABLE_COVERAGE "Enable Coverage" ON)
 else()
   option(ENABLE_COVERAGE "Enable Coverage" OFF)
@@ -84,25 +87,46 @@ include(cmake/ReflCpp.cmake) # todo: switch to obtaining reflcpp from conan
 if(ENABLE_TESTING)
   enable_testing()
   message("Building Tests.")
-  if (ENABLE_COVERAGE)
+  if(ENABLE_COVERAGE)
     if(UNIX AND NOT APPLE) # Linux
       message("Coverage reporting enabled")
-      include(cmake/CodeCoverage.cmake) # https://github.com/bilke/cmake-modules/blob/master/CodeCoverage.cmake (License: BSL-1.0)
-      target_compile_options(project_options INTERFACE --coverage -O0 -g -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0) # fortify_source is not possible without optimization
+      include(cmake/CodeCoverage.cmake) # https://github.com/bilke/cmake-modules/blob/master/CodeCoverage.cmake
+                                        # (License: BSL-1.0)
+      target_compile_options(
+        project_options
+        INTERFACE --coverage
+                  -O0
+                  -g
+                  -U_FORTIFY_SOURCE
+                  -D_FORTIFY_SOURCE=0) # fortify_source is not possible without optimization
       target_link_libraries(project_options INTERFACE --coverage)
       append_coverage_compiler_flags()
       setup_target_for_coverage_gcovr_xml(
-              NAME coverage
-              EXECUTABLE ctest
-              DEPENDENCIES core_tests majordomo_tests serialiser_tests
-              EXCLUDE "$CMAKE_BUILD_DIR/*" "concepts/.*" ".*/test/.*"
-      )
+        NAME
+        coverage
+        EXECUTABLE
+        ctest
+        DEPENDENCIES
+        core_tests
+        majordomo_tests
+        serialiser_tests
+        EXCLUDE
+        "$CMAKE_BUILD_DIR/*"
+        "concepts/.*"
+        ".*/test/.*")
       setup_target_for_coverage_gcovr_html(
-              NAME coverage_html
-              EXECUTABLE ctest
-              DEPENDENCIES core_tests majordomo_tests serialiser_tests
-              EXCLUDE "$CMAKE_BUILD_DIR/*" "concepts/.*" ".*/test/.*"
-      )
+        NAME
+        coverage_html
+        EXECUTABLE
+        ctest
+        DEPENDENCIES
+        core_tests
+        majordomo_tests
+        serialiser_tests
+        EXCLUDE
+        "$CMAKE_BUILD_DIR/*"
+        "concepts/.*"
+        ".*/test/.*")
     else()
       message(WARNING "Coverage is only supported on linux")
     endif()
