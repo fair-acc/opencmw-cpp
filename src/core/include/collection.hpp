@@ -33,6 +33,10 @@ namespace opencmw {
  * auto       c1 = collection{1LU, 1.0f, 'c'};
  * collection c2 = {1LU, 1.0f, 'c'};
  *
+ * N.B. While the visitation is (presently) ordered as the type template argument list and
+ * within a type by insertion order, the ordering of items on visitation is unspecified and
+ * should be considered as 'unsorted'.
+ *
  * @authors Matthias Kretz (@mattkretz), Ralph J. Steinhagen (@RalphSteinhagen)
  */
 template<typename... Ts>
