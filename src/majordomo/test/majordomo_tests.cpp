@@ -1,8 +1,8 @@
 #include "helpers.hpp"
 
 #include <majordomo/Broker.hpp>
-#include <majordomo/Client.hpp>
 #include <majordomo/Constants.hpp>
+#include <majordomo/MockClient.hpp>
 #include <majordomo/Utils.hpp>
 #include <majordomo/Worker.hpp>
 
@@ -753,8 +753,8 @@ TEST_CASE("Broker disconnects on unexpected heartbeat", "[broker][unexpected_hea
 
 TEST_CASE("Test RBAC role priority handling", "[broker][rbac]") {
     using Broker = opencmw::majordomo::Broker<ADMIN, Role<"BOSS", Permission::RW>, Role<"USER", Permission::RW>, ANY>;
-    using opencmw::majordomo::Client;
     using opencmw::majordomo::MdpMessage;
+    using opencmw::majordomo::MockClient;
     using namespace std::literals;
 
     // Use higher heartbeat interval so ther broker doesn't bother the worker with heartbeat messages
@@ -1669,8 +1669,8 @@ TEST_CASE("NOTIFY example using the BasicWorker class (via ROUTER socket)", "[wo
 
 TEST_CASE("SET/GET example using a lambda as the worker's request handler", "[worker][lambda_handler]") {
     using opencmw::majordomo::Broker;
-    using opencmw::majordomo::Client;
     using opencmw::majordomo::MdpMessage;
+    using opencmw::majordomo::MockClient;
 
     Broker broker("testbroker", testSettings());
 
@@ -1697,7 +1697,7 @@ TEST_CASE("SET/GET example using a lambda as the worker's request handler", "[wo
 
     BasicWorker<"a.service"> worker(broker, std::move(handleInt));
 
-    Client                   client(broker.context);
+    MockClient               client(broker.context);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
     RunInThread brokerRun(broker);
@@ -1729,8 +1729,8 @@ TEST_CASE("SET/GET example using a lambda as the worker's request handler", "[wo
 
 TEST_CASE("Worker's request handler throws an exception", "[worker][handler_exception]") {
     using opencmw::majordomo::Broker;
-    using opencmw::majordomo::Client;
     using opencmw::majordomo::MdpMessage;
+    using opencmw::majordomo::MockClient;
 
     Broker broker("testbroker", testSettings());
 
@@ -1740,7 +1740,7 @@ TEST_CASE("Worker's request handler throws an exception", "[worker][handler_exce
 
     BasicWorker<"a.service"> worker(broker, std::move(handleRequest));
 
-    Client                   client(broker.context);
+    MockClient               client(broker.context);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
     RunInThread brokerRun(broker);
@@ -1757,8 +1757,8 @@ TEST_CASE("Worker's request handler throws an exception", "[worker][handler_exce
 
 TEST_CASE("Worker's request handler throws an unexpected exception", "[worker][handler_unexpected_exception]") {
     using opencmw::majordomo::Broker;
-    using opencmw::majordomo::Client;
     using opencmw::majordomo::MdpMessage;
+    using opencmw::majordomo::MockClient;
 
     Broker broker("testbroker", testSettings());
 
@@ -1768,7 +1768,7 @@ TEST_CASE("Worker's request handler throws an unexpected exception", "[worker][h
 
     BasicWorker<"a.service"> worker(broker, std::move(handleRequest));
 
-    Client                   client(broker.context);
+    MockClient               client(broker.context);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
     RunInThread brokerRun(broker);

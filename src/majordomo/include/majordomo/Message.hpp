@@ -97,8 +97,8 @@ public:
     // See: http://api.zeromq.org/3-2:zmq-msg-send
     [[nodiscard]] auto send(const Socket &socket, int flags) {
         auto result = zmq_invoke(zmq_msg_send, &_message, socket, flags);
-        assert(result.isValid() || result.error() == EAGAIN);
-        _owning = !result.isValid();
+        assert(result.isValid());
+        _owning = false;
         return result;
     }
 
@@ -209,7 +209,7 @@ private:
     };
 
 public:
-    BasicMdpMessage() = default;
+    BasicMdpMessage() {}
 
     explicit BasicMdpMessage(Command command) {
         setCommand(command);
@@ -324,7 +324,7 @@ public:
         return r;
     }
 
-    [[nodiscard]] bool isValid() const {
+    bool isValid() const {
         // TODO better error reporting
         const auto &commandStr = _frames[index(Frame::Command)];
 
@@ -378,8 +378,8 @@ public:
         return static_cast<Command>(frameAt(Frame::Command).data()[0]);
     }
 
-    [[nodiscard]] std::size_t availableFrameCount() const { return _frames.size(); }
-    [[nodiscard]] std::size_t requiredFrameCount() const { return RequiredFrameCount; } // TODO: make field public?
+    std::size_t availableFrameCount() const { return _frames.size(); }
+    std::size_t requiredFrameCount() const { return RequiredFrameCount; } // TODO: make field public?
 
     template<typename Field, typename T, typename Tag>
     void setFrameData(Field field, T &&value, Tag tag) { frameAt(field) = MessageFrame(std::forward<T>(value), tag); }

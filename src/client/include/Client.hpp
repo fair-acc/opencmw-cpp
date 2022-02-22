@@ -1,0 +1,558 @@
+#ifndef OPENCMW_CPP_CMW_CLIENT_HPP
+#define OPENCMW_CPP_CMW_CLIENT_HPP
+
+#include <algorithm>
+#include <atomic>
+#include <charconv>
+#include <chrono>
+#include <ClientContext.hpp>
+#include <disruptor/Disruptor.hpp>
+#include <functional>
+#include <IoSerialiser.hpp>
+#include <majordomo/Message.hpp>
+#include <majordomo/Settings.hpp> // from majordomo project, consider to move to core or util to make client independent of majodomo (but core dep on zmq :/)
+#include <majordomo/Utils.hpp>
+#include <majordomo/ZmqPtr.hpp> // from majordomo project, consider to move to core or util to make client independent of majodomo (but core dep on zmq :/)
+#include <memory>
+#include <opencmw.hpp>
+#include <URI.hpp>
+#include <utility>
+
+namespace opencmw::client {
+
+using namespace std::literals;
+using opencmw::majordomo::MessageFormat;
+
+namespace detail {
+
+enum class ConnectionState {
+    DISCONNECTED,
+    CONNECTING,
+    CONNECTED,
+    DISCONNECTING
+};
+
+struct Connection {
+    std::string               _authority;
+    majordomo::Socket         _socket;
+    ConnectionState           _connectionState               = ConnectionState::DISCONNECTED;
+    std::chrono::milliseconds _nextReconnectAttemptTimeStamp = 0s;
+    // std::chrono::milliseconds _lastHeartbeat = 0s;
+
+    Connection(const majordomo::Context &context, const std::string_view authority, const int zmq_dealer_type)
+        : _authority{ authority }, _socket{ context, zmq_dealer_type } {
+        auto commonSocketInit = [](const majordomo::Socket &sock) {
+            const majordomo::Settings settings_{};
+            const int                 heartbeatInterval = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(settings_.heartbeatInterval).count());
+            const int                 ttl               = heartbeatInterval * settings_.heartbeatLiveness;
+            const int                 hb_timeout        = heartbeatInterval * settings_.heartbeatLiveness;
+            return zmq_invoke(zmq_setsockopt, sock, ZMQ_SNDHWM, &settings_.highWaterMark, sizeof(settings_.highWaterMark))
+                && zmq_invoke(zmq_setsockopt, sock, ZMQ_RCVHWM, &settings_.highWaterMark, sizeof(settings_.highWaterMark))
+                && zmq_invoke(zmq_setsockopt, sock, ZMQ_HEARTBEAT_TTL, &ttl, sizeof(ttl))
+                && zmq_invoke(zmq_setsockopt, sock, ZMQ_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_timeout))
+                && zmq_invoke(zmq_setsockopt, sock, ZMQ_HEARTBEAT_IVL, &heartbeatInterval, sizeof(heartbeatInterval))
+                && zmq_invoke(zmq_setsockopt, sock, ZMQ_LINGER, &heartbeatInterval, sizeof(heartbeatInterval));
+        };
+        commonSocketInit(_socket).assertSuccess();
+        _nextReconnectAttemptTimeStamp = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()); // timeout);
+    }
+};
+
+} // namespace detail
+
+class MDClientBase : public ClientBase {
+public:
+    virtual void get(const URI<STRICT> &)                                     = 0;
+    virtual void set(const URI<STRICT> &, const std::span<const std::byte> &) = 0;
+    virtual void subscribe(const URI<STRICT> &)                               = 0;
+    virtual void unsubscribe(const URI<STRICT> &)                             = 0;
+};
+
+class Client : public MDClientBase {
+private:
+    static std::atomic<int>         _instanceCount;
+    const std::chrono::milliseconds _clientTimeout;
+    const majordomo::Context       &_context;
+    // const majordomo::Socket       _monitorSocket;
+    // std::vector<URI<uri_check::STRICT>> _resolvedNames; // these get resolved by asking the /mmi endpoint of the supplied _authority or the default broker
+    const std::string               _clientId;
+    const std::string               _sourceName;
+    std::chrono::milliseconds       _heartbeatInterval;
+    std::vector<detail::Connection> _connections;
+    std::vector<zmq_pollitem_t>    &_pollItems;
+    long                            _nextRequestId = 0;
+
+public:
+    explicit Client(const majordomo::Context &context,
+            std::vector<zmq_pollitem_t>      &pollItems,
+            const std::chrono::milliseconds   timeout  = 1s,
+            std::string                       clientId = "")
+        : _clientTimeout(timeout), _context(context),
+        // _monitorSocket{ context, ZMQ_PAIR },
+        _clientId(std::move(clientId))
+        , _sourceName(fmt::format("OpenCmwClient(clientId: {})", _clientId))
+        , _heartbeatInterval(timeout)
+        , _pollItems(pollItems) {
+        // setup socket monitor // todo: use client unique socket name, to avoid clash with other instances // disabled as it breaks the code
+        // majordomo::zmq_invoke(zmq_connect, _monitorSocket, "inproc://monitor-client").assertSuccess();
+        // _pollItem[2].socket = _monitorSocket.zmq_ptr;
+        // _pollItem[2].events = ZMQ_POLLIN;
+
+        // take the minimum of the (albeit worker) heartbeat, client (if defined) or locally prescribed timeout
+        std::chrono::milliseconds HEARTBEAT_INTERVAL(1000);
+        _heartbeatInterval = std::chrono::milliseconds(std::min(HEARTBEAT_INTERVAL.count(), _clientTimeout == std::chrono::milliseconds(0) ? timeout.count() : std::min(timeout.count(), _clientTimeout.count())));
+    }
+
+    void connect(const URI<STRICT> &uri) {
+        // _connections.emplace_back(_context, std::string_view(uri.authority().value()));
+        auto con = detail::Connection(_context, uri.authority().value(), ZMQ_DEALER);
+        _connections.push_back(std::move(con));
+    }
+
+    URI<STRICT> connect(detail::Connection &con) {
+        using detail::ConnectionState;
+        // todo: replace this by proper logic, for now use tcp if port is specified, otherwise use inproc
+        auto        ep     = con._authority.find(':') != std::string::npos ? URI<STRICT>("tcp://"s + con._authority) : URI<STRICT>("inproc://"s + con._authority);
+        std::string zmq_ep = majordomo::toZeroMQEndpoint(ep);
+        if (opencmw::majordomo::zmq_invoke(zmq_connect, con._socket, zmq_ep).isValid()) {
+            // zmq_invoke(zmq_socket_monitor, _socket, "inproc://monitor-client", ZMQ_EVENT_CLOSED | ZMQ_EVENT_CONNECTED | ZMQ_EVENT_DISCONNECTED).assertSuccess();
+            _pollItems.push_back({ .socket = con._socket.zmq_ptr, .fd = 0, .events = ZMQ_POLLIN, .revents = 0 });
+        }
+        con._connectionState = ConnectionState::CONNECTED;
+        return URI<STRICT>("mdp://");
+    }
+
+    URI<STRICT> endpoint() override {
+        return URI<STRICT>("mdp://");
+    };
+
+    detail::Connection &findConnection(const URI<STRICT> &uri) {
+        // TODO: use a map for more efficient lookup? how to handle multiple uris which resolve to the same host?
+        auto con = std::find_if(_connections.begin(), _connections.end(), [&uri](detail::Connection &c) { return c._authority == uri.authority().value(); });
+        if (con == _connections.end()) {
+            auto newCon = detail::Connection(_context, uri.authority().value(), ZMQ_DEALER);
+            connect(newCon);
+            _connections.push_back(std::move(newCon));
+            return _connections.back();
+        }
+        return *con;
+    }
+
+    void get(const URI<STRICT> &uri) override {
+        detail::Connection &con     = findConnection(uri);
+        auto                message = createRequestTemplate(majordomo::Command::Get, uri.path().value());
+        message.send(con._socket).assertSuccess();
+    }
+
+    void set(const URI<STRICT> &uri, const std::span<const std::byte> &request) override {
+        auto &con     = findConnection(uri);
+        auto  message = createRequestTemplate(majordomo::Command::Set, uri.path().value());
+        message.setBody(std::string(reinterpret_cast<const char *>(request.data()), request.size()), majordomo::MessageFrame::dynamic_bytes_tag{});
+        message.send(con._socket).assertSuccess();
+    }
+
+    void subscribe(const URI<STRICT> &uri) override {
+        auto &con = findConnection(uri);
+        fmt::print("Sub socket not available, falling back to mdp subscription.");
+        auto message = createRequestTemplate(majordomo::Command::Subscribe, uri.path().value());
+        message.send(con._socket).assertSuccess();
+    }
+
+    void unsubscribe(const URI<STRICT> &uri) override {
+        auto &con     = findConnection(uri);
+        auto  message = createRequestTemplate(majordomo::Command::Unsubscribe, uri.path().value());
+        message.send(con._socket).assertSuccess();
+    }
+
+    bool disconnect(detail::Connection &con) {
+        _pollItems.erase(std::remove_if(_pollItems.begin(), _pollItems.end(), [&con](zmq_pollitem_t &pollitem) -> bool { return pollitem.socket == con._socket.zmq_ptr; }), _pollItems.end());
+        zmq_invoke(zmq_disconnect, con._socket, majordomo::toZeroMQEndpoint(URI<STRICT>(con._authority)).data()).ignoreResult();
+        con._connectionState = detail::ConnectionState::DISCONNECTED;
+        return true;
+    }
+
+    bool handleMessage(majordomo::MdpMessage &&message, RawMessage &output) {
+        if (!message.isValid()) {
+            return true;
+        }
+        // subscription updates
+        if (message.command() == majordomo::Command::Notify || message.command() == majordomo::Command::Final) {
+            output.data.resize(message.body().size());
+            URI<uri_check::STRICT> uri{ std::string{ message.topic() } };
+            // auto queryParamMap = uri.queryParamMap();
+            std::memcpy(output.data.data(), message.body().begin(), message.body().size());
+            output.context            = uri.queryParam().value_or("");
+            output.endpoint           = std::make_unique<URI<uri_check::STRICT>>(std::string{ message.topic() });
+            output.timestamp_received = 0ms;
+            return true;
+        }
+        return true;
+    }
+
+    bool read(RawMessage &msg) override {
+        // const auto result = majordomo::zmq_invoke(zmq_poll, _pollItems.data(), static_cast<int>(_pollItems.size()), _clientTimeout.count()); // todo: polling is already done by the Publisher?
+        // if (result.value() == 0) {
+        //     return false;
+        // }
+        // todo:: more clever way to schedule connections and break out of the loop if there are heartbeats pending
+        for (auto &con : _connections) {
+            if (con._connectionState != detail::ConnectionState::CONNECTED) {
+                continue;
+            }
+            if (auto message = majordomo::MdpMessage::receive(con._socket)) {
+                return handleMessage(std::move(*message), msg);
+            }
+        }
+        return false;
+    }
+
+    // method to be called in regular time intervals to send and verify heartbeats
+    std::chrono::milliseconds housekeeping(const std::chrono::milliseconds &now) override {
+        using detail::ConnectionState;
+        // handle monitor events
+        // handle connection state
+        for (auto &con : _connections) {
+            switch (con._connectionState) {
+            case ConnectionState::DISCONNECTED:
+                if (con._nextReconnectAttemptTimeStamp <= now) {
+                    connect(con);
+                }
+                break;
+            case ConnectionState::CONNECTING:
+                if (con._nextReconnectAttemptTimeStamp + _clientTimeout < now) {
+                    // abort connection attempt and start a new one
+                }
+                break;
+            case ConnectionState::CONNECTED:
+            case ConnectionState::DISCONNECTING:
+                break; // do nothing
+            }
+            // TODO handle client HEARTBEAT etc.
+        }
+        return _heartbeatInterval;
+    }
+
+private:
+    majordomo::MdpMessage createRequestTemplate(majordomo::Command command, std::string_view serviceName) {
+        auto req = majordomo::MdpMessage::createClientMessage(command);
+        req.setServiceName(serviceName, majordomo::MessageFrame::dynamic_bytes_tag{});
+        req.setClientRequestId(std::to_string(_nextRequestId++), majordomo::MessageFrame::dynamic_bytes_tag{});
+        return req;
+    }
+};
+
+class SubscriptionClient : public MDClientBase {
+    const std::chrono::milliseconds _clientTimeout;
+    const majordomo::Context       &_context;
+    // const majordomo::Socket       _monitorSocket;
+    // std::vector<URI<uri_check::STRICT>> _resolvedNames; // these get resolved by asking the /mmi endpoint of the supplied _authority or the default broker
+    const std::string               _clientId;
+    const std::string               _sourceName;
+    std::chrono::milliseconds       _heartbeatInterval;
+    std::vector<detail::Connection> _connections;
+    std::vector<zmq_pollitem_t>    &_pollItems;
+    long                            _nextRequestId = 0;
+
+public:
+    explicit SubscriptionClient(const majordomo::Context &context, std::vector<zmq_pollitem_t> &pollItems,
+            const std::chrono::milliseconds timeout  = 1s,
+            std::string                     clientId = "")
+        : _clientTimeout(timeout), _context(context),
+        // _monitorSocket{ context, ZMQ_PAIR },
+        _clientId(std::move(clientId))
+        , _sourceName(fmt::format("OpenCmwClient(clientId: {})", _clientId))
+        , _heartbeatInterval(timeout)
+        , _pollItems(pollItems) {
+        // setup socket monitor // todo: use client unique socket name, to avoid clash with other instances // disabled as it breaks the code
+        // majordomo::zmq_invoke(zmq_connect, _monitorSocket, "inproc://monitor-client").assertSuccess();
+
+        // take the minimum of the (albeit worker) heartbeat, client (if defined) or locally prescribed timeout
+        std::chrono::milliseconds HEARTBEAT_INTERVAL(1000);
+        _heartbeatInterval = std::chrono::milliseconds(std::min(HEARTBEAT_INTERVAL.count(), _clientTimeout == std::chrono::milliseconds(0) ? timeout.count() : std::min(timeout.count(), _clientTimeout.count())));
+    }
+
+    void connect(const URI<STRICT> &uri) {
+        // _connections.emplace_back(_context, std::string_view(uri.authority().value()));
+        auto con = detail::Connection(_context, uri.authority().value(), ZMQ_SUB);
+        _connections.push_back(std::move(con));
+    }
+
+    URI<STRICT> connect(detail::Connection &con) {
+        using detail::ConnectionState;
+        // todo: replace this by proper logic, for now use tcp if port is specified, otherwise use inproc... mds+tcp:// -> tcp://, mds+inproc:// -> inproc:// -> auto detect
+        auto        ep     = con._authority.find(':') != std::string::npos ? URI<STRICT>("tcp://"s + con._authority) : URI<STRICT>("inproc://"s + con._authority);
+        std::string zmq_ep = majordomo::toZeroMQEndpoint(ep);
+        if (opencmw::majordomo::zmq_invoke(zmq_connect, con._socket, zmq_ep).isValid()) {
+            // zmq_invoke(zmq_socket_monitor, _socket, "inproc://monitor-client", ZMQ_EVENT_CLOSED | ZMQ_EVENT_CONNECTED | ZMQ_EVENT_DISCONNECTED).assertSuccess();
+            _pollItems.push_back({ .socket = con._socket.zmq_ptr, .fd = 0, .events = ZMQ_POLLIN, .revents = 0 });
+            con._connectionState = ConnectionState::CONNECTED;
+        }
+        return URI<STRICT>("mds://");
+    }
+
+    URI<STRICT> endpoint() override {
+        return URI<STRICT>("mds://");
+    };
+
+    detail::Connection &findConnection(const URI<STRICT> &uri) {
+        // TODO: use a map for more efficient lookup? how to handle multiple uris which resolve to the same host?
+        auto con = std::find_if(_connections.begin(), _connections.end(), [&uri](detail::Connection &c) { return c._authority == uri.authority().value(); });
+        if (con == _connections.end()) {
+            auto newCon = detail::Connection(_context, uri.authority().value(), ZMQ_SUB);
+            connect(newCon);
+            _connections.push_back(std::move(newCon));
+            return _connections.back();
+        }
+        return *con;
+    }
+
+    void get(const URI<STRICT> & /*uri*/) override {
+        throw std::logic_error("get not implemented");
+    }
+
+    void set(const URI<STRICT> & /*uri*/, const std::span<const std::byte> & /*request*/) override {
+        throw std::logic_error("get not implemented");
+    }
+
+    void subscribe(const URI<STRICT> &uri) override {
+        auto            &con         = findConnection(uri);
+        std::string_view serviceName = uri.path().value();
+        serviceName.remove_prefix(std::min(serviceName.find_first_not_of('/'), serviceName.size()));
+        assert(!serviceName.empty());
+        opencmw::majordomo::zmq_invoke(zmq_setsockopt, con._socket, ZMQ_SUBSCRIBE, serviceName.data(), serviceName.size()).assertSuccess();
+    }
+
+    void unsubscribe(const URI<STRICT> &uri) override {
+        auto            &con         = findConnection(uri);
+        std::string_view serviceName = uri.path().value();
+        serviceName.remove_prefix(std::min(serviceName.find_first_not_of('/'), serviceName.size()));
+        assert(!serviceName.empty());
+        opencmw::majordomo::zmq_invoke(zmq_setsockopt, con._socket, ZMQ_UNSUBSCRIBE, serviceName.data(), serviceName.size()).assertSuccess();
+    }
+
+    bool disconnect(detail::Connection &con) {
+        _pollItems.erase(std::remove_if(_pollItems.begin(), _pollItems.end(), [&con](zmq_pollitem_t &pollitem) -> bool { return pollitem.socket == con._socket.zmq_ptr; }), _pollItems.end());
+        zmq_invoke(zmq_disconnect, con._socket, majordomo::toZeroMQEndpoint(URI<STRICT>(con._authority)).data()).ignoreResult();
+        con._connectionState = detail::ConnectionState::DISCONNECTED;
+        return true;
+    }
+
+    bool handleMessage(majordomo::BasicMdpMessage<MessageFormat::WithSourceId> &&message, RawMessage &output) {
+        if (!message.isValid()) {
+            return true;
+        }
+        // subscription updates
+        if (message.command() == majordomo::Command::Notify || message.command() == majordomo::Command::Final) {
+            output.data.resize(message.body().size());
+            std::memcpy(output.data.data(), message.body().begin(), message.body().size());
+            output.context            = "";
+            output.endpoint           = std::make_unique<URI<uri_check::STRICT>>(std::string{ message.topic() });
+            output.timestamp_received = 0ms;
+            return true;
+        }
+        return true;
+    }
+
+    bool read(RawMessage &msg) override {
+        // const auto result = majordomo::zmq_invoke(zmq_poll, _pollItems.data(), static_cast<int>(_pollItems.size()), _clientTimeout.count()); // todo: polling is already done by the Publisher?
+        // if (result.value() == 0) {
+        //     return false;
+        // }
+        // todo:: more clever way to schedule connections and break out of the loop if there are heartbeats pending
+        for (detail::Connection &con : _connections) {
+            if (con._connectionState != detail::ConnectionState::CONNECTED) {
+                continue;
+            }
+            while (true) {
+                if (auto message = majordomo::BasicMdpMessage<MessageFormat::WithSourceId>::receive(con._socket)) {
+                    return handleMessage(std::move(*message), msg);
+                } else {
+                    break;
+                }
+            }
+        }
+        return false;
+    }
+
+    // method to be called in regular time intervals to send and verify heartbeats
+    std::chrono::milliseconds housekeeping(const std::chrono::milliseconds &now) override {
+        using detail::ConnectionState;
+        // handle monitor events
+        // handle connection state
+        for (auto &con : _connections) {
+            switch (con._connectionState) {
+            case ConnectionState::DISCONNECTED:
+                if (con._nextReconnectAttemptTimeStamp <= now) {
+                    connect(con);
+                }
+                break;
+            case ConnectionState::CONNECTING:
+                if (con._nextReconnectAttemptTimeStamp + _clientTimeout < now) {
+                    // abort connection attempt and start a new one
+                }
+                break;
+            case ConnectionState::CONNECTED:
+            case ConnectionState::DISCONNECTING:
+                break; // do nothing
+            }
+            // TODO handle client HEARTBEAT etc.
+        }
+        return _heartbeatInterval;
+    }
+};
+
+class MDClientCtx : public ClientCtxBase {
+    std::unordered_map<URI<STRICT>, std::unique_ptr<MDClientBase>> _clients;
+    const majordomo::Context                                      &zctx;
+    majordomo::Socket                                              control_socket_send;
+    majordomo::Socket                                              control_socket_recv;
+    std::jthread                                                   _poller;
+    std::vector<zmq_pollitem_t>                                    _pollitems;
+    // keeping track of ongoing requests, maps URIs to subscriptions and other requests
+    std::unordered_map<std::string, Request>      _requests;
+    std::unordered_map<std::string, Subscription> _subscriptions;
+    std::mutex                                    _managementLock;
+
+public:
+    explicit MDClientCtx(const majordomo::Context &zeromq_context) // todo: also pass thread pool
+        : zctx{ zeromq_context }, control_socket_send(zeromq_context, ZMQ_PAIR), control_socket_recv(zeromq_context, ZMQ_PAIR) {
+        _poller = std::jthread([this](const std::stop_token &stoken) { this->poll(stoken); });
+        majordomo::zmq_invoke(zmq_bind, control_socket_send, "inproc://mdclientControlSocket").assertSuccess();
+        _pollitems.push_back({ .socket = control_socket_recv.zmq_ptr, .events = ZMQ_POLLIN });
+    }
+
+    std::vector<std::string> protocols() override {
+        return { "mdp", "mdp+tcp", "mdp+inproc", "mds", "mds+tcp", "mds+inproc" }; // majordomo protocol and subscription protocol, if transport is unspecified, tcp is used if authority contains a port
+    }
+
+    std::unique_ptr<MDClientBase> &getClient(const URI<STRICT> &uri) {
+        // std::lock_guard managementLock(_managementLock);
+        auto baseUri = URI<STRICT>::factory(uri).setQuery({}).path("").fragment("").build();
+        if (_clients.contains(baseUri)) {
+            return _clients.at(baseUri);
+        }
+        auto [it, ins] = _clients.emplace(baseUri, createClient(baseUri));
+        if (!ins) {
+            throw std::logic_error("could not insert client into client list\n");
+        }
+        return it->second;
+    }
+
+    std::unique_ptr<MDClientBase> createClient(const URI<STRICT> &uri) {
+        if (uri.str.starts_with("mdp")) {
+            return std::make_unique<Client>(zctx, _pollitems);
+        } else if (uri.str.starts_with("mds")) {
+            return std::make_unique<SubscriptionClient>(zctx, _pollitems);
+        } else {
+            throw std::logic_error("unsupported protocol");
+        }
+    }
+
+    void stop() override {
+        _poller.request_stop();
+        _poller.join();
+    }
+
+    void request(Command &cmd) override {
+        // std::lock_guard managementLock(_managementLock);
+        if (cmd.callback) {
+            // todo: locking of requests list
+            if (cmd.type == Command::Type::Get || cmd.type == Command::Type::Set) {
+                _requests.insert({ cmd.uri->str, Request{ .uri = *cmd.uri, .callback = std::move(cmd.callback), .timestamp_received = cmd.timestamp_received } });
+            } else if (cmd.type == Command::Type::Subscribe) {
+                _subscriptions.insert({ cmd.uri->str, Subscription{ .uri = *cmd.uri, .callback = std::move(cmd.callback), .timestamp_received = cmd.timestamp_received } });
+            } else if (cmd.type == Command::Type::Subscribe) {
+                // just remove subscription here or track the state of the subscription
+                //_subscriptions.erase(std::remove_if(_subscriptions.begin(), _subscriptions.end(), [&cmd](Subscription &sub) {return sub.uri == *cmd.uri;}), _subscriptions.end());
+            }
+        }
+        sendCmd(*cmd.uri, cmd.type, cmd.data);
+    }
+
+private:
+    void sendCmd(const URI<STRICT> &uri, Command::Type commandType, const std::span<const std::byte> &data = {}) {
+        majordomo::MessageFrame cmdType{ std::string{ static_cast<char>(commandType) }, majordomo::MessageFrame::dynamic_bytes_tag() };
+        cmdType.send(control_socket_send, ZMQ_DONTWAIT | ZMQ_SNDMORE).assertSuccess();
+        majordomo::MessageFrame endpoint{ uri.str, majordomo::MessageFrame::dynamic_bytes_tag() };
+        endpoint.send(control_socket_send, ZMQ_DONTWAIT).assertSuccess();
+        if (commandType == Command::Type::Set) {
+            majordomo::MessageFrame dataframe{ std::string_view{ reinterpret_cast<const char *>(data.data()), data.size() }, majordomo::MessageFrame::dynamic_bytes_tag() };
+            dataframe.send(control_socket_send, ZMQ_DONTWAIT).assertSuccess();
+        }
+    }
+
+    void handleRequests() {
+        majordomo::MessageFrame cmd, endpoint;
+        while (cmd.receive(control_socket_recv, ZMQ_DONTWAIT).isValid()) {
+            if (!endpoint.receive(control_socket_recv, ZMQ_DONTWAIT).isValid()) {
+                throw std::logic_error("invalid request received"); // messages always consist of 2 frames
+            }
+            URI<STRICT> uri{ std::string(endpoint.data()) };
+            // std::lock_guard managementLock(_managementLock);
+            auto &client = getClient(uri);
+            if (cmd.data().size() != 1) {
+                throw std::logic_error("invalid request received"); // messages always consist of 2 frames
+            } else if (cmd.data()[0] == static_cast<char>(Command::Type::Get)) {
+                client->get(uri);
+            } else if (cmd.data()[0] == static_cast<char>(Command::Type::Set)) {
+                majordomo::MessageFrame data;
+                if (!data.receive(control_socket_recv, ZMQ_DONTWAIT).isValid()) {
+                    throw std::logic_error("missing set data");
+                }
+                client->set(uri, as_bytes(std::span(data.data().data(), data.data().size())));
+            } else if (cmd.data()[0] == static_cast<char>(Command::Type::Subscribe)) {
+                client->subscribe(uri);
+            } else if (cmd.data()[0] == static_cast<char>(Command::Type::Unsubscribe)) {
+                client->unsubscribe(uri);
+            } else {
+                throw std::logic_error("invalid request received"); // messages always consist of 2 frames
+            }
+        }
+    }
+
+    void poll(const std::stop_token &stoken) {
+        std::chrono::milliseconds nextHousekeeping = 0ms;
+        majordomo::zmq_invoke(zmq_connect, control_socket_recv, "inproc://mdclientControlSocket").assertSuccess();
+        while (!stoken.stop_requested() && majordomo::zmq_invoke(zmq_poll, _pollitems.data(), _pollitems.size(), 200)) {
+            if (nextHousekeeping < std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())) {
+                nextHousekeeping = housekeeping(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()));
+                // expire old subscriptions/requests/connections
+            }
+            handleRequests();
+            for (auto &clientPair : _clients) {
+                auto      &client = clientPair.second;
+                RawMessage receivedEvent;
+                while (bool more = client->read(receivedEvent)) {
+                    if (more) {
+                        if (_subscriptions.contains(receivedEvent.endpoint->str)) {
+                            _subscriptions.at(receivedEvent.endpoint->str).callback(receivedEvent); // callback
+                        }
+                        if (_requests.contains(receivedEvent.endpoint->str)) {
+                            _requests.at(receivedEvent.endpoint->str).callback(receivedEvent); // callback
+                            _requests.erase(receivedEvent.endpoint->str);
+                        }
+                        // _ringBuffer->publishEvent([&client](Event receivedEvent, long /*seq*/) { client.read(receivedEvent); } ); // TODO: add ring buffer interface for subscriptions or globally?
+                    }
+                    // perform housekeeping duties if necessary
+                    if (nextHousekeeping < std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())) {
+                        nextHousekeeping = housekeeping(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()));
+                    }
+                }
+            }
+        }
+    }
+
+    std::chrono::milliseconds housekeeping(std::chrono::milliseconds now) {
+        std::chrono::milliseconds next = now + _defaultTimeout;
+        for (auto &clientPair : _clients) {
+            auto &client = clientPair.second;
+            next         = std::min(next, client->housekeeping(now));
+        }
+        return next;
+    }
+    // manage commands: setup new clients if necessary and establish new subscriptions etc
+    // todo: remove unused (= no open subscriptions && last request was some time ago) clients after some unused time
+};
+
+} // namespace opencmw::client
+#endif // OPENCMW_CPP_CMW_CLIENT_HPP

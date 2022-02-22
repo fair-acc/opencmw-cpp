@@ -1,7 +1,7 @@
 # setup header only library
 add_library(majordomo INTERFACE
     include/majordomo/Broker.hpp
-    include/majordomo/Client.hpp
+        include/majordomo/MockClient.hpp
     include/majordomo/Constants.hpp
     include/majordomo/Debug.hpp
     include/majordomo/Message.hpp
