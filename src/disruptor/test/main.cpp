@@ -1,12 +1,13 @@
-#include <catch2/catch.hpp>
-
 #include <cassert>
+
 #include <variant>
 
 #include <disruptor/Disruptor.hpp>
 #include <disruptor/RingBuffer.hpp>
 #include <disruptor/RoundRobinThreadAffinedTaskScheduler.hpp>
 #include <disruptor/WaitStrategy.hpp>
+
+#include <disruptor/Rx.hpp>
 
 using namespace opencmw::disruptor;
 
@@ -35,6 +36,25 @@ struct TestEvent {
     std::variant<Next, ResetTo, Check, Stop> command;
 };
 
+std::ostream &operator<<(std::ostream &out, const TestEvent &event) {
+    return out << '[' << event.cid << ' ' << event.pid << ' ' << event.sequence << ']';
+}
+
+// clang-format off
+// clang format can not format this:
+template<typename... Events>
+requires(std::is_same_v<Events, TestEvent> &&...)
+std::ostream & operator<<(std::ostream &out, const std::tuple<Events...> &events) {
+    out << "{ ";
+    rx::detail::tuple_for_each(events,
+            [&out] <typename Index> (Index, const auto&event) {
+                out << "item " << Index::value << " " << event << " ";
+                });
+    out << "}";
+    return out;
+}
+// clang-format on
+
 class Publisher {
 public:
     Publisher(const std::shared_ptr<RingBuffer<TestEvent>> &ringBuffer,
@@ -54,6 +74,7 @@ public:
                 if (i == 0) {
                     testEvent.command = TestEvent::Stop{};
                     std::cerr << "Stopping...\n";
+                    return;
                 } else if (i % 100 == 1) {
                     testEvent.command = TestEvent::ResetTo{ i };
                 } else if (i % 100 == 0) {
@@ -63,8 +84,8 @@ public:
                 }
 
                 testEvent.sequence = value;
-                testEvent.cid      = value;
-                testEvent.pid      = value;
+                testEvent.cid      = i;
+                testEvent.pid      = i;
 
                 m_ringBuffer->publish(next);
             }
@@ -102,7 +123,6 @@ std::vector<std::shared_ptr<IEventHandler<TestEvent>>> makeHandlers(const Disrup
                     std::visit(overloaded{
                                        [&](TestEvent::ResetTo resetTo) {
                                            value = resetTo.value;
-                                           // REQUIRE(resetTo.value % 100 == 1);
                                            assert(resetTo.value % 100 == 1);
                                        },
                                        [&](TestEvent::Next) { value++; },
@@ -112,7 +132,6 @@ std::vector<std::shared_ptr<IEventHandler<TestEvent>>> makeHandlers(const Disrup
                                        },
                                        [&]([[maybe_unused]] TestEvent::Check check) {
                                            assert(check.value % 100 == 0);
-                                           // REQUIRE(check.value % 100 == 0);
                                        } },
                             event.command);
                 });
@@ -123,23 +142,49 @@ std::vector<std::shared_ptr<IEventHandler<TestEvent>>> makeHandlers(const Disrup
     return result;
 }
 
-TEST_CASE("Disruptor stress test", "[Disruptor]") {
-    auto                                                                                                  processorsCount = std::max(std::thread::hardware_concurrency() / 2, 1u);
+int main() {
+    auto processorsCount = std::max(std::thread::hardware_concurrency() / 2, 1u);
 
-    auto                                                                                                  bufferSize      = 1 << 16;
-    Disruptor<TestEvent, ProducerType::Multi, RoundRobinThreadAffinedTaskScheduler, BusySpinWaitStrategy> testDisruptor(processorsCount, bufferSize);
+    using TestDisruptor  = Disruptor<TestEvent, ProducerType::Multi, RoundRobinThreadAffinedTaskScheduler, BusySpinWaitStrategy>;
+    TestDisruptor testDisruptor(processorsCount, 1 << 16);
 
-    auto                                                                                                  ringBuffer = testDisruptor->ringBuffer();
+    auto          ringBuffer = testDisruptor->ringBuffer();
     testDisruptor->setDefaultExceptionHandler(std::make_shared<FatalExceptionHandler<TestEvent>>());
 
-    const auto iterations     = 200000;
+    const auto iterations     = 2000;
 
-    auto       publisherCount = processorsCount;
-    auto       handlerCount   = processorsCount;
+    auto       publisherCount = 4u;
+    auto       handlerCount   = 4u;
 
     auto       handlers       = makeHandlers(testDisruptor, handlerCount);
     auto       publishers     = makePublishers(publisherCount, ringBuffer, iterations);
 
+    // {
+    rx::Source<TestDisruptor> disruptorSource(testDisruptor);
+
+    // Stream splitting
+    auto even = disruptorSource.stream()
+                        .filter([](const TestEvent &event) { return event.cid % 2 == 0; });
+    even.subscribe(
+            [](const auto &event) { std::cerr << "Rx: Got EVEN event: " << event << '\n'; },
+            [] { std::cerr << "Rx: Stream ended.\n"; });
+
+    auto odd = disruptorSource.stream()
+                       .filter([](const TestEvent &event) { return event.cid % 2 != 0; });
+    odd.subscribe(
+            [](const auto &event) { std::cerr << "Rx: Got ODD event: " << event << '\n'; },
+            [] { std::cerr << "Rx: Stream ended.\n"; });
+
+    // rx::Aggregate aggregate(odd, even);
+    auto  _aggregate = rx::join<rx::Join::Unlimited>(odd, even);
+    auto &aggregate  = *_aggregate;
+
+    aggregate.stream().subscribe(
+            [](const auto &event) { std::cerr << "Rx: Got event AGGREGATE {" << event << "}\n"; },
+            [] { std::cerr << "Rx: Stream ended.\n"; });
+    // }
+
+    // Start the disruptor and wait for everything to get processed
     testDisruptor->start();
 
     const auto time_start = std::chrono::system_clock::now();

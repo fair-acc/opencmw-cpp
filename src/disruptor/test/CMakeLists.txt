@@ -1,39 +1,50 @@
 include(CTest)
 include(Catch)
 
-function(opencmw_disruptor_add_test name sources)
-    set(test_SRCS "${sources};catch_main.cpp")
+set (RXCPP_DISABLE_TESTS_AND_EXAMPLES 1)
+FetchContent_Declare(
+    Rx
+    GIT_REPOSITORY https://github.com/ivan-cukic/wip-fork-rxcpp
+    GIT_TAG        483963939e4a2adf674450dcb829005d84be1d59
+)
+FetchContent_MakeAvailable(Rx)
+
+function(opencmw_add_test_app name sources)
+    set (test_SRCS ${sources})
     message("Test sources: ${test_SRCS}")
     add_executable(${name} ${test_SRCS})
 
-    target_include_directories(
-            ${name}
-            PUBLIC
+    target_include_directories (
+        ${name}
+        PUBLIC
+            ${CMAKE_CURRENT_SOURCE_DIR}/../include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../../utils/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../../core/include
             ${CMAKE_CURRENT_SOURCE_DIR}/../../disruptor/include
-    )
+        )
+
+    target_include_directories (${name} SYSTEM PUBLIC ${rx_SOURCE_DIR}/Rx/v2/src)
 
     target_link_libraries(${name}
-            PUBLIC
+        PUBLIC
             pthread
             project_warnings
             project_options
             CONAN_PKG::catch2
             CONAN_PKG::fmt
-            )
+        )
+endfunction()
 
+function(opencmw_add_test_catch2 name sources)
+    opencmw_add_test_app(${name} "${sources};catch_main.cpp")
     catch_discover_tests(${name})
 endfunction()
 
-opencmw_disruptor_add_test(disruptor_waitstrategy_tests WaitStrategy_tests.cpp)
 
-add_executable(disruptor_benchmark_tests Disruptor_tests.cpp)
-target_include_directories(disruptor_benchmark_tests PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../../disruptor/include)
-target_link_libraries(disruptor_benchmark_tests PUBLIC project_warnings project_options CONAN_PKG::catch2 core)
+opencmw_add_test_app(disruptor_rx_demo main.cpp)
+target_compile_options(disruptor_rx_demo PRIVATE -fsanitize=address)
+target_link_options(disruptor_rx_demo PRIVATE -fsanitize=address)
 
-add_executable(disruptor_tests catch_main.cpp WaitStrategy_tests.cpp)
-target_include_directories(disruptor_tests PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../../disruptor/include)
-target_link_libraries(disruptor_tests PUBLIC project_warnings project_options CONAN_PKG::catch2 core)
+opencmw_add_test_catch2(disruptor_core_tests Disruptor_tests.cpp)
+opencmw_add_test_catch2(disruptor_waitstrategy_tests WaitStrategy_tests.cpp)
 
-# automatically discover tests that are defined in catch based test files you can modify the unittests. Set TEST_PREFIX to whatever you want, or use different for different binaries
-# catch_discover_tests(serialiser_tests TEST_PREFIX  "unittests." REPORTER xml OUTPUT_DIR . OUTPUT_PREFIX "unittests." OUTPUT_SUFFIX .xml)
-catch_discover_tests(disruptor_tests)

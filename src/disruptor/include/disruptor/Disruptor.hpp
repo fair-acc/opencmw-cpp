@@ -451,21 +451,23 @@ private:
     }
 };
 
-template<typename EventType, auto ProducerType, typename Scheduler, typename WaitStrategy>
+template<typename T, auto ProducerType, typename Scheduler, typename WaitStrategy>
 class Disruptor {
 private:
-    std::shared_ptr<Scheduler>                _scheduler;
-    std::shared_ptr<WaitStrategy>             _waitStrategy;
-    std::shared_ptr<DisruptorCore<EventType>> _disruptorCore;
+    std::shared_ptr<Scheduler>        _scheduler;
+    std::shared_ptr<WaitStrategy>     _waitStrategy;
+    std::shared_ptr<DisruptorCore<T>> _disruptorCore;
 
 public:
+    using EventType = T;
+
     template<typename... Args>
     Disruptor(std::size_t threadsCount, Args &&...args) {
         _scheduler = std::make_shared<Scheduler>();
         _scheduler->start(threadsCount);
 
         _waitStrategy  = std::make_shared<WaitStrategy>();
-        _disruptorCore = std::make_shared<DisruptorCore<EventType>>(std::forward<Args>(args)..., _scheduler, ProducerType, _waitStrategy);
+        _disruptorCore = std::make_shared<DisruptorCore<T>>(std::forward<Args>(args)..., _scheduler, ProducerType, _waitStrategy);
     }
 
     auto operator->() const {

@@ -76,6 +76,7 @@ if (ENABLE_PCH)
             <utility>)
 endif ()
 
+set(CONAN_DISABLE_CHECK_COMPILER 1)
 include(cmake/Conan.cmake)
 run_conan()
 include(cmake/ReflCpp.cmake) # todo: switch to obtaining reflcpp from conan
