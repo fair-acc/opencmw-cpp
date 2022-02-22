@@ -3,7 +3,7 @@
 #include <unordered_map>
 
 #include <majordomo/Broker.hpp>
-#include <majordomo/Client.hpp>
+#include <majordomo/MockClient.hpp>
 #include <majordomo/Worker.hpp>
 
 #include <fmt/format.h>
@@ -173,11 +173,11 @@ int main(int argc, char **argv) {
             return 1;
         }
 
-        const std::string_view     property = argv[4];
-        const std::string_view     value    = argc == 6 ? argv[5] : "";
+        const std::string_view         property = argv[4];
+        const std::string_view         value    = argc == 6 ? argv[5] : "";
 
-        Context                    context;
-        opencmw::majordomo::Client client(context);
+        Context                        context;
+        opencmw::majordomo::MockClient client(context);
         if (!client.connect(brokerAddress)) {
             std::cerr << fmt::format("Could not connect to broker at '{}'\n", brokerAddress);
             return 1;

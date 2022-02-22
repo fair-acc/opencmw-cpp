@@ -1,19 +1,17 @@
 #include "../../majordomo/test/helpers.hpp" // TestNode
 #include <catch2/catch.hpp>
-#include <majordomo/Client.hpp>
+#include <majordomo/MockClient.hpp>
 #include <MockServer.hpp>
 
-TEST_CASE("SET/GET", "[mock-server][lambda_handler]") {
+TEST_CASE("SET/GET of MockServer", "[mock-server][lambda_handler]") {
     using namespace opencmw::majordomo;
     using namespace std::chrono_literals;
 
     Context    context{};
     MockServer server(context);
-    REQUIRE(server.bind(opencmw::URI<>("mdp://127.0.0.1:2345")));
-    // REQUIRE(server.bind(INTERNAL_ADDRESS_BROKER));
 
-    Client client(server.context());
-    REQUIRE(client.connect(opencmw::URI<>("mdp://127.0.0.1:2345")));
+    MockClient client(server.context());
+    REQUIRE(client.connect(opencmw::URI<>(server.address())));
     // REQUIRE(client.connect(INTERNAL_ADDRESS_BROKER));
 
     client.get("a.service", "", [](auto &&message) {
@@ -32,6 +30,12 @@ TEST_CASE("SET/GET", "[mock-server][lambda_handler]") {
         REQUIRE(message.error() == "");
         REQUIRE(message.body() == "Value set. All good!");
     });
+    server.processRequest([](auto &&req, auto &reply) {
+        REQUIRE(req.command() == Command::Set);
+        REQUIRE(req.body() == "42");
+        reply.setBody("Value set. All good!", MessageFrame::static_bytes_tag{});
+    });
+    REQUIRE(client.tryRead(3s));
 
     client.get("a.service", "", [](auto &&message) {
         fmt::print("C: {}\n", message);
@@ -40,31 +44,27 @@ TEST_CASE("SET/GET", "[mock-server][lambda_handler]") {
     });
 
     server.processRequest([](auto &&req, auto &reply) {
-        REQUIRE(req.command() == Command::Set);
-        REQUIRE(req.body() == "42");
-        reply.setBody("Value set. All good!", MessageFrame::static_bytes_tag{});
-    });
-    server.processRequest([](auto &&req, auto &reply) {
         REQUIRE(req.command() == Command::Get);
         reply.setBody(std::to_string(42), MessageFrame::dynamic_bytes_tag{});
     });
-    REQUIRE(client.tryRead(3s));
+
     REQUIRE(client.tryRead(3s));
 }
 
-TEST_CASE("Subscription Test", "[mock-server][lambda_handler]") {
-    using namespace opencmw::majordomo;
+TEST_CASE("MockServer Subscription Test", "[mock-server][lambda_handler]") {
+    using opencmw::majordomo::BasicMdpMessage;
+    using opencmw::majordomo::Command;
+    using opencmw::majordomo::Context;
+    using opencmw::majordomo::MessageFormat;
+    using opencmw::majordomo::MessageFrame;
+    using opencmw::majordomo::MockServer;
     using namespace std::chrono_literals;
 
-    Context    context{};
-    MockServer server(context);
-    REQUIRE(server.bind(opencmw::URI<>("mdp://127.0.0.1:2345")));
-    REQUIRE(server.bindPub(opencmw::URI<>("mds://127.0.0.1:2346")));
-    // REQUIRE(server.bind(INTERNAL_ADDRESS_BROKER));
+    Context                                                context{};
+    MockServer                                             server(context);
 
     TestNode<BasicMdpMessage<MessageFormat::WithSourceId>> client(context, ZMQ_SUB);
-    REQUIRE(client.connect(opencmw::URI<>("mds://127.0.0.1:2346")));
-    // REQUIRE(client.connect(INTERNAL_ADDRESS_BROKER));
+    REQUIRE(client.connect(opencmw::URI<>(server.addressSub())));
 
     client.subscribe("a.service");
     std::this_thread::sleep_for(10ms); // wait for the subscription to be set-up. todo: investigate more clever way

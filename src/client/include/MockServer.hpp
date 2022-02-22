@@ -11,7 +11,6 @@
 #include <majordomo/Settings.hpp>
 #include <majordomo/Worker.hpp>
 
-#include "MustacheSerialiser.hpp"
 #include <URI.hpp>
 
 namespace opencmw::majordomo {
@@ -20,33 +19,42 @@ namespace opencmw::majordomo {
  * Very simple mock opencmw server to use for testing. Offers a single int property named "a.service" which can be get/set/subscribed.
  */
 class MockServer {
+    static int                    INSTANCE_COUNT;
+    const int                     id;
     const Context                &_context;
+    std::string                   _address;
+    std::string                   _subAddress;
     std::optional<Socket>         _socket;
     std::optional<Socket>         _pubSocket;
-    std::array<zmq_pollitem_t, 1> _pollerItems;
+    std::array<zmq_pollitem_t, 1> _pollerItems{};
     Settings                      _settings;
 
 public:
     explicit MockServer(const Context &context)
-        : _context(context) {
+        : id(INSTANCE_COUNT++), _context(context), _address{ fmt::format("inproc://MockServer{}", id) }, _subAddress{ fmt::format("inproc://MockServerSub{}", id) } {
+        bind();
     }
 
     virtual ~MockServer() = default;
 
-    const Context &context() { return _context; };
+    const Context            &context() { return _context; };
+
+    [[nodiscard]] std::string address() { return _address; };
+    [[nodiscard]] std::string addressSub() { return _subAddress; };
 
     template<typename Callback>
     bool processRequest(Callback handler) {
-        const auto result = zmq_invoke(zmq_poll, _pollerItems.data(), static_cast<int>(_pollerItems.size()), _settings.heartbeatInterval.count());
-        bool       anythingReceived;
-        int        loopCount = 0;
+        const auto result           = zmq_invoke(zmq_poll, _pollerItems.data(), static_cast<int>(_pollerItems.size()), _settings.heartbeatInterval.count());
+        bool       anythingReceived = false;
+        int        loopCount        = 0;
         do {
             auto maybeMessage = MdpMessage::receive(_socket.value());
             if (!maybeMessage) { // empty message
                 anythingReceived = false;
+                break;
             }
-            fmt::print("msg: {}\n", maybeMessage.value());
-            auto &message = maybeMessage.value();
+            anythingReceived = true;
+            auto &message    = maybeMessage.value();
             if (!message.isValid() || !message.isClientMessage()) {
                 throw std::logic_error("mock server received invalid message");
             }
@@ -60,30 +68,20 @@ public:
         return result.isValid();
     }
 
-    [[nodiscard]] auto bind(const opencmw::URI<> &brokerUrl) {
+    void bind() {
         _socket.emplace(_context, ZMQ_DEALER);
-        _pubSocket.emplace(_context, ZMQ_PUB);
-
-        auto       ep     = toZeroMQEndpoint(brokerUrl);
-        const auto result = zmq_invoke(zmq_bind, *_socket, ep.data());
-        if (result.isValid()) {
+        if (const auto result = zmq_invoke(zmq_bind, *_socket, _address.data()); result.isValid()) {
             _pollerItems[0].socket = _socket->zmq_ptr;
             _pollerItems[0].events = ZMQ_POLLIN;
         } else {
+            fmt::print("error: {}\n", zmq_strerror(result.error()));
             _socket.reset();
         }
-
-        return result;
-    }
-
-    [[nodiscard]] auto bindPub(const opencmw::URI<> &brokerUrl) {
         _pubSocket.emplace(_context, ZMQ_XPUB);
-        auto       ep     = toZeroMQEndpoint(brokerUrl);
-        const auto result = zmq_invoke(zmq_bind, *_pubSocket, ep.data());
-        if (!result.isValid()) {
-            _socket.reset();
+        if (auto result = zmq_invoke(zmq_bind, *_pubSocket, _subAddress.data()); !result.isValid()) {
+            fmt::print("error: {}\n", zmq_strerror(result.error()));
+            _pubSocket.reset();
         }
-        return result;
     }
 
     bool disconnect() {
@@ -105,6 +103,19 @@ public:
         notify.send(_pubSocket.value()).assertSuccess();
     }
 
+    void notify(std::string_view topic, std::string_view uri, std::string_view value) {
+        auto       brokerName  = "";
+        auto       serviceName = "a.service";
+        const auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
+        auto       notify      = BasicMdpMessage<MessageFormat::WithSourceId>::createClientMessage(Command::Final);
+        notify.setServiceName(serviceName, dynamic_tag);
+        notify.setTopic(uri, dynamic_tag);
+        notify.setSourceId(topic, dynamic_tag);
+        notify.setClientRequestId(brokerName, dynamic_tag);
+        notify.setBody(value, dynamic_tag);
+        notify.send(_pubSocket.value()).assertSuccess();
+    }
+
     static MdpMessage replyFromRequest(const MdpMessage &request) noexcept {
         MdpMessage reply;
         reply.setProtocol(request.protocol());
@@ -117,6 +128,8 @@ public:
         return reply;
     }
 };
+
+inline int MockServer::INSTANCE_COUNT = 0;
 
 } // namespace opencmw::majordomo
 
