@@ -32,6 +32,7 @@ macro(run_conan)
             zeromq/4.3.4
             cpp-httplib/0.9.9
             openssl/1.1.1l
+            # rxcpp/4.1.1 -- replaced with cmake fetch
             # kainjow-mustache/4.1 -- forked in 3rd_party/kainjow
             # refl-cpp/0.12.1 # could be used once there is a new release
             OPTIONS
