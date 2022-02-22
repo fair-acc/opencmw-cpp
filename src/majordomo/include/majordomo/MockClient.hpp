@@ -13,7 +13,7 @@
 
 namespace opencmw::majordomo {
 
-class Client {
+class MockClient {
     const Context                &_context;
     std::optional<Socket>         _socket;
     std::string                   _brokerUrl;
@@ -28,11 +28,11 @@ public:
         int id;
     };
 
-    explicit Client(const Context &context)
+    explicit MockClient(const Context &context)
         : _context(context) {
     }
 
-    virtual ~Client() = default;
+    virtual ~MockClient() = default;
 
     [[nodiscard]] auto connect(const opencmw::URI<> &brokerUrl) {
         _socket.emplace(_context, ZMQ_DEALER);

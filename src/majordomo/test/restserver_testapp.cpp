@@ -3,9 +3,9 @@
 #include <majordomo/RestBackend.hpp>
 
 #include <majordomo/Broker.hpp>
-#include <majordomo/Client.hpp>
 #include <majordomo/Debug.hpp>
 #include <majordomo/Message.hpp>
+#include <majordomo/MockClient.hpp>
 #include <majordomo/Utils.hpp>
 #include <majordomo/Worker.hpp>
 
