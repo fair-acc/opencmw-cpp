@@ -45,12 +45,10 @@ jobs:
     - name: Cache
       uses: actions/cache@v2
       env:
-        cache-name: cache-conan-modules
+        cache-name: cache-fetchContent-cache
       with:
-        path: |
-          ${{ env.CONAN_USER_HOME }}
-          ~/.cache/pip
-        key: ${{ runner.os }}-${{ matrix.cmake-build-type }}-${{ hashFiles('CMakeLists.txt') }}-${{ hashFiles('cmake/Conan.cmake') }}
+        path: ${{runner.workspace}}/build/_deps
+        key: ${{ runner.os }}-${{ matrix.cmake-build-type }}-${{ hashFiles('CMakeLists.txt') }}-${{ hashFiles('cmake/Dependencies.cmake') }}
 
     - name: Install gcc-11
       if: matrix.configurations.compiler == 'gcc'
@@ -67,13 +65,6 @@ jobs:
         sudo apt install -y clang-13 libc++-13-dev libc++abi-13-dev
         sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++-13 110
 
-    - name: Install conan
-      shell: bash
-      run: |
-        python3 -m pip install --upgrade pip setuptools
-        python3 -m pip install conan
-        echo "/home/runner/.local/bin" >> $GITHUB_PATH
-
     - name: Install gcovr
       shell: bash
       if: matrix.configurations.name == env.REFERENCE_CONFIG && matrix.cmake-build-type == 'Debug'
@@ -81,18 +72,12 @@ jobs:
         python3 -m pip install gcovr --user --no-warn-script-location
         gcovr --version
 
-    - name: Check build prerequisites # Fail if we can't run conan or gcovr
-      if: matrix.configurations.os == env.REFERENCE_OS
-      shell: bash
-      run: conan --version && gcovr --version
-
     - name: Configure CMake
       # Use a bash shell, so we can use the same syntax for environment variable access regardless of the host operating system
       shell: bash
       run: cmake -S . -B ../build -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DENABLE_COVERAGE=${{ matrix.configurations.name == env.REFERENCE_CONFIG &&  matrix.cmake-build-type == 'Debug'}}
 
     - name: Build
-      working-directory: ${{runner.workspace}}/build
       shell: bash
       # Execute the build.  You can specify a specific target with "--target <NAME>"
       run: cmake --build ../build --config ${{ matrix.cmake-build-type }}

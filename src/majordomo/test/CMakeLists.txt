@@ -1,6 +1,3 @@
-include(CTest)
-include(Catch)
-
 add_definitions (-fexceptions)
 
 cmrc_add_resource_library(
@@ -19,37 +16,21 @@ cmrc_add_resource_library(
     )
 
 message("COPY ${CMAKE_SOURCE_DIR}/demo_sslcert/demo_private.key DESTINATION ${CMAKE_CURRENT_BINARY_DIR}" )
-file(COPY "${CMAKE_SOURCE_DIR}/demo_sslcert/demo_private.key"
-    DESTINATION "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/")
-file(COPY "${CMAKE_SOURCE_DIR}/demo_sslcert/demo_public.crt"
-    DESTINATION "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/")
+file(COPY "${CMAKE_SOURCE_DIR}/demo_sslcert/demo_private.key" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+file(COPY "${CMAKE_SOURCE_DIR}/demo_sslcert/demo_public.crt" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 function(opencmw_add_test_app name sources)
     set (test_SRCS ${sources})
     message("Test sources: ${test_SRCS}")
     add_executable(${name} ${test_SRCS})
 
-    target_include_directories (
-        ${name}
-        PUBLIC
-            ${CMAKE_CURRENT_SOURCE_DIR}/../include
-            ${CMAKE_CURRENT_SOURCE_DIR}/../../utils/include
-            ${CMAKE_CURRENT_SOURCE_DIR}/../../core/include
-            ${CMAKE_CURRENT_SOURCE_DIR}/../../serialiser/include
-        )
-
     target_link_libraries(${name}
         PUBLIC
-            pthread
-            project_warnings
-            project_options
+            opencmw_project_warnings
+            opencmw_project_options
             serialiser
-            CONAN_PKG::catch2
-            CONAN_PKG::fmt
-            CONAN_PKG::zeromq
-            CONAN_PKG::mp-units
-            CONAN_PKG::cpp-httplib
-            CONAN_PKG::openssl
+            majordomo
+            Catch2::Catch2
             assets::rest
         )
 endfunction()

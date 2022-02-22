@@ -19,14 +19,12 @@ cmrc_add_resource_library(
     )
 
 message("COPY ${CMAKE_SOURCE_DIR}/demo_sslcert/demo_private.key DESTINATION ${CMAKE_CURRENT_BINARY_DIR}" )
-file(COPY "${CMAKE_SOURCE_DIR}/demo_sslcert/demo_private.key"
-    DESTINATION "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/")
-file(COPY "${CMAKE_SOURCE_DIR}/demo_sslcert/demo_public.crt"
-    DESTINATION "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/")
+file(COPY "${CMAKE_SOURCE_DIR}/demo_sslcert/demo_private.key" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+file(COPY "${CMAKE_SOURCE_DIR}/demo_sslcert/demo_public.crt" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 add_executable(MajordomoRest_example MajordomoRest_example.cpp)
 target_include_directories(MajordomoRest_example
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
     )
-target_link_libraries(MajordomoRest_example PRIVATE majordomo project_options project_warnings assets::rest assets::testImages)
+target_link_libraries(MajordomoRest_example PRIVATE majordomo opencmw_project_options opencmw_project_warnings assets::rest assets::testImages)

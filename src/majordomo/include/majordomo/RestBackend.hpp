@@ -15,7 +15,7 @@
 #pragma GCC diagnostic ignored "-Wuseless-cast"
 #define CPPHTTPLIB_THREAD_POOL_COUNT 8
 #define CPPHTTPLIB_OPENSSL_SUPPORT
-#include <httplib/httplib.h>
+#include <httplib.h>
 #pragma GCC diagnostic pop
 
 // Core
