@@ -164,13 +164,13 @@ int main() {
 
     // Stream splitting
     auto even = disruptorSource.stream()
-                        .filter([](const TestEvent &event) { return event.cid % 2 == 0; });
+              | rxcpp::operators::filter([](const TestEvent &event) { return event.cid % 2 == 0; });
     even.subscribe(
             [](const auto &event) { std::cerr << "Rx: Got EVEN event: " << event << '\n'; },
             [] { std::cerr << "Rx: Stream ended.\n"; });
 
     auto odd = disruptorSource.stream()
-                       .filter([](const TestEvent &event) { return event.cid % 2 != 0; });
+             | rxcpp::operators::filter([](const TestEvent &event) { return event.cid % 2 == 1; });
     odd.subscribe(
             [](const auto &event) { std::cerr << "Rx: Got ODD event: " << event << '\n'; },
             [] { std::cerr << "Rx: Stream ended.\n"; });
