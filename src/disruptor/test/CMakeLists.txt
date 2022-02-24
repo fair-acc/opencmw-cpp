@@ -6,20 +6,8 @@ function(opencmw_disruptor_add_test name sources)
     message("Test sources: ${test_SRCS}")
     add_executable(${name} ${test_SRCS})
 
-    target_include_directories(
-            ${name}
-            PUBLIC
-            ${CMAKE_CURRENT_SOURCE_DIR}/../../disruptor/include
-    )
-
-    target_link_libraries(${name}
-            PUBLIC
-            pthread
-            project_warnings
-            project_options
-            CONAN_PKG::catch2
-            CONAN_PKG::fmt
-            )
+    target_include_directories(${name} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../../disruptor/include)
+    target_link_libraries(${name} PUBLIC pthread project_warnings project_options CONAN_PKG::catch2 CONAN_PKG::fmt)
 
     catch_discover_tests(${name})
 endfunction()
@@ -30,7 +18,7 @@ add_executable(disruptor_benchmark_tests Disruptor_tests.cpp)
 target_include_directories(disruptor_benchmark_tests PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../../disruptor/include)
 target_link_libraries(disruptor_benchmark_tests PUBLIC project_warnings project_options CONAN_PKG::catch2 core)
 
-add_executable(disruptor_tests catch_main.cpp WaitStrategy_tests.cpp)
+add_executable(disruptor_tests catch_main.cpp WaitStrategy_tests.cpp RingBuffer_tests.cpp)
 target_include_directories(disruptor_tests PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../../disruptor/include)
 target_link_libraries(disruptor_tests PUBLIC project_warnings project_options CONAN_PKG::catch2 core)
 

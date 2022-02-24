@@ -273,7 +273,7 @@ public:
      *
      * \param eventTranslator the translator that will load data into the event
      */
-    void publishEvent(const std::shared_ptr<IEventTranslator<T>> &eventTranslator) {
+    void publishEvent(const std::invocable<T, std::int64_t> auto &eventTranslator) {
         _ringBuffer->publishEvent(eventTranslator);
     }
 

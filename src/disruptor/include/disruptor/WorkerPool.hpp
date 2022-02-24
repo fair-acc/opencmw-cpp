@@ -30,7 +30,7 @@ private:
 public:
     /**
      * Create a worker pool to enable an array of IWorkHandler<T> to consume published sequences. This option requires a pre-configured RingBuffer<T> which must have
-     * Sequencer::setGatingSequences() called before the work pool is started.
+     * SequencerBase::setGatingSequences() called before the work pool is started.
      *
      * \param ringBuffer ringBuffer of events to be consumed.
      * \param sequenceBarrier sequenceBarrier on which the workers will depend.
@@ -40,8 +40,8 @@ public:
     WorkerPool(const std::shared_ptr<RingBuffer<T>>             &ringBuffer,
             const std::shared_ptr<ISequenceBarrier>             &sequenceBarrier,
             const std::shared_ptr<IExceptionHandler<T>>         &exceptionHandler,
-            const std::vector<std::shared_ptr<IWorkHandler<T>>> &workHandlers) {
-        _ringBuffer = ringBuffer;
+            const std::vector<std::shared_ptr<IWorkHandler<T>>> &workHandlers)
+        : _ringBuffer(ringBuffer) {
         _workProcessors.resize(workHandlers.size());
 
         for (auto i = 0u; i < workHandlers.size(); ++i) {
@@ -50,7 +50,7 @@ public:
     }
 
     /**
-     * Construct a work pool with an internal RingBuffer<T> for convenience. This option does not require Sequencer::setGatingSequences() to be called before the work pool is started.
+     * Construct a work pool with an internal RingBuffer<T> for convenience. This option does not require SequencerBase::setGatingSequences() to be called before the work pool is started.
      *
      * \param eventFactory eventFactory for filling the<see cref="RingBuffer{T}"/>
      * \param exceptionHandler exceptionHandler to callback when an error occurs which is not handled by the<see cref="IWorkHandler{T}"/>s.

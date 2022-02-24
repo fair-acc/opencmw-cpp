@@ -20,7 +20,7 @@ public:
     virtual std::int64_t waitFor(std::int64_t sequence) = 0;
 
     /**
-     * Delegate a call to the Sequencer.cursor()
+     * Delegate a call to the SequencerBase.cursor()
      * Returns the value of the cursor for events that have been published.
      */
     virtual std::int64_t cursor() = 0;

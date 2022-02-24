@@ -44,6 +44,13 @@ using units::is_same_v;
 
 constexpr auto &unmove(auto &&t) { return t; } // opposite of std::move(...)
 
+template<typename Fn, typename R, typename... FnArgs>
+concept invocable_r = std::is_invocable_r_v<R, Fn, FnArgs...>;
+
+constexpr bool isPower2(std::unsigned_integral auto value) { return !(value == 0) && !(value & (value - 1)); }
+template<std::unsigned_integral auto N>
+static constexpr bool is_power2_v = isPower2(N);
+
 template<typename T, typename Type = std::remove_cvref_t<T>>
 inline constexpr const bool isStdType = get_name(refl::reflect<Type>()).template substr<0, 5>() == "std::";
 

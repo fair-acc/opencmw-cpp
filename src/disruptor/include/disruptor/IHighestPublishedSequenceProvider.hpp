@@ -9,8 +9,8 @@ public:
     virtual ~IHighestPublishedSequenceProvider() = default;
 
     /**
-     * Get the highest sequence number that can be safely read from the ring buffer. Depending on the implementation of the Sequencer this call may need to scan a number of values
-     * in the Sequencer. The scan will range from nextSequence to availableSequence. If there are no available values > nextSequence() the return value will be nextSequence - 1
+     * Get the highest sequence number that can be safely read from the ring buffer. Depending on the implementation of the SequencerBase this call may need to scan a number of values
+     * in the SequencerBase. The scan will range from nextSequence to availableSequence. If there are no available values > nextSequence() the return value will be nextSequence - 1
      * To work correctly a consumer should pass a value that it 1 higher than the last sequence that was successfully processed.
      *
      * \param nextSequence The sequence to start scanning from.

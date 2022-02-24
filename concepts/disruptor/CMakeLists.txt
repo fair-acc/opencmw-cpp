@@ -1,0 +1,2 @@
+add_executable(SimpleRingBufferExample SimpleRingBufferExample.cpp)
+target_link_libraries(SimpleRingBufferExample PRIVATE core disruptor project_options project_warnings)
