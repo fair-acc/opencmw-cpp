@@ -36,12 +36,12 @@ int main() {
     using namespace opencmw;
     using namespace opencmw::disruptor;
 
-    auto ringBuffer = std::make_shared<RingBuffer<int>>(ProducerType::Single, 8192, std::make_shared<BusySpinWaitStrategy>());
+    auto ringBuffer = std::make_shared<RingBuffer<int, 8192>>(ProducerType::Single, std::make_shared<BusySpinWaitStrategy>());
 
     // register poller sequence and poller -- w/o it's just a free idling RingBuffer
     auto pollerSequence = std::make_shared<Sequence>();
     ringBuffer->addGatingSequences({ pollerSequence });
-    const std::shared_ptr<opencmw::disruptor::EventPoller<int>> &poller = ringBuffer->newPoller();
+    const std::shared_ptr<opencmw::disruptor::EventPoller<int, 8192>> &poller = ringBuffer->newPoller();
 
     ringBuffer->getSequencer().writeDescriptionTo(std::cout);
     std::cout << std::endl;
@@ -69,9 +69,9 @@ int main() {
     auto fillEventHandler = [&counter](int &&eventData, std::int64_t) noexcept {
         eventData = ++counter;
     };
+    const unsigned long nLoop = 10'000'000;
     {
         counter                                  = 0;
-        const unsigned long           nLoop      = 10'000'000;
         const std::chrono::time_point time_start = std::chrono::system_clock::now();
         for (auto i = 0UL; i < nLoop; i++) {
             ringBuffer->publishEvent(fillEventHandler);
@@ -88,11 +88,10 @@ int main() {
     }
     {
         counter                                  = 0;
-        const int                     nLoop      = 100'000;
         const std::chrono::time_point time_start = std::chrono::system_clock::now();
-        std::jthread                  publisher([&publisher, &ringBuffer, &counter, &fillEventHandler]() {
+        std::jthread                  publisher([&publisher, &ringBuffer, &fillEventHandler]() {
             opencmw::thread::setThreadName("publisher", publisher);
-            for (int i = 0; i < nLoop; i++) {
+            for (auto i = 0U; i < nLoop; i++) {
                 bool once = true;
                 while (!ringBuffer->tryPublishEvent(fillEventHandler)) {
                     std::this_thread::yield();
@@ -102,7 +101,7 @@ int main() {
                     }
                 }
             }
-            fmt::print("publisher finished {} ringBuffer: {} capacity {}\n", counter, ringBuffer->cursor(), ringBuffer->getRemainingCapacity());
+            // fmt::print("publisher finished {} ringBuffer: {} capacity {}\n", counter, ringBuffer->cursor(), ringBuffer->getRemainingCapacity())
                          });
 
         int                           received = 0;
@@ -111,16 +110,16 @@ int main() {
             opencmw::thread::setThreadName("consumer", consumer);
             const auto receiver = [&received, &pollerSequence](const int &event, std::int64_t nextSequence, bool /*moreEvts*/) {
                 received++;
-                if (event > nLoop + 5) {
+                if (event > static_cast<int>(nLoop + 5)) {
                     fmt::print("event: {}\n", event);
                 }
                 pollerSequence->setValue(nextSequence);
                 return true;
             };
-            while (received < nLoop) {
+            while (received < static_cast<int>(nLoop)) {
                 [[maybe_unused]] PollState pollState = poller->poll(receiver);
             }
-            fmt::print("consumer finished {}\n", received);
+            // fmt::print("consumer finished {}\n", received)
         });
         publisher.join();
         consumer.join();
@@ -135,12 +134,10 @@ int main() {
         // simple through-put test
         counter                                  = 0;
         int                           received   = 0;
-
-        const int                     nLoop      = 1'000'000;
         const std::chrono::time_point time_start = std::chrono::system_clock::now();
         std::jthread                  publisher([&queue, &counter, &publisher]() {
             opencmw::thread::setThreadName("publisher", publisher);
-            for (int i = 0; i < nLoop; i++) {
+            for (auto i = 0U; i < nLoop; i++) {
                 queue.enqueue(++counter);
             } });
 
@@ -148,7 +145,7 @@ int main() {
         std::jthread consumer([&consumer, &received, &queue]() {
             opencmw::thread::setThreadName("consumer", consumer);
 
-            while (received < nLoop) {
+            while (received < static_cast<int>(nLoop)) {
                 received = queue.dequeue();
             }
         });

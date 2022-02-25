@@ -38,8 +38,9 @@ public:
         _consumerInfos.push_back(consumerInfo);
     }
 
-    void add(const std::shared_ptr<WorkerPool<T>> &workerPool, const std::shared_ptr<ISequenceBarrier> &sequenceBarrier) {
-        auto workerPoolInfo = std::make_shared<WorkerPoolInfo<T>>(workerPool, sequenceBarrier);
+    template<std::size_t SIZE = 1024>
+    void add(const std::shared_ptr<WorkerPool<T, SIZE>> &workerPool, const std::shared_ptr<ISequenceBarrier> &sequenceBarrier) {
+        auto workerPoolInfo = std::make_shared<WorkerPoolInfo<T, SIZE>>(workerPool, sequenceBarrier);
         _consumerInfos.push_back(workerPoolInfo);
         for (auto &&sequence : workerPool->getWorkerSequences()) {
             _eventProcessorInfoBySequence[sequence] = workerPoolInfo;

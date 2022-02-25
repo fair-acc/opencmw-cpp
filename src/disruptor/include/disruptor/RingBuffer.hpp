@@ -35,21 +35,22 @@ enum class ProducerType {
     Multi
 };
 
-template<typename T>
+template<typename T, std::size_t SIZE>
+requires opencmw::is_power2_v<SIZE>
 class RingBuffer;
-template<typename T>
+template<typename T, std::size_t SIZE>
 class EventPoller;
 namespace detail {
-template<typename T>
+template<typename T, std::size_t N>
 class SingleProducerSequencer;
-template<typename T>
+template<typename T, std::size_t N>
 class MultiProducerSequencer;
 } // namespace detail
 
 /**
  * Coordinator for claiming sequences for access to a data structure while tracking dependent Sequences
  */
-template<typename T>
+template<typename T, std::size_t SIZE>
 class Sequencer : public ISequenced, public ICursored, public IHighestPublishedSequenceProvider {
 public:
     /**
@@ -87,49 +88,38 @@ public:
      *
      * \returns The minimum gating sequence or the cursor sequence if no sequences have been added.
      */
-    virtual std::int64_t                    getMinimumSequence()                                                                                                      = 0;
+    virtual std::int64_t                          getMinimumSequence()                                                                                                            = 0;
 
-    virtual std::shared_ptr<EventPoller<T>> newPoller(const std::shared_ptr<RingBuffer<T>> &provider, const std::vector<std::shared_ptr<ISequence>> &gatingSequences) = 0;
+    virtual std::shared_ptr<EventPoller<T, SIZE>> newPoller(const std::shared_ptr<RingBuffer<T, SIZE>> &provider, const std::vector<std::shared_ptr<ISequence>> &gatingSequences) = 0;
 
-    virtual void                            writeDescriptionTo(std::ostream &stream) const                                                                            = 0;
-    virtual ~Sequencer()                                                                                                                                              = default;
+    virtual void                                  writeDescriptionTo(std::ostream &stream) const                                                                                  = 0;
+    virtual ~Sequencer()                                                                                                                                                          = default;
 };
 
+static const std::int32_t rbPad = 128 / sizeof(int *);
 /**
  * Ring based store of reusable entries containing the data representing an event being exchanged between event publisher and IEventProcessors.
  *
  * \tparam T implementation storing the data for sharing during exchange or parallel coordination of an event.
  */
-template<typename T>
-class RingBuffer : public IEventSequencer<T>, public ICursored, public std::enable_shared_from_this<RingBuffer<T>> {
-    const uint8_t                 padding0[56]{}; // NOSONAR
-    mutable std::vector<T>        _entries;
-    const std::int32_t            _bufferSize{};
-    std::int32_t                  _indexMask{};
-    std::shared_ptr<Sequencer<T>> _sequencer;
-    const uint8_t                 padding1[40]{}; // NOSONAR
-
-    static const std::int32_t     _bufferPad = 128 / sizeof(int *);
+template<typename T, std::size_t SIZE>
+requires opencmw::is_power2_v<SIZE>
+class RingBuffer : public IEventSequencer<T>, public ICursored, public std::enable_shared_from_this<RingBuffer<T, SIZE>> {
+    const uint8_t                           padding0[56]{}; // NOSONAR
+    mutable std::array<T, SIZE + 2 * rbPad> _entries;       // N.B. includes extra padding in front and back
+    const std::int32_t                      _indexMask = SIZE - 1;
+    std::shared_ptr<Sequencer<T, SIZE>>     _sequencer;
+    const uint8_t                           padding1[44]{}; // NOSONAR
 
 public:
     RingBuffer() = delete;
-    explicit RingBuffer(ProducerType producerType, std::int32_t bufferSize, const std::shared_ptr<WaitStrategy> &waitStrategy)
-        : _bufferSize(bufferSize), _indexMask(bufferSize - 1) {
-        if (_bufferSize < 1) {
-            throw std::invalid_argument("bufferSize must not be less than 1"); // TODO: check with concept
-        }
-
-        if (util::ceilingNextPowerOfTwo(_bufferSize) != _bufferSize) {
-            throw std::invalid_argument("bufferSize must be a power of 2"); // TODO: check with concept
-        }
-        _entries.resize(static_cast<std::size_t>(_bufferSize + 2 * _bufferPad));
-
+    explicit RingBuffer(ProducerType producerType, const std::shared_ptr<WaitStrategy> &waitStrategy) {
         switch (producerType) {
         case ProducerType::Single:
-            _sequencer = std::make_shared<detail::SingleProducerSequencer<T>>(bufferSize, waitStrategy);
+            _sequencer = std::make_shared<detail::SingleProducerSequencer<T, SIZE>>(waitStrategy);
             break;
         case ProducerType::Multi:
-            _sequencer = std::make_shared<detail::MultiProducerSequencer<T>>(bufferSize, waitStrategy);
+            _sequencer = std::make_shared<detail::MultiProducerSequencer<T, SIZE>>(waitStrategy);
             break;
         default:
             throw std::invalid_argument(fmt::format("invalid producer type: {}", producerType));
@@ -137,21 +127,21 @@ public:
     }
 
     [[nodiscard]] T &operator[](std::int64_t sequence) const override {
-        return _entries[static_cast<std::size_t>(_bufferPad + (static_cast<std::int32_t>(sequence) & _indexMask))];
+        return _entries[static_cast<std::size_t>(rbPad + (static_cast<std::int32_t>(sequence) & _indexMask))];
     }
 
-    [[nodiscard]] std::int32_t  bufferSize() const override { return _bufferSize; }
-    [[nodiscard]] Sequencer<T> &getSequencer() const { return *_sequencer; }
-    [[nodiscard]] bool          hasAvailableCapacity(std::int32_t requiredCapacity) override { return _sequencer->hasAvailableCapacity(requiredCapacity); }
-    std::int64_t                next(std::int32_t n_slots_to_claim = 1) override { return _sequencer->next(n_slots_to_claim); }
-    std::int64_t                tryNext(std::int32_t n_slots_to_claim = 1) override { return _sequencer->tryNext(n_slots_to_claim); }
-    [[nodiscard]] std::int64_t  cursor() const override { return _sequencer->cursor(); }
-    [[nodiscard]] std::int64_t  getRemainingCapacity() override { return _sequencer->getRemainingCapacity(); }
-    void                        publish(std::int64_t sequence) override { _sequencer->publish(sequence); }
-    bool                        isPublished(std::int64_t sequence) { return _sequencer->isAvailable(sequence); }
-    void                        addGatingSequences(const std::vector<std::shared_ptr<ISequence>> &gatingSequences) { _sequencer->addGatingSequences(gatingSequences); }
-    bool                        removeGatingSequence(const std::shared_ptr<ISequence> &sequence) { return _sequencer->removeGatingSequence(sequence); }
-    std::int64_t                getMinimumGatingSequence() { return _sequencer->getMinimumSequence(); }
+    [[nodiscard]] constexpr std::int32_t bufferSize() const override { return SIZE; }
+    [[nodiscard]] Sequencer<T, SIZE>    &getSequencer() const { return *_sequencer; }
+    [[nodiscard]] bool                   hasAvailableCapacity(std::int32_t requiredCapacity) override { return _sequencer->hasAvailableCapacity(requiredCapacity); }
+    std::int64_t                         next(std::int32_t n_slots_to_claim = 1) override { return _sequencer->next(n_slots_to_claim); }
+    std::int64_t                         tryNext(std::int32_t n_slots_to_claim = 1) override { return _sequencer->tryNext(n_slots_to_claim); }
+    [[nodiscard]] std::int64_t           cursor() const override { return _sequencer->cursor(); }
+    [[nodiscard]] std::int64_t           getRemainingCapacity() override { return _sequencer->getRemainingCapacity(); }
+    void                                 publish(std::int64_t sequence) override { _sequencer->publish(sequence); }
+    bool                                 isPublished(std::int64_t sequence) { return _sequencer->isAvailable(sequence); }
+    void                                 addGatingSequences(const std::vector<std::shared_ptr<ISequence>> &gatingSequences) { _sequencer->addGatingSequences(gatingSequences); }
+    bool                                 removeGatingSequence(const std::shared_ptr<ISequence> &sequence) { return _sequencer->removeGatingSequence(sequence); }
+    std::int64_t                         getMinimumGatingSequence() { return _sequencer->getMinimumSequence(); }
 
     /**
      * Create a new SequenceBarrier to be used by an EventProcessor to track which messages are available to be read from the ring buffer given a list of sequences to track.
@@ -169,7 +159,7 @@ public:
      * \param gatingSequences
      * \returns A poller that will gate on this ring buffer and the supplied sequences.
      */
-    std::shared_ptr<EventPoller<T>> newPoller(const std::vector<std::shared_ptr<ISequence>> &gatingSequences = {}) {
+    std::shared_ptr<EventPoller<T, SIZE>> newPoller(const std::vector<std::shared_ptr<ISequence>> &gatingSequences = {}) {
         return _sequencer->newPoller(this->shared_from_this(), gatingSequences);
     }
 
@@ -220,24 +210,21 @@ private:
     }
 };
 
-template<typename T>
-class SequencerBase : public Sequencer<T>, public std::enable_shared_from_this<SequencerBase<T>> {
+template<typename T, std::size_t SIZE>
+class SequencerBase : public Sequencer<T, SIZE>, public std::enable_shared_from_this<SequencerBase<T, SIZE>> {
 protected:
     /**
      * Volatile in the Java version => always use Volatile.Read/Write or Interlocked methods to access this field.
      */
     std::vector<std::shared_ptr<ISequence>> _gatingSequences;
-
-    std::int32_t                            _bufferSize;
     std::shared_ptr<WaitStrategy>           _waitStrategy;
     std::shared_ptr<Sequence>               _cursor;
     WaitStrategy                           &_waitStrategyRef;
     Sequence                               &_cursorRef;
 
 public:
-    SequencerBase(std::int32_t bufferSize, std::shared_ptr<WaitStrategy> waitStrategy)
-        : _bufferSize(bufferSize)
-        , _waitStrategy(std::move(waitStrategy))
+    SequencerBase(std::shared_ptr<WaitStrategy> waitStrategy)
+        : _waitStrategy(std::move(waitStrategy))
         , _cursor(std::make_shared<Sequence>())
         , _waitStrategyRef(*_waitStrategy)
         , _cursorRef(*_cursor) {}
@@ -246,14 +233,14 @@ public:
         return std::make_shared<ProcessingSequenceBarrier>(this->shared_from_this(), _waitStrategy, _cursor, sequencesToTrack);
     }
 
-    [[nodiscard]] std::int32_t      bufferSize() const override { return _bufferSize; }
-    [[nodiscard]] std::int64_t      cursor() const override { return _cursorRef.value(); }
-    void                            addGatingSequences(const std::vector<std::shared_ptr<ISequence>> &gatingSequences) override { SequenceGroups::addSequences(_gatingSequences, *this, gatingSequences); }
-    bool                            removeGatingSequence(const std::shared_ptr<ISequence> &sequence) override { return SequenceGroups::removeSequence(_gatingSequences, sequence); }
-    [[nodiscard]] std::int64_t      getMinimumSequence() override { return util::getMinimumSequence(_gatingSequences, _cursorRef.value()); }
+    [[nodiscard]] std::int32_t            bufferSize() const override { return SIZE; }
+    [[nodiscard]] std::int64_t            cursor() const override { return _cursorRef.value(); }
+    void                                  addGatingSequences(const std::vector<std::shared_ptr<ISequence>> &gatingSequences) override { SequenceGroups::addSequences(_gatingSequences, *this, gatingSequences); }
+    bool                                  removeGatingSequence(const std::shared_ptr<ISequence> &sequence) override { return SequenceGroups::removeSequence(_gatingSequences, sequence); }
+    [[nodiscard]] std::int64_t            getMinimumSequence() override { return util::getMinimumSequence(_gatingSequences, _cursorRef.value()); }
 
-    std::shared_ptr<EventPoller<T>> newPoller(const std::shared_ptr<RingBuffer<T>> &provider, const std::vector<std::shared_ptr<ISequence>> &gatingSequences) override {
-        return EventPoller<T>::newInstance(provider, this->shared_from_this(), std::make_shared<Sequence>(), _cursor, gatingSequences);
+    std::shared_ptr<EventPoller<T, SIZE>> newPoller(const std::shared_ptr<RingBuffer<T, SIZE>> &provider, const std::vector<std::shared_ptr<ISequence>> &gatingSequences) override {
+        return EventPoller<T, SIZE>::newInstance(provider, this->shared_from_this(), std::make_shared<Sequence>(), _cursor, gatingSequences);
     }
 
     void writeDescriptionTo(std::ostream &stream) const override {
@@ -278,8 +265,8 @@ public:
 
 namespace detail {
 
-template<typename T>
-class SingleProducerSequencer : public SequencerBase<T> {
+template<typename T, std::size_t SIZE>
+class SingleProducerSequencer : public SequencerBase<T, SIZE> {
     struct Fields {
         const uint8_t padding0[56]{}; // NOSONAR
         std::int64_t  nextValue;
@@ -295,19 +282,13 @@ protected:
     Fields _fields;
 
 public:
-    /**
-     * Construct a SequencerBase with the selected strategies.
-     *
-     * \param bufferSize
-     * \param waitStrategy waitStrategy for those waiting on sequences.
-     */
-    SingleProducerSequencer(std::int32_t bufferSize, const std::shared_ptr<WaitStrategy> &waitStrategy)
-        : SequencerBase<T>(bufferSize, waitStrategy)
+    SingleProducerSequencer(const std::shared_ptr<WaitStrategy> &waitStrategy)
+        : SequencerBase<T, SIZE>(waitStrategy)
         , _fields(Sequence::InitialCursorValue, Sequence::InitialCursorValue) {}
 
     bool hasAvailableCapacity(int requiredCapacity) override {
         std::int64_t nextValue            = _fields.nextValue;
-        std::int64_t wrapPoint            = (nextValue + requiredCapacity) - this->_bufferSize;
+        std::int64_t wrapPoint            = (nextValue + requiredCapacity) - static_cast<std::int64_t>(SIZE);
         std::int64_t cachedGatingSequence = _fields.cachedValue;
 
         if (wrapPoint > cachedGatingSequence || cachedGatingSequence > nextValue) {
@@ -323,12 +304,12 @@ public:
     }
 
     std::int64_t next(const std::int32_t n_slots_to_claim = 1) override {
-        assert((n_slots_to_claim < 1 || n_slots_to_claim > this->_bufferSize) && "n_slots_to_claim must be > 0 and < bufferSize");
+        assert((n_slots_to_claim > 0 && n_slots_to_claim < static_cast<std::int32_t>(SIZE)) && "n_slots_to_claim must be > 0 and < bufferSize");
 
         auto nextValue            = _fields.nextValue;
 
         auto nextSequence         = nextValue + n_slots_to_claim;
-        auto wrapPoint            = nextSequence - this->_bufferSize;
+        auto wrapPoint            = nextSequence - static_cast<std::int64_t>(SIZE);
         auto cachedGatingSequence = _fields.cachedValue;
 
         if (wrapPoint > cachedGatingSequence || cachedGatingSequence > nextValue) {
@@ -352,7 +333,7 @@ public:
     }
 
     std::int64_t tryNext(const std::int32_t n_slots_to_claim) override {
-        assert((n_slots_to_claim < 1) && "n_slots_to_claim must be > 0");
+        assert((n_slots_to_claim > 0) && "n_slots_to_claim must be > 0");
 
         if (!hasAvailableCapacity(n_slots_to_claim)) {
             throw NoCapacityException();
@@ -389,27 +370,26 @@ public:
  * Note on SequencerBase.cursor:  With this sequencer the cursor value is updated after the call to SequencerBase::next(), to determine the highest available sequence that can be read,
  * then getHighestPublishedSequence should be used.
  */
-template<typename T>
-class MultiProducerSequencer : public SequencerBase<T> {
+template<typename T, std::size_t SIZE>
+class MultiProducerSequencer : public SequencerBase<T, SIZE> {
 private:
     std::shared_ptr<Sequence> _gatingSequenceCache = std::make_shared<Sequence>();
 
     // availableBuffer tracks the state of each ringbuffer slot
     // see below for more details on the approach
     std::unique_ptr<std::int32_t[]> _availableBuffer;
-    std::int32_t                    _indexMask;
-    std::int32_t                    _indexShift;
+    std::int32_t                    _indexMask  = SIZE - 1;
+    std::int32_t                    _indexShift = util::log2(SIZE);
 
 public:
     /**
      * Construct a SequencerBase with the selected strategies.
      *
-     * \param bufferSize
      * \param waitStrategy waitStrategy for those waiting on sequences.
      */
-    MultiProducerSequencer(std::int32_t bufferSize, const std::shared_ptr<WaitStrategy> &waitStrategy)
-        : SequencerBase<T>(bufferSize, waitStrategy), _indexMask(bufferSize - 1), _indexShift(util::log2(bufferSize)) {
-        _availableBuffer = std::make_unique<std::int32_t[]>(static_cast<std::size_t>(bufferSize)),
+    MultiProducerSequencer(const std::shared_ptr<WaitStrategy> &waitStrategy)
+        : SequencerBase<T, SIZE>(waitStrategy) {
+        _availableBuffer = std::make_unique<std::int32_t[]>(SIZE),
         initializeAvailableBuffer();
     }
 
@@ -430,7 +410,7 @@ public:
             current                           = this->_cursor->value();
             next                              = current + n_slots_to_claim;
 
-            std::int64_t wrapPoint            = next - this->_bufferSize;
+            std::int64_t wrapPoint            = next - static_cast<std::int64_t>(SIZE);
             std::int64_t cachedGatingSequence = _gatingSequenceCache->value();
 
             if (wrapPoint > cachedGatingSequence || cachedGatingSequence > current) {
@@ -506,7 +486,7 @@ public:
 
 private:
     [[nodiscard]] bool hasAvailableCapacity(const std::vector<std::shared_ptr<ISequence>> &gatingSequences, std::int32_t requiredCapacity, std::int64_t cursorValue) const noexcept {
-        const auto wrapPoint = (cursorValue + requiredCapacity) - this->_bufferSize;
+        const auto wrapPoint = (cursorValue + requiredCapacity) - static_cast<std::int64_t>(SIZE);
 
         if (const auto cachedGatingSequence = _gatingSequenceCache->value(); wrapPoint > cachedGatingSequence || cachedGatingSequence > cursorValue) {
             const auto minSequence = util::getMinimumSequence(gatingSequences, cursorValue);
@@ -521,16 +501,16 @@ private:
     }
 
     void initializeAvailableBuffer() {
-        for (std::int32_t i = this->_bufferSize - 1; i != 0; i--) {
+        for (std::size_t i = SIZE - 1; i != 0; i--) {
             setAvailableBufferValue(i, -1);
         }
         setAvailableBufferValue(0, -1);
     }
 
     void         setAvailable(std::int64_t sequence) { setAvailableBufferValue(calculateIndex(sequence), calculateAvailabilityFlag(sequence)); }
-    void         setAvailableBufferValue(std::int32_t index, std::int32_t flag) { _availableBuffer[static_cast<std::size_t>(index)] = flag; }
+    void         setAvailableBufferValue(std::size_t index, std::int32_t flag) { _availableBuffer[index] = flag; }
     std::int32_t calculateAvailabilityFlag(std::int64_t sequence) { return static_cast<std::int32_t>(static_cast<std::uint64_t>(sequence) >> _indexShift); }
-    std::int32_t calculateIndex(std::int64_t sequence) { return static_cast<std::int32_t>(sequence) & _indexMask; }
+    std::size_t  calculateIndex(std::int64_t sequence) { return static_cast<std::size_t>(static_cast<std::int32_t>(sequence) & _indexMask); }
 };
 
 } // namespace detail
@@ -542,29 +522,28 @@ enum class PollState {
     UNKNOWN
 };
 
-template<typename T>
+template<typename T, std::size_t SIZE>
 class EventPoller {
-private:
-    std::shared_ptr<RingBuffer<T>> _dataProvider;
-    std::shared_ptr<Sequencer<T>>  _sequencer;
-    std::shared_ptr<ISequence>     _sequence;
-    std::shared_ptr<ISequence>     _gatingSequence;
+    std::shared_ptr<RingBuffer<T, SIZE>> _dataProvider;
+    std::shared_ptr<Sequencer<T, SIZE>>  _sequencer;
+    std::shared_ptr<ISequence>           _sequence;
+    std::shared_ptr<ISequence>           _gatingSequence;
 
 public:
-    EventPoller(const std::shared_ptr<RingBuffer<T>> &dataProvider,
-            const std::shared_ptr<Sequencer<T>>      &sequencer,
-            const std::shared_ptr<ISequence>         &sequence,
-            const std::shared_ptr<ISequence>         &gatingSequence)
+    EventPoller(const std::shared_ptr<RingBuffer<T, SIZE>> &dataProvider,
+            const std::shared_ptr<Sequencer<T, SIZE>>      &sequencer,
+            const std::shared_ptr<ISequence>               &sequence,
+            const std::shared_ptr<ISequence>               &gatingSequence)
         : _dataProvider(dataProvider)
         , _sequencer(sequencer)
         , _sequence(sequence)
         , _gatingSequence(gatingSequence) {}
 
-    static std::shared_ptr<EventPoller<T>> newInstance(const std::shared_ptr<RingBuffer<T>> &dataProvider,
-            const std::shared_ptr<Sequencer<T>>                                             &sequencer,
-            const std::shared_ptr<ISequence>                                                &sequence,
-            const std::shared_ptr<ISequence>                                                &cursorSequence,
-            const std::vector<std::shared_ptr<ISequence>>                                   &gatingSequences) {
+    static std::shared_ptr<EventPoller<T, SIZE>> newInstance(const std::shared_ptr<RingBuffer<T, SIZE>> &dataProvider,
+            const std::shared_ptr<Sequencer<T, SIZE>>                                                   &sequencer,
+            const std::shared_ptr<ISequence>                                                            &sequence,
+            const std::shared_ptr<ISequence>                                                            &cursorSequence,
+            const std::vector<std::shared_ptr<ISequence>>                                               &gatingSequences) {
         std::shared_ptr<ISequence> gatingSequence;
 
         if (gatingSequences.empty()) {
@@ -575,7 +554,7 @@ public:
             gatingSequence = std::make_shared<FixedSequenceGroup>(gatingSequences);
         }
 
-        return std::make_shared<EventPoller<T>>(dataProvider, sequencer, sequence, gatingSequence);
+        return std::make_shared<EventPoller<T, SIZE>>(dataProvider, sequencer, sequence, gatingSequence);
     }
 
     PollState poll(opencmw::invocable_r<bool, T &, std::int64_t, bool> auto &&eventHandler) {
@@ -634,27 +613,27 @@ struct fmt::formatter<opencmw::disruptor::ProducerType> {
     }
 };
 
-template<typename T>
-struct fmt::formatter<opencmw::disruptor::RingBuffer<T>> {
+template<typename T, std::size_t SIZE>
+struct fmt::formatter<opencmw::disruptor::RingBuffer<T, SIZE>> {
     template<typename ParseContext>
     constexpr auto parse(ParseContext &ctx) { return ctx.begin(); }
 
     template<typename FormatContext>
-    auto format(const opencmw::disruptor::RingBuffer<T> &ringBuffer, FormatContext &ctx) {
+    auto format(const opencmw::disruptor::RingBuffer<T, SIZE> &ringBuffer, FormatContext &ctx) {
         std::stringstream stream;
         ringBuffer.getSequencer().writeDescriptionTo(stream);
         return fmt::format_to(ctx.out(), "RingBuffer<{}, {}> - SequencerBase: {{ {} }}", opencmw::typeName<T>, ringBuffer.bufferSize(), stream.str());
     }
 };
 
-template<template<typename> typename SequencerType, typename T>
-requires opencmw::is_instance_of_v<SequencerType<T>, opencmw::disruptor::Sequencer>
-struct fmt::formatter<SequencerType<T>> {
+template<template<typename, std::size_t SIZE> typename SequencerType, typename T, std::size_t SIZE>
+// requires opencmw::is_instance_of_v<SequencerType<T, SIZE>, opencmw::disruptor::Sequencer>
+struct fmt::formatter<SequencerType<T, SIZE>> {
     template<typename ParseContext>
     constexpr auto parse(ParseContext &ctx) { return ctx.begin(); }
 
     template<typename FormatContext>
-    auto format(const SequencerType<T> &sequencer, FormatContext &ctx) {
+    auto format(const SequencerType<T, SIZE> &sequencer, FormatContext &ctx) {
         std::stringstream stream;
         stream << "WaitStrategy: { ";
         // stream << typeName<decltype(_waitStrategy)>(); //xTODO: change
@@ -703,10 +682,10 @@ struct fmt::formatter<opencmw::disruptor::PollState> {
 namespace opencmw {
 
 std::ostream &operator<<(std::ostream &stream, const opencmw::disruptor::ProducerType &value) { return stream << fmt::format("{}", value); }
-template<typename T>
-std::ostream &operator<<(std::ostream &stream, const opencmw::disruptor::RingBuffer<T> &ringBuffer) { return stream << fmt::format("{}", ringBuffer); }
-template<typename T>
-std::ostream &operator<<(std::ostream &stream, const opencmw::disruptor::SequencerBase<T> &sequencer) { return stream << fmt::format("{}", sequencer); }
+template<typename T, std::size_t SIZE>
+std::ostream &operator<<(std::ostream &stream, const opencmw::disruptor::RingBuffer<T, SIZE> &ringBuffer) { return stream << fmt::format("{}", ringBuffer); }
+template<typename T, std::size_t SIZE>
+std::ostream &operator<<(std::ostream &stream, const opencmw::disruptor::SequencerBase<T, SIZE> &sequencer) { return stream << fmt::format("{}", sequencer); }
 std::ostream &operator<<(std::ostream &stream, opencmw::disruptor::PollState &pollState) { return stream << fmt::format("{}", pollState); }
 
 } // namespace opencmw

@@ -7,15 +7,15 @@
 
 namespace opencmw::disruptor {
 
-template<typename T>
+template<typename T, std::size_t SIZE>
 class WorkerPoolInfo : public IConsumerInfo {
 private:
-    std::shared_ptr<WorkerPool<T>>    _workerPool;
+    std::shared_ptr<WorkerPool<T, SIZE>>    _workerPool;
     std::shared_ptr<ISequenceBarrier> _barrier;
     bool                              _isEndOfChain;
 
 public:
-    WorkerPoolInfo(const std::shared_ptr<WorkerPool<T>> &workerPool, const std::shared_ptr<ISequenceBarrier> &barrier)
+    WorkerPoolInfo(const std::shared_ptr<WorkerPool<T, SIZE>> &workerPool, const std::shared_ptr<ISequenceBarrier> &barrier)
         : _workerPool(workerPool)
         , _barrier(barrier)
         , _isEndOfChain(true) {

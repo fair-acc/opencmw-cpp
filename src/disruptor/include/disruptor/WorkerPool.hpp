@@ -18,14 +18,13 @@ namespace opencmw::disruptor {
  *
  * \tparam T event to be processed by a pool of workers
  */
-template<typename T>
+template<typename T, std::size_t SIZE = 1024>
 class WorkerPool {
-private:
     std::atomic<std::int32_t>      _running{ 0 };
     std::shared_ptr<Sequence>      _workSequence = std::make_shared<Sequence>();
-    std::shared_ptr<RingBuffer<T>> _ringBuffer;
+    std::shared_ptr<RingBuffer<T, SIZE>> _ringBuffer;
     // WorkProcessors are created to wrap each of the provided WorkHandlers
-    std::vector<std::shared_ptr<WorkProcessor<T>>> _workProcessors;
+    std::vector<std::shared_ptr<WorkProcessor<T, SIZE>>> _workProcessors;
 
 public:
     /**
@@ -37,7 +36,7 @@ public:
      * \param exceptionHandler exceptionHandler to callback when an error occurs which is not handled by the<see cref="IWorkHandler{T}"/>s.
      * \param workHandlers workHandlers to distribute the work load across.
      */
-    WorkerPool(const std::shared_ptr<RingBuffer<T>>             &ringBuffer,
+    WorkerPool(const std::shared_ptr<RingBuffer<T, SIZE>>             &ringBuffer,
             const std::shared_ptr<ISequenceBarrier>             &sequenceBarrier,
             const std::shared_ptr<IExceptionHandler<T>>         &exceptionHandler,
             const std::vector<std::shared_ptr<IWorkHandler<T>>> &workHandlers)
@@ -45,7 +44,7 @@ public:
         _workProcessors.resize(workHandlers.size());
 
         for (auto i = 0u; i < workHandlers.size(); ++i) {
-            _workProcessors[i] = WorkProcessor<T>::create(ringBuffer, sequenceBarrier, workHandlers[i], exceptionHandler, _workSequence);
+            _workProcessors[i] = WorkProcessor<T, SIZE>::create(ringBuffer, sequenceBarrier, workHandlers[i], exceptionHandler, _workSequence);
         }
     }
 
@@ -61,12 +60,12 @@ public:
             const std::vector<std::shared_ptr<IWorkHandler<T>>> &workHandlers)
 
     {
-        _ringBuffer  = RingBuffer<T>::createMultiProducer(eventFactory, 1024, std::make_shared<BlockingWaitStrategy>());
+        _ringBuffer  = RingBuffer<T, SIZE>::createMultiProducer(eventFactory, 1024, std::make_shared<BlockingWaitStrategy>());
         auto barrier = _ringBuffer->newBarrier();
         _workProcessors.resize(workHandlers.size());
 
         for (auto i = 0u; i < workHandlers.size(); ++i) {
-            _workProcessors[i] = WorkProcessor<T>::create(_ringBuffer, barrier, workHandlers[i], exceptionHandler, _workSequence);
+            _workProcessors[i] = WorkProcessor<T, SIZE>::create(_ringBuffer, barrier, workHandlers[i], exceptionHandler, _workSequence);
         }
 
         _ringBuffer->addGatingSequences(getWorkerSequences());
@@ -90,7 +89,7 @@ public:
      *
      * \returns the RingBuffer<T> used for the work queue.
      */
-    std::shared_ptr<RingBuffer<T>> start(const std::shared_ptr<IExecutor> &executor) {
+    std::shared_ptr<RingBuffer<T, SIZE>> start(const std::shared_ptr<IExecutor> &executor) {
         if (std::atomic_exchange(&_running, 1) != 0) {
             throw std::logic_error("WorkerPool has already been started and cannot be restarted until halted");
         }
