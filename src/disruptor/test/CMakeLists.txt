@@ -6,8 +6,11 @@ function(opencmw_disruptor_add_test name sources)
     message("Test sources: ${test_SRCS}")
     add_executable(${name} ${test_SRCS})
 
-    target_include_directories(${name} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../../disruptor/include)
-    target_link_libraries(${name} PUBLIC pthread project_warnings project_options CONAN_PKG::catch2 CONAN_PKG::fmt)
+    target_include_directories(${name} PUBLIC
+            ${CMAKE_CURRENT_SOURCE_DIR}/../include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../../core/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../../disruptor/include)
+    target_link_libraries(${name} PUBLIC pthread project_warnings project_options CONAN_PKG::catch2 CONAN_PKG::fmt refl-cpp::refl-cpp CONAN_PKG::mp-units)
 
     catch_discover_tests(${name})
 endfunction()

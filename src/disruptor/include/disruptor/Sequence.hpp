@@ -3,6 +3,8 @@
 #include <atomic>
 #include <ostream>
 
+#include <opencmw.hpp>
+
 #include "ISequence.hpp"
 
 namespace opencmw::disruptor {
@@ -23,13 +25,13 @@ public:
      *
      * \param initialValue initial value for the counter
      */
-    explicit Sequence(std::int64_t initialValue = InitialCursorValue)
+    explicit Sequence(std::int64_t initialValue = InitialCursorValue) noexcept
         : _fieldsValue(initialValue) {}
 
     /**
      * Current sequence number
      */
-    std::int64_t value() const override {
+    forceinline std::int64_t value() const noexcept override {
         return std::atomic_load_explicit(&_fieldsValue, std::memory_order_acquire);
     }
 
@@ -38,7 +40,7 @@ public:
      *
      * \param value The new value for the sequence.
      */
-    void setValue(std::int64_t value) override {
+    forceinline void setValue(std::int64_t value) noexcept override {
         std::atomic_store_explicit(&_fieldsValue, value, std::memory_order_release);
     }
 
@@ -49,7 +51,7 @@ public:
      * \param nextSequence the new value for the sequence
      * \returns true if successful. False return indicates that the actual value was not equal to the expected value.
      */
-    bool compareAndSet(std::int64_t expectedSequence, std::int64_t nextSequence) override {
+    forceinline bool compareAndSet(std::int64_t expectedSequence, std::int64_t nextSequence) noexcept override {
         return std::atomic_compare_exchange_strong(&_fieldsValue, &expectedSequence, nextSequence);
     }
 
@@ -58,7 +60,7 @@ public:
      *
      * \returns incremented sequence
      */
-    std::int64_t incrementAndGet() override {
+    forceinline std::int64_t incrementAndGet() noexcept override {
         return std::atomic_fetch_add(&_fieldsValue, std::int64_t(1)) + 1;
     }
 
@@ -67,17 +69,14 @@ public:
      *
      * \returns incremented sequence
      */
-    std::int64_t addAndGet(std::int64_t value) override {
+    forceinline std::int64_t addAndGet(std::int64_t value) noexcept override {
         return std::atomic_fetch_add(&_fieldsValue, value) + value;
     }
 
-    void writeDescriptionTo(std::ostream &stream) const override {
+    forceinline void writeDescriptionTo(std::ostream &stream) const noexcept override {
         stream << _fieldsValue.load();
     }
 
-    /**
-     * Set to -1 as sequence starting point
-     */
     static const std::int64_t InitialCursorValue = -1;
 };
 

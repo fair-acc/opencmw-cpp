@@ -2,6 +2,7 @@
 #define OPENCMW_H
 
 #include <array>
+#include <chrono>
 #include <concepts>
 #include <map>
 #include <set>
@@ -50,6 +51,8 @@ concept invocable_r = std::is_invocable_r_v<R, Fn, FnArgs...>;
 constexpr bool isPower2(std::unsigned_integral auto value) { return !(value == 0) && !(value & (value - 1)); }
 template<std::unsigned_integral auto N>
 static constexpr bool is_power2_v = isPower2(N);
+constexpr unsigned    floorlog2(unsigned x) { return x == 1 ? 0 : 1 + floorlog2(x >> 1); }
+constexpr unsigned    ceillog2(unsigned x) { return x == 1 ? 0 : floorlog2(x - 1) + 1; }
 
 template<typename T, typename Type = std::remove_cvref_t<T>>
 inline constexpr const bool isStdType = get_name(refl::reflect<Type>()).template substr<0, 5>() == "std::";
@@ -169,22 +172,29 @@ template<template<typename...> typename To,
         typename... Items>
 auto to_instance(From<Items...> from) -> To<Items...>;
 
+template<typename T>
+struct is_duration : std::false_type {};
+template<typename Rep, typename Period>
+struct is_duration<std::chrono::duration<Rep, Period>> : std::true_type {};
+template<typename T>
+concept Duration = is_duration<T>::value;
+
 namespace detail {
 
-template<typename Out, typename... Ts>
-struct filter_tuple : std::type_identity<Out> {};
+    template<typename Out, typename... Ts>
+    struct filter_tuple : std::type_identity<Out> {};
 
-template<typename... Out, typename InCar, typename... InCdr> // template for std::tuple arguments
-struct filter_tuple<std::tuple<Out...>, std::tuple<InCar, InCdr...>>
-    : std::conditional_t<(std::is_same_v<InCar, Out> || ...),
-              filter_tuple<std::tuple<Out...>, std::tuple<InCdr...>>,
-              filter_tuple<std::tuple<Out..., InCar>, std::tuple<InCdr...>>> {};
+    template<typename... Out, typename InCar, typename... InCdr> // template for std::tuple arguments
+    struct filter_tuple<std::tuple<Out...>, std::tuple<InCar, InCdr...>>
+        : std::conditional_t<(std::is_same_v<InCar, Out> || ...),
+                  filter_tuple<std::tuple<Out...>, std::tuple<InCdr...>>,
+                  filter_tuple<std::tuple<Out..., InCar>, std::tuple<InCdr...>>> {};
 
-template<typename Out, typename... Ts>
-struct filter_tuple2 : std::type_identity<Out> {};
+    template<typename Out, typename... Ts>
+    struct filter_tuple2 : std::type_identity<Out> {};
 
-template<typename... Ts, typename U, typename... Us> // template for variadic arguments returning std::tuple
-struct filter_tuple2<std::tuple<Ts...>, U, Us...> : std::conditional_t<(std::is_same_v<U, Ts> || ...), filter_tuple2<std::tuple<Ts...>, Us...>, filter_tuple2<std::tuple<Ts..., U>, Us...>> {};
+    template<typename... Ts, typename U, typename... Us> // template for variadic arguments returning std::tuple
+    struct filter_tuple2<std::tuple<Ts...>, U, Us...> : std::conditional_t<(std::is_same_v<U, Ts> || ...), filter_tuple2<std::tuple<Ts...>, Us...>, filter_tuple2<std::tuple<Ts..., U>, Us...>> {};
 
 } // namespace detail
 
