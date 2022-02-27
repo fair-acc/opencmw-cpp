@@ -40,11 +40,7 @@ function(opencmw_add_test_catch2 name sources)
     catch_discover_tests(${name})
 endfunction()
 
-
-opencmw_add_test_app(disruptor_rx_demo main.cpp)
-target_compile_options(disruptor_rx_demo PRIVATE -fsanitize=address)
-target_link_options(disruptor_rx_demo PRIVATE -fsanitize=address)
-
 opencmw_add_test_catch2(disruptor_core_tests Disruptor_tests.cpp)
+opencmw_add_test_catch2(disruptor_rx_tests Rx_tests.cpp)
 opencmw_add_test_catch2(disruptor_waitstrategy_tests WaitStrategy_tests.cpp)
 
