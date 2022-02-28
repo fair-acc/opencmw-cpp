@@ -80,6 +80,13 @@
         document.getElementById(meta.fieldId).value = meta.value;
     }
 
+    function processImageField(form, field, meta) {
+        replaceFieldRow(field,
+            `<label for='${meta.fieldId}'>${meta.name}</label>`,
+            `<img id='${meta.fieldId}' src='data:image/png;base64, ${meta.value}' alt='${meta.name}'/>`,
+            '', meta.description, meta.type);
+    };
+
     fieldHandlers = {
             'bool'               : processBoolField,
             'b'                  : processBoolField,
@@ -104,6 +111,13 @@
             };
 
         meta['fieldId'] = meta['formId'] + "_" + meta['name'];
+
+        // TODO remove this hack when custom reflectable structs are supported
+        if (meta.name.startsWith("type_ImageData_")) {
+            meta.name = meta.name.substring("type_ImageData_".length);
+            processImageField(form, field, meta);
+            return;
+        }
 
         const handler = fieldHandlers[meta.type] || processUnsupportedField;
         handler(form, field, meta);

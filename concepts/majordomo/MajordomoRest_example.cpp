@@ -2,6 +2,8 @@
 #include <majordomo/RestBackend.hpp>
 #include <majordomo/Worker.hpp>
 
+#include "base64pp/base64pp.h"
+
 #include <atomic>
 #include <fstream>
 #include <iomanip>
@@ -109,12 +111,13 @@ struct Reply {
     int32_t     intReturnType;
     int64_t     longReturnType;
     std::string byteArray;
-    opencmw::TimingCtx timingCtx;
+    // TODO lsaContext after timingCtx makes serialiser generate invalid json (only order in ENABLE_REFLECTION_FOR matters though)
     std::string lsaContext;
+    opencmw::TimingCtx timingCtx;
     // Option replyOption = Option::REPLY_OPTION2;
 };
 
-ENABLE_REFLECTION_FOR(Reply, name, booleanReturnType, byteReturnType, shortReturnType, intReturnType, longReturnType, timingCtx, lsaContext /*, replyOption*/)
+ENABLE_REFLECTION_FOR(Reply, name, booleanReturnType, byteReturnType, shortReturnType, intReturnType, longReturnType, lsaContext, timingCtx/*, replyOption*/)
 
 struct HelloWorldHandler {
     std::string customFilter = "uninitialised";
@@ -146,15 +149,22 @@ struct NoData {
 
 ENABLE_REFLECTION_FOR(NoData, dummy) // TODO can't make an empty class reflectable (?) - add bogus member that's ignored by deserialiser.
 
-struct BinaryData {
-    std::string resourceName;
-    opencmw::MIME::MimeType contentType = opencmw::MIME::UNKNOWN;
-    std::string data;
-    int64_t     size; // TODO necessary? could be unsigned if YaS/cmwlight would support it
+#if 0 // TODO nested types currently not supported; thus hardcoding contentType (image/png) in the mustache template
+struct ImageData {
+    std::string base64;
+    // TODO MimeType currently not serialisable by YaS/Json/cmwlight serialisers
+    std::string contentType;
 };
 
-// TODO MimeType currently not serialisable by YaS/Json/cmwlight serialisers
-ENABLE_REFLECTION_FOR(BinaryData, resourceName, /*contentType,*/ data, size)
+ENABLE_REFLECTION_FOR(ImageData, base64, contentType)
+#endif
+
+struct BinaryData {
+    std::string resourceName;
+    std::string type_ImageData_image; // hack: prefix type in name, to get special handling in mustache
+};
+
+ENABLE_REFLECTION_FOR(BinaryData, resourceName, type_ImageData_image)
 
 std::string_view stripStart(std::string_view s, std::string_view prefix) {
     if (s.starts_with(prefix)) {
@@ -165,12 +175,12 @@ std::string_view stripStart(std::string_view s, std::string_view prefix) {
 
 template<units::basic_fixed_string serviceName, typename... Meta>
 class ImageServiceWorker : public Worker<serviceName, TestContext, NoData, BinaryData, Meta...> {
-    std::vector<std::string> imageData;
-    std::atomic<std::size_t> selectedImage;
-    std::atomic<bool>        shutdownRequested;
-    std::jthread             notifyThread;
+    std::vector<std::vector<std::uint8_t>> imageData;
+    std::atomic<std::size_t>               selectedImage;
+    std::atomic<bool>                      shutdownRequested;
+    std::jthread                           notifyThread;
 
-    static constexpr auto    PROPERTY_NAME = std::string_view("testImage");
+    static constexpr auto     PROPERTY_NAME = std::string_view("testImage");
 
 public:
     using super_t = Worker<serviceName, TestContext, NoData, BinaryData, Meta...>;
@@ -182,7 +192,7 @@ public:
         for (const auto &path : fs.iterate_directory("/testImages")) {
             if (path.is_file()) {
                 const auto file = fs.open(fmt::format("testImages/{}", path.filename()));
-                imageData.push_back(std::string(file.begin(), file.end()));
+                imageData.push_back(std::vector<std::uint8_t>(file.begin(), file.end()));
             }
         }
         assert(!imageData.empty());
@@ -193,8 +203,8 @@ public:
                 selectedImage = (selectedImage + 1) % imageData.size();
                 BinaryData reply;
                 reply.resourceName = "test.png";
-                reply.data         = imageData[selectedImage];
-                reply.contentType = opencmw::MIME::PNG;
+                reply.type_ImageData_image = base64pp::encode(imageData[selectedImage]);
+                //reply.image.contentType = "image/png"; //MIME::PNG;
                 super_t::notify(TestContext(), reply);
             }
         });
@@ -204,8 +214,8 @@ public:
             const auto topicPath = URI<RELAXED>(std::string(rawCtx.request.topic())).path().value_or("");
             const auto path      = stripStart(topicPath, "/");
             out.resourceName     = stripStart(stripStart(path, PROPERTY_NAME), "/");
-            out.contentType = MIME::PNG;
-            out.data = imageData[selectedImage];
+            out.type_ImageData_image = base64pp::encode(imageData[selectedImage]);
+            //out.image.contentType = "image/png"; //MIME::PNG;
         });
     }
 
@@ -250,8 +260,8 @@ int main() {
 
     // TODO '"Reply": { "name": ... }' isn't valid json I think (not an object at top-level; also, Firefox doesn't like it). Should we omit the '"Reply:"?
 
-    Worker<"helloWorld", TestContext, Request, Reply> helloWorldWorker(primaryBroker, HelloWorldHandler());
-    ImageServiceWorker<"testImage">                   imageWorker(primaryBroker, std::chrono::milliseconds(1000));
+    Worker<"helloWorld", TestContext, Request, Reply, description<"A friendly service saying hello">> helloWorldWorker(primaryBroker, HelloWorldHandler());
+    ImageServiceWorker<"testImage", description<"Returns an image">> imageWorker(primaryBroker, std::chrono::milliseconds(1000));
 
     std::jthread                                       helloWorldThread([&helloWorldWorker] {
         helloWorldWorker.run();

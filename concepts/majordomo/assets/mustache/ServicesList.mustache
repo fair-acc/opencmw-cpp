@@ -2,6 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
 <title>Available services</title>
+<link rel="stylesheet" href="/assets/main.css">
 <style type="text/css">
 /* <![CDATA[ */
 * { font-size: 16px; font-family: sans-serif; }
@@ -16,11 +17,37 @@ input.topicInput { border: 0; width: 100px; border-bottom: 1px solid silver; }
 </style>
 </head>
 <body>
-    <ul id='servicesList'>
-        {{#servicesList.services}}
-        <li><span class='service-actions'><a href="/{{name}}">{{name}}</a></span><span class='service-description'>{{description}}</span></li>
-        {{/servicesList.services}}
-    </ul>
+<body>
+    <header id="pageHeader">
+        <nav>
+            <a href="/"><img id="logo" src="/assets/img/logo_w.png" alt="Chart-fx Clipboard"></a>
+            <ul id="chooseLanguage">
+                <form>
+                    <button name="locale" value="de" style="background-image: url(/assets/img/german.png);" aria-label="de Spracheinstellungen"></button>
+                    <button name="locale" value="en" style="background-image: url(/assets/img/english.png);" aria-label="en language settings"></button>
+                </form>
+            </ul>
+            <ul id="menu">
+                <!--
+                <li><a href="$mapEntry.value">$msg.get($mapEntry.key)</a></li>
+                -->
+                <li><a href="/upload">Upload</a></li>
+                <li><a href="/admin">Admin</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main id="main">
+        <div id="content">
+            <h1>Available Services</h1>
+            <p>
+                <ul id='servicesList'>
+                    {{#servicesList.services}}
+                    <li><span><a href="/{{name}}">{{name}}</a> - {{description}}</span></li>
+                    {{/servicesList.services}}
+                </ul>
+            </p>
+        </div>
+    </main>
 <!--
     <script>
         let list = document.getElementById('servicesList');

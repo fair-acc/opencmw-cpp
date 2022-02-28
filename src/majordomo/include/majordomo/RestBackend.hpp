@@ -42,15 +42,13 @@ struct FormData {
 ENABLE_REFLECTION_FOR(FormData, fields)
 
 struct Service {
-    Service(std::string_view _name)
-        : name(_name) {
-    }
     std::string name;
+    std::string description;
 };
-ENABLE_REFLECTION_FOR(Service, name)
+ENABLE_REFLECTION_FOR(Service, name, description)
 
 struct ServicesList {
-    std::vector<std::string> services;
+    std::vector<Service> services;
 };
 ENABLE_REFLECTION_FOR(ServicesList, services)
 
@@ -201,13 +199,14 @@ public:
             const std::string_view &service = pathComponents[0];
             std::string             topic   = std::string(pathComponents[1]);
 
-            if (pathComponentCount == 0) {
+            if (service.empty()) {
                 // Mmi is not a MajordomoWorker, so it doesn't know JSON (TODO)
                 const auto acceptedFormat = acceptedMimeForRequest(request);
+
                 if (acceptedFormat == MIME::JSON.typeName()) {
                     std::vector<std::string> serviceNames;
-                    _broker.forEachService([&](std::string_view name) {
-                        serviceNames.emplace_back(name);
+                    _broker.forEachService([&](std::string_view name, std::string_view) {
+                        serviceNames.emplace_back(std::string(name));
                     });
                     response.status = HTTP_OK;
 
@@ -221,14 +220,24 @@ public:
                             MIME::HTML.typeName().data(),
                             [this](std::size_t /*offset*/, httplib::DataSink &sink) {
                                 ServicesList servicesList;
-                                _broker.forEachService([&](std::string_view name) {
-                                    servicesList.services.emplace_back(name);
-                                    // servicesList.services.push_back(std::string(name));
+                                _broker.forEachService([&](std::string_view name, std::string_view description) {
+                                    servicesList.services.emplace_back(std::string(name), std::string(description));
                                 });
+
+                                // sort services, move mmi. services to the end
+                                auto serviceLessThan = [](const auto &lhs, const auto &rhs) {
+                                    const auto lhsIsMmi = lhs.name.starts_with("mmi.");
+                                    const auto rhsIsMmi = rhs.name.starts_with("mmi.");
+                                    if (lhsIsMmi != rhsIsMmi) {
+                                        return rhsIsMmi;
+                                    }
+                                    return lhs.name < rhs.name;
+                                };
+                                std::sort(servicesList.services.begin(), servicesList.services.end(), serviceLessThan);
 
                                 using namespace std::string_literals;
                                 mustache::serialise("ServicesList", sink.os,
-                                        std::pair<std::string, const ServicesList &>{ "result"s, servicesList });
+                                        std::pair<std::string, const ServicesList &>{ "servicesList"s, servicesList });
                                 sink.done();
                                 return true;
                             });

@@ -10,7 +10,6 @@ cmrc_add_resource_library(
     ${CMAKE_CURRENT_SOURCE_DIR}/assets/img/logo_w.svg
     ${CMAKE_CURRENT_SOURCE_DIR}/assets/mustache/default.mustache
     ${CMAKE_CURRENT_SOURCE_DIR}/assets/mustache/ServicesList.mustache
-    ${CMAKE_CURRENT_SOURCE_DIR}/assets/mustache/ServiceNamesList.mustache
     )
 
 cmrc_add_resource_library(
@@ -25,5 +24,9 @@ file(COPY "${CMAKE_SOURCE_DIR}/demo_sslcert/demo_private.key"
 file(COPY "${CMAKE_SOURCE_DIR}/demo_sslcert/demo_public.crt"
     DESTINATION "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/")
 
-add_executable(MajordomoRest_example MajordomoRest_example.cpp)
+add_executable(MajordomoRest_example MajordomoRest_example.cpp base64pp/base64pp.cpp)
+target_include_directories(MajordomoRest_example
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+    )
 target_link_libraries(MajordomoRest_example PRIVATE majordomo project_options project_warnings assets::rest assets::testImages)
