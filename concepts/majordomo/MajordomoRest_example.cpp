@@ -86,13 +86,13 @@ struct TestContext {
 ENABLE_REFLECTION_FOR(TestContext, ctx, testFilter, contentType)
 
 struct Request {
-    std::string name;
-    opencmw::TimingCtx timingCtx;
-    std::string customFilter;
+    std::string             name;
+    opencmw::TimingCtx      timingCtx;
+    std::string             customFilter;
     opencmw::MIME::MimeType contentType = opencmw::MIME::BINARY;
 };
 
-ENABLE_REFLECTION_FOR(Request, name, timingCtx, customFilter/*, contentType*/)
+ENABLE_REFLECTION_FOR(Request, name, timingCtx, customFilter /*, contentType*/)
 
 struct Reply {
     // TODO java demonstrates custom enums here - we don't support that, but also the example doesn't need it
@@ -112,12 +112,12 @@ struct Reply {
     int64_t     longReturnType;
     std::string byteArray;
     // TODO lsaContext after timingCtx makes serialiser generate invalid json (only order in ENABLE_REFLECTION_FOR matters though)
-    std::string lsaContext;
+    std::string        lsaContext;
     opencmw::TimingCtx timingCtx;
     // Option replyOption = Option::REPLY_OPTION2;
 };
 
-ENABLE_REFLECTION_FOR(Reply, name, booleanReturnType, byteReturnType, shortReturnType, intReturnType, longReturnType, lsaContext, timingCtx/*, replyOption*/)
+ENABLE_REFLECTION_FOR(Reply, name, booleanReturnType, byteReturnType, shortReturnType, intReturnType, longReturnType, lsaContext, timingCtx /*, replyOption*/)
 
 struct HelloWorldHandler {
     std::string customFilter = "uninitialised";
@@ -130,13 +130,13 @@ struct HelloWorldHandler {
         out.byteArray         = in.name; // doesn't really make sense atm
         out.byteReturnType    = 42;
 
-        out.timingCtx = opencmw::TimingCtx(3, {}, {}, {}, duration_cast<microseconds>(now.time_since_epoch()));
+        out.timingCtx         = opencmw::TimingCtx(3, {}, {}, {}, duration_cast<microseconds>(now.time_since_epoch()));
         if (rawCtx.request.command() == Command::Set) {
             customFilter = in.customFilter;
         }
-        out.lsaContext = customFilter;
+        out.lsaContext           = customFilter;
 
-        replyContext.ctx = out.timingCtx;
+        replyContext.ctx         = out.timingCtx;
         replyContext.ctx         = opencmw::TimingCtx(3, {}, {}, {}, duration_cast<microseconds>(now.time_since_epoch()));
         replyContext.contentType = requestContext.contentType;
         replyContext.testFilter  = fmt::format("HelloWorld - reply topic = {}", requestContext.testFilter);
@@ -180,7 +180,7 @@ class ImageServiceWorker : public Worker<serviceName, TestContext, NoData, Binar
     std::atomic<bool>                      shutdownRequested;
     std::jthread                           notifyThread;
 
-    static constexpr auto     PROPERTY_NAME = std::string_view("testImage");
+    static constexpr auto                  PROPERTY_NAME = std::string_view("testImage");
 
 public:
     using super_t = Worker<serviceName, TestContext, NoData, BinaryData, Meta...>;
@@ -202,20 +202,20 @@ public:
                 std::this_thread::sleep_for(updateInterval);
                 selectedImage = (selectedImage + 1) % imageData.size();
                 BinaryData reply;
-                reply.resourceName = "test.png";
+                reply.resourceName         = "test.png";
                 reply.type_ImageData_image = base64pp::encode(imageData[selectedImage]);
-                //reply.image.contentType = "image/png"; //MIME::PNG;
+                // reply.image.contentType = "image/png"; //MIME::PNG;
                 super_t::notify(TestContext(), reply);
             }
         });
 
         super_t::setCallback([this](RequestContext &rawCtx, const TestContext &, const NoData &, TestContext &, BinaryData &out) {
             using namespace opencmw;
-            const auto topicPath = URI<RELAXED>(std::string(rawCtx.request.topic())).path().value_or("");
-            const auto path      = stripStart(topicPath, "/");
-            out.resourceName     = stripStart(stripStart(path, PROPERTY_NAME), "/");
+            const auto topicPath     = URI<RELAXED>(std::string(rawCtx.request.topic())).path().value_or("");
+            const auto path          = stripStart(topicPath, "/");
+            out.resourceName         = stripStart(stripStart(path, PROPERTY_NAME), "/");
             out.type_ImageData_image = base64pp::encode(imageData[selectedImage]);
-            //out.image.contentType = "image/png"; //MIME::PNG;
+            // out.image.contentType = "image/png"; //MIME::PNG;
         });
     }
 
@@ -233,10 +233,9 @@ int main() {
     Broker                                          primaryBroker("PrimaryBroker");
     auto                                            fs = cmrc::assets::get_filesystem();
 
-
     FileServerRestBackend<PLAIN_HTTP, decltype(fs)> rest(primaryBroker, fs, "./");
 
-    const auto brokerRouterAddress = primaryBroker.bind(URI<>("mds://127.0.0.1:12345"));
+    const auto                                      brokerRouterAddress = primaryBroker.bind(URI<>("mds://127.0.0.1:12345"));
 
     if (!brokerRouterAddress) {
         std::cerr << "Could not bind to broker address" << std::endl;
@@ -249,11 +248,11 @@ int main() {
     });
 
     // second broker to test DNS functionalities
-    Broker                                             secondaryBroker("SecondaryTestBroker", { .dnsAddress = *brokerRouterAddress });
+    Broker       secondaryBroker("SecondaryTestBroker", { .dnsAddress = *brokerRouterAddress });
 
-    std::jthread                                       secondaryBrokerThread([&secondaryBroker] {
+    std::jthread secondaryBrokerThread([&secondaryBroker] {
         secondaryBroker.run();
-                                          });
+    });
 
     // TODO IIRC we agreed that service names should be valid URIs and thus have a / prepended, but "/helloWorld"
     // doesn't work with the REST interface (http://localhost:8080/helloWorld and http://localhost:8080//helloWorld are mapped to "helloWorld")
@@ -261,15 +260,15 @@ int main() {
     // TODO '"Reply": { "name": ... }' isn't valid json I think (not an object at top-level; also, Firefox doesn't like it). Should we omit the '"Reply:"?
 
     Worker<"helloWorld", TestContext, Request, Reply, description<"A friendly service saying hello">> helloWorldWorker(primaryBroker, HelloWorldHandler());
-    ImageServiceWorker<"testImage", description<"Returns an image">> imageWorker(primaryBroker, std::chrono::milliseconds(1000));
+    ImageServiceWorker<"testImage", description<"Returns an image">>                                  imageWorker(primaryBroker, std::chrono::milliseconds(1000));
 
-    std::jthread                                       helloWorldThread([&helloWorldWorker] {
+    std::jthread                                                                                      helloWorldThread([&helloWorldWorker] {
         helloWorldWorker.run();
-                                          });
+                                                                                         });
 
-    std::jthread                                       imageThread([&imageWorker] {
+    std::jthread                                                                                      imageThread([&imageWorker] {
         imageWorker.run();
-                                          });
+                                                                                         });
 
     primaryBrokerThread.join();
 
