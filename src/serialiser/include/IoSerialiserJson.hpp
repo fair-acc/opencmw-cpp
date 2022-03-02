@@ -244,9 +244,11 @@ struct FieldHeaderWriter<Json> {
             if (buffer.template at<uint8_t>(buffer.size() - 2) == ',') {
                 // proceeded by value, remove trailing comma
                 buffer.resize(buffer.size() - 2);
+            }
+            if (field.hierarchyDepth == 0) {
                 buffer.put<WITHOUT>("\n}"sv);
             } else {
-                buffer.put('}');
+                buffer.put<WITHOUT>("\n},\n"sv);
             }
             return 0;
         }
