@@ -53,6 +53,32 @@ struct Simple {
 };
 ENABLE_REFLECTION_FOR(Simple, float1, int1, test)
 
+namespace opencmw::ioserialiser_json_tests {
+struct ReproduceMissingCommaAfterNestedObject {
+    SimpleInner a;
+    std::string b;
+    std::string c;
+};
+}
+ENABLE_REFLECTION_FOR(opencmw::ioserialiser_json_tests::ReproduceMissingCommaAfterNestedObject, a, b, c)
+
+TEST_CASE("JsonSerialiserRegressions", "[JsonSerialiser]") {
+    using namespace ioserialiser_json_tests;
+    opencmw::IoBuffer buffer;
+    auto              foo = ReproduceMissingCommaAfterNestedObject{ SimpleInner{ 2.3, "test", { 4, 2 } }, "bar", "baz" };
+    opencmw::serialise<opencmw::Json>(buffer, foo);
+    auto expected = R"""("ReproduceMissingCommaAfterNestedObject": {
+"a": {
+"val1": 2.3e+00,
+"val2": "test",
+"intArray": [4, 2]
+},
+"b": "bar",
+"c": "baz"
+})""";
+    REQUIRE(buffer.asString() == expected);
+}
+
 TEST_CASE("JsonDeserialisation", "[JsonSerialiser]") {
     opencmw::debug::resetStats();
     {
