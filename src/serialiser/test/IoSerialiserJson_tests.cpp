@@ -59,7 +59,7 @@ struct ReproduceMissingCommaAfterNestedObject {
     std::string b;
     std::string c;
 };
-}
+} // namespace opencmw::ioserialiser_json_tests
 ENABLE_REFLECTION_FOR(opencmw::ioserialiser_json_tests::ReproduceMissingCommaAfterNestedObject, a, b, c)
 
 TEST_CASE("JsonSerialiserRegressions", "[JsonSerialiser]") {
