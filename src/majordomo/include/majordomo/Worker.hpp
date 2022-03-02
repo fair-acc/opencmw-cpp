@@ -83,7 +83,6 @@ private:
     std::function<void(RequestContext &)>                    _handler;
     const Settings                                           _settings;
     const opencmw::URI<STRICT>                               _brokerAddress;
-    std::string                                              _serviceDescription;
     std::atomic<bool>                                        _shutdownRequested = false;
     int                                                      _liveness          = 0;
     Timestamp                                                _heartbeatAt;
@@ -388,7 +387,7 @@ private:
         }
 
         auto ready = createMessage(Command::Ready);
-        ready.setBody(_serviceDescription, MessageFrame::dynamic_bytes_tag{});
+        ready.setBody(serviceDescription(), MessageFrame::dynamic_bytes_tag{});
         ready.send(*_workerSocket).assertSuccess();
 
         _pollerItems[0].socket = _workerSocket->zmq_ptr;

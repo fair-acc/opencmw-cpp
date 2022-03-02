@@ -9,6 +9,7 @@ ul { list-style-type: none }
 li { padding: 0.5em; }
 button { border: 1px solid silver; background-color: white; }
 span.service-name { display: block; float: left; width: 140px !important; }
+span.service-description { display: block; float: left; width: 140px !important; }
 input.valueInput { border: 0; width: 32px; border-bottom: 1px solid silver; }
 input.topicInput { border: 0; width: 100px; border-bottom: 1px solid silver; }
 /* ]]> */
@@ -16,11 +17,11 @@ input.topicInput { border: 0; width: 100px; border-bottom: 1px solid silver; }
 </head>
 <body>
     <ul id='servicesList'>
-        {{#services}}
-        <li><span class='service-name'>{{name}}</span> <span class='service-actions'><a href="/{{name}}">go...</a></span></li>
-        {{/services}}
+        {{#servicesList.services}}
+        <li><span class='service-actions'><a href="/{{name}}">{{name}}</a></span><span class='service-description'>{{description}}</span></li>
+        {{/servicesList.services}}
     </ul>
-
+<!--
     <script>
         let list = document.getElementById('servicesList');
         let commandFields = list.getElementsByClassName('service-actions');
@@ -81,5 +82,6 @@ input.topicInput { border: 0; width: 100px; border-bottom: 1px solid silver; }
             };
         }
     </script>
+-->
 </body>
 </html>
