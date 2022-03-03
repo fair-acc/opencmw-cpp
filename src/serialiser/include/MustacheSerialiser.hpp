@@ -275,7 +275,12 @@ auto serialiseWithFieldMetadata(T &&object) {
                             return std::string(objectMemberValue.typeName());
                         } else {
                             opencmw::IoBuffer buffer;
-                            IoSerialiser<opencmw::Json, ObjectMemberType>::serialise(buffer, FieldDescriptionShort{ .fieldName = member.name.c_str() }, objectMemberValue);
+                            if constexpr (ReflectableClass<ObjectMemberType>) {
+                                // IoSerialiser<opencmw::Json, ObjectMemberType>::serialise(buffer, FieldDescriptionShort{ .fieldName = member.name.c_str() }, objectMemberValue);
+                                opencmw::serialise<opencmw::Json>(buffer, objectMemberValue);
+                            } else {
+                                IoSerialiser<opencmw::Json, ObjectMemberType>::serialise(buffer, FieldDescriptionShort{ .fieldName = member.name.c_str() }, objectMemberValue);
+                            }
                             return std::string(buffer.asString());
                         }
                     };
