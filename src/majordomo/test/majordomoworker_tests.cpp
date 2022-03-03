@@ -124,7 +124,7 @@ TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][major
     opencmw::query::registerTypes(TestContext(), broker);
 
     // Create MajordomoWorker with our domain objects, and our TestHandler.
-    Worker<"addressbook", TestContext, AddressRequest, AddressEntry> worker(broker, TestHandler());
+    Worker<"addressbook", TestContext, AddressRequest, AddressEntry, opencmw::majordomo::description<"An Addressbook service">> worker(broker, TestHandler());
 
     // Run worker and broker in separate threads
     RunInThread brokerRun(broker);
@@ -136,6 +136,23 @@ TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][major
     // Later, a client class analog to MajordomoWorker, sending AddressRequest, and receiving AddressEntry, could be used.
     TestNode<MdpMessage> client(broker.context);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
+
+    { // Make sure the API description is returned
+        auto request = MdpMessage::createClientMessage(Command::Get);
+        request.setServiceName("mmi.openapi", static_tag);
+        request.setBody("addressbook", static_tag);
+        client.send(request);
+
+        const auto reply = client.tryReadOne();
+
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->isClientMessage());
+        REQUIRE(reply->command() == Command::Final);
+        REQUIRE(reply->serviceName() == "mmi.openapi");
+        REQUIRE(reply->body() == "An Addressbook service");
+        REQUIRE(reply->error() == "");
+    }
 
     {
         // Send a request for address with ID 42
