@@ -244,9 +244,11 @@ struct FieldHeaderWriter<Json> {
             if (buffer.template at<uint8_t>(buffer.size() - 2) == ',') {
                 // proceeded by value, remove trailing comma
                 buffer.resize(buffer.size() - 2);
+            }
+            if (field.hierarchyDepth == 0) {
                 buffer.put<WITHOUT>("\n}"sv);
             } else {
-                buffer.put('}');
+                buffer.put<WITHOUT>("\n},\n"sv);
             }
             return 0;
         }
@@ -460,8 +462,8 @@ struct IoSerialiser<Json, T> {
         FieldHeaderWriter<Json>::template put<IoBuffer::WITHOUT>(buffer, memberField, dims);
         memberField.fieldName = "values"sv;
         FieldHeaderWriter<Json>::template put<IoBuffer::WITHOUT>(buffer, memberField, value.elements());
-        memberField.fieldName = ""sv;
-        FieldHeaderWriter<Json>::template put<IoBuffer::WITHOUT>(buffer, memberField, END_MARKER_INST);
+        buffer.resize(buffer.size() - 2); // remove trailing comma
+        buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>("\n}\n"sv);
     }
     static void deserialise(IoBuffer &buffer, FieldDescription auto const &field, T &value) {
         using namespace std::string_view_literals;
@@ -509,7 +511,8 @@ requires(is_stringlike<typename T::key_type>) struct IoSerialiser<Json, T> {
             memberField.fieldName = entry.first;
             FieldHeaderWriter<Json>::template put<IoBuffer::WITHOUT>(buffer, memberField, entry.second);
         }
-        FieldHeaderWriter<Json>::template put<IoBuffer::WITHOUT>(buffer, memberField, END_MARKER_INST);
+        buffer.resize(buffer.size() - 2); // remove trailing comma
+        buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>("\n}\n"sv);
     }
     static void deserialise(IoBuffer &buffer, FieldDescription auto const &field, T &value) {
         using namespace std::string_view_literals;
