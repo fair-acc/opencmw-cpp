@@ -18,12 +18,14 @@ public:
     void push(const T &value) {
         std::unique_lock lock(_mutex);
         _queue.push_back(value);
+        lock.unlock();
         _condition.notify_one();
     }
 
     void push(T &&value) {
         std::unique_lock lock(_mutex);
         _queue.push_back(std::move(value));
+        lock.unlock();
         _condition.notify_one();
     }
 
