@@ -596,7 +596,6 @@ protected:
     }
 };
 
-
 /**
  * Empty type that can be used e.g. as Input type without parameters
  */
