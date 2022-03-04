@@ -125,7 +125,7 @@ struct HelloWorldHandler {
         using namespace std::chrono;
         const auto now        = system_clock::now();
         const auto sinceEpoch = system_clock::to_time_t(now);
-        out.name              = fmt::format("Hello World! The local time is: {}", std::put_time(std::localtime(&sinceEpoch), "%Y-%m-%e %H:%M:%S"));
+        out.name              = fmt::format("Hello World! The local time is: {}", std::put_time(std::localtime(&sinceEpoch), "%Y-%m-%d %H:%M:%S"));
         out.byteArray         = in.name; // doesn't really make sense atm
         out.byteReturnType    = 42;
 
@@ -194,11 +194,15 @@ public:
             while (!shutdownRequested) {
                 std::this_thread::sleep_for(updateInterval);
                 selectedImage = (selectedImage + 1) % imageData.size();
+                TestContext context;
+                // TODO ideally we could send this notification to any subscription independent of their contentType
+                context.contentType = opencmw::MIME::JSON;
                 BinaryData reply;
                 reply.resourceName      = "test.png";
                 reply.image.base64      = base64pp::encode(imageData[selectedImage]);
                 reply.image.contentType = "image/png"; // MIME::PNG;
-                super_t::notify(TestContext(), reply);
+                // TODO the subscription via REST has a leading slash, so this "/" is necessary for it to match, check if that can be avoided
+                super_t::notify("/", context, reply);
             }
         });
 

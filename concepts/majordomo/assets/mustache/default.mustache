@@ -1,7 +1,6 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
-<title>${serviceName}</title>
 <link rel="stylesheet" href="/assets/main.css">
 <script>
 
@@ -33,6 +32,11 @@
             `;
 
 
+    }
+
+    function getAddress() {
+        let documentUrl = new URL(document.URL);
+        return documentUrl.origin + documentUrl.pathname;
     }
 
     function getFieldData(field, name, defaultValue) {
@@ -114,7 +118,6 @@
 
         meta['fieldId'] = meta['formId'] + "_" + meta['name'];
 
-        console.log("Seen", meta.type);
         const handler = fieldHandlers[meta.type] || processUnsupportedField;
         handler(form, field, meta);
     }
@@ -132,7 +135,8 @@
                 let field = document.getElementById('replyForm_' + key);
                 if (field.type == "checkbox") {
                     field.checked = value;
-
+                } else if (field.localName == "img") {
+                    field.src = `data:${value.contentType};base64, ${value.base64}`;
                 } else {
                     field.value = value;
                 }
@@ -152,10 +156,7 @@
     function pollingHandler() {
         let get = { method: 'GET', headers: { 'X-OPENCMW-METHOD' : 'POLL' } };
 
-        documentUrl = new URL(document.URL);
-        address = documentUrl.origin + documentUrl.pathname + "?ctx=" + documentUrl.searchParams.get('ctx');
-
-        fetch(address, get)
+        fetch(getAddress(), get)
             .then(response => response.text())
             .then(data => {
                 var checkbox = document.getElementById("subscriptionPollingCheckbox");
@@ -182,20 +183,15 @@
     function refreshData() {
         let get = { method: 'GET', headers: { 'Accept' : 'application/json' } };
 
-        let documentUrl = new URL(document.URL);
-        let address = documentUrl.origin + documentUrl.pathname + "?ctx=" + documentUrl.searchParams.get('ctx');
-
-        fetch(address, get)
+        fetch(getAddress(), get)
             .then(response => response.text())
             .then(updateFormWithData);
     }
 
     function saveData() {
         let get = { method: 'GET', headers: { 'Accept' : 'application/json' } };
-        let documentUrl = new URL(document.URL);
-        let address = documentUrl.origin + documentUrl.pathname + "?ctx=" + documentUrl.searchParams.get('ctx');
 
-        fetch(address, get)
+        fetch(getAddress(), get)
             .then(response => response.text())
             .then(originalData => {
                 data = parseServerJson(originalData);
@@ -348,7 +344,6 @@
             </style>
 
             <div class="propHeader">
-                <h1>Property: {{service}}</h1>
                 <h3>{{mdpMetaData.getFieldDescription}}</h3>
             </div>
 
