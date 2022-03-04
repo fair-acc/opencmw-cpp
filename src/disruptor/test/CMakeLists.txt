@@ -3,9 +3,9 @@ include(Catch)
 
 set (RXCPP_DISABLE_TESTS_AND_EXAMPLES 1)
 FetchContent_Declare(
-        Rx
-        GIT_REPOSITORY https://github.com/ivan-cukic/wip-fork-rxcpp
-        GIT_TAG        483963939e4a2adf674450dcb829005d84be1d59
+    Rx
+    GIT_REPOSITORY https://github.com/ReactiveX/RxCpp
+    GIT_TAG        7f97aa901701343593869acad1ee5a02292f39cf
 )
 FetchContent_MakeAvailable(Rx)
 
