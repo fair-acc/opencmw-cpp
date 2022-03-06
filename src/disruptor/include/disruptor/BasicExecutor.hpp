@@ -29,7 +29,7 @@ public:
      * \param command
      */
     std::future<void> execute(const std::function<void()> &command) override {
-        return _taskScheduler->scheduleAndStart(std::packaged_task<void()>([this, command] {
+        return _taskScheduler->scheduleAndStart(std::packaged_task<void()>([command] {
             const std::function<void()> &command1 = command;
             try {
                 command1();

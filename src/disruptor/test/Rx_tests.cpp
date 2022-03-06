@@ -2,6 +2,7 @@
 
 #include <cassert>
 
+#include <utility>
 #include <variant>
 
 #include <disruptor/Disruptor.hpp>
@@ -39,11 +40,11 @@ struct TestAggregatorPolicy : rx::Aggreagate::Timed<TimeLimit, Wrapper> {
 static_assert(rx::Aggreagate::IdMatcherPolicy<TestAggregatorPolicy<1>>);
 
 struct TestEvent {
-    char        device;
-    std::size_t index;
-    bool        isValid                                   = true;
+    char                 device                                    = 'X';
+    std::size_t          index                                     = 0;
+    bool                 isValid                                   = false;
 
-    auto        operator<=>(const TestEvent &other) const = default;
+    std::strong_ordering operator<=>(const TestEvent &other) const = default;
 };
 
 using TestEvents       = std::vector<TestEvent>;
@@ -51,11 +52,10 @@ using AggregatedEvent  = std::tuple<TestEvent, TestEvent, TestEvent>;
 using AggregatedEvents = std::vector<AggregatedEvent>;
 
 std::ostream &operator<<(std::ostream &out, const TestEvent &event) {
-    if (event.isValid) {
-        return out << event.device << event.index;
-    } else {
+    if (!event.isValid) {
         return out << 'X';
     }
+    return out << event.device << event.index;
 }
 
 // clang-format off
@@ -75,27 +75,27 @@ std::ostream & operator<<(std::ostream &out, const std::tuple<Events...> &events
 }
 // clang-format on
 
-std::istream &operator>>(std::istream &in, TestEvent &event) {
-    in >> event.device;
+std::istream &operator>>(std::istream &input, TestEvent &event) {
+    input >> event.device;
     if (event.device == 'X') {
         event.isValid = false;
 
     } else {
         event.isValid = true;
-        in >> event.index;
+        input >> event.index;
     }
-    return in;
+    return input;
 }
 
 template<typename... Events>
 requires(std::is_same_v<Events, TestEvent> &&...)
         std::istream &
-        operator>>(std::istream &in, std::tuple<Events...> &events) {
+        operator>>(std::istream &input, std::tuple<Events...> &events) {
     rx::detail::tuple_for_each(events,
-            [&in]<typename Index>(Index, auto &event) mutable {
-                in >> event;
+            [&input]<typename Index>(Index, auto &event) mutable {
+                input >> event;
             });
-    return in;
+    return input;
 }
 
 std::ostream &operator<<(std::ostream &out, const std::vector<TestEvent> &events) {
@@ -113,20 +113,20 @@ std::ostream &operator<<(std::ostream &out, const std::vector<TestEvent> &events
 template<typename T>
 requires(std::is_same_v<T, TestEvent> || std::is_same_v<T, AggregatedEvent>)
         std::istream &
-        operator>>(std::istream &in, std::vector<T> &events) {
+        operator>>(std::istream &input, std::vector<T> &events) {
     events.clear();
     T event;
-    while (in >> event) {
+    while (input >> event) {
         events.push_back(event);
 
         if constexpr (std::is_same_v<T, AggregatedEvent>) {
-            char skipSemicolon;
-            if (in >> skipSemicolon) {
+            char skipSemicolon = 0;
+            if (input >> skipSemicolon) {
                 assert(skipSemicolon == ';');
             }
         }
     }
-    return in;
+    return input;
 }
 
 template<size_t RbSize>
@@ -137,25 +137,28 @@ private:
     std::size_t                            m_patternRepeat;
 
 public:
-    Publisher(const std::shared_ptr<RingBuffer<TestEvent, RbSize>> &ringBuffer,
+    Publisher(std::shared_ptr<RingBuffer<TestEvent, RbSize>> ringBuffer,
             TestEvents                                      events,
-            std::size_t                                     patternRepeat)
-        : m_ringBuffer(ringBuffer)
+            std::size_t                                     patternRepeatCount)
+        : m_ringBuffer(std::move(ringBuffer))
         , m_events(std::move(events))
-        , m_patternRepeat(patternRepeat) {}
+        , m_patternRepeat(patternRepeatCount) {}
 
     void run() {
-        const auto timeUnit = 100ms;
+        const auto timeUnit  = 100ms;
+        const auto longPause = 1000ms;
         try {
             for (std::size_t repeat = 0; repeat < m_patternRepeat; repeat++) {
                 for (const auto &event : m_events) {
                     if (event.device == 'P') {
                         std::this_thread::sleep_for(event.index * timeUnit);
                     } else {
-                        auto  next      = m_ringBuffer->next();
-                        auto &testEvent = (*m_ringBuffer)[next];
-                        testEvent       = event;
-                        testEvent.index += repeat * 1000;
+                        auto                next                     = m_ringBuffer->next();
+                        auto               &testEvent                = (*m_ringBuffer)[next];
+
+                        constexpr const int repeatIterationIncrement = 1000;
+                        testEvent                                    = event;
+                        testEvent.index += repeat * repeatIterationIncrement;
                         m_ringBuffer->publish(next);
 
                         std::this_thread::sleep_for(timeUnit);
@@ -164,7 +167,7 @@ public:
             }
 
             // Wait for all events to get propagated
-            std::this_thread::sleep_for(10 * timeUnit);
+            std::this_thread::sleep_for(longPause);
         } catch (...) {
             failed = true;
         }
@@ -177,14 +180,14 @@ template<std::size_t RbSize>
 std::shared_ptr<Publisher<RbSize>> makePublisher(
         const std::shared_ptr<RingBuffer<TestEvent, RbSize>> &buffer,
         const TestEvents                             &events,
-        std::size_t                                   patternRepeat) {
-    return std::make_shared<Publisher<RbSize>>(buffer, events, patternRepeat);
+        std::size_t                                   patternRepeatCount) {
+    return std::make_shared<Publisher<RbSize>>(buffer, events, patternRepeatCount);
 }
 
-bool test(std::string name, const TestEvents &input, const AggregatedEvents &expectedResult, const AggregatedEvents &expectedTimedOut, std::size_t patternRepeat) {
+bool test(std::string_view name, const TestEvents &input, const AggregatedEvents &expectedResult, const AggregatedEvents &expectedTimedOut, std::size_t patternRepeatCount) {
     constexpr std::size_t rbSize = 1 << 16;
     std::cerr << "TEST: " << name << '\n';
-    auto processorsCount = std::max(std::thread::hardware_concurrency() / 2, 1u);
+    auto processorsCount = std::max(std::thread::hardware_concurrency() / 2, 1U);
 
     using TestDisruptor  = Disruptor<TestEvent, rbSize, ProducerType::Multi, RoundRobinThreadAffinedTaskScheduler, BusySpinWaitStrategy>;
     TestDisruptor testDisruptor(processorsCount);
@@ -193,7 +196,7 @@ bool test(std::string name, const TestEvents &input, const AggregatedEvents &exp
     testDisruptor->setDefaultExceptionHandler(std::make_shared<FatalExceptionHandler<TestEvent>>());
 
     // auto       handlers       = makeHandlers(testDisruptor, handlerCount);
-    auto publisher = makePublisher(ringBuffer, input, patternRepeat);
+    auto publisher = makePublisher(ringBuffer, input, patternRepeatCount);
 
     // Rx events from the Disruptor
     rx::Source<TestDisruptor> disruptorSource(testDisruptor);
@@ -202,11 +205,12 @@ bool test(std::string name, const TestEvents &input, const AggregatedEvents &exp
     auto equalTo = [](char device) {
         return [=](const TestEvent &event) { return event.device == device; };
     };
-    auto             as        = disruptorSource.stream() | rxcpp::operators::filter(equalTo('a')) | rxcpp::operators::distinct_until_changed();
-    auto             bs        = disruptorSource.stream() | rxcpp::operators::filter(equalTo('b')) | rxcpp::operators::distinct_until_changed();
-    auto             cs        = disruptorSource.stream() | rxcpp::operators::filter(equalTo('c')) | rxcpp::operators::distinct_until_changed();
+    auto             deviceAStream  = disruptorSource.stream() | rxcpp::operators::filter(equalTo('a')) | rxcpp::operators::distinct_until_changed();
+    auto             deviceBStream  = disruptorSource.stream() | rxcpp::operators::filter(equalTo('b')) | rxcpp::operators::distinct_until_changed();
+    auto             deviceCStream  = disruptorSource.stream() | rxcpp::operators::filter(equalTo('c')) | rxcpp::operators::distinct_until_changed();
 
-    auto             aggregate = rx::aggreagate<TestAggregatorPolicy<1000>>(as, bs, cs);
+    constexpr int    expirationTime = 1000;
+    auto             aggregate      = rx::aggreagate<TestAggregatorPolicy<expirationTime>>(deviceAStream, deviceBStream, deviceCStream);
 
     AggregatedEvents result;
     AggregatedEvents timedOut;
@@ -273,7 +277,7 @@ bool test(std::string name, const TestEvents &input, const AggregatedEvents &exp
     return resultMatches;
 }
 
-bool test(std::string name, const std::string &input, const std::string &expectedResult, const std::string &expectedTimedOut, std::size_t patternRepeat) {
+bool test(std::string_view name, const std::string &input, const std::string &expectedResult, const std::string &expectedTimedOut, std::size_t patternRepeatCount) {
     TestEvents parsedInput;
     {
         std::stringstream source(input);
@@ -290,7 +294,7 @@ bool test(std::string name, const std::string &input, const std::string &expecte
         source >> parsedExpectedTimedOut;
     }
 
-    return test(name, parsedInput, parsedExpectedResult, parsedExpectedTimedOut, patternRepeat);
+    return test(name, parsedInput, parsedExpectedResult, parsedExpectedTimedOut, patternRepeatCount);
 }
 
 TEST_CASE("Disruptor Rx basic tests", "[Disruptor][Rx][basic]") {
@@ -308,7 +312,9 @@ TEST_CASE("Disruptor Rx missing event tests", "[Disruptor][Rx][missing]") {
 TEST_CASE("Disruptor Rx timeout tests", "[Disruptor][Rx][timeout]") {
     test("late", "a1 b1 a2 b2 c2 a3 b3 c3 c1", "a1 b1 c1; a2 b2 c2; a3 b3 c3", "", 1);
     test("timeout without event", "a1 b1 c1 a2 b2", "a1 b1 c1", "2", 1);
-    test("long queue", "a1 b1 c1 a2 b2", "a1 b1 c1; a1001 b1001 c1001; a2001 b2001 c2001; a3001 b3001 c3001; a4001 b4001 c4001", "", 5);
-    test("simple broken long queue", "a1 b1", "", "", 5);
     test("single event timeout", "a1 b1 P4", "", "1", 1);
+
+    constexpr std::size_t patternRepeatCount = 5;
+    test("long queue", "a1 b1 c1 a2 b2", "a1 b1 c1; a1001 b1001 c1001; a2001 b2001 c2001; a3001 b3001 c3001; a4001 b4001 c4001", "", patternRepeatCount);
+    test("simple broken long queue", "a1 b1", "", "", patternRepeatCount);
 }

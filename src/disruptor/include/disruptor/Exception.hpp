@@ -13,16 +13,15 @@ class DisruptorException : public std::exception {};
 
 class WrappedException : public DisruptorException {
 private:
-    std::string           message;
-    const std::exception &inner_exception;
+    std::string message;
 
 public:
     explicit WrappedException(const std::exception &ex, std::string msg)
-        : message(std::move(msg)), inner_exception(ex) {
+        : message(std::move(msg)) {
         message.append("\n\t");
         message.append(ex.what());
     }
-    const char *what() { return message.c_str(); }
+    const char *what() const noexcept override { return message.c_str(); }
 };
 
 class NoCapacityException : public DisruptorException {};
