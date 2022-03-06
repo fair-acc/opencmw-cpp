@@ -16,19 +16,20 @@ private:
     // List of Rx subscribers that listen to our events
     mutable std::vector<rxcpp::subscriber<EventType>> _subscribers;
 
+    struct SetSubscriberFunctionObject {
+        RxSubscriberBridgeImpl<EventType> *_this;
+
+        // This is not really const (a shallow const), but Rx requires
+        // the subscriber registration command to be const
+        void operator()(const rxcpp::subscriber<EventType> &subscriber) const {
+            _this->_subscribers.push_back(subscriber);
+        }
+    };
+
     // Returns a function object that sets the subscriber to this,
     // passed to the create method of rxcpp::observable
     auto setSubscriberFunctionObject() {
-        struct FunctionObject {
-            RxSubscriberBridgeImpl<EventType> *_this;
-
-            // This is not really const (a shallow const), but Rx requires
-            // the subscriber registration command to be const
-            void operator()(const rxcpp::subscriber<EventType> &subscriber) const {
-                _this->_subscribers.push_back(subscriber);
-            }
-        };
-        return FunctionObject{ this };
+        return SetSubscriberFunctionObject{ this };
     }
 
     std::shared_ptr<
@@ -36,7 +37,7 @@ private:
             _handlerWrapper;
 
     // std::optional used for lazy initialization of the Rx stream when
-    std::optional<decltype(rxcpp::observable<>::create<EventType>(std::declval<RxSubscriberBridgeImpl<EventType>>().setSubscriberFunctionObject()))>
+    std::optional<decltype(rxcpp::observable<>::create<EventType>(SetSubscriberFunctionObject{ nullptr }))>
             _stream;
 
 public:
@@ -73,7 +74,7 @@ private:
     detail::RxSubscriberBridgeImpl<EventType> _impl;
 
 public:
-    Source(Disruptor &disruptor)
+    explicit Source(Disruptor &disruptor)
         : _disruptor(disruptor) {}
 
     const auto &stream() & {
@@ -96,24 +97,24 @@ namespace detail {
 //                  << ", field value is " << tupleField;
 //    });
 template<typename Tuple, typename Func, std::size_t... Is>
-constexpr void tuple_for_each_impl(Tuple &&tuple, Func &&f, std::index_sequence<Is...>) {
-    ((f(std::integral_constant<std::size_t, Is>{}, std::get<Is>(tuple))), ...);
+constexpr void tuple_for_each_impl(Tuple &&tuple, Func &&function, std::index_sequence<Is...> /*indices*/) {
+    ((function(std::integral_constant<std::size_t, Is>{}, std::get<Is>(tuple))), ...);
 }
 
 template<typename Tuple, typename Func>
-constexpr void tuple_for_each(Tuple &&tuple, Func &&f) {
-    tuple_for_each_impl(std::forward<Tuple>(tuple), std::forward<Func>(f), std::make_index_sequence<std::tuple_size_v<std::remove_cvref_t<Tuple>>>{});
+constexpr void tuple_for_each(Tuple &&tuple, Func &&function) {
+    tuple_for_each_impl(std::forward<Tuple>(tuple), std::forward<Func>(function), std::make_index_sequence<std::tuple_size_v<std::remove_cvref_t<Tuple>>>{});
 }
 
 // std::transform-like algorithm for transforming tuple elements
 template<typename Tuple, typename Func, std::size_t... Is>
-constexpr auto tuple_transform_impl(Tuple &&tuple, Func &&f, std::index_sequence<Is...>) {
-    return std::make_tuple(f(std::integral_constant<std::size_t, Is>{}, std::get<Is>(tuple))...);
+constexpr auto tuple_transform_impl(Tuple &&tuple, Func &&function, std::index_sequence<Is...> /*indices*/) {
+    return std::make_tuple(function(std::integral_constant<std::size_t, Is>{}, std::get<Is>(tuple))...);
 }
 
 template<typename Tuple, typename Func>
-constexpr auto tuple_transform(Tuple &&tuple, Func &&f) {
-    return tuple_transform_impl(std::forward<Tuple>(tuple), std::forward<Func>(f), std::make_index_sequence<std::tuple_size_v<std::remove_cvref_t<Tuple>>>{});
+constexpr auto tuple_transform(Tuple &&tuple, Func &&function) {
+    return tuple_transform_impl(std::forward<Tuple>(tuple), std::forward<Func>(function), std::make_index_sequence<std::tuple_size_v<std::remove_cvref_t<Tuple>>>{});
 }
 } // namespace detail
 
@@ -224,6 +225,8 @@ static_assert(not IdMatcherPolicy<Limited<0>>);
 //  - Whether or not to group events based on a specified property
 template<typename Policy, typename... InputTypes>
 class AggregateImpl {
+    static_assert(sizeof...(InputTypes) <= 32);
+
 private:
     using OutputEventType = typename Policy::template OutputEventType<InputTypes...>;
     detail::RxSubscriberBridgeImpl<OutputEventType> _impl;
@@ -233,7 +236,7 @@ private:
     // until in can be sent as a part of an output stream.
     template<typename InputType>
     struct ObservableBacklog {
-        ObservableBacklog(rxcpp::observable<InputType> &&_observable)
+        explicit ObservableBacklog(rxcpp::observable<InputType> &&_observable)
             : observable(std::move(_observable)) {}
 
         rxcpp::observable<InputType>                    observable;
@@ -244,14 +247,14 @@ private:
 
     std::tuple<ObservableBacklog<InputTypes>...> _observableBacklogs;
 
-    constexpr static std::uint32_t               s_allQueuesFlags = (1u << sizeof...(InputTypes)) - 1;
+    constexpr static std::uint32_t               s_allQueuesFlags = (1U << sizeof...(InputTypes)) - 1;
     std::uint32_t                                _fullQueuesFlags = 0;
 
-    void                                         setFullQueueFlag(int index, bool value) {
+    void                                         setFullQueueFlag(std::size_t index, bool value) {
         if (value) {
-            _fullQueuesFlags |= (1u << index);
+            _fullQueuesFlags |= (1U << index);
         } else {
-            _fullQueuesFlags &= ~(1u << index);
+            _fullQueuesFlags &= ~(1U << index);
         }
     }
 
@@ -275,8 +278,8 @@ private:
                     setFullQueueFlag(Index::value, !observableBacklog.backlog.empty());
                     return item;
                 } else {
-                    allFound = false;
                     setFullQueueFlag(Index::value, !observableBacklog.backlog.empty());
+                    allFound = false;
                     return typename decltype(observableBacklog.backlog)::value_type();
                 }
 
@@ -299,14 +302,14 @@ private:
     }
 
 public:
-    AggregateImpl(rxcpp::observable<InputTypes>... observables)
+    explicit AggregateImpl(rxcpp::observable<InputTypes>... observables)
         : _observableBacklogs(std::move(observables)...) {
         detail::tuple_for_each(_observableBacklogs, [&]<typename Index>(Index, auto &observableBacklog) {
             observableBacklog.observable.subscribe(
                     // observableBacklog is a reference to a field in this,
                     // so async call of this lambda is not an issue.
                     [this, &observableBacklog](const auto &value) {
-                        const auto currentFlag = 1u << Index::value;
+                        const auto currentFlag = 1U << Index::value;
                         {
                             std::unique_lock lock{ observableBacklog.backlogLock };
                             _fullQueuesFlags |= currentFlag;
@@ -345,11 +348,14 @@ public:
     }
 
     AggregateImpl(const AggregateImpl &) = delete;
-    AggregateImpl         &operator=(const AggregateImpl &) = delete;
+    AggregateImpl &operator=(const AggregateImpl &) = delete;
+    AggregateImpl(AggregateImpl &&)                 = delete;
+    AggregateImpl &operator=(AggregateImpl &&) = delete;
+    ~AggregateImpl()                           = default;
 
-    rxcpp::subscriber<int> operator()(rxcpp::subscriber<int> s) const {
-        return rxcpp::make_subscriber<int>([s](const int &next) { s.on_next(std::move(next + 1)); }, [&s](const std::exception_ptr &e) { s.on_error(e); }, [&s]() { s.on_completed(); });
-    }
+    // rxcpp::subscriber<int> operator()(rxcpp::subscriber<int> subscriber) const {
+    //     return rxcpp::make_subscriber<int>([subscriber](const int &next) { subscriber.on_next(std::move(next + 1)); }, [&subscriber](const std::exception_ptr &exception) { subscriber.on_error(exception); }, [&subscriber]() { subscriber.on_completed(); });
+    // }
 
     const auto &stream() & {
         return _impl.stream();
