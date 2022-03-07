@@ -421,7 +421,6 @@ public:
 
     template<typename T, typename Tag>
     void setError(T &&error, Tag tag) {
-        debug::withLocation() << "Returning error" << error;
         setFrameData(Frame::Error, std::forward<T>(error), tag);
     }
     [[nodiscard]] std::string_view error() const { return frameAt(Frame::Error).data(); }
