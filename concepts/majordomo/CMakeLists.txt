@@ -30,8 +30,3 @@ target_include_directories(MajordomoRest_example
         ${CMAKE_CURRENT_SOURCE_DIR}
     )
 target_link_libraries(MajordomoRest_example PRIVATE majordomo project_options project_warnings assets::rest assets::testImages)
-
-# setup tests
-if(ENABLE_TESTING)
-  add_subdirectory(test)
-endif()

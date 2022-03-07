@@ -1,10 +1,9 @@
 // taken from https://github.com/matheusgomes28/base64pp
 // Ported from gtest to catch2
 
-#define CATCH_CONFIG_MAIN // This tells the catch header to generate a main
+#include <majordomo/base64pp.hpp>
 
 #include <array>
-#include <base64pp/base64pp.h>
 #include <catch2/catch.hpp>
 #include <cstdint>
 #include <string>

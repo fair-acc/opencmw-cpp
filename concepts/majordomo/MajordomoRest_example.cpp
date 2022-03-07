@@ -1,8 +1,7 @@
+#include <majordomo/base64pp.hpp>
 #include <majordomo/Broker.hpp>
 #include <majordomo/RestBackend.hpp>
 #include <majordomo/Worker.hpp>
-
-#include "base64pp/base64pp.h"
 
 #include <atomic>
 #include <fstream>
