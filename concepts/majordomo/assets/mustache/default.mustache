@@ -146,7 +146,7 @@
 
             var checkbox = document.getElementById("subscriptionPollingCheckbox");
             if (checkbox.checked) {
-                setTimeout(pollingHandler, 100);
+                setTimeout(pollingHandler, 1000);
             }
         } else {
             console.log("Empty reply");
@@ -169,7 +169,7 @@
     function toggleSubscriptionPolling() {
         var checkbox = document.getElementById("subscriptionPollingCheckbox");
         if (checkbox.checked) {
-            setTimeout(pollingHandler, 100);
+            setTimeout(pollingHandler, 1000);
         }
     }
 

@@ -256,7 +256,7 @@ int main() {
     // TODO '"Reply": { "name": ... }' isn't valid json I think (not an object at top-level; also, Firefox doesn't like it). Should we omit the '"Reply:"?
 
     Worker<"helloWorld", TestContext, Request, Reply, description<"A friendly service saying hello">> helloWorldWorker(primaryBroker, HelloWorldHandler());
-    ImageServiceWorker<"testImage", description<"Returns an image">>                                  imageWorker(primaryBroker, std::chrono::milliseconds(1000));
+    ImageServiceWorker<"testImage", description<"Returns an image">>                                  imageWorker(primaryBroker, std::chrono::seconds(10));
 
     std::jthread                                                                                      helloWorldThread([&helloWorldWorker] {
         helloWorldWorker.run();
