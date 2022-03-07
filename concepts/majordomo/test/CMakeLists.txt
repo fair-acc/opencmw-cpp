@@ -1,0 +1,6 @@
+include(CTest)
+include(Catch)
+add_executable(base64pp_tests base64pp_tests.cpp)
+target_link_libraries(base64pp_tests PUBLIC project_warnings project_options CONAN_PKG::catch2)
+target_include_directories(base64pp_tests PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
+catch_discover_tests(base64pp_tests)

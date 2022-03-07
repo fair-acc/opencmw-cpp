@@ -1,0 +1,113 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<title>Available services</title>
+<link rel="stylesheet" href="/assets/main.css">
+<style type="text/css">
+/* <![CDATA[ */
+* { font-size: 16px; font-family: sans-serif; }
+ul { list-style-type: none }
+li { padding: 0.5em; }
+button { border: 1px solid silver; background-color: white; }
+span.service-name { display: block; float: left; width: 140px !important; }
+span.service-description { display: block; float: left; width: 140px !important; }
+input.valueInput { border: 0; width: 32px; border-bottom: 1px solid silver; }
+input.topicInput { border: 0; width: 100px; border-bottom: 1px solid silver; }
+/* ]]> */
+</style>
+</head>
+<body>
+<body>
+    <header id="pageHeader">
+        <nav>
+            <a href="/"><img id="logo" src="/assets/img/logo_w.png" alt="Chart-fx Clipboard"></a>
+            <ul id="chooseLanguage">
+                <form>
+                    <button name="locale" value="de" style="background-image: url(/assets/img/german.png);" aria-label="de Spracheinstellungen"></button>
+                    <button name="locale" value="en" style="background-image: url(/assets/img/english.png);" aria-label="en language settings"></button>
+                </form>
+            </ul>
+            <ul id="menu">
+                <!--
+                <li><a href="$mapEntry.value">$msg.get($mapEntry.key)</a></li>
+                -->
+                <li><a href="/upload">Upload</a></li>
+                <li><a href="/admin">Admin</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main id="main">
+        <div id="content">
+            <h1>Available Services</h1>
+            <p>
+                <ul id='servicesList'>
+                    {{#servicesList.services}}
+                    <li><span><a href="/{{name}}">{{name}}</a> - {{description}}</span></li>
+                    {{/servicesList.services}}
+                </ul>
+            </p>
+        </div>
+    </main>
+<!--
+    <script>
+        let list = document.getElementById('servicesList');
+        let commandFields = list.getElementsByClassName('service-actions');
+
+        for (let i = 0; i < commandFields.length; i++) {
+            let field = commandFields[i];
+            let href = field.getElementsByTagName('a')[0].href;
+            field.innerHTML = `
+                        <input type='text' class='valueInput' value='?' />
+                        <button class='getButton'>Get</button>
+                        <button class='setButton'>Set</button>
+                        <span class='statusLabel'></span>
+
+                        topic: <input type='text' class='topicInput' value=''>
+                        <button class='listenButton'>Listen</button>
+                        <span class='notificationLabel'></span>
+                    `;
+
+            let valueInput = field.getElementsByClassName('valueInput')[0];
+            let topicInput = field.getElementsByClassName('topicInput')[0];
+            let getButton = field.getElementsByClassName('getButton')[0];
+            let setButton = field.getElementsByClassName('setButton')[0];
+            let listenButton = field.getElementsByClassName('listenButton')[0];
+            let statusLabel = field.getElementsByClassName('statusLabel')[0];
+            let notificationLabel = field.getElementsByClassName('notificationLabel')[0];
+
+            getButton.onclick = () => {
+                valueInput.value = "...";
+                fetch(href).then(response => response.json())
+                           .then(data => valueInput.value = data);
+            };
+
+            setButton.onclick = () => {
+                let post = { method: 'POST', body: valueInput.value };
+                valueInput.value = "...";
+
+                fetch(href, post)
+                    .then(response => response.text())
+                    .then(data => {
+                        statusLabel.innerHTML = data;
+                        getButton.onclick();
+
+                        setTimeout(() => statusLabel.innerHTML = '', 2000);
+
+                    });
+            };
+
+            listenButton.onclick = () => {
+                        let post = { method: 'GET', headers: { 'X-OPENCMW-METHOD' : 'POLL' } };
+
+                fetch(href + "/" + topicInput.value, post)
+                    .then(response => response.text())
+                    .then(data => {
+                        notificationLabel.innerHTML = data;
+                        setTimeout(listenButton.onclick, 100);
+                    });
+            };
+        }
+    </script>
+-->
+</body>
+</html>

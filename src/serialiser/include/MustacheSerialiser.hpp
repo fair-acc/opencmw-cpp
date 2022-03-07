@@ -6,6 +6,7 @@
 #include <IoSerialiserJson.hpp>
 #include <MIME.hpp>
 #include <opencmw.hpp>
+#include <TimingCtx.hpp>
 
 #include <cmrc/cmrc.hpp>
 CMRC_DECLARE(assets);
@@ -154,6 +155,14 @@ public:
         : mustache_data<std::string_view>(val.typeName()) {}
 };
 
+template<>
+class mustache_data<opencmw::TimingCtx> : public mustache_data<std::string> {
+public:
+    template<typename T>
+    explicit mustache_data(T val)
+        : mustache_data<std::string>(val.toString()) {}
+};
+
 template<typename T>
 requires units::is_derived_from_specialization_of<T, std::vector>
 class mustache_data<T> : public mustache_data_base {
@@ -273,9 +282,16 @@ auto serialiseWithFieldMetadata(T &&object) {
                             return std::string(objectMemberValue);
                         } else if constexpr (std::is_same_v<ObjectMemberType, MIME::MimeType>) {
                             return std::string(objectMemberValue.typeName());
+                        } else if constexpr (std::is_same_v<ObjectMemberType, opencmw::TimingCtx>) {
+                            return std::string(objectMemberValue.toString());
                         } else {
                             opencmw::IoBuffer buffer;
-                            IoSerialiser<opencmw::Json, ObjectMemberType>::serialise(buffer, FieldDescriptionShort{}, objectMemberValue);
+                            if constexpr (ReflectableClass<ObjectMemberType>) {
+                                // IoSerialiser<opencmw::Json, ObjectMemberType>::serialise(buffer, FieldDescriptionShort{ .fieldName = member.name.c_str() }, objectMemberValue);
+                                opencmw::serialise<opencmw::Json>(buffer, objectMemberValue);
+                            } else {
+                                IoSerialiser<opencmw::Json, ObjectMemberType>::serialise(buffer, FieldDescriptionShort{ .fieldName = member.name.c_str() }, objectMemberValue);
+                            }
                             return std::string(buffer.asString());
                         }
                     };

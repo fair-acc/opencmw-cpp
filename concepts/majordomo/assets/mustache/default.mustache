@@ -1,0 +1,502 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<link rel="stylesheet" href="/assets/main.css">
+<script>
+
+    function processForms() {
+        const forms = document.getElementsByClassName('propTableUnprocessed');
+        for (var index = forms.length; index > 0; index--) {
+            processForm(forms[index - 1]);
+        }
+    }
+
+    function processForm(form) {
+        form.className = "propTable";
+        const fields = form.getElementsByClassName('fairFieldUnprocessed');
+        for (var index = fields.length; index > 0; index--) {
+            processField(form, fields[index - 1]);
+        }
+    }
+
+    function replaceFieldRow(field, name, value, unit, description, type) {
+        if (unit !== "") {
+            unit = "[" + unit + "]";
+        }
+        field.innerHTML =
+            `
+   <td class="propTable-fName">${name}</td>
+               <td class="propTable-fUnit">${unit}:</td>
+               <td class="propTable-fValue">${value}</td>
+               <td class="propTable-fDescription">${description}</td>
+            `;
+
+
+    }
+
+    function getAddress() {
+        let documentUrl = new URL(document.URL);
+        return documentUrl.origin + documentUrl.pathname;
+    }
+
+    function getFieldData(field, name, defaultValue) {
+        const targets = field.getElementsByClassName('propTable-f' + name);
+        if (targets.length == 0) return defaultValue;
+
+        return targets[0].innerHTML;
+    }
+
+    function processUnsupportedField(form, field, meta) {
+        replaceFieldRow(field, meta.name, meta.value, meta.unit, meta.description + `<br />Unknown type ${meta.type}`);
+    }
+
+    function processBoolField(form, field, meta) {
+        const checked = (meta.value === "false") ? "" : "checked"
+        replaceFieldRow(field,
+            `<label for='${meta.fieldId}'>${meta.name}</label>`,
+            `<input type='checkbox' id='${meta.fieldId}' ${checked} />`,
+            meta.unit, meta.description, meta.type);
+    }
+
+    function processStringField(form, field, meta) {
+        replaceFieldRow(field,
+            `<label for='${meta.fieldId}'>${meta.name}</label>`,
+            `<input type='text' id='${meta.fieldId}' value='${meta.value}' />`,
+            meta.unit, meta.description, meta.type);
+    }
+
+    function processIntField(form, field, meta) {
+        replaceFieldRow(field,
+            `<label for='${meta.fieldId}'>${meta.name}</label>`,
+            `<input type='number' id='${meta.fieldId}' value='${meta.value}' />`,
+            meta.unit, meta.description, meta.type);
+    }
+
+    function processMimeTypeField(form, field, meta) {
+        replaceFieldRow(field,
+            `<label for='${meta.fieldId}'>${meta.name}</label>`,
+            `<select id="${meta.fieldId}" value="${meta.value}">
+                  <option value="application/json">JSON</option>
+                  <option value="text/html">HTML</option>
+            </select>
+            `,
+            'MimeType', meta.description, meta.type);
+        document.getElementById(meta.fieldId).value = meta.value;
+    }
+
+    function processImageField(form, field, meta) {
+        let json = parseServerJson(meta.value);
+        replaceFieldRow(field,
+            `<label for='${meta.fieldId}'>${meta.name}</label>`,
+            `<img id='${meta.fieldId}' src='data:${json.contentType};base64, ${json.base64}' alt='${meta.name}'/>`,
+            '', meta.description, meta.type);
+    };
+
+    fieldHandlers = {
+            'bool'               : processBoolField,
+            'b'                  : processBoolField,
+            'int'                : processIntField,
+            'int8_t'            : processIntField,
+            'int16_t'            : processIntField,
+            'int32_t'            : processIntField,
+            'int64_t'            : processIntField,
+            'string'             : processStringField,
+            'opencmw::TimingCtx' : processStringField,
+            'MimeType'           : processMimeTypeField,
+            'ImageData'          : processImageField
+        };	
+
+    function processField(form, field) {
+        const meta = {
+                'formId'      : form.id,
+                'type'        : getFieldData(field, 'Type', null),
+                'name'        : getFieldData(field, 'Name', null),
+                'value'       : getFieldData(field, 'Value', null),
+                'unit'        : getFieldData(field, 'Unit', null),
+                'description' : getFieldData(field, 'Description', null)
+            };
+
+        meta['fieldId'] = meta['formId'] + "_" + meta['name'];
+
+        const handler = fieldHandlers[meta.type] || processUnsupportedField;
+        handler(form, field, meta);
+    }
+
+    function parseServerJson(data) {
+        // Sanitize invalid JSON generated by the server
+        data = data.replace(",\n}", "}");
+        return JSON.parse(data.substring(data.indexOf('{')));
+    }
+
+    function updateFormWithData(data) {
+        if (data != "") {
+            let json = parseServerJson(data);
+            for (const [key, value] of Object.entries(json)) {
+                let field = document.getElementById('replyForm_' + key);
+                if (field.type == "checkbox") {
+                    field.checked = value;
+                } else if (field.localName == "img") {
+                    field.src = `data:${value.contentType};base64, ${value.base64}`;
+                } else {
+                    field.value = value;
+                }
+            }
+
+            pulseIndicator();
+
+            var checkbox = document.getElementById("subscriptionPollingCheckbox");
+            if (checkbox.checked) {
+                setTimeout(pollingHandler, 1000);
+            }
+        } else {
+            console.log("Empty reply");
+        }
+    }
+
+    function pollingHandler() {
+        let get = { method: 'GET', headers: { 'X-OPENCMW-METHOD' : 'POLL' } };
+
+        fetch(getAddress(), get)
+            .then(response => response.text())
+            .then(data => {
+                var checkbox = document.getElementById("subscriptionPollingCheckbox");
+                if (checkbox.checked) {
+                    updateFormWithData(data);
+                }
+            });
+    }
+
+    function toggleSubscriptionPolling() {
+        var checkbox = document.getElementById("subscriptionPollingCheckbox");
+        if (checkbox.checked) {
+            setTimeout(pollingHandler, 1000);
+        }
+    }
+
+    function pulseIndicator() {
+        var element = document.getElementById("subNotifier");
+        element.classList.remove('transform-active'); // reset animation
+        void element.offsetWidth; // trigger reflow
+        element.classList.add('transform-active'); // start animation
+    }
+
+    function refreshData() {
+        let get = { method: 'GET', headers: { 'Accept' : 'application/json' } };
+
+        fetch(getAddress(), get)
+            .then(response => response.text())
+            .then(updateFormWithData);
+    }
+
+    function saveData() {
+        let get = { method: 'GET', headers: { 'Accept' : 'application/json' } };
+
+        fetch(getAddress(), get)
+            .then(response => response.text())
+            .then(originalData => {
+                data = parseServerJson(originalData);
+
+                for (const [key, value] of Object.entries(json)) {
+                    let field = document.getElementById('inputForm_' + key);
+                    if (field.type == "checkbox") {
+                        json[key] = `opencmw_unquoted_value(${field.checked})`;
+
+                    } else if (field.type == "number") {
+                        json[key] = field.valueAsNumber;
+
+                    } else {
+                        json[key] = field.value;
+                    }
+                }
+
+                /*
+                This is the code that should be used to send form data.
+                But until IoSerialiser starts supporting unordered_map
+                serialization, this is disabled
+                */
+                if (true) {
+                    var formData = new FormData();
+                    for (const [key, value] of Object.entries(json)) {
+                        let field = document.getElementById('inputForm_' + key);
+                        if (field.type == "checkbox") {
+                            formData.append(key, `opencmw_unquoted_value(${field.checked})`);
+
+                        } else if (field.type == "number") {
+                            formData.append(key, `opencmw_unquoted_value(${field.value})`);
+
+                        } else {
+                            formData.append(key, field.value);
+                        }
+                    }
+
+                    var request = new XMLHttpRequest();
+                    request.open("POST", address);
+                    request.send(formData);
+
+                } else {
+                    address += '&_bodyOverride=' + JSON.stringify(json);
+                    let post = {
+                            method:  'POST',
+                            headers: { 'Accept' : 'application/json',
+                                       'Content-Type': 'application/json',
+                                       'X-OPENCMW-METHOD-DIS' : 'SET' },
+                        };
+
+                    fetch(address, post)
+                        .then(response => response.text())
+                        .then(data => console.log("Result: " + data));
+                }
+            });
+
+    }
+
+
+</script>
+
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="Description" content="Clipboard Index">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+    <header id="pageHeader">
+        <nav>
+            <a href="/"><img id="logo" src="/assets/img/logo_w.png" alt="Chart-fx Clipboard"></a>
+            <ul id="chooseLanguage">
+                <form>
+                    <button name="locale" value="de" style="background-image: url(/assets/img/german.png);" aria-label="de Spracheinstellungen"></button>
+                    <button name="locale" value="en" style="background-image: url(/assets/img/english.png);" aria-label="en language settings"></button>
+                </form>
+            </ul>
+            <ul id="menu">
+                <!--
+                <li><a href="$mapEntry.value">$msg.get($mapEntry.key)</a></li>
+                -->
+                <li><a href="/upload">Upload</a></li>
+                <li><a href="/admin">Admin</a></li>
+            </ul>
+        </nav>
+    </header>
+    <script>
+        (function() {
+            let documentUrl = new URL(document.URL);
+            if (documentUrl.searchParams.has('noMenu')) {
+                document.getElementById('pageHeader').style.display = 'none';
+            }
+        })();
+    </script>
+    <main id="main">
+        <div id="content">
+
+            <style>
+                .propHeader {font-family:"Comic Sans MS", cursive, sans-serif !important; margin: 10px;}
+                .propHeader h1 { font-family:"Comic Sans MS", cursive, sans-serif !important; font-weight:bold; margin: 0;}
+                .propHeader h2 { margin: 0;}
+                .propHeader h3 { font-style: italic; margin: 0;}
+                .propTable  {border-collapse:collapse;border-spacing:0;font-family:"Comic Sans MS", cursive, sans-serif !important;text-align:left;vertical-align:top;width: 100%;}
+                .propTable th{font-size:16px;font-weight:bold;overflow:hidden;padding:1px 5px;word-break:normal;}
+                .propTable td{font-size:14px;overflow:hidden;padding:1px 5px;word-break:normal;}
+                .propTable .propTable-fName{width: 20%}
+                .propTable .propTable-fUnit{text-align:right;width: 10%}
+                .propTable .propTable-fValue{width: 50%}
+                .propTable .propTable-fDescription{width: 20%}
+
+                /* embed container */
+                .embedBinary {max-width: 100%;}
+                .embeddedFrame {width: 100%; min-height: 110vh; }
+
+                /* switch and slider */
+                .switch {position: relative; display:inline-block;width:38px;height: 17px;}
+                .switch input {opacity:0;width:0;height:0;} /* Hide default HTML checkbox */
+                .slider {position: absolute;cursor: pointer;top:0;left:0;right:0;bottom:0;background-color:#ccc;-webkit-transition:.4s;transition:.4s;}
+                .slider:before {position: absolute;content:"";height:13px;width:13px;left:2px;bottom:2px;background-color:white;-webkit-transition:.4s;transition:.4s;}
+                input:checked + .slider {background-color: #00599c;}
+                input:focus + .slider {box-shadow: 0 0 1px #00599c;}
+                input:checked + .slider:before {-webkit-transform: translateX(20px);-ms-transform: translateX(20px);transform: translateX(20px);}
+                .slider.round {border-radius: 17px;}
+                .slider.round:before {border-radius: 50%;}
+
+                /* collapsible menu */
+                #defaultPropertyTopic input[id="collapsibleReplyTopic"] { display: none; }
+                #defaultPropertyTopic input[id="collapsibleRequestTopic"] { display: none; }
+                #defaultPropertyRequest input[id="collapsibleRequest"] { display: none; }
+                #defaultPropertyReply input[id="collapsibleReply"] { display: none; }
+                .lbl-toggle { background:#00599c;color:#fff;padding:2px 10px;font-size:14px;border-radius:5px;box-shadow: 0 0 0 2px #ddd;transition: all 0.25s ease-out;}
+                .lbl-toggle:hover { color: #FFF; }
+                .lbl-toggle::before {content: ' ';display: inline-block;border-top: 5px solid transparent;border-bottom: 5px solid transparent;border-left: 5px solid currentColor;
+                    vertical-align: middle;margin-right: .7rem;transform: translateY(-2px);transition: transform .2s ease-out;}
+                .toggle:checked+.lbl-toggle::before { transform: rotate(90deg) translateX(-3px); }
+                .collapsible-content { max-height: 0; overflow: hidden; transition: max-height .25s ease-in-out; }
+                .toggle:checked + .lbl-toggle + .collapsible-content { max-height: 5000px;}
+                .toggle:checked+.lbl-toggle {border-bottom-right-radius:0;border-bottom-left-radius:0;}
+                .collapsible-content .content-inner {border-bottom: 1px solid rgba(0, 105, 255, .45);border-bottom-left-radius: 7px;border-bottom-right-radius: 7px;padding: .5rem 1rem; }
+                .collapsible-content table { margin: .5em 0; padding: 0.5em 0;}
+
+                /* flashing subscribe indicator */
+                #subNotifier { display:inline-block;background-color: #00599c;width: 12px;height: 12px; border-radius: 7px; opacity: 0; padding:4px 4px 4px 4px;}
+                .transform-active {animation-iteration-count: 1;animation: pulse 0.5s;animation-direction: alternate;}
+                @keyframes pulse { 0% {opacity: 0;} 50% {opacity: 1.0;} 100% {opacity: 0;} }
+
+                div.wrap-collapsible { margin: 0.5em 0em; }
+            </style>
+
+            <div class="propHeader">
+                <h3>{{mdpMetaData.getFieldDescription}}</h3>
+            </div>
+
+            <div class="transform" id="subNotifier" title="subscription indicator flashes for every SSE notify"></div>
+            Subscribe:
+            <label class="switch" id="subSwitch">
+                <input id="subscriptionPollingCheckbox" type="checkbox" onclick="toggleSubscriptionPolling()">
+                <span class="slider round" title="click to subscribe to this property"></span>
+            </label>
+
+
+            <div id="defaultPropertyTopic">
+                <div class="wrap-collapsible">
+                    <div class="content-inner">
+                        <input id="collapsibleReplyTopic" class="toggle" type="checkbox">
+                        <label for="collapsibleReplyTopic" class="lbl-toggle" title="">Request Context</label>
+                        <div class="collapsible-content">
+                            <table class='propTableUnprocessed' id='requestContextForm'>
+                                <thead>
+                                <tr>
+                                    <th class="propTable-fName">{{requestContext.typeName}} Field Name</th>
+                                    <th class="propTable-fUnit">Unit:</th>
+                                    <th class="propTable-fValue">Field Value:</th>
+                                    <th class="propTable-fDescription">Description:</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                    {{#requestContext.fields}}
+                                    <tr class='fairFieldUnprocessed'>
+                                        <td class="propTable-fName">{{name}}</td>
+                                        <td class="propTable-fUnit">{{unit}}</td>
+                                        <td class="propTable-fValue">{{value}}</td>
+                                        <td class="propTable-fDescription">{{description}}</td>
+                                        <td class="propTable-fType">{{type}}</td>
+                                    </tr>
+                                    {{/requestContext.fields}}
+                                </tbody>
+                                <tr>
+                                    <td class="">
+                                        <input type="button" onclick="refreshData()" value="Get" />
+                                    </td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="defaultPropertyRequest">
+                <div class="wrap-collapsible">
+                    <div class="content-inner">
+                        <input id="collapsibleRequest" class="toggle" type="checkbox">
+                        <label for="collapsibleRequest" class="lbl-toggle" title="">Request</label>
+                        <div class="collapsible-content">
+                            <table class='propTableUnprocessed' id='inputForm'>
+                                <thead>
+                                <tr>
+                                    <th class="propTable-fName">{{input.typeName}} Field Name</th>
+                                    <th class="propTable-fUnit">Unit:</th>
+                                    <th class="propTable-fValue">Field Value:</th>
+                                    <th class="propTable-fDescription">Description:</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                    {{#input.fields}}
+                                    <tr class='fairFieldUnprocessed'>
+                                        <td class="propTable-fName">{{name}}</td>
+                                        <td class="propTable-fUnit">{{unit}}</td>
+                                        <td class="propTable-fValue">{{value}}</td>
+                                        <td class="propTable-fDescription">{{description}}</td>
+                                        <td class="propTable-fType">{{type}}</td>
+                                    </tr>
+                                    {{/input.fields}}
+                                </tbody>
+                                <tr>
+                                    <td class="">
+                                        <input type="button" onclick="saveData()" value="Set" />
+                                    </td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="defaultPropertyTopic">
+                <div class="wrap-collapsible">
+                    <div class="content-inner">
+                        <input id="collapsibleRequestTopic" class="toggle" type="checkbox">
+                        <label for="collapsibleRequestTopic" class="lbl-toggle" title="">Reply Context</label>
+                        <div class="collapsible-content">
+                            <table class='propTableUnprocessed' id='replyContextForm'>
+                                <thead>
+                                <tr>
+                                    <th class="propTable-fName">{{replyContext.typeName}} Field Name</th>
+                                    <th class="propTable-fUnit">Unit:</th>
+                                    <th class="propTable-fValue">Field Value:</th>
+                                    <th class="propTable-fDescription">Description:</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                    {{#replyContext.fields}}
+                                    <tr class='fairFieldUnprocessed'>
+                                        <td class="propTable-fName">{{name}}</td>
+                                        <td class="propTable-fUnit">{{unit}}</td>
+                                        <td class="propTable-fValue">{{value}}</td>
+                                        <td class="propTable-fDescription">{{description}}</td>
+                                        <td class="propTable-fType">{{type}}</td>
+                                    </tr>
+                                    {{/replyContext.fields}}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="defaultPropertyReply">
+                <div class="wrap-collapsible">
+                    <div class="content-inner">
+                        <input id="collapsibleReply" class="toggle" type="checkbox" checked>
+                        <label for="collapsibleReply" class="lbl-toggle" title="">Reply</label>
+                        <div class="collapsible-content">
+                            <table class='propTableUnprocessed' id='replyForm'>
+                                <thead>
+                                <tr>
+                                    <th class="propTable-fName">{{result.typeName}} Field Name</th>
+                                    <th class="propTable-fUnit">Unit:</th>
+                                    <th class="propTable-fValue">Field Value:</th>
+                                    <th class="propTable-fDescription">Description:</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                    {{#result.fields}}
+                                    <tr class='fairFieldUnprocessed'>
+                                        <td class="propTable-fName">{{name}}</td>
+                                        <td class="propTable-fUnit">{{unit}}</td>
+                                        <td class="propTable-fValue">{{value}}</td>
+                                        <td class="propTable-fDescription">{{description}}</td>
+                                        <td class="propTable-fType">{{type}}</td>
+                                    </tr>
+                                    {{/result.fields}}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <script>
+                processForms();
+            </script>
+        </div>
+    </main>
+    <footer id="footer">
+        <!-- COMMON_FOOTER_TEXT -->
+    </footer>
+</body>
+</html>

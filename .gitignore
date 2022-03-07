@@ -44,6 +44,7 @@ Thumbs.db
 .cache
 language.settings.xml
 **/**.swp
+CMakeLists.txt.user
 
 # python venv files
 virtualenv/

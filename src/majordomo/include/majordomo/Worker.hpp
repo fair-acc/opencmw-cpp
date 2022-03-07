@@ -83,7 +83,6 @@ private:
     std::function<void(RequestContext &)>                    _handler;
     const Settings                                           _settings;
     const opencmw::URI<STRICT>                               _brokerAddress;
-    std::string                                              _serviceDescription;
     std::atomic<bool>                                        _shutdownRequested = false;
     int                                                      _liveness          = 0;
     Timestamp                                                _heartbeatAt;
@@ -178,6 +177,11 @@ public:
         disconnect();
     }
 
+protected:
+    void setHandler(std::function<void(RequestContext &)> handler) {
+        _handler = std::move(handler);
+    }
+
 private:
     std::string makeNotifyAddress() const noexcept {
         return fmt::format("inproc://workers/{}-{}/notify", serviceName.data(), worker_detail::nextWorkerId());
@@ -238,7 +242,6 @@ private:
 
         if (data.size() < 2 || !(data[0] == '\x0' || data[0] == '\x1')) {
             // will never happen if the broker works correctly (we could assert for inproc brokers)
-            debug::log() << "Unexpected subscribe/unsubscribe message: " << data;
             return true;
         }
 
@@ -286,7 +289,6 @@ private:
         _liveness = _settings.heartbeatLiveness;
 
         if (!message.isValid()) {
-            debug::log() << "invalid MdpMessage received\n";
             return;
         }
 
@@ -383,7 +385,7 @@ private:
         }
 
         auto ready = createMessage(Command::Ready);
-        ready.setBody(_serviceDescription, MessageFrame::dynamic_bytes_tag{});
+        ready.setBody(serviceDescription(), MessageFrame::dynamic_bytes_tag{});
         ready.send(*_workerSocket).assertSuccess();
 
         _pollerItems[0].socket = _workerSocket->zmq_ptr;
@@ -492,12 +494,21 @@ inline void writeResultFull(std::string_view workerName, RequestContext &rawCtx,
         using namespace std::string_literals;
         std::stringstream stream;
 
-        mustache::serialise(std::string(workerName), stream,
-                std::pair<std::string, const decltype(output) &>{ "result"s, output },
-                std::pair<std::string, const decltype(input) &>{ "input"s, input },
-                std::pair<std::string, const decltype(requestContext) &>{ "requestContext"s, requestContext },
-                std::pair<std::string, const decltype(replyContext) &>{ "replyContext"s, replyContext });
-        rawCtx.reply.setBody(stream.str(), MessageFrame::dynamic_bytes_tag{});
+        try {
+            mustache::serialise(std::string(workerName), stream,
+                    std::pair<std::string, const decltype(output) &>{ "result"s, output },
+                    std::pair<std::string, const decltype(input) &>{ "input"s, input },
+                    std::pair<std::string, const decltype(requestContext) &>{ "requestContext"s, requestContext },
+                    std::pair<std::string, const decltype(replyContext) &>{ "replyContext"s, replyContext });
+            rawCtx.reply.setBody(stream.str(), MessageFrame::dynamic_bytes_tag{});
+        } catch (const ProtocolException &e) {
+            rawCtx.reply.setError(e.what(), MessageFrame::dynamic_bytes_tag{});
+        } catch (const std::exception &e) {
+            rawCtx.reply.setError(e.what(), MessageFrame::dynamic_bytes_tag{});
+        } catch (...) {
+            rawCtx.reply.setError("Unexpected exception", MessageFrame::static_bytes_tag{});
+        }
+
         return;
     }
 
@@ -512,7 +523,6 @@ struct HandlerImpl {
 
     explicit HandlerImpl(CallbackFunction callback)
         : _callback(std::forward<CallbackFunction>(callback)) {
-        assert(_callback);
     }
 
     void operator()(RequestContext &rawCtx) {
@@ -529,7 +539,11 @@ struct HandlerImpl {
 
         OutputType output;
         _callback(rawCtx, requestCtx, input, replyCtx, output);
-        writeResultFull(Worker::name, rawCtx, requestCtx, replyCtx, input, output);
+        try {
+            writeResultFull(Worker::name, rawCtx, requestCtx, replyCtx, input, output);
+        } catch (const ProtocolException &e) {
+            throw std::runtime_error(e.what());
+        }
     }
 };
 
@@ -573,10 +587,23 @@ public:
         worker_detail::writeResult(Worker::name, rawCtx, context, reply);
         return BasicWorker<serviceName, Meta...>::notify(std::move(rawCtx.reply));
     }
+
+protected:
+    void setCallback(CallbackFunction callback) {
+        BasicWorker<serviceName, Meta...>::setHandler(HandlerImpl(std::move(callback)));
+    }
 };
+
+/**
+ * Empty type that can be used e.g. as Input type without parameters
+ */
+struct Empty {};
 
 } // namespace opencmw::majordomo
 
 ENABLE_REFLECTION_FOR(opencmw::majordomo::RequestContext, mimeType);
+// this replaces ENABLE_REFLECTION_FOR for the empty type
+REFL_TYPE(opencmw::majordomo::Empty)
+REFL_END
 
 #endif
