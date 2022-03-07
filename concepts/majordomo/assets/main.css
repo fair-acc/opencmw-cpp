@@ -55,6 +55,10 @@ a {
   color: #008ab4;
 }
 
+table td input {
+  width: 100%;
+}
+
 #menu li {
   float: left;
   margin: 0 10px;
