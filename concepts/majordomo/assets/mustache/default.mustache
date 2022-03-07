@@ -209,8 +209,6 @@
                     }
                 }
 
-                console.log("Sending: " + JSON.stringify(json));
-
                 /*
                 This is the code that should be used to send form data.
                 But until IoSerialiser starts supporting unordered_map
@@ -220,7 +218,6 @@
                     var formData = new FormData();
                     for (const [key, value] of Object.entries(json)) {
                         let field = document.getElementById('inputForm_' + key);
-                        console.log(field.type);
                         if (field.type == "checkbox") {
                             formData.append(key, `opencmw_unquoted_value(${field.checked})`);
 

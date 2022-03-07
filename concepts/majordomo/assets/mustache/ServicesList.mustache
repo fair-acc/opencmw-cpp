@@ -55,7 +55,6 @@ input.topicInput { border: 0; width: 100px; border-bottom: 1px solid silver; }
 
         for (let i = 0; i < commandFields.length; i++) {
             let field = commandFields[i];
-            console.log(field.outerHTML);
             let href = field.getElementsByTagName('a')[0].href;
             field.innerHTML = `
                         <input type='text' class='valueInput' value='?' />
