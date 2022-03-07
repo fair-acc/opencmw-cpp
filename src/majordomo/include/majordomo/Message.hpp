@@ -316,7 +316,6 @@ public:
         }
 
         if (framesReceived != RequiredFrameCount) {
-            debug::log() << "Received unexpected number of frames: Got " << framesReceived << ", expected " << RequiredFrameCount;
             return {};
         }
 
@@ -328,7 +327,6 @@ public:
         const auto &commandStr = _frames[index(Frame::Command)];
 
         if (commandStr.size() != 1) {
-            debug::withLocation() << "Command size is wrong";
             return false;
         }
 
@@ -336,22 +334,18 @@ public:
         const auto  command  = static_cast<unsigned char>(commandStr.data()[0]);
 
         if (command < static_cast<unsigned char>(Command::Invalid) || command > static_cast<unsigned char>(Command::Heartbeat)) {
-            debug::withLocation() << "Message command out of range";
             return false;
         }
 
         if (protocol == clientProtocol) {
             if (command == static_cast<unsigned char>(Command::Notify)) {
-                debug::withLocation() << "NOTIFY command invalid for client";
                 return false;
             }
         } else if (protocol == workerProtocol) {
             if (command == static_cast<unsigned char>(Command::Subscribe) || command == static_cast<unsigned char>(Command::Unsubscribe)) {
-                debug::withLocation() << "SUBSCRIBE/UNSUBSCRIBE invalid for worker";
                 return false;
             }
         } else {
-            debug::withLocation() << "Message has a wrong protocol" << protocol;
             return false;
         }
 

@@ -390,15 +390,12 @@ public:
                                                    : zmq_invoke(zmq_bind, _pubSocket, zmqEndpoint.data());
 
         if (!result) {
-            debug::log() << fmt::format("Could not bind broker to '{}'\n", zmqEndpoint);
             return {};
         }
 
         const auto endpointAdjusted      = endpoint.scheme() == SCHEME_INPROC ? endpoint
                                                                               : URI<STRICT>::factory(endpoint).scheme(isRouterSocket ? SCHEME_MDP : SCHEME_MDS).build();
         const auto adjustedAddressPublic = endpointAdjusted; // TODO (java) resolveHost(endpointAdjusted, getLocalHostName());
-
-        debug::log() << fmt::format("Majordomo broker/0.1 is active at '{}'\n", adjustedAddressPublic.str); // TODO do not hardcode version
 
         _routerSockets.insert(adjustedAddressPublic.str);
         sendDnsHeartbeats(true);
@@ -492,7 +489,6 @@ private:
         std::string_view data = frame.data();
 
         if (data.size() < 2 || !(data[0] == '\x0' || data[0] == '\x1')) {
-            debug::log() << "Unexpected subscribe/unsubscribe message: " << data;
             return false;
         }
 
@@ -527,7 +523,6 @@ private:
             // TODO handle READY (client)?
             case Command::Subscribe: {
                 if (message.topic().empty()) {
-                    debug::log() << "received SUBSCRIBE with empty topic";
                     // TODO disconnect client?
                     return false;
                 }
@@ -541,7 +536,6 @@ private:
             }
             case Command::Unsubscribe: {
                 if (message.topic().empty()) {
-                    debug::log() << "received UNSUBSCRIBE with empty topic";
                     // TODO disconnect client?
                     return false;
                 }
@@ -753,7 +747,6 @@ private:
             toSend.send(_routerSocket).assertSuccess();
 
             if (now > registeredService.expiry) {
-                debug::log() << fmt::format("Majordomo broker deleting expired DNS service '{}'\n", registeredService.serviceName);
                 it = _dnsCache.erase(it);
             }
         }

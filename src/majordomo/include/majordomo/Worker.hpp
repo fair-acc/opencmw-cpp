@@ -242,7 +242,6 @@ private:
 
         if (data.size() < 2 || !(data[0] == '\x0' || data[0] == '\x1')) {
             // will never happen if the broker works correctly (we could assert for inproc brokers)
-            debug::log() << "Unexpected subscribe/unsubscribe message: " << data;
             return true;
         }
 
@@ -290,7 +289,6 @@ private:
         _liveness = _settings.heartbeatLiveness;
 
         if (!message.isValid()) {
-            debug::log() << "invalid MdpMessage received\n";
             return;
         }
 
