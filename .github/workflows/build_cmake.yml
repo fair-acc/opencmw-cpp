@@ -13,7 +13,7 @@ env:
   CONAN_SYSREQUIRES_MODE: enabled
   CONAN_USER_HOME: "${{ github.workspace }}/conan-cache"
   CONAN_USER_HOME_SHORT: "${{ github.workspace }}/conan-cache/short"
-  REFERENCE_OS: 'ubuntu-latest'
+  REFERENCE_CONFIG: 'Ubuntu Latest gcc' # configuration used for coverage etc
 
 jobs:
   build:
@@ -24,14 +24,18 @@ jobs:
       fail-fast: false
       matrix:
         configurations:
-          - name: Ubuntu Latest
+          - name: Ubuntu Latest gcc
             os: ubuntu-latest
+            compiler: gcc
+          - name: Ubuntu Latest clang
+            os: ubuntu-latest
+            compiler: clang
           # - name: MacOS Latest # deactivated because mp-units is not compatible with clangApple
           #   os: macos-latest
           # - name: Windows Latest # deactivated because msvc fails because of clang pragmas
           #   os: windows-latest
         # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
-        cmake-build-type: [ Release, Debug, RelWithDebInfo ]
+        cmake-build-type: [ Release, Debug ]
 
     steps:
     - uses: actions/checkout@v2
@@ -49,13 +53,19 @@ jobs:
         key: ${{ runner.os }}-${{ matrix.cmake-build-type }}-${{ hashFiles('CMakeLists.txt') }}-${{ hashFiles('cmake/Conan.cmake') }}
 
     - name: Install gcc-11
-      if: matrix.configurations.os == env.REFERENCE_OS # only for linux
+      if: matrix.configurations.compiler == 'gcc'
       run: |
         sudo apt-get install -y gcc-11 g++-11
         sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 110 --slave /usr/bin/g++ g++ /usr/bin/g++-11 --slave /usr/bin/gcov gcov /usr/bin/gcov-11
 
-    - name: Create Build Environment # setup directory for out-of-tree building
-      run: cmake -E make_directory ${{runner.workspace}}/build
+    - name: Install clang-13
+      if: matrix.configurations.compiler == 'clang'
+      run: |
+        wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
+        sudo add-apt-repository 'deb http://apt.llvm.org/focal/ llvm-toolchain-focal-13 main'
+        sudo apt update
+        sudo apt install -y clang-13 libc++-13-dev libc++abi-13-dev
+        sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++-13 110
 
     - name: Install conan
       shell: bash
@@ -66,7 +76,10 @@ jobs:
 
     - name: Install gcovr
       shell: bash
-      run: python3 -m pip install gcovr --user --no-warn-script-location
+      if: matrix.configurations.name == env.REFERENCE_CONFIG && matrix.cmake-build-type == 'Debug'
+      run: |
+        python3 -m pip install gcovr --user --no-warn-script-location
+        gcovr --version
 
     - name: Check build prerequisites # Fail if we can't run conan or gcovr
       if: matrix.configurations.os == env.REFERENCE_OS
@@ -74,19 +87,18 @@ jobs:
       run: conan --version && gcovr --version
 
     - name: Configure CMake
-      # Use a bash shell so we can use the same syntax for environment variable access regardless of the host operating system
+      # Use a bash shell, so we can use the same syntax for environment variable access regardless of the host operating system
       shell: bash
-      working-directory: ${{runner.workspace}}/build
-      run: cmake -S $GITHUB_WORKSPACE -B . -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }}
+      run: cmake -S . -B ../build -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DENABLE_COVERAGE=${{ matrix.configurations.name == env.REFERENCE_CONFIG &&  matrix.cmake-build-type == 'Debug'}}
 
     - name: Build
       working-directory: ${{runner.workspace}}/build
       shell: bash
       # Execute the build.  You can specify a specific target with "--target <NAME>"
-      run: cmake --build . --config ${{ matrix.cmake-build-type }}
+      run: cmake --build ../build --config ${{ matrix.cmake-build-type }}
 
     - name: Run tests
-      if: matrix.configurations.os != env.REFERENCE_OS || matrix.cmake-build-type != 'Debug'
+      if: matrix.configurations.name != env.REFERENCE_CONFIG || matrix.cmake-build-type != 'Debug'
       working-directory: ${{runner.workspace}}/build
       shell: bash
       # Execute tests defined by the CMake configuration. The coverage target runs the autodiscovered catch2 tests using
@@ -95,7 +107,7 @@ jobs:
       run: ctest -C ${{ matrix.cmake-build-type }}
 
     - name: Run tests with coverage
-      if: matrix.configurations.os == env.REFERENCE_OS && matrix.cmake-build-type == 'Debug'
+      if: matrix.configurations.name == env.REFERENCE_CONFIG && matrix.cmake-build-type == 'Debug'
       working-directory: ${{runner.workspace}}/build
       shell: bash
       # Execute tests defined by the CMake configuration. The coverage target runs the autodiscovered catch2 tests using
@@ -104,12 +116,12 @@ jobs:
       run: cmake --build . --config ${{ matrix.cmake-build-type }} --target coverage
 
     - uses: codecov/codecov-action@v2
-      if: matrix.configurations.os == env.REFERENCE_OS && matrix.cmake-build-type == 'Debug'
+      if: matrix.configurations.name == env.REFERENCE_CONFIG && matrix.cmake-build-type == 'Debug'
       with:
         files: ${{runner.workspace}}/build/coverage.xml
 
     - name: coverage report - send to Codacy
-      if: matrix.configurations.os == env.REFERENCE_OS && matrix.cmake-build-type == 'Debug'
+      if: matrix.configurations.name == env.REFERENCE_CONFIG && matrix.cmake-build-type == 'Debug'
       working-directory: ${{ runner.workspace }}/build
       shell: bash
       run: bash <(curl -Ls https://coverage.codacy.com/get.sh) report -r coverage.xml --skip --project-token ${{ secrets.CODACY_PROJECT_TOKEN }}
