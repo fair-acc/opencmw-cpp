@@ -92,7 +92,7 @@ public:
 namespace detail {
 // std::for_each-like algorithm for processing tuple elemnts.
 // Usage:
-//    tuple_for_each(tuple, [] <typename Index>(const auto& tupleField) {
+//    tuple_for_each(tuple, [] <typename Index>(Index, const auto& tupleField) {
 //        std::cout << "Field index is " << Index::value <<
 //                  << ", field value is " << tupleField;
 //    });
@@ -152,13 +152,38 @@ struct Limited {
     using Collection = std::deque<InputType>;
 };
 
+constexpr inline std::size_t NoHeartbeat = 0;
+
 // Aggregation policy which waits for events to be completed until
 // a specified number of milliseconds passes.
 // @param TimeLimit number of milliseconds to wait for an event to be completed
 // @param Wrapper see the same parameter of the Limited policy
-template<std::size_t TimeLimit, template<typename...> typename Wrapper = std::type_identity>
+template<std::size_t TimeLimit, std::size_t Heartbeat = NoHeartbeat, template<typename...> typename Wrapper = std::type_identity>
 struct Timed {
     static constexpr auto timeLimit = TimeLimit;
+    static constexpr auto heartbeat = Heartbeat;
+
+    template<typename InputType>
+    using WrappedType = std::conditional_t<std::is_same_v<Wrapper<InputType>, std::type_identity<InputType>>, InputType, Wrapper<InputType>>;
+
+    template<typename... InputTypes>
+    using OutputEventType = std::tuple<WrappedType<InputTypes>...>;
+
+    template<typename InputType>
+    using Collection = std::deque<InputType>;
+
+    std::chrono::time_point<std::chrono::steady_clock>                            lastEventTimestamp;
+    decltype(rxcpp::observable<>::interval(std::chrono::milliseconds(heartbeat))) heartbeatStream;
+
+    Timed()
+        : lastEventTimestamp(std::chrono::steady_clock::now()), heartbeatStream(rxcpp::observable<>::interval(std::chrono::milliseconds(heartbeat))) {
+    }
+};
+
+template<std::size_t TimeLimit, template<typename...> typename Wrapper>
+struct Timed<TimeLimit, NoHeartbeat, Wrapper> {
+    static constexpr auto timeLimit = TimeLimit;
+    static constexpr auto heartbeat = NoHeartbeat;
 
     template<typename InputType>
     using WrappedType = std::conditional_t<std::is_same_v<Wrapper<InputType>, std::type_identity<InputType>>, InputType, Wrapper<InputType>>;
@@ -259,17 +284,16 @@ private:
     }
 
     //
-    template<typename TriggerEvent>
-    void sendEvent([[maybe_unused]] TriggerEvent &&triggerEvent, bool forceSending) {
+    template<typename TriggerEventId>
+    void sendEvent([[maybe_unused]] TriggerEventId triggerEventId, bool forceSending) {
         bool allFound = true;
         auto event    = detail::tuple_transform(_observableBacklogs,
                    [&]<typename Index>(Index, auto &observableBacklog) {
             std::unique_lock lock{ observableBacklog.backlogLock };
 
             if constexpr (IdMatcherPolicy<Policy>) {
-                auto triggerId = _policy.idForEvent(triggerEvent);
-                auto iter      = std::ranges::find_if(observableBacklog.backlog, [this, triggerId](const auto &backlogEvent) {
-                    return triggerId == _policy.idForEvent(backlogEvent);
+                auto iter      = std::ranges::find_if(observableBacklog.backlog, [this, triggerEventId](const auto &backlogEvent) {
+                    return triggerEventId == _policy.idForEvent(backlogEvent);
                      });
 
                 if (iter != observableBacklog.backlog.end()) {
@@ -304,6 +328,28 @@ private:
 public:
     explicit AggregateImpl(rxcpp::observable<InputTypes>... observables)
         : _observableBacklogs(std::move(observables)...) {
+        if constexpr (TimeLimitedPolicy<Policy> && Policy::heartbeat != NoHeartbeat) {
+            _policy.heartbeatStream.map(
+                    [this](long int) {
+                        const auto now = std::chrono::steady_clock::now();
+                        if (static_cast<std::size_t>(std::chrono::duration_cast<std::chrono::milliseconds>(now - _policy.lastEventTimestamp).count()) > _policy.timeLimit) {
+                            std::size_t minimumId = 0;
+
+                            if constexpr (IdMatcherPolicy<Policy>) {
+                                minimumId = std::numeric_limits<std::size_t>::max();
+                                detail::tuple_for_each(_observableBacklogs, [this, &minimumId]<typename Index>(Index, const auto &observableBacklog) {
+                                    std::unique_lock lock{ observableBacklog.backlogLock };
+                                    if (!observableBacklog.backlog.empty()) {
+                                        const auto currentId = _policy.idForEvent(observableBacklog.backlog.front());
+                                        if (currentId < minimumId) minimumId = currentId;
+                                    }
+                                });
+                            }
+
+                            sendEvent(minimumId, true);
+                        }
+                    });
+        }
         detail::tuple_for_each(_observableBacklogs, [&]<typename Index>(Index, auto &observableBacklog) {
             observableBacklog.observable.subscribe(
                     // observableBacklog is a reference to a field in this,
@@ -341,7 +387,11 @@ public:
                         }
 
                         if (toSend || forceSending) {
-                            sendEvent(value, forceSending);
+                            if constexpr (IdMatcherPolicy<Policy>) {
+                                sendEvent(_policy.idForEvent(value), forceSending);
+                            } else {
+                                sendEvent(/* unused id */ 0, forceSending);
+                            }
                         }
                     });
         });
@@ -353,10 +403,6 @@ public:
     AggregateImpl &operator=(AggregateImpl &&) = delete;
     ~AggregateImpl()                           = default;
 
-    // rxcpp::subscriber<int> operator()(rxcpp::subscriber<int> subscriber) const {
-    //     return rxcpp::make_subscriber<int>([subscriber](const int &next) { subscriber.on_next(std::move(next + 1)); }, [&subscriber](const std::exception_ptr &exception) { subscriber.on_error(exception); }, [&subscriber]() { subscriber.on_completed(); });
-    // }
-
     const auto &stream() & {
         return _impl.stream();
     }
@@ -366,7 +412,6 @@ public:
 
 template<typename Policy, typename... InputObservables>
 auto aggreagate(InputObservables &&...input) {
-    // TODO: Remove new, make values
     return Aggreagate::AggregateImpl<Policy, typename std::remove_cvref_t<InputObservables>::value_type...>(std::forward<InputObservables>(input)...);
 }
 
