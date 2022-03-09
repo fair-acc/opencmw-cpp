@@ -24,17 +24,21 @@ struct overloaded : Ts... {
 template<typename... Ts>
 overloaded(Ts...) -> overloaded<Ts...>;
 
+constexpr std::size_t timeUnitMilliseconds         = 100;
+constexpr std::size_t longPauseMilliseconds        = 1000;
+constexpr std::size_t timeoutHeartbeatMilliseconds = timeUnitMilliseconds;
+
 // A custom aggregation policy that has a time limit
 // and groups events based on their IDs
 template<std::size_t TimeLimit, template<typename...> typename Wrapper = std::type_identity>
-struct TestAggregatorPolicy : rx::Aggreagate::Timed<TimeLimit, Wrapper> {
+struct TestAggregatorPolicy : rx::Aggreagate::Timed<TimeLimit, timeoutHeartbeatMilliseconds, Wrapper> {
     using IdMatcherPolicyTag = std::true_type;
     std::size_t idForEvent(const auto &event) const {
         return event.index;
     }
 
     TestAggregatorPolicy()
-        : rx::Aggreagate::Timed<TimeLimit, Wrapper>() {
+        : rx::Aggreagate::Timed<TimeLimit, timeoutHeartbeatMilliseconds, Wrapper>() {
     }
 };
 static_assert(rx::Aggreagate::IdMatcherPolicy<TestAggregatorPolicy<1>>);
@@ -144,8 +148,8 @@ public:
         , m_patternRepeat(patternRepeatCount) {}
 
     void run() {
-        const auto timeUnit  = 100ms;
-        const auto longPause = 1000ms;
+        const auto timeUnit  = std::chrono::milliseconds(timeUnitMilliseconds);
+        const auto longPause = std::chrono::milliseconds(longPauseMilliseconds);
         try {
             for (std::size_t repeat = 0; repeat < m_patternRepeat; repeat++) {
                 for (const auto &event : m_events) {
@@ -202,6 +206,10 @@ bool test(std::string_view name, const TestEvents &input, const AggregatedEvents
     auto equalTo = [](char device) {
         return [=](const TestEvent &event) { return event.device == device; };
     };
+
+    // Taking the events out from the disruptor and splitting them into
+    // per-device streams (filter part). The distinct_until_changed is not
+    // needed, but serves as a demonstration of transforation chaining.
     auto             deviceAStream  = disruptorSource.stream() | rxcpp::operators::filter(equalTo('a')) | rxcpp::operators::distinct_until_changed();
     auto             deviceBStream  = disruptorSource.stream() | rxcpp::operators::filter(equalTo('b')) | rxcpp::operators::distinct_until_changed();
     auto             deviceCStream  = disruptorSource.stream() | rxcpp::operators::filter(equalTo('c')) | rxcpp::operators::distinct_until_changed();
@@ -303,6 +311,7 @@ TEST_CASE("Disruptor Rx basic tests", "[Disruptor][Rx][basic]") {
 
 TEST_CASE("Disruptor Rx missing event tests", "[Disruptor][Rx][missing]") {
     test("missing event", "a1 b1 a2 b2 c2 a3 b3 c3", "a2 b2 c2; a3 b3 c3", "1", 1);
+    test("missing event at end", "a1 b1 c1 a2 b2 c2 a3 b3", "a1 b1 c1; a2 b2 c2", "1", 1);
     test("missing device", "a1 b1 a2 b2 a3 b3", "", "1 2 3", 1);
 }
 

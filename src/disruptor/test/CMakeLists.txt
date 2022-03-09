@@ -6,32 +6,23 @@ FetchContent_Declare(
     Rx
     GIT_REPOSITORY https://github.com/ReactiveX/RxCpp
     GIT_TAG        7f97aa901701343593869acad1ee5a02292f39cf
+    # TODO Change to the latest tested release of RxCpp before
+    #      making a release of OpenCMW
 )
 FetchContent_MakeAvailable(Rx)
-#   GIT_REPOSITORY https://github.com/ivan-cukic/wip-fork-rxcpp
-#   GIT_TAG        483963939e4a2adf674450dcb829005d84be1d59
 
 function(opencmw_add_test_app name sources)
     set (test_SRCS ${sources})
     message("Test sources: ${test_SRCS}")
     add_executable(${name} ${test_SRCS})
 
-    target_include_directories (
-        ${name}
-        PUBLIC
-            ${CMAKE_CURRENT_SOURCE_DIR}/../include
-            ${CMAKE_CURRENT_SOURCE_DIR}/../../utils/include
-            ${CMAKE_CURRENT_SOURCE_DIR}/../../core/include
-            ${CMAKE_CURRENT_SOURCE_DIR}/../../disruptor/include
-        )
-
-    target_include_directories (${name} SYSTEM PUBLIC ${rx_SOURCE_DIR}/Rx/v2/src)
-
     target_link_libraries(${name}
         PUBLIC
             pthread
             project_warnings
             project_options
+            rxcpp
+            disruptor
             CONAN_PKG::catch2
             CONAN_PKG::fmt
         )
