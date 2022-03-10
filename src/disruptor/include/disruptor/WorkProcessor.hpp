@@ -32,7 +32,7 @@ private:
 
     std::atomic<std::int32_t>             _running{ 0 };
     std::shared_ptr<Sequence>             _sequence = std::make_shared<Sequence>();
-    std::shared_ptr<RingBuffer<T, SIZE>>        _ringBuffer;
+    std::shared_ptr<RingBuffer<T, SIZE>>  _ringBuffer;
     std::shared_ptr<ISequenceBarrier>     _sequenceBarrier;
     std::shared_ptr<IWorkHandler<T>>      _workHandler;
     std::shared_ptr<IExceptionHandler<T>> _exceptionHandler;
@@ -51,10 +51,10 @@ public:
      * \param workSequence workSequence from which to claim the next event to be worked on. It should always be initialised Disruptor.Sequence.InitialCursorValue
      */
     static std::shared_ptr<WorkProcessor<T, SIZE>> create(const std::shared_ptr<RingBuffer<T, SIZE>> &ringBuffer,
-            const std::shared_ptr<ISequenceBarrier>                                      &sequenceBarrier,
-            const std::shared_ptr<IWorkHandler<T>>                                       &workHandler,
-            const std::shared_ptr<IExceptionHandler<T>>                                  &exceptionHandler,
-            const std::shared_ptr<ISequence>                                             &workSequence) {
+            const std::shared_ptr<ISequenceBarrier>                                                  &sequenceBarrier,
+            const std::shared_ptr<IWorkHandler<T>>                                                   &workHandler,
+            const std::shared_ptr<IExceptionHandler<T>>                                              &exceptionHandler,
+            const std::shared_ptr<ISequence>                                                         &workSequence) {
         auto processor                = std::make_shared<WorkProcessor<T, SIZE>>(ringBuffer, sequenceBarrier, workHandler, exceptionHandler, workSequence, PrivateKey());
         processor->_eventReleaser     = std::make_shared<EventReleaser>(processor);
 
@@ -74,11 +74,11 @@ public:
      * \param exceptionHandler exceptionHandler to be called back when an error occurs
      * \param workSequence workSequence from which to claim the next event to be worked on.  It should always be initialised Disruptor.Sequence.InitialCursorValue
      */
-    WorkProcessor(const std::shared_ptr<RingBuffer<T, SIZE>>  &ringBuffer,
-            const std::shared_ptr<ISequenceBarrier>     &sequenceBarrier,
-            const std::shared_ptr<IWorkHandler<T>>      &workHandler,
-            const std::shared_ptr<IExceptionHandler<T>> &exceptionHandler,
-            const std::shared_ptr<ISequence>            &workSequence,
+    WorkProcessor(const std::shared_ptr<RingBuffer<T, SIZE>> &ringBuffer,
+            const std::shared_ptr<ISequenceBarrier>          &sequenceBarrier,
+            const std::shared_ptr<IWorkHandler<T>>           &workHandler,
+            const std::shared_ptr<IExceptionHandler<T>>      &exceptionHandler,
+            const std::shared_ptr<ISequence>                 &workSequence,
             PrivateKey) {
         _ringBuffer       = ringBuffer;
         _sequenceBarrier  = sequenceBarrier;
