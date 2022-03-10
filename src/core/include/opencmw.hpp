@@ -45,7 +45,7 @@ using units::is_same_v;
 
 constexpr auto &unmove(auto &&t) { return t; } // opposite of std::move(...)
 
-template<typename Fn, typename R, typename... FnArgs>
+template<typename R, typename Fn, typename... FnArgs>
 concept invocable_r = std::is_invocable_r_v<R, Fn, FnArgs...>;
 
 constexpr bool isPower2(std::unsigned_integral auto value) { return !(value == 0) && !(value & (value - 1)); }

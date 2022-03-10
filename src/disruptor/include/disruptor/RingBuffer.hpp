@@ -548,7 +548,7 @@ public:
      * Polls for events using the given handler. <br>
      * <br>
      * This poller will continue to feed events to the given handler until known available events are consumed
-     * or {opencmw::invocable_r<bool, T &, std::int64_t, bool> auto &&eventHandler} returns false. <br>
+     * or {opencmw::invocable<T &, std::int64_t, bool> auto &&eventHandler} returns false. <br>
      * <br>
      * Note that it is possible for more events to become available while the current events
      * are being processed. A further call to this method will process such events.
