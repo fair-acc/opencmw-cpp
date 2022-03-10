@@ -336,4 +336,3 @@ TEST_CASE("Disruptor Rx timeout tests", "[Disruptor][Rx][timeout]") {
     REQUIRE(test("long queue", "a1 b1 c1 a2 b2", "a1 b1 c1; a1001 b1001 c1001; a2001 b2001 c2001; a3001 b3001 c3001; a4001 b4001 c4001", "a2 b2 X; a1002 b1002 X; a2002 b2002 X; a3002 b3002 X; a4002 b4002 X", patternRepeatCount));
     REQUIRE(test("simple broken long queue", "a1 b1", "", "a1 b1 X; a1001 b1001 X; a2001 b2001 X; a3001 b3001 X; a4001 b4001 X", patternRepeatCount));
 }
-
