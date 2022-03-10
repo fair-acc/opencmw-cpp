@@ -31,8 +31,8 @@ public:
     bool                  operator==(const TypeInfo &rhs) const { return intrinsicTypeInfo() == rhs.intrinsicTypeInfo(); }
 
     static std::string    dotNetify(const std::string &typeName) {
-           std::regex pattern("::");
-           return std::regex_replace(typeName, pattern, ".");
+        std::regex pattern("::");
+        return std::regex_replace(typeName, pattern, ".");
     }
     static std::string unqualifyName(const std::string &fullyQualifiedName) {
         auto position = fullyQualifiedName.rfind('.');
@@ -86,4 +86,3 @@ public:
         return hash<type_index>()(type_index(value.intrinsicTypeInfo()));
     }
 };
-
