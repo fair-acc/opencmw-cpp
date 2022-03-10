@@ -129,6 +129,11 @@ struct Unlimited {
 
     template<typename InputType>
     using Collection = std::deque<InputType>;
+
+    template<typename WrappedType>
+    static decltype(auto) eventFor(WrappedType &&item) {
+        return std::forward<WrappedType>(item);
+    }
 };
 
 // Aggregation policy which waits for events to be completed for
@@ -150,6 +155,11 @@ struct Limited {
 
     template<typename InputType>
     using Collection = std::deque<InputType>;
+
+    template<typename WrappedType>
+    static decltype(auto) eventFor(WrappedType &&item) {
+        return std::forward<WrappedType>(item);
+    }
 };
 
 constexpr inline std::size_t NoHeartbeat = 0;
@@ -170,40 +180,29 @@ struct Timed {
     using OutputEventType = std::tuple<WrappedType<InputTypes>...>;
 
     template<typename InputType>
-    using Collection = std::deque<InputType>;
-
-    std::chrono::time_point<std::chrono::steady_clock>                            lastEventTimestamp;
-    decltype(rxcpp::observable<>::interval(std::chrono::milliseconds(heartbeat))) heartbeatStream;
-
-    Timed()
-        : lastEventTimestamp(std::chrono::steady_clock::now()), heartbeatStream(rxcpp::observable<>::interval(std::chrono::milliseconds(heartbeat))) {
-    }
-};
-
-template<std::size_t TimeLimit, template<typename...> typename Wrapper>
-struct Timed<TimeLimit, NoHeartbeat, Wrapper> {
-    static constexpr auto timeLimit = TimeLimit;
-    static constexpr auto heartbeat = NoHeartbeat;
+    struct WithTimestamp {
+        WithTimestamp(InputType _event)
+            : timestamp(std::chrono::steady_clock::now())
+            , event(std::move(_event)) {
+        }
+        std::chrono::time_point<std::chrono::steady_clock> timestamp;
+        InputType                                          event;
+    };
 
     template<typename InputType>
-    using WrappedType = std::conditional_t<std::is_same_v<Wrapper<InputType>, std::type_identity<InputType>>, InputType, Wrapper<InputType>>;
+    using Collection = std::deque<WithTimestamp<InputType>>;
 
-    template<typename... InputTypes>
-    using OutputEventType = std::tuple<WrappedType<InputTypes>...>;
-
-    template<typename InputType>
-    using Collection = std::deque<InputType>;
-
-    std::chrono::time_point<std::chrono::steady_clock> lastEventTimestamp;
-
-    Timed()
-        : lastEventTimestamp(std::chrono::steady_clock::now()) {
+    template<typename WrappedType>
+    static auto eventFor(WrappedType &&item) {
+        return std::forward<WrappedType>(item).event;
     }
+
+    std::optional<decltype(rxcpp::observable<>::interval(std::chrono::milliseconds(heartbeat)))> heartbeatStream;
 };
 
 // Concept that tests whether a custom user policy wants
 // the number of events that are being waited on to be limited
-template<class Policy>
+template<typename Policy>
 concept EventCountLimitedPolicy = requires(Policy policy) {
     policy.eventCountLimit;
 };
@@ -214,13 +213,17 @@ static_assert(not EventCountLimitedPolicy<Timed<0>>);
 // Concept that tests whether a custom user policy wants
 // to limit the time of how long to wait until an
 // event is completed
-template<class Policy>
+template<typename Policy>
 concept TimeLimitedPolicy = requires(Policy policy) {
     policy.timeLimit;
 };
 static_assert(TimeLimitedPolicy<Timed<0>>);
 static_assert(not TimeLimitedPolicy<Unlimited>);
 static_assert(not TimeLimitedPolicy<Limited<0>>);
+
+// Concept to test for non-limiting policies
+template<typename Policy>
+concept UnlimitedPolicy = !TimeLimitedPolicy<Policy> && !EventCountLimitedPolicy<Policy>;
 
 // Concept that tests whether a custom user policy wants
 // the events to be grouped based on a specified event property.
@@ -234,7 +237,7 @@ struct IdMatcherPolicyImpl : std::false_type {};
 template<typename T>
 struct IdMatcherPolicyImpl<T, std::void_t<typename T::IdMatcherPolicyTag>> : std::true_type {};
 
-template<class Policy>
+template<typename Policy>
 concept IdMatcherPolicy = IdMatcherPolicyImpl<Policy>::value;
 static_assert(not IdMatcherPolicy<Unlimited>);
 static_assert(not IdMatcherPolicy<Limited<0>>);
@@ -283,7 +286,15 @@ private:
         }
     }
 
-    //
+    template<typename Event>
+    static auto idForWrappedEvent(const Event &event) {
+        if constexpr (IdMatcherPolicy<Policy>) {
+            return Policy::idForEvent(Policy::eventFor(event));
+        } else {
+            return 0;
+        }
+    }
+
     template<typename TriggerEventId>
     void sendEvent([[maybe_unused]] TriggerEventId triggerEventId, bool forceSending) {
         bool allFound = true;
@@ -292,31 +303,31 @@ private:
             std::unique_lock lock{ observableBacklog.backlogLock };
 
             if constexpr (IdMatcherPolicy<Policy>) {
-                auto iter      = std::ranges::find_if(observableBacklog.backlog, [this, triggerEventId](const auto &backlogEvent) {
-                    return triggerEventId == _policy.idForEvent(backlogEvent);
+                auto iter = std::ranges::find_if(observableBacklog.backlog, [this, triggerEventId](const auto &backlogEvent) {
+                    return triggerEventId == idForWrappedEvent(backlogEvent);
                      });
 
                 if (iter != observableBacklog.backlog.end()) {
-                    auto item = *iter;
+                    auto item = Policy::eventFor(*iter);
                     observableBacklog.backlog.erase(iter);
                     setFullQueueFlag(Index::value, !observableBacklog.backlog.empty());
                     return item;
                 } else {
                     setFullQueueFlag(Index::value, !observableBacklog.backlog.empty());
                     allFound = false;
-                    return typename decltype(observableBacklog.backlog)::value_type();
+                    return decltype(Policy::eventFor(*iter))();
                 }
 
             } else {
                 if (!observableBacklog.backlog.empty()) {
-                    auto item = observableBacklog.backlog.front();
+                    auto item = Policy::eventFor(observableBacklog.backlog.front());
                     observableBacklog.backlog.pop_front();
                     setFullQueueFlag(Index::value, !observableBacklog.backlog.empty());
                     return item;
                 } else {
                     setFullQueueFlag(Index::value, false);
                     allFound = false;
-                    return typename decltype(observableBacklog.backlog)::value_type();
+                    return decltype(Policy::eventFor(observableBacklog.backlog.front()))();
                 }
             } });
 
@@ -325,31 +336,35 @@ private:
         }
     }
 
+    void sendExpiredEvents() {
+        if constexpr (!UnlimitedPolicy<Policy>) {
+            detail::tuple_for_each(_observableBacklogs, [this]<typename IndexIn>(IndexIn, auto &observableBacklogIn) {
+                auto sendFirstEvent = [&] {
+                    sendEvent(idForWrappedEvent(observableBacklogIn.backlog.front()), true);
+                };
+
+                if constexpr (EventCountLimitedPolicy<Policy>) {
+                    while (observableBacklogIn.backlog.size() > Policy::eventCountLimit) {
+                        sendFirstEvent();
+                    }
+                }
+
+                if constexpr (TimeLimitedPolicy<Policy>) {
+                    auto expired = [now = std::chrono::steady_clock::now()](auto timestamp) {
+                        return static_cast<std::size_t>(std::chrono::duration_cast<std::chrono::milliseconds>(now - timestamp).count()) > Policy::timeLimit;
+                    };
+
+                    while (!observableBacklogIn.backlog.empty() && expired(observableBacklogIn.backlog.front().timestamp)) {
+                        sendFirstEvent();
+                    }
+                }
+            });
+        }
+    }
+
 public:
     explicit AggregateImpl(rxcpp::observable<InputTypes>... observables)
         : _observableBacklogs(std::move(observables)...) {
-        if constexpr (TimeLimitedPolicy<Policy> && Policy::heartbeat != NoHeartbeat) {
-            _policy.heartbeatStream.map(
-                    [this](long int) {
-                        const auto now = std::chrono::steady_clock::now();
-                        if (static_cast<std::size_t>(std::chrono::duration_cast<std::chrono::milliseconds>(now - _policy.lastEventTimestamp).count()) > _policy.timeLimit) {
-                            std::size_t minimumId = 0;
-
-                            if constexpr (IdMatcherPolicy<Policy>) {
-                                minimumId = std::numeric_limits<std::size_t>::max();
-                                detail::tuple_for_each(_observableBacklogs, [this, &minimumId]<typename Index>(Index, const auto &observableBacklog) {
-                                    std::unique_lock lock{ observableBacklog.backlogLock };
-                                    if (!observableBacklog.backlog.empty()) {
-                                        const auto currentId = _policy.idForEvent(observableBacklog.backlog.front());
-                                        if (currentId < minimumId) minimumId = currentId;
-                                    }
-                                });
-                            }
-
-                            sendEvent(minimumId, true);
-                        }
-                    });
-        }
         detail::tuple_for_each(_observableBacklogs, [&]<typename Index>(Index, auto &observableBacklog) {
             observableBacklog.observable.subscribe(
                     // observableBacklog is a reference to a field in this,
@@ -362,35 +377,14 @@ public:
                             observableBacklog.backlog.push_back(value);
                         }
 
+                        sendExpiredEvents();
+
                         // Each queue has something in it
-                        bool toSend       = (_fullQueuesFlags == s_allQueuesFlags);
-                        bool forceSending = false;
-
-                        if constexpr (EventCountLimitedPolicy<Policy>) {
-                            // If there is any queue with more than allowed items,
-                            // force sending
-                            if (!toSend) {
-                                detail::tuple_for_each(_observableBacklogs, [&forceSending]<typename IndexIn>(IndexIn, auto &observableBacklogIn) { forceSending |= observableBacklogIn.backlog.size() > Policy::eventCountLimit; });
-                            }
-                        }
-
-                        if constexpr (TimeLimitedPolicy<Policy>) {
-                            const auto now = std::chrono::steady_clock::now();
-                            // Has the time limit expired?
-                            if (!toSend) {
-                                forceSending = static_cast<std::size_t>(std::chrono::duration_cast<std::chrono::milliseconds>(now - _policy.lastEventTimestamp).count()) > _policy.timeLimit;
-                            }
-
-                            if (toSend || forceSending) {
-                                _policy.lastEventTimestamp = now;
-                            }
-                        }
-
-                        if (toSend || forceSending) {
+                        if (_fullQueuesFlags == s_allQueuesFlags) {
                             if constexpr (IdMatcherPolicy<Policy>) {
-                                sendEvent(_policy.idForEvent(value), forceSending);
+                                sendEvent(Policy::idForEvent(value), false);
                             } else {
-                                sendEvent(/* unused id */ 0, forceSending);
+                                sendEvent(/* unused id */ 0, false);
                             }
                         }
                     });
@@ -401,9 +395,47 @@ public:
     AggregateImpl &operator=(const AggregateImpl &) = delete;
     AggregateImpl(AggregateImpl &&)                 = delete;
     AggregateImpl &operator=(AggregateImpl &&) = delete;
-    ~AggregateImpl()                           = default;
+    ~AggregateImpl() {
+        flush();
+    }
+
+    void flush() {
+        if constexpr (!UnlimitedPolicy<Policy>) {
+            detail::tuple_for_each(_observableBacklogs, [this]<typename IndexIn>(IndexIn, auto &observableBacklogIn) {
+                auto sendFirstEvent = [&] {
+                    sendEvent(idForWrappedEvent(observableBacklogIn.backlog.front()), true);
+                };
+                while (!observableBacklogIn.backlog.empty()) {
+                    sendFirstEvent();
+                }
+            });
+        }
+    }
 
     const auto &stream() & {
+        if constexpr (TimeLimitedPolicy<Policy> && Policy::heartbeat != NoHeartbeat) {
+            if (!_impl.isStreamInitialized()) {
+                const auto &stream = _impl.stream();
+                stream
+                        .timeout(std::chrono::milliseconds(Policy::heartbeat))
+                        .subscribe(
+                                [](auto &&) {
+                                    std::cerr << "<< not timeout >>\n";
+                                    // Do nothing on value
+                                },
+                                [this](std::exception_ptr ex) {
+                                    try {
+                                        std::rethrow_exception(ex);
+                                    } catch (const rxcpp::timeout_error &ex) {
+                                        std::cerr << "<< HEARTBEAT >>\n";
+                                        sendExpiredEvents();
+                                    }
+                                },
+                                [] {
+                                    // Do nothing on stream end
+                                });
+            }
+        }
         return _impl.stream();
     }
 };

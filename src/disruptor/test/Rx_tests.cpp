@@ -33,7 +33,8 @@ constexpr std::size_t timeoutHeartbeatMilliseconds = timeUnitMilliseconds;
 template<std::size_t TimeLimit, template<typename...> typename Wrapper = std::type_identity>
 struct TestAggregatorPolicy : rx::Aggreagate::Timed<TimeLimit, timeoutHeartbeatMilliseconds, Wrapper> {
     using IdMatcherPolicyTag = std::true_type;
-    std::size_t idForEvent(const auto &event) const {
+
+    static std::size_t idForEvent(const auto &event) {
         return event.index;
     }
 
@@ -171,6 +172,7 @@ public:
 
             // Wait for all events to get propagated
             std::this_thread::sleep_for(longPause);
+
         } catch (...) {
             failed = true;
         }
@@ -214,24 +216,25 @@ bool test(std::string_view name, const TestEvents &input, const AggregatedEvents
     auto             deviceBStream  = disruptorSource.stream() | rxcpp::operators::filter(equalTo('b')) | rxcpp::operators::distinct_until_changed();
     auto             deviceCStream  = disruptorSource.stream() | rxcpp::operators::filter(equalTo('c')) | rxcpp::operators::distinct_until_changed();
 
-    constexpr int    expirationTime = 1000;
+    constexpr int    expirationTime = 750;
     auto             aggregate      = rx::aggreagate<TestAggregatorPolicy<expirationTime>>(deviceAStream, deviceBStream, deviceCStream);
 
     AggregatedEvents result;
     AggregatedEvents timedOut;
-    aggregate.stream().subscribe(
-            [&result, &timedOut](const auto &event) {
-                bool isValid = true;
-                rx::detail::tuple_for_each(event, [&isValid]<typename Index>(Index, const auto &component) {
-                    isValid = isValid && component.isValid;
-                });
-                if (isValid) {
-                    result.push_back(event);
-                } else {
-                    timedOut.push_back(event);
-                }
-            },
-            [] { std::cerr << "Rx: Stream ended.\n"; });
+    aggregate.stream()
+            .subscribe(
+                    [&result, &timedOut](const auto &event) {
+                        bool isValid = true;
+                        rx::detail::tuple_for_each(event, [&isValid]<typename Index>(Index, const auto &component) {
+                            isValid = isValid && component.isValid;
+                        });
+                        if (isValid) {
+                            result.push_back(event);
+                        } else {
+                            timedOut.push_back(event);
+                        }
+                    },
+                    [] { std::cerr << "Rx: Stream ended.\n"; });
 
     // Start the disruptor and wait for everything to get processed
     testDisruptor->start();
@@ -240,17 +243,23 @@ bool test(std::string_view name, const TestEvents &input, const AggregatedEvents
         std::jthread thread([publisher] { publisher->run(); });
     }
 
+    aggregate.flush();
+
     std::ranges::sort(result);
     std::ranges::sort(timedOut);
     const bool resultMatches  = result == expectedResult;
     const bool skippedMatches = timedOut == expectedTimedOut;
 
-    if (!resultMatches) {
+    if (!resultMatches || !skippedMatches) {
         std::cerr << "TEST FAILED: " << name << '\n';
         std::cerr << "-- input\n";
         for (const auto &event : input) {
-            std::cerr << event << std::endl;
+            std::cerr << event << ' ';
         }
+        std::cerr << std::endl;
+    }
+
+    if (!resultMatches) {
         std::cerr << "-- expected result\n";
         for (const auto &event : expectedResult) {
             std::cerr << event << std::endl;
@@ -263,11 +272,6 @@ bool test(std::string_view name, const TestEvents &input, const AggregatedEvents
     }
 
     if (!skippedMatches) {
-        std::cerr << "TEST FAILED: " << name << '\n';
-        std::cerr << "-- input\n";
-        for (const auto &event : input) {
-            std::cerr << event << std::endl;
-        }
         std::cerr << "-- expected timed out\n";
         for (const auto &event : expectedTimedOut) {
             std::cerr << event << std::endl;
@@ -279,7 +283,7 @@ bool test(std::string_view name, const TestEvents &input, const AggregatedEvents
         std::cerr << "-----------------\n";
     }
 
-    return resultMatches;
+    return resultMatches && skippedMatches;
 }
 
 bool test(std::string_view name, const std::string &input, const std::string &expectedResult, const std::string &expectedTimedOut, std::size_t patternRepeatCount) {
@@ -303,24 +307,25 @@ bool test(std::string_view name, const std::string &input, const std::string &ex
 }
 
 TEST_CASE("Disruptor Rx basic tests", "[Disruptor][Rx][basic]") {
-    test("ordinary"s, "a1 b1 c1 a2 b2 c2 a3 b3 c3"s, "a1 b1 c1; a2 b2 c2; a3 b3 c3"s, ""s, 1);
-    test("reordered", "a1 c1 b1 a2 b2 c2 a3 b3 c3", "a1 b1 c1; a2 b2 c2; a3 b3 c3", "", 1);
-    test("duplicate events", "a1 b1 c1 b1 a2 b2 c2 a2 a3 b3 c3 c3", "a1 b1 c1; a2 b2 c2; a3 b3 c3", "", 1);
-    test("interleaved", "a1 b1 a2 b2 c1 a3 b3 c2 c3", "a1 b1 c1; a2 b2 c2; a3 b3 c3", "", 1);
+    REQUIRE(test("ordinary"s, "a1 b1 c1 a2 b2 c2 a3 b3 c3"s, "a1 b1 c1; a2 b2 c2; a3 b3 c3"s, ""s, 1));
+    REQUIRE(test("reordered", "a1 c1 b1 a2 b2 c2 a3 b3 c3", "a1 b1 c1; a2 b2 c2; a3 b3 c3", "", 1));
+    REQUIRE(test("duplicate events", "a1 b1 c1 b1 a2 b2 c2 a2 a3 b3 c3 c3", "a1 b1 c1; a2 b2 c2; a3 b3 c3", "", 1));
+    REQUIRE(test("interleaved", "a1 b1 a2 b2 c1 a3 b3 c2 c3", "a1 b1 c1; a2 b2 c2; a3 b3 c3", "", 1));
 }
 
 TEST_CASE("Disruptor Rx missing event tests", "[Disruptor][Rx][missing]") {
-    test("missing event", "a1 b1 a2 b2 c2 a3 b3 c3", "a2 b2 c2; a3 b3 c3", "1", 1);
-    test("missing event at end", "a1 b1 c1 a2 b2 c2 a3 b3", "a1 b1 c1; a2 b2 c2", "1", 1);
-    test("missing device", "a1 b1 a2 b2 a3 b3", "", "1 2 3", 1);
+    REQUIRE(test("missing event", "a1 b1 a2 b2 c2 a3 b3 c3", "a2 b2 c2; a3 b3 c3", "a1 b1 X", 1));
+    REQUIRE(test("missing event at end", "a1 b1 c1 a2 b2 c2 a3 b3", "a1 b1 c1; a2 b2 c2", "a3 b3 X", 1));
+    REQUIRE(test("missing device", "a1 b1 a2 b2 a3 b3", "", "a1 b1 X; a2 b2 X; a3 b3 X", 1));
 }
 
 TEST_CASE("Disruptor Rx timeout tests", "[Disruptor][Rx][timeout]") {
-    test("late", "a1 b1 a2 b2 c2 a3 b3 c3 c1", "a1 b1 c1; a2 b2 c2; a3 b3 c3", "", 1);
-    test("timeout without event", "a1 b1 c1 a2 b2", "a1 b1 c1", "2", 1);
-    test("single event timeout", "a1 b1 P4", "", "1", 1);
+    REQUIRE(test("late", "a1 b1 a2 b2 c2 a3 b3 c3 c1", "a1 b1 c1; a2 b2 c2; a3 b3 c3", "", 1));
+    REQUIRE(test("timeout without event", "a1 b1 c1 a2 b2", "a1 b1 c1", "a2 b2 X", 1));
+    REQUIRE(test("single event timeout", "a1 b1 P4", "", "a1 b1 X", 1));
 
     constexpr std::size_t patternRepeatCount = 5;
-    test("long queue", "a1 b1 c1 a2 b2", "a1 b1 c1; a1001 b1001 c1001; a2001 b2001 c2001; a3001 b3001 c3001; a4001 b4001 c4001", "", patternRepeatCount);
-    test("simple broken long queue", "a1 b1", "", "", patternRepeatCount);
+    REQUIRE(test("long queue", "a1 b1 c1 a2 b2", "a1 b1 c1; a1001 b1001 c1001; a2001 b2001 c2001; a3001 b3001 c3001; a4001 b4001 c4001", "a2 b2 X; a1002 b1002 X; a2002 b2002 X; a3002 b3002 X; a4002 b4002 X", patternRepeatCount));
+    REQUIRE(test("simple broken long queue", "a1 b1", "", "a1 b1 X; a1001 b1001 X; a2001 b2001 X; a3001 b3001 X; a4001 b4001 X", patternRepeatCount));
 }
+
