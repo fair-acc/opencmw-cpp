@@ -162,16 +162,13 @@ struct Limited {
     }
 };
 
-constexpr inline std::size_t NoHeartbeat = 0;
-
 // Aggregation policy which waits for events to be completed until
 // a specified number of milliseconds passes.
 // @param TimeLimit number of milliseconds to wait for an event to be completed
 // @param Wrapper see the same parameter of the Limited policy
-template<std::size_t TimeLimit, std::size_t Heartbeat = NoHeartbeat, template<typename...> typename Wrapper = std::type_identity>
+template<std::size_t TimeLimit, template<typename...> typename Wrapper = std::type_identity>
 struct Timed {
     static constexpr auto timeLimit = TimeLimit;
-    static constexpr auto heartbeat = Heartbeat;
 
     template<typename InputType>
     using WrappedType = std::conditional_t<std::is_same_v<Wrapper<InputType>, std::type_identity<InputType>>, InputType, Wrapper<InputType>>;
@@ -196,8 +193,6 @@ struct Timed {
     static auto eventFor(WrappedType &&item) {
         return std::forward<WrappedType>(item).event;
     }
-
-    std::optional<decltype(rxcpp::observable<>::interval(std::chrono::milliseconds(heartbeat)))> heartbeatStream;
 };
 
 // Concept that tests whether a custom user policy wants
@@ -412,30 +407,11 @@ public:
         }
     }
 
+    void sendHeartbeat() {
+        sendExpiredEvents();
+    }
+
     const auto &stream() & {
-        if constexpr (TimeLimitedPolicy<Policy> && Policy::heartbeat != NoHeartbeat) {
-            if (!_impl.isStreamInitialized()) {
-                const auto &stream = _impl.stream();
-                stream
-                        .timeout(std::chrono::milliseconds(Policy::heartbeat))
-                        .subscribe(
-                                [](auto &&) {
-                                    std::cerr << "<< not timeout >>\n";
-                                    // Do nothing on value
-                                },
-                                [this](std::exception_ptr ex) {
-                                    try {
-                                        std::rethrow_exception(ex);
-                                    } catch (const rxcpp::timeout_error &ex) {
-                                        std::cerr << "<< HEARTBEAT >>\n";
-                                        sendExpiredEvents();
-                                    }
-                                },
-                                [] {
-                                    // Do nothing on stream end
-                                });
-            }
-        }
         return _impl.stream();
     }
 };
