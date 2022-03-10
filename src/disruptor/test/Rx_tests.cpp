@@ -24,14 +24,14 @@ struct overloaded : Ts... {
 template<typename... Ts>
 overloaded(Ts...) -> overloaded<Ts...>;
 
-constexpr std::size_t timeUnitMilliseconds         = 100;
-constexpr std::size_t longPauseMilliseconds        = 1000;
-constexpr std::size_t timeoutHeartbeatMilliseconds = timeUnitMilliseconds;
+constexpr std::size_t timeUnitMilliseconds  = 100;
+constexpr std::size_t longPauseMilliseconds = 1000;
+constexpr std::size_t heartbeatMilliseconds = timeUnitMilliseconds;
 
 // A custom aggregation policy that has a time limit
 // and groups events based on their IDs
 template<std::size_t TimeLimit, template<typename...> typename Wrapper = std::type_identity>
-struct TestAggregatorPolicy : rx::Aggreagate::Timed<TimeLimit, timeoutHeartbeatMilliseconds, Wrapper> {
+struct TestAggregatorPolicy : rx::Aggreagate::Timed<TimeLimit, Wrapper> {
     using IdMatcherPolicyTag = std::true_type;
 
     static std::size_t idForEvent(const auto &event) {
@@ -39,7 +39,7 @@ struct TestAggregatorPolicy : rx::Aggreagate::Timed<TimeLimit, timeoutHeartbeatM
     }
 
     TestAggregatorPolicy()
-        : rx::Aggreagate::Timed<TimeLimit, timeoutHeartbeatMilliseconds, Wrapper>() {
+        : rx::Aggreagate::Timed<TimeLimit, Wrapper>() {
     }
 };
 static_assert(rx::Aggreagate::IdMatcherPolicy<TestAggregatorPolicy<1>>);
@@ -219,7 +219,7 @@ bool test(std::string_view name, const TestEvents &input, const AggregatedEvents
     auto             deviceBStream  = disruptorSource.stream() | rxcpp::operators::filter(equalTo('b')) | rxcpp::operators::distinct_until_changed();
     auto             deviceCStream  = disruptorSource.stream() | rxcpp::operators::filter(equalTo('c')) | rxcpp::operators::distinct_until_changed();
 
-    constexpr int    expirationTime = 750;
+    constexpr int    expirationTime = 1000;
     auto             aggregate      = rx::aggreagate<TestAggregatorPolicy<expirationTime>>(deviceAStream, deviceBStream, deviceCStream);
 
     AggregatedEvents result;
@@ -242,10 +242,18 @@ bool test(std::string_view name, const TestEvents &input, const AggregatedEvents
     // Start the disruptor and wait for everything to get processed
     testDisruptor->start();
 
+    std::jthread heartbeat([&aggregate](std::stop_token stop) {
+        while (!stop.stop_requested()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(heartbeatMilliseconds));
+            aggregate.sendHeartbeat();
+        }
+    });
+
     {
         std::jthread thread([publisher] { publisher->run(); });
     }
 
+    heartbeat.request_stop();
     aggregate.flush();
 
     std::ranges::sort(result);
