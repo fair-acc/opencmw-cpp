@@ -569,10 +569,10 @@ public:
         _lastAvailableSequence           = availableSequence;
 
         if (nextSequence <= availableSequence) {
-            bool processNextEvent  = true;
             auto processedSequence = currentSequence;
 
             try {
+                bool processNextEvent = true;
                 do {
                     auto &event = (*_dataProvider)[nextSequence];
                     if constexpr (std::is_invocable_r_v<bool, CallBack, T &, std::int64_t, bool>) {
