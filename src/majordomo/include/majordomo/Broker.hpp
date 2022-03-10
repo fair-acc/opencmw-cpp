@@ -124,17 +124,17 @@ inline std::string findDnsEntry(std::string_view brokerName, std::unordered_map<
         return stripStart(entryPath, stripStartFromSearchPath).starts_with(strippedQueryPath);
     };
 
-    std::string result;
-
+    std::vector<std::string> results;
     for (const auto &cacheEntry : dnsCache) {
         using namespace std::views;
         auto matching = cacheEntry.second.uris | filter(entryMatches) | transform(uriAsString);
-        if (!matching.empty()) {
-            result += fmt::format("[{}: {}]", s, fmt::join(matching, ", "));
-        }
+        results.insert(results.end(), matching.begin(), matching.end());
     }
 
-    return !result.empty() ? result : fmt::format("[{}: null]", s);
+    std::sort(results.begin(), results.end());
+
+    using namespace std::literals;
+    return fmt::format("[{}: {}]", s, fmt::join(results.empty() ? std::vector{ "null"s } : results, ","));
 }
 
 } // namespace detail
@@ -236,10 +236,10 @@ private:
     std::unordered_map<std::string, Worker>                 _workers;
     std::unordered_map<std::string, Service>                _services;
     std::unordered_map<std::string, detail::DnsServiceItem> _dnsCache;
-    std::set<std::string>                                   _routerSockets; // TODO naming follows java; rename to _routerAddresses?
+    std::set<std::string>                                   _dnsAddresses;
     Timestamp                                               _dnsHeartbeatAt;
+    bool                                                    _connectedToDns    = false;
 
-    const std::optional<URI<STRICT>>                        _dnsAddress;
     const std::string                                       _rbac              = "RBAC=ADMIN,abcdef12345";
 
     std::atomic<bool>                                       _shutdownRequested = false;
@@ -265,8 +265,11 @@ public:
 
             std::string reply;
             if (message.body().empty() || message.body().find_first_of(",:/") == std::string_view::npos) {
-                const auto uris = std::views::values(_dnsCache);
-                reply           = fmt::format("{}", fmt::join(uris, ","));
+                const auto entryView     = std::views::values(_dnsCache);
+                auto       entries       = std::vector(entryView.begin(), entryView.end());
+                const auto byServiceName = [](const auto &lhs, const auto &rhs) { return lhs.serviceName < rhs.serviceName; };
+                std::sort(entries.begin(), entries.end(), byServiceName);
+                reply = fmt::format("{}", fmt::join(entries, ","));
             } else {
                 // TODO std::views::split seems to have issues in GCC 11, maybe switch to views::split/transform
                 // once it works with our then supported compilers
@@ -316,12 +319,12 @@ public:
             return message;
         });
 
-        auto commonSocketInit = [settings_](const Socket &socket) {
-            const int heartbeatInterval = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(settings_.heartbeatInterval).count());
-            const int ttl               = heartbeatInterval * settings_.heartbeatLiveness;
-            const int timeout           = heartbeatInterval * settings_.heartbeatLiveness;
-            return zmq_invoke(zmq_setsockopt, socket, ZMQ_SNDHWM, &settings_.highWaterMark, sizeof(settings_.highWaterMark))
-                && zmq_invoke(zmq_setsockopt, socket, ZMQ_RCVHWM, &settings_.highWaterMark, sizeof(settings_.highWaterMark))
+        auto commonSocketInit = [this](const Socket &socket) {
+            const int heartbeatInterval = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(settings.heartbeatInterval).count());
+            const int ttl               = heartbeatInterval * settings.heartbeatLiveness;
+            const int timeout           = heartbeatInterval * settings.heartbeatLiveness;
+            return zmq_invoke(zmq_setsockopt, socket, ZMQ_SNDHWM, &settings.highWaterMark, sizeof(settings.highWaterMark))
+                && zmq_invoke(zmq_setsockopt, socket, ZMQ_RCVHWM, &settings.highWaterMark, sizeof(settings.highWaterMark))
                 && zmq_invoke(zmq_setsockopt, socket, ZMQ_HEARTBEAT_TTL, &ttl, sizeof(ttl))
                 && zmq_invoke(zmq_setsockopt, socket, ZMQ_HEARTBEAT_TIMEOUT, &timeout, sizeof(timeout))
                 && zmq_invoke(zmq_setsockopt, socket, ZMQ_HEARTBEAT_IVL, &heartbeatInterval, sizeof(heartbeatInterval))
@@ -344,10 +347,10 @@ public:
         zmq_invoke(zmq_bind, _pubSocket, INTERNAL_ADDRESS_PUBLISHER.str.data()).assertSuccess();
 
         commonSocketInit(_dnsSocket).assertSuccess();
-        if (!settings_.dnsAddress.empty()) {
-            zmq_invoke(zmq_connect, _dnsSocket, toZeroMQEndpoint(settings_.dnsAddress).data()).ignoreResult();
+        if (!settings.dnsAddress.empty()) {
+            zmq_invoke(zmq_connect, _dnsSocket, toZeroMQEndpoint(URI<>(settings.dnsAddress)).data()).assertSuccess();
         } else {
-            zmq_invoke(zmq_connect, _dnsSocket, INTERNAL_ADDRESS_BROKER.str.data()).ignoreResult();
+            zmq_invoke(zmq_connect, _dnsSocket, INTERNAL_ADDRESS_BROKER.str.data()).assertSuccess();
         }
 
         pollerItems[0].socket = _routerSocket.zmq_ptr;
@@ -397,7 +400,7 @@ public:
                                                                               : URI<STRICT>::factory(endpoint).scheme(isRouterSocket ? SCHEME_MDP : SCHEME_MDS).build();
         const auto adjustedAddressPublic = endpointAdjusted; // TODO (java) resolveHost(endpointAdjusted, getLocalHostName());
 
-        _routerSockets.insert(adjustedAddressPublic.str);
+        _dnsAddresses.insert(adjustedAddressPublic.str);
         sendDnsHeartbeats(true);
         return adjustedAddressPublic;
     }
@@ -450,6 +453,14 @@ public:
             ++it;
             disconnectWorker(worker);
         }
+    }
+
+    void registerDnsAddress(const opencmw::URI<> &address) {
+        // worker registers a new address for this broker (used the REST interface)
+        _dnsAddresses.insert(address.str);
+        auto item = _dnsCache.try_emplace(brokerName, std::string(), brokerName);
+        item.first->second.uris.insert(URI<RELAXED>(address.str));
+        sendDnsHeartbeats(true);
     }
 
     template<typename Handler>
@@ -520,7 +531,15 @@ private:
 
         if (message.isClientMessage()) {
             switch (message.command()) {
-            // TODO handle READY (client)?
+            case Command::Ready: {
+                if (const auto topicURI = URI<RELAXED>(std::string(message.topic())); topicURI.scheme()) {
+                    const auto serviceName = std::string(message.serviceName());
+                    auto       item        = _dnsCache.try_emplace(serviceName, std::string(message.sourceId()), serviceName);
+                    item.first->second.uris.insert(topicURI);
+                    item.first->second.expiry = updatedDnsExpiry();
+                }
+                return true;
+            }
             case Command::Subscribe: {
                 if (message.topic().empty()) {
                     // TODO disconnect client?
@@ -732,11 +751,13 @@ private:
         challenge.setRbacToken(_rbac, MessageFrame::static_bytes_tag{});
         const auto newExpiry = updatedDnsExpiry();
 
-        for (auto it = _dnsCache.begin(); it != _dnsCache.end(); ++it) {
+        auto       it        = _dnsCache.begin();
+        while (it != _dnsCache.end()) {
             auto &registeredService = it->second;
 
             if (registeredService.serviceName == brokerName) { // TODO ignore case
                 registeredService.expiry = newExpiry;
+                ++it;
                 continue;
             }
 
@@ -748,6 +769,8 @@ private:
 
             if (now > registeredService.expiry) {
                 it = _dnsCache.erase(it);
+            } else {
+                ++it;
             }
         }
 
@@ -782,15 +805,7 @@ private:
         case Command::Ready: {
             std::ignore = requireService(serviceName, std::string(message.body()));
             workerWaiting(worker);
-
-            const auto topicString = std::string(message.topic());
-            const auto topicURI    = URI<RELAXED>(topicString);
-            if (topicURI.scheme()) {
-                registerNewService(message.serviceName());
-                _routerSockets.insert(topicString);
-                auto item = _dnsCache.try_emplace(brokerName, std::string(message.sourceId()), brokerName);
-                item.first->second.uris.insert(topicURI);
-            }
+            registerNewService(serviceName);
             // notify potential listeners
             auto       notify      = BrokerMessage::createWorkerMessage(Command::Notify);
             const auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
@@ -865,8 +880,8 @@ private:
         deleteWorker(worker);
     }
 
-    BrokerMessage createDnsReadyMessage() {
-        auto ready = BrokerMessage::createClientMessage(Command::Ready);
+    MdpMessage createDnsReadyMessage() {
+        auto ready = MdpMessage::createClientMessage(Command::Ready);
         ready.setServiceName(brokerName, MessageFrame::dynamic_bytes_tag{});
         ready.setClientRequestId("clientID", MessageFrame::static_bytes_tag{});
         ready.setRbacToken(_rbac, MessageFrame::dynamic_bytes_tag{});
@@ -876,36 +891,31 @@ private:
     void sendDnsHeartbeats(bool force) {
         if (Clock::now() > _dnsHeartbeatAt || force) {
             const auto ready = createDnsReadyMessage();
-            for (const auto &routerAddress : _routerSockets) {
+            for (const auto &dnsAddress : _dnsAddresses) {
                 auto toSend = ready.clone();
-                toSend.setTopic(routerAddress, MessageFrame::dynamic_bytes_tag{});
+                toSend.setTopic(dnsAddress, MessageFrame::dynamic_bytes_tag{});
                 registerWithDnsServices(std::move(toSend));
             }
-        }
-
-        for (const auto &service : _services) {
-            registerNewService(service.first);
+            for (const auto &service : _services) {
+                registerNewService(service.first);
+            }
         }
     }
 
     void registerNewService(std::string_view serviceName) {
-        const auto ready = createDnsReadyMessage();
-
-        for (const auto &routerAddress : _routerSockets) {
-            auto toSend = ready.clone();
-            toSend.setTopic(fmt::format("{}/{}", routerAddress, serviceName), MessageFrame::dynamic_bytes_tag{});
-            registerWithDnsServices(std::move(toSend));
+        for (const auto &dnsAddress : _dnsAddresses) {
+            auto       ready   = createDnsReadyMessage();
+            const auto address = fmt::format("{}/{}", dnsAddress, detail::stripStart(serviceName, "/"));
+            ready.setTopic(address, MessageFrame::dynamic_bytes_tag{});
+            registerWithDnsServices(std::move(ready));
         }
     }
 
-    void registerWithDnsServices(BrokerMessage &&readyMessage) {
-        auto it = _dnsCache.try_emplace(brokerName, std::string(readyMessage.sourceId()), brokerName);
+    void registerWithDnsServices(MdpMessage &&readyMessage) {
+        auto it = _dnsCache.try_emplace(brokerName, std::string(), brokerName);
         it.first->second.uris.insert(URI<RELAXED>(std::string(readyMessage.topic())));
         it.first->second.expiry = updatedDnsExpiry();
-
-        if (_dnsAddress) {
-            readyMessage.send(_dnsSocket).assertSuccess();
-        }
+        readyMessage.send(_dnsSocket).ignoreResult();
     }
 
     [[nodiscard]] Timestamp updatedClientExpiry() const { return Clock::now() + settings.clientTimeout; }
