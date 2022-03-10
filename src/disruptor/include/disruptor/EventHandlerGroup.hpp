@@ -22,14 +22,14 @@ class EventHandlerGroup {
 private:
     using EventHandlerGroupType = EventHandlerGroup<T, SIZE, TDisruptor>;
 
-    std::shared_ptr<TDisruptor<T, SIZE>>          _disruptor;
+    std::shared_ptr<TDisruptor<T, SIZE>>    _disruptor;
     std::shared_ptr<ConsumerRepository<T>>  _consumerRepository;
     std::vector<std::shared_ptr<ISequence>> _sequences;
 
 public:
     EventHandlerGroup(const std::shared_ptr<TDisruptor<T, SIZE>> &disruptor,
-            const std::shared_ptr<ConsumerRepository<T>>   &consumerRepository,
-            const std::vector<std::shared_ptr<ISequence>>  &sequences)
+            const std::shared_ptr<ConsumerRepository<T>>         &consumerRepository,
+            const std::vector<std::shared_ptr<ISequence>>        &sequences)
         : _disruptor(disruptor)
         , _consumerRepository(consumerRepository)
         , _sequences(sequences) {
