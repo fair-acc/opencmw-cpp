@@ -1,4 +1,7 @@
+#include <catch2/catch.hpp>
+
 #include <cassert>
+#include <utility>
 #include <variant>
 
 #include <disruptor/Disruptor.hpp>
@@ -22,12 +25,12 @@ struct TestEvent {
     std::int32_t pid      = 0;
 
     struct ResetTo {
-        std::int32_t value;
+        int value;
     };
     struct Next {};
     struct Stop {};
     struct Check {
-        std::int32_t value;
+        int value;
     };
 
     std::variant<Next, ResetTo, Check, Stop> command;
@@ -35,27 +38,32 @@ struct TestEvent {
 
 template<std::size_t SIZE>
 class Publisher {
+private:
+    std::shared_ptr<RingBuffer<TestEvent, SIZE>> m_ringBuffer;
+    int                                          m_iterations;
+
 public:
-    Publisher(const std::shared_ptr<RingBuffer<TestEvent, SIZE>> &ringBuffer, std::int32_t iterations)
-        : m_ringBuffer(ringBuffer)
+    Publisher(std::shared_ptr<RingBuffer<TestEvent, SIZE>> ringBuffer, int iterations)
+        : m_ringBuffer(std::move(ringBuffer))
         , m_iterations(iterations) {}
 
     void run() {
         try {
-            auto i = m_iterations;
-            while (i != 0) {
-                --i;
+            static constexpr int groupSize = 100;
+            auto                 iteration = m_iterations;
+            while (iteration != 0) {
+                --iteration;
                 auto  next      = m_ringBuffer->next();
                 auto &testEvent = (*m_ringBuffer)[next];
 
                 auto  value     = testEvent.sequence;
-                if (i == 0) {
+                if (iteration == 0) {
                     testEvent.command = TestEvent::Stop{};
                     std::cerr << "Stopping...\n";
-                } else if (i % 100 == 1) {
-                    testEvent.command = TestEvent::ResetTo{ i };
-                } else if (i % 100 == 0) {
-                    testEvent.command = TestEvent::Check{ i };
+                } else if (iteration % groupSize == 1) {
+                    testEvent.command = TestEvent::ResetTo{ iteration };
+                } else if (iteration % groupSize == 0) {
+                    testEvent.command = TestEvent::Check{ iteration };
                 } else {
                     testEvent.command = TestEvent::Next{};
                 }
@@ -72,10 +80,6 @@ public:
     }
 
     bool failed = false;
-
-private:
-    std::shared_ptr<RingBuffer<TestEvent, SIZE>> m_ringBuffer;
-    std::int32_t                                 m_iterations;
 };
 
 template<size_t SIZE>
@@ -84,6 +88,7 @@ std::vector<std::shared_ptr<Publisher<SIZE>>> makePublishers(size_t size,
         int                                                         messageCount) {
     std::vector<std::shared_ptr<Publisher<SIZE>>> result;
 
+    result.reserve(size);
     for (auto i = 0u; i < size; i++) {
         result.push_back(std::make_shared<Publisher<SIZE>>(buffer, messageCount));
     }
@@ -95,9 +100,9 @@ template<typename DisruptorPtr>
 std::vector<std::shared_ptr<IEventHandler<TestEvent>>> makeHandlers(const DisruptorPtr &disruptor, size_t size) {
     std::vector<std::shared_ptr<IEventHandler<TestEvent>>> result;
 
-    for (auto i = 0u; i < size; i++) {
+    for (auto handlerIndex = 0U; handlerIndex < size; handlerIndex++) {
         auto handler = makeEventHandler<TestEvent>(
-                [value = 0, id = i](TestEvent &event, std::int64_t, bool) mutable {
+                [value = 0, handlerIndex](TestEvent &event, std::int64_t, bool) mutable {
                     std::visit(overloaded{
                                        [&](TestEvent::ResetTo resetTo) {
                                            value = resetTo.value;
@@ -107,7 +112,7 @@ std::vector<std::shared_ptr<IEventHandler<TestEvent>>> makeHandlers(const Disrup
                                        [&](TestEvent::Next) { value++; },
                                        [&](TestEvent::Stop) {
                                            value = -1;
-                                           std::cerr << id << "< - Got stop message.\n";
+                                           std::cerr << handlerIndex << "< - Got stop message.\n";
                                        },
                                        [&]([[maybe_unused]] TestEvent::Check check) {
                                            assert(check.value % 100 == 0);
@@ -122,8 +127,8 @@ std::vector<std::shared_ptr<IEventHandler<TestEvent>>> makeHandlers(const Disrup
     return result;
 }
 
-int main() {
-    auto                                                                                                              processorsCount = std::max(std::thread::hardware_concurrency() / 2, 1u);
+TEST_CASE("Disruptor stress test", "[Disruptor]") {
+    auto                                                                                                              processorsCount = std::max(std::thread::hardware_concurrency() / 2, 1U);
 
     constexpr auto                                                                                                    bufferSize      = 1 << 16;
     Disruptor<TestEvent, bufferSize, ProducerType::Multi, RoundRobinThreadAffinedTaskScheduler, BusySpinWaitStrategy> testDisruptor(processorsCount);
@@ -144,6 +149,7 @@ int main() {
     const auto time_start = std::chrono::system_clock::now();
     {
         std::vector<std::jthread> threads;
+        threads.reserve(publishers.size());
         for (auto &&publisher : publishers) {
             threads.emplace_back([publisher] { publisher->run(); });
         }

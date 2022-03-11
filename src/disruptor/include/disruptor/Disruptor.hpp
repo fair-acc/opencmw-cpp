@@ -450,14 +450,16 @@ private:
     }
 };
 
-template<typename EventType, std::size_t SIZE, auto ProducerType, typename Scheduler, typename WaitStrategy>
+template<typename T, std::size_t SIZE, auto ProducerType, typename Scheduler, typename WaitStrategy>
 class Disruptor {
 private:
-    std::shared_ptr<Scheduler>                      _scheduler;
-    std::shared_ptr<WaitStrategy>                   _waitStrategy;
-    std::shared_ptr<DisruptorCore<EventType, SIZE>> _disruptorCore;
+    std::shared_ptr<Scheduler>              _scheduler;
+    std::shared_ptr<WaitStrategy>           _waitStrategy;
+    std::shared_ptr<DisruptorCore<T, SIZE>> _disruptorCore;
 
 public:
+    using EventType = T;
+
     template<typename... Args>
     Disruptor(std::size_t threadsCount, Args &&...args) {
         _scheduler = std::make_shared<Scheduler>();

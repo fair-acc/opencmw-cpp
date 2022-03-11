@@ -79,14 +79,10 @@ const TypeInfo &getMetaTypeInfo() {
 #include <functional>
 #include <typeindex>
 
-namespace std {
-
 template<>
-struct hash<opencmw::disruptor::TypeInfo> : public unary_function<opencmw::disruptor::TypeInfo, size_t> {
+struct std::hash<opencmw::disruptor::TypeInfo> {
 public:
     size_t operator()(const opencmw::disruptor::TypeInfo &value) const {
         return hash<type_index>()(type_index(value.intrinsicTypeInfo()));
     }
 };
-
-} // namespace std

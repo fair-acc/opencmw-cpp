@@ -36,8 +36,12 @@ public:
     }
 
     virtual void onEvent(T &data, std::int64_t sequence, bool endOfBatch) override {
-        std::invoke(_function, data, sequence, endOfBatch);
+        _function(data, sequence, endOfBatch);
+        // std::invoke(_function, data, sequence, endOfBatch);
     }
+
+    Function       &function() { return _function; }
+    const Function &function() const { return _function; }
 
 private:
     Function _function;
