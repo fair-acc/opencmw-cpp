@@ -90,10 +90,10 @@ struct PLAIN_HTTP {
 template<typename Mode, typename VirtualFS, role... Roles>
 class RestBackend : public Mode {
 protected:
-    const Broker<Roles...> &_broker;
-    const VirtualFS        &_vfs;
-    std::jthread            _thread;
-    URI<>                   _restAddress;
+    Broker<Roles...> &_broker;
+    const VirtualFS  &_vfs;
+    std::jthread      _thread;
+    URI<>             _restAddress;
 
     using Mode::_svr;
     using Mode::DEFAULT_REST_SCHEME;
@@ -168,8 +168,9 @@ protected:
     }
 
 public:
-    explicit RestBackend(const Broker<Roles...> &broker, const VirtualFS &vfs, URI<> restAddress = URI<>::factory().scheme(DEFAULT_REST_SCHEME).hostName("0.0.0.0").port(DEFAULT_REST_PORT).build())
+    explicit RestBackend(Broker<Roles...> &broker, const VirtualFS &vfs, URI<> restAddress = URI<>::factory().scheme(DEFAULT_REST_SCHEME).hostName("0.0.0.0").port(DEFAULT_REST_PORT).build())
         : _broker(broker), _vfs(vfs), _restAddress(restAddress) {
+        _broker.registerDnsAddress(restAddress);
         _thread = std::jthread(&RestBackend::run, this);
     }
 

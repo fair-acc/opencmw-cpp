@@ -163,28 +163,44 @@ TEST_CASE("Test mmi.dns", "[broker][mmi][mmi_dns]") {
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::MdpMessage;
 
-    Broker broker("testbroker", testSettings());
-    REQUIRE(broker.bind(opencmw::URI<opencmw::STRICT>("mds://127.0.0.1:22345")));
+    auto settings              = testSettings();
+    settings.heartbeatInterval = std::chrono::seconds(1);
 
-    RunInThread          brokerRun(broker);
+    const auto dnsAddress      = opencmw::URI<opencmw::STRICT>("mdp://127.0.0.1:22345");
+    const auto brokerAddress   = opencmw::URI<opencmw::STRICT>("mdp://127.0.0.1:22346");
+    Broker     dnsBroker("dnsBroker", settings);
+    REQUIRE(dnsBroker.bind(dnsAddress));
+    settings.dnsAddress = dnsAddress.str;
+    Broker broker("testbroker", settings);
+    REQUIRE(broker.bind(brokerAddress));
 
-    TestNode<MdpMessage> client(broker.context);
-    REQUIRE(client.connect(INTERNAL_ADDRESS_BROKER));
+    // Add another address for DNS (REST interface)
+    broker.registerDnsAddress(opencmw::URI<>("https://127.0.0.1:8080"));
 
-    // register worker as a.service
+    RunInThread dnsBrokerRun(dnsBroker);
+    RunInThread brokerRun(broker);
+
+    // register worker
     TestNode<MdpMessage> worker(broker.context);
-    REQUIRE(worker.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
+    REQUIRE(worker.connect(brokerAddress));
 
-    auto ready = MdpMessage::createWorkerMessage(Command::Ready);
-    ready.setServiceName("a.service", static_tag);
-    ready.setTopic("http://a.service", static_tag);
-    ready.setBody("API description", static_tag);
-    ready.setRbacToken("rbacToken", static_tag);
-    worker.send(ready);
+    {
+        auto ready = MdpMessage::createWorkerMessage(Command::Ready);
+        ready.setServiceName("/aDevice/aProperty", static_tag);
+        ready.setBody("API description", static_tag);
+        worker.send(ready);
+    }
 
-    REQUIRE(waitUntilServiceAvailable(broker.context, "a.service"));
+    REQUIRE(waitUntilServiceAvailable(broker.context, "/aDevice/aProperty"));
 
-    { // list all entries
+    // give brokers time to synchronize DNS entries
+    std::this_thread::sleep_for(settings.dnsTimeout * 3);
+
+    { // list everything from primary broker
+        Context              clientContext;
+        TestNode<MdpMessage> client(clientContext);
+        REQUIRE(client.connect(brokerAddress));
+
         auto request = MdpMessage::createClientMessage(Command::Set);
         request.setServiceName("mmi.dns", static_tag);
         request.setBody("Hello World!", static_tag);
@@ -197,16 +213,20 @@ TEST_CASE("Test mmi.dns", "[broker][mmi][mmi_dns]") {
         REQUIRE(reply->isClientMessage());
         REQUIRE(reply->command() == Command::Final);
         REQUIRE(reply->serviceName() == "mmi.dns");
-        REQUIRE(reply->body() == "[testbroker: http://a.service,mds://127.0.0.1:22345,mds://127.0.0.1:22345/a.service,mds://127.0.0.1:22345/mmi.dns,mds://127.0.0.1:22345/mmi.echo,mds://127.0.0.1:22345/mmi.openapi,mds://127.0.0.1:22345/mmi.service]"); // TODO: update flaky test (is order & timing-sensitive)
+        REQUIRE(reply->body() == "[testbroker: https://127.0.0.1:8080,https://127.0.0.1:8080/aDevice/aProperty,https://127.0.0.1:8080/mmi.dns,"
+                                 "https://127.0.0.1:8080/mmi.echo,https://127.0.0.1:8080/mmi.openapi,https://127.0.0.1:8080/mmi.service,"
+                                 "mdp://127.0.0.1:22346,mdp://127.0.0.1:22346/aDevice/aProperty,mdp://127.0.0.1:22346/mmi.dns,"
+                                 "mdp://127.0.0.1:22346/mmi.echo,mdp://127.0.0.1:22346/mmi.openapi,mdp://127.0.0.1:22346/mmi.service]");
     }
 
-    {
+    { // list everything from DNS broker
+        Context              clientContext;
+        TestNode<MdpMessage> client(clientContext);
+        REQUIRE(client.connect(dnsAddress));
+
         auto request = MdpMessage::createClientMessage(Command::Set);
         request.setServiceName("mmi.dns", static_tag);
-
-        // atm services must be prepended by "/" to form URIs that opencmw::URI can parse
-        // send query with some crazy whitespace
-        request.setBody(" /mmi.dns  , /a.service", static_tag);
+        request.setBody("Hello World!", static_tag);
         client.send(request);
 
         const auto reply = client.tryReadOne();
@@ -216,7 +236,35 @@ TEST_CASE("Test mmi.dns", "[broker][mmi][mmi_dns]") {
         REQUIRE(reply->isClientMessage());
         REQUIRE(reply->command() == Command::Final);
         REQUIRE(reply->serviceName() == "mmi.dns");
-        REQUIRE(reply->body() == "[/mmi.dns: mds://127.0.0.1:22345/mmi.dns],[/a.service: mds://127.0.0.1:22345/a.service]");
+        REQUIRE(reply->body() == "[dnsBroker: mdp://127.0.0.1:22345,mdp://127.0.0.1:22345/mmi.dns,mdp://127.0.0.1:22345/mmi.echo,"
+                                 "mdp://127.0.0.1:22345/mmi.openapi,mdp://127.0.0.1:22345/mmi.service],"
+                                 "[testbroker: https://127.0.0.1:8080,https://127.0.0.1:8080/aDevice/aProperty,https://127.0.0.1:8080/mmi.dns,"
+                                 "https://127.0.0.1:8080/mmi.echo,https://127.0.0.1:8080/mmi.openapi,https://127.0.0.1:8080/mmi.service,"
+                                 "mdp://127.0.0.1:22346,mdp://127.0.0.1:22346/aDevice/aProperty,mdp://127.0.0.1:22346/mmi.dns,"
+                                 "mdp://127.0.0.1:22346/mmi.echo,mdp://127.0.0.1:22346/mmi.openapi,mdp://127.0.0.1:22346/mmi.service]");
+    }
+
+    { // query for specific services
+        Context              clientContext;
+        TestNode<MdpMessage> client(clientContext);
+        REQUIRE(client.connect(dnsAddress));
+
+        auto request = MdpMessage::createClientMessage(Command::Set);
+        request.setServiceName("mmi.dns", static_tag);
+
+        // atm services must be prepended by "/" to form URIs that opencmw::URI can parse
+        // send query with some crazy whitespace
+        request.setBody(" /mmi.dns  , /aDevice/aProperty", static_tag);
+        client.send(request);
+
+        const auto reply = client.tryReadOne();
+
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->isClientMessage());
+        REQUIRE(reply->command() == Command::Final);
+        REQUIRE(reply->serviceName() == "mmi.dns");
+        REQUIRE(reply->body() == "[/mmi.dns: https://127.0.0.1:8080/mmi.dns,mdp://127.0.0.1:22345/mmi.dns,mdp://127.0.0.1:22346/mmi.dns],[/aDevice/aProperty: https://127.0.0.1:8080/aDevice/aProperty,mdp://127.0.0.1:22346/aDevice/aProperty]");
     }
 }
 

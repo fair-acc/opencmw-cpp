@@ -244,7 +244,7 @@ int main() {
     });
 
     // second broker to test DNS functionalities
-    Broker       secondaryBroker("SecondaryTestBroker", { .dnsAddress = *brokerRouterAddress });
+    Broker       secondaryBroker("SecondaryTestBroker", { .dnsAddress = brokerRouterAddress->str });
 
     std::jthread secondaryBrokerThread([&secondaryBroker] {
         secondaryBroker.run();

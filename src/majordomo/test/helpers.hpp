@@ -38,6 +38,7 @@ struct RunInThread {
 inline opencmw::majordomo::Settings testSettings() {
     opencmw::majordomo::Settings settings;
     settings.heartbeatInterval = std::chrono::milliseconds(100);
+    settings.dnsTimeout        = std::chrono::milliseconds(250);
     return settings;
 }
 
