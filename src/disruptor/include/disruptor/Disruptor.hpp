@@ -453,8 +453,8 @@ private:
 template<typename T, std::size_t SIZE, auto ProducerType, typename Scheduler, typename WaitStrategy>
 class Disruptor {
 private:
-    std::shared_ptr<Scheduler>                      _scheduler;
-    std::shared_ptr<WaitStrategy>                   _waitStrategy;
+    std::shared_ptr<Scheduler>              _scheduler;
+    std::shared_ptr<WaitStrategy>           _waitStrategy;
     std::shared_ptr<DisruptorCore<T, SIZE>> _disruptorCore;
 
 public:

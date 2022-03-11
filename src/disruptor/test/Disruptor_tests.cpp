@@ -40,7 +40,7 @@ template<std::size_t SIZE>
 class Publisher {
 private:
     std::shared_ptr<RingBuffer<TestEvent, SIZE>> m_ringBuffer;
-    int                                    m_iterations;
+    int                                          m_iterations;
 
 public:
     Publisher(std::shared_ptr<RingBuffer<TestEvent, SIZE>> ringBuffer, int iterations)

@@ -138,13 +138,13 @@ template<size_t RbSize>
 class Publisher {
 private:
     std::shared_ptr<RingBuffer<TestEvent, RbSize>> m_ringBuffer;
-    TestEvents                             m_events;
-    std::size_t                            m_patternRepeat;
+    TestEvents                                     m_events;
+    std::size_t                                    m_patternRepeat;
 
 public:
     Publisher(std::shared_ptr<RingBuffer<TestEvent, RbSize>> ringBuffer,
-            TestEvents                                      events,
-            std::size_t                                     patternRepeatCount)
+            TestEvents                                       events,
+            std::size_t                                      patternRepeatCount)
         : m_ringBuffer(std::move(ringBuffer))
         , m_events(std::move(events))
         , m_patternRepeat(patternRepeatCount) {}
@@ -185,8 +185,8 @@ public:
 template<std::size_t RbSize>
 std::shared_ptr<Publisher<RbSize>> makePublisher(
         const std::shared_ptr<RingBuffer<TestEvent, RbSize>> &buffer,
-        const TestEvents                             &events,
-        std::size_t                                   patternRepeatCount) {
+        const TestEvents                                     &events,
+        std::size_t                                           patternRepeatCount) {
     return std::make_shared<Publisher<RbSize>>(buffer, events, patternRepeatCount);
 }
 
