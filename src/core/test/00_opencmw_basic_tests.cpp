@@ -24,6 +24,18 @@ static_assert(fwd_wrapper(0) == 2, "r-value forwarding");
 static_assert(fwd_wrapper(unmove(lvalue)) == 1, "l-value -> l-value forwarding (copy)");
 static_assert(fwd_wrapper(unmove(0)) == 1, "r-value -> lvalue forwarding (copy)");
 
+/**** power 2 and bit-magic tests ***/
+static_assert(isPower2(1024U));
+static_assert(is_power2_v<1024U>);
+static_assert(floorlog2(1) == 0);
+static_assert(floorlog2(1023) == 9);
+static_assert(floorlog2(1024) == 10);
+static_assert(floorlog2(1025) == 10);
+static_assert(ceillog2(1) == 0);
+static_assert(ceillog2(1023) == 10);
+static_assert(ceillog2(1024) == 10);
+static_assert(ceillog2(1025) == 11);
+
 /**** isReflectableClass() tests ***/
 struct NonReflStruct {
     int a;

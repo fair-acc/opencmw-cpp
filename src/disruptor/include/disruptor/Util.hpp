@@ -18,45 +18,6 @@ class ISequence;
 namespace util {
 
 /**
- * Calculate the next power of 2, greater than or equal to x.
- *
- * \param x Value to round up
- * \returns The next power of 2 from x inclusive
- */
-inline std::int32_t ceilingNextPowerOfTwo(std::int32_t x) {
-    std::int32_t result = 2;
-
-    while (result < x) {
-        result <<= 1;
-    }
-
-    return result;
-}
-
-/**
- * Test whether a given integer is a power of 2
- *
- * \param x
- */
-inline bool isPowerOf2(std::int32_t x) {
-    return x > 0 && (x & (x - 1)) == 0;
-}
-
-/**
- * Calculate the log base 2 of the supplied integer, essentially reports the location of the highest bit.
- *
- * \param i Value to calculate log2 for.
- * \returns The log2 value
- */
-inline std::int32_t log2(std::int32_t i) {
-    std::int32_t r = 0;
-    while ((i >>= 1) != 0) {
-        ++r;
-    }
-    return r;
-}
-
-/**
  * Get the minimum sequence from an array of Sequences.
  *
  * \param sequences sequences to compare.

@@ -99,14 +99,16 @@ public:
         if (numToRemove == 0)
             return false;
 
-        auto oldSize = static_cast<std::uint32_t>(sequences.size());
+        auto                                    oldSize = static_cast<std::uint32_t>(sequences.size());
+        std::vector<std::shared_ptr<ISequence>> newVector(oldSize - numToRemove);
 
         for (auto i = 0U, pos = 0U; i < oldSize; ++i) {
             auto &&testSequence = sequences[i];
             if (sequence != testSequence) {
-                sequences[pos++] = testSequence;
+                newVector[pos++] = testSequence;
             }
         }
+        std::swap(sequences, newVector);
 
         return numToRemove != 0;
     }

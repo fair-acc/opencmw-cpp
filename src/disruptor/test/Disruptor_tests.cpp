@@ -33,10 +33,10 @@ struct TestEvent {
     std::variant<Next, ResetTo, Check, Stop> command;
 };
 
+template<std::size_t SIZE>
 class Publisher {
 public:
-    Publisher(const std::shared_ptr<RingBuffer<TestEvent>> &ringBuffer,
-            std::int32_t                                    iterations)
+    Publisher(const std::shared_ptr<RingBuffer<TestEvent, SIZE>> &ringBuffer, std::int32_t iterations)
         : m_ringBuffer(ringBuffer)
         , m_iterations(iterations) {}
 
@@ -74,17 +74,18 @@ public:
     bool failed = false;
 
 private:
-    std::shared_ptr<RingBuffer<TestEvent>> m_ringBuffer;
-    std::int32_t                           m_iterations;
+    std::shared_ptr<RingBuffer<TestEvent, SIZE>> m_ringBuffer;
+    std::int32_t                                 m_iterations;
 };
 
-std::vector<std::shared_ptr<Publisher>> makePublishers(size_t size,
-        const std::shared_ptr<RingBuffer<TestEvent>>         &buffer,
-        int                                                   messageCount) {
-    std::vector<std::shared_ptr<Publisher>> result;
+template<size_t SIZE>
+std::vector<std::shared_ptr<Publisher<SIZE>>> makePublishers(size_t size,
+        const std::shared_ptr<RingBuffer<TestEvent, SIZE>>         &buffer,
+        int                                                         messageCount) {
+    std::vector<std::shared_ptr<Publisher<SIZE>>> result;
 
     for (auto i = 0u; i < size; i++) {
-        result.push_back(std::make_shared<Publisher>(buffer, messageCount));
+        result.push_back(std::make_shared<Publisher<SIZE>>(buffer, messageCount));
     }
 
     return result;
@@ -122,12 +123,12 @@ std::vector<std::shared_ptr<IEventHandler<TestEvent>>> makeHandlers(const Disrup
 }
 
 int main() {
-    auto                                                                                                  processorsCount = std::max(std::thread::hardware_concurrency() / 2, 1u);
+    auto                                                                                                              processorsCount = std::max(std::thread::hardware_concurrency() / 2, 1u);
 
-    auto                                                                                                  bufferSize      = 1 << 16;
-    Disruptor<TestEvent, ProducerType::Multi, RoundRobinThreadAffinedTaskScheduler, BusySpinWaitStrategy> testDisruptor(processorsCount, bufferSize);
+    constexpr auto                                                                                                    bufferSize      = 1 << 16;
+    Disruptor<TestEvent, bufferSize, ProducerType::Multi, RoundRobinThreadAffinedTaskScheduler, BusySpinWaitStrategy> testDisruptor(processorsCount);
 
-    auto                                                                                                  ringBuffer = testDisruptor->ringBuffer();
+    auto                                                                                                              ringBuffer = testDisruptor->ringBuffer();
     testDisruptor->setDefaultExceptionHandler(std::make_shared<FatalExceptionHandler<TestEvent>>());
 
     const auto iterations     = 200000;

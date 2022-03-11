@@ -1,4 +1,5 @@
 add_subdirectory(core)
+add_subdirectory(disruptor)
 add_subdirectory(serialiser)
 add_subdirectory(cmrc)
 add_subdirectory(majordomo)

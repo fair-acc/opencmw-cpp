@@ -14,7 +14,7 @@ public:
     /**
      * The capacity of the data structure to hold entries.
      */
-    virtual std::int32_t bufferSize() = 0;
+    [[nodiscard]] virtual std::int32_t bufferSize() const = 0;
 
     /**
      * Has the buffer got capacity to allocate another sequence.  This is a concurrent method so the response should only be taken as an indication of available capacity.
@@ -44,7 +44,7 @@ public:
      * \param n_slots_to_claim the number of sequences to claim
      * \returns the highest claimed sequence value
      */
-    virtual std::int64_t next(std::int32_t n_slots_to_claim) = 0;
+    virtual std::int64_t next(const std::int32_t n_slots_to_claim = 1) = 0;
 
     /**
      * Attempt to claim the next n_slots_to_claim events in sequence for publishing.  Will return the highest numbered slot if there is at least requiredCapacity slots available.
@@ -53,22 +53,14 @@ public:
      * \param n_slots_to_claim the number of sequences to claim
      * \returns the claimed sequence value
      */
-    virtual std::int64_t tryNext(std::int32_t n_slots_to_claim) = 0;
+    virtual std::int64_t tryNext(const std::int32_t n_slots_to_claim = 1) = 0;
 
     /**
      * Publishes a sequence. Call when the event has been filled.
      *
      * \param sequence
      */
-    virtual void publish(std::int64_t sequence) = 0;
-
-    /**
-     * Batch publish sequences.  Called when all of the events have been filled.
-     *
-     * \param lo first sequence number to publish
-     * \param hi last sequence number to publish
-     */
-    virtual void publish(std::int64_t lo, std::int64_t hi) = 0;
+    virtual void publish(const std::int64_t sequence) = 0;
 };
 
 } // namespace opencmw::disruptor
