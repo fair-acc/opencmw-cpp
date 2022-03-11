@@ -10,6 +10,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 
 #include <fmt/core.h>
@@ -125,9 +126,9 @@ inline std::string findDnsEntry(std::string_view brokerName, std::unordered_map<
     };
 
     std::vector<std::string> results;
-    for (const auto &cacheEntry : dnsCache) {
+    for (const auto &[cachedQuery, cacheEntry] : dnsCache) {
         using namespace std::views;
-        auto matching = cacheEntry.second.uris | filter(entryMatches) | transform(uriAsString);
+        auto matching = cacheEntry.uris | filter(entryMatches) | transform(uriAsString);
         results.insert(results.end(), matching.begin(), matching.end());
     }
 
@@ -265,10 +266,9 @@ public:
 
             std::string reply;
             if (message.body().empty() || message.body().find_first_of(",:/") == std::string_view::npos) {
-                const auto entryView     = std::views::values(_dnsCache);
-                auto       entries       = std::vector(entryView.begin(), entryView.end());
-                const auto byServiceName = [](const auto &lhs, const auto &rhs) { return lhs.serviceName < rhs.serviceName; };
-                std::sort(entries.begin(), entries.end(), byServiceName);
+                const auto entryView = std::views::values(_dnsCache);
+                auto       entries   = std::vector(entryView.begin(), entryView.end());
+                std::ranges::sort(entries, {}, &detail::DnsServiceItem::serviceName);
                 reply = fmt::format("{}", fmt::join(entries, ","));
             } else {
                 // TODO std::views::split seems to have issues in GCC 11, maybe switch to views::split/transform
@@ -458,8 +458,8 @@ public:
     void registerDnsAddress(const opencmw::URI<> &address) {
         // worker registers a new address for this broker (used the REST interface)
         _dnsAddresses.insert(address.str);
-        auto item = _dnsCache.try_emplace(brokerName, std::string(), brokerName);
-        item.first->second.uris.insert(URI<RELAXED>(address.str));
+        auto [iter, inserted] = _dnsCache.try_emplace(brokerName, std::string(), brokerName);
+        iter->second.uris.insert(URI<RELAXED>(address.str));
         sendDnsHeartbeats(true);
     }
 
@@ -472,9 +472,9 @@ public:
 
 private:
     void subscribe(const URI<RELAXED> &topic) {
-        auto it = _subscribedTopics.try_emplace(topic, 0);
-        it.first->second++;
-        if (it.first->second == 1) {
+        auto [it, inserted] = _subscribedTopics.try_emplace(topic, 0);
+        it->second++;
+        if (it->second == 1) {
             zmq_invoke(zmq_setsockopt, _subSocket, ZMQ_SUBSCRIBE, topic.str.data(), topic.str.size()).assertSuccess();
         }
     }
@@ -534,9 +534,9 @@ private:
             case Command::Ready: {
                 if (const auto topicURI = URI<RELAXED>(std::string(message.topic())); topicURI.scheme()) {
                     const auto serviceName = std::string(message.serviceName());
-                    auto       item        = _dnsCache.try_emplace(serviceName, std::string(message.sourceId()), serviceName);
-                    item.first->second.uris.insert(topicURI);
-                    item.first->second.expiry = updatedDnsExpiry();
+                    auto [iter, inserted]  = _dnsCache.try_emplace(serviceName, std::string(message.sourceId()), serviceName);
+                    iter->second.uris.insert(topicURI);
+                    iter->second.expiry = updatedDnsExpiry();
                 }
                 return true;
             }
@@ -549,8 +549,8 @@ private:
 
                 subscribe(topicURI);
 
-                auto it = _subscribedClientsByTopic.try_emplace(topicURI, std::set<std::string>{});
-                it.first->second.emplace(message.sourceId());
+                auto [it, inserted] = _subscribedClientsByTopic.try_emplace(topicURI, std::set<std::string>{});
+                it->second.emplace(message.sourceId());
                 return true;
             }
             case Command::Unsubscribe: {
@@ -577,9 +577,9 @@ private:
                 break;
             }
 
-            const auto senderId = std::string(message.sourceId());
-            auto       client   = _clients.try_emplace(senderId, socket, senderId, updatedClientExpiry());
-            client.first->second.requests.emplace_back(std::move(message));
+            const auto senderId     = std::string(message.sourceId());
+            auto [client, inserted] = _clients.try_emplace(senderId, socket, senderId, updatedClientExpiry());
+            client->second.requests.emplace_back(std::move(message));
 
             return true;
         }
@@ -590,8 +590,8 @@ private:
 
     Service &requireService(std::string serviceName, std::string serviceDescription) {
         // TODO handle serviceDescription differing between workers? or is "first one wins" ok?
-        auto it = _services.try_emplace(serviceName, std::move(serviceName), std::move(serviceDescription));
-        return it.first->second;
+        auto [it, inserted] = _services.try_emplace(serviceName, std::move(serviceName), std::move(serviceDescription));
+        return it->second;
     }
 
     void addInternalService(std::string serviceName, std::function<BrokerMessage(BrokerMessage &&)> handler) {
@@ -602,8 +602,8 @@ private:
         // TODO use some smart reactive filtering once available, maybe optimize or cache
         std::vector<Service *> services;
         services.reserve(_services.size());
-        for (auto &it : _services) {
-            services.push_back(&it.second);
+        for (auto &[name, service] : _services) {
+            services.push_back(&service);
         }
 
         auto doesNotStartWith = [&serviceName](auto service) {
@@ -644,11 +644,11 @@ private:
         const auto hasRouterSubscriptions = it != _subscribedClientsByTopic.end();
 
         // TODO avoid clone() for last message sent out
-        for (const auto &topicIt : _subscribedTopics) {
-            if (_subscriptionMatcher(topicURI, topicIt.first)) {
+        for (const auto &[topic, clientId] : _subscribedTopics) {
+            if (_subscriptionMatcher(topicURI, topic)) {
                 // sends notification with the topic that is expected by the client for its subscription
                 auto copy = message.clone();
-                copy.setSourceId(topicIt.first.str, MessageFrame::dynamic_bytes_tag{});
+                copy.setSourceId(topic.str, MessageFrame::dynamic_bytes_tag{});
                 copy.send(_pubSocket).assertSuccess();
             }
         }
@@ -675,9 +675,8 @@ private:
     void purgeWorkers() {
         const auto now = Clock::now();
 
-        for (auto &serviceIt : _services) {
-            auto &service  = serviceIt.second;
-            auto  workerIt = service.waiting.begin();
+        for (auto &[name, service] : _services) {
+            auto workerIt = service.waiting.begin();
             while (workerIt != service.waiting.end()) {
                 if ((*workerIt)->expiry < now) {
                     workerIt = service.waiting.erase(workerIt);
@@ -690,8 +689,7 @@ private:
     }
 
     void processClients() {
-        for (auto &clientIt : _clients) {
-            auto &client = clientIt.second;
+        for (auto &[senderId, client] : _clients) {
             if (client.requests.empty())
                 continue;
 
@@ -732,7 +730,8 @@ private:
         const auto now       = Clock::now();
 
         const auto isExpired = [&now](const auto &c) {
-            return c.second.expiry < now;
+            auto &[senderId, client] = c;
+            return client.expiry < now;
         };
 
         std::erase_if(_clients, isExpired);
@@ -751,28 +750,18 @@ private:
         challenge.setRbacToken(_rbac, MessageFrame::static_bytes_tag{});
         const auto newExpiry = updatedDnsExpiry();
 
-        auto       it        = _dnsCache.begin();
-        while (it != _dnsCache.end()) {
-            auto &registeredService = it->second;
-
+        for (auto &[broker, registeredService] : _dnsCache) {
             if (registeredService.serviceName == brokerName) { // TODO ignore case
                 registeredService.expiry = newExpiry;
-                ++it;
                 continue;
             }
-
             // challenge remote broker with a HEARTBEAT
             auto toSend = challenge.clone();
             toSend.setSourceId(registeredService.address, MessageFrame::dynamic_bytes_tag{});
             toSend.setServiceName(registeredService.serviceName, MessageFrame::dynamic_bytes_tag{});
             toSend.send(_routerSocket).assertSuccess();
-
-            if (now > registeredService.expiry) {
-                it = _dnsCache.erase(it);
-            } else {
-                ++it;
-            }
         }
+        std::erase_if(_dnsCache, [&now](const auto &entry) { auto& [broker, registeredService] = entry; return registeredService.expiry < now; });
 
         _dnsHeartbeatAt = now + settings.dnsTimeout;
     }
@@ -782,8 +771,8 @@ private:
             return;
         }
 
-        for (auto &service : _services) {
-            for (auto &worker : service.second.waiting) {
+        for (auto &[name, service] : _services) {
+            for (auto &worker : service.waiting) {
                 auto heartbeat = BrokerMessage::createWorkerMessage(Command::Heartbeat);
                 heartbeat.setSourceId(worker->id, MessageFrame::dynamic_bytes_tag{});
                 heartbeat.setServiceName(worker->serviceName, MessageFrame::dynamic_bytes_tag{});
@@ -896,8 +885,8 @@ private:
                 toSend.setTopic(dnsAddress, MessageFrame::dynamic_bytes_tag{});
                 registerWithDnsServices(std::move(toSend));
             }
-            for (const auto &service : _services) {
-                registerNewService(service.first);
+            for (const auto &[name, service] : _services) {
+                registerNewService(name);
             }
         }
     }
@@ -912,9 +901,9 @@ private:
     }
 
     void registerWithDnsServices(MdpMessage &&readyMessage) {
-        auto it = _dnsCache.try_emplace(brokerName, std::string(), brokerName);
-        it.first->second.uris.insert(URI<RELAXED>(std::string(readyMessage.topic())));
-        it.first->second.expiry = updatedDnsExpiry();
+        auto [it, inserted] = _dnsCache.try_emplace(brokerName, std::string(), brokerName);
+        it->second.uris.insert(URI<RELAXED>(std::string(readyMessage.topic())));
+        it->second.expiry = updatedDnsExpiry();
         readyMessage.send(_dnsSocket).ignoreResult();
     }
 
