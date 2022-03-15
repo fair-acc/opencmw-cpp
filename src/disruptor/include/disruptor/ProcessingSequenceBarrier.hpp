@@ -3,7 +3,6 @@
 #include <atomic>
 #include <vector>
 
-#include "FixedSequenceGroup.hpp"
 #include "IHighestPublishedSequenceProvider.hpp"
 #include "ISequenceBarrier.hpp"
 #include "Sequence.hpp"
@@ -12,7 +11,6 @@
 namespace opencmw::disruptor {
 
 class IHighestPublishedSequenceProvider;
-class ISequence;
 class Sequence;
 
 /**
@@ -20,39 +18,32 @@ class Sequence;
  * ISequenceBarrier handed out for gating IEventProcessor on a cursor sequence and optional dependent IEventProcessors, using the given WaitStrategy.
  */
 class ProcessingSequenceBarrier : public ISequenceBarrier, public std::enable_shared_from_this<ProcessingSequenceBarrier> {
-private:
-    std::shared_ptr<WaitStrategy>                      _waitStrategy;
-    std::shared_ptr<ISequence>                         _dependentSequence;
-    std::shared_ptr<Sequence>                          _cursorSequence;
-    std::shared_ptr<IHighestPublishedSequenceProvider> _sequenceProvider;
+    std::shared_ptr<WaitStrategy>                           _waitStrategy;
+    std::shared_ptr<std::vector<std::shared_ptr<Sequence>>> _dependentSequences{ std::make_shared<std::vector<std::shared_ptr<Sequence>>>() };
+    std::shared_ptr<Sequence>                               _cursorSequence;
+    std::shared_ptr<IHighestPublishedSequenceProvider>      _sequenceProvider;
 
-    WaitStrategy                                      &_waitStrategyRef;
-    ISequence                                         &_dependentSequenceRef;
-    Sequence                                          &_cursorSequenceRef;
-    IHighestPublishedSequenceProvider                 &_sequenceProviderRef;
+    WaitStrategy                                           &_waitStrategyRef;
+    IHighestPublishedSequenceProvider                      &_sequenceProviderRef;
 
-    bool                                               _alerted;
+    bool                                                    _alerted = false;
 
 public:
     ProcessingSequenceBarrier(const std::shared_ptr<IHighestPublishedSequenceProvider> &sequenceProvider,
             const std::shared_ptr<WaitStrategy>                                        &waitStrategy,
             const std::shared_ptr<Sequence>                                            &cursorSequence,
-            const std::vector<std::shared_ptr<ISequence>>                              &dependentSequences)
+            const std::vector<std::shared_ptr<Sequence>>                               &dependentSequences)
         : _waitStrategy(waitStrategy)
-        , _dependentSequence(getDependentSequence(cursorSequence, dependentSequences))
+        , _dependentSequences(getDependentSequence(cursorSequence, dependentSequences))
         , _cursorSequence(cursorSequence)
         , _sequenceProvider(sequenceProvider)
         , _waitStrategyRef(*_waitStrategy)
-        , _dependentSequenceRef(*_dependentSequence)
-        , _cursorSequenceRef(*_cursorSequence)
-        , _sequenceProviderRef(*_sequenceProvider) {
-        _alerted = false;
-    }
+        , _sequenceProviderRef(*_sequenceProvider) {}
 
     std::int64_t waitFor(std::int64_t sequence) override {
         checkAlert();
 
-        auto availableSequence = _waitStrategyRef.waitFor(sequence, *_cursorSequence, *_dependentSequence, *shared_from_this());
+        auto availableSequence = _waitStrategyRef.waitFor(sequence, *_cursorSequence, *_dependentSequences, *shared_from_this());
 
         if (availableSequence < sequence) {
             return availableSequence;
@@ -62,7 +53,7 @@ public:
     }
 
     std::int64_t cursor() override {
-        return _dependentSequenceRef.value();
+        return detail::getMinimumSequence(*_dependentSequences);
     }
 
     bool isAlerted() override {
@@ -87,12 +78,14 @@ public:
     }
 
 private:
-    static std::shared_ptr<ISequence> getDependentSequence(const std::shared_ptr<Sequence> &cursorSequence, const std::vector<std::shared_ptr<ISequence>> &dependentSequences) {
-        if (dependentSequences.empty()) {
-            return cursorSequence;
-        }
+    std::shared_ptr<std::vector<std::shared_ptr<Sequence>>> getDependentSequence(const std::shared_ptr<Sequence> &cursor, const std::vector<std::shared_ptr<Sequence>> &dependentSequences) const noexcept {
+        auto updatedSequences = std::make_shared<std::vector<std::shared_ptr<Sequence>>>();
 
-        return std::make_shared<FixedSequenceGroup>(dependentSequences);
+        updatedSequences->resize(dependentSequences.size() + 1);
+        (*updatedSequences)[0] = cursor;
+        std::ranges::copy(dependentSequences.begin(), dependentSequences.end(), updatedSequences->begin() + 1);
+
+        return updatedSequences;
     }
 };
 

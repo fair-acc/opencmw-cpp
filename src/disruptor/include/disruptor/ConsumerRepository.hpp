@@ -7,8 +7,8 @@
 #include "IConsumerInfo.hpp"
 #include "IEventHandler.hpp"
 #include "IEventProcessor.hpp"
-#include "ISequence.hpp"
 #include "ISequenceBarrier.hpp"
+#include "Sequence.hpp"
 #include "WorkerPool.hpp"
 #include "WorkerPoolInfo.hpp"
 
@@ -19,7 +19,7 @@ class ConsumerRepository {
 private:
     using ConsumerInfos = std::vector<std::shared_ptr<IConsumerInfo>>;
     std::unordered_map<std::shared_ptr<IEventHandler<T>>, std::shared_ptr<EventProcessorInfo<T>>> _eventProcessorInfoByEventHandler;
-    std::unordered_map<std::shared_ptr<ISequence>, std::shared_ptr<IConsumerInfo>>                _eventProcessorInfoBySequence;
+    std::unordered_map<std::shared_ptr<Sequence>, std::shared_ptr<IConsumerInfo>>                 _eventProcessorInfoBySequence;
     ConsumerInfos                                                                                 _consumerInfos;
 
 public:
@@ -47,12 +47,12 @@ public:
         }
     }
 
-    std::vector<std::shared_ptr<ISequence>> getLastSequenceInChain(bool includeStopped) {
-        std::vector<std::shared_ptr<ISequence>> lastSequence;
-        for (auto &&consumerInfo : _consumerInfos) {
+    std::vector<std::shared_ptr<Sequence>> getLastSequenceInChain(bool includeStopped) const {
+        std::vector<std::shared_ptr<Sequence>> lastSequence;
+        for (const auto &consumerInfo : _consumerInfos) {
             if ((includeStopped || consumerInfo->isRunning()) && consumerInfo->isEndOfChain()) {
                 auto sequences = consumerInfo->sequences();
-                std::copy(sequences.begin(), sequences.end(), std::back_inserter(lastSequence));
+                std::ranges::copy(sequences, std::back_inserter(lastSequence));
             }
         }
 
@@ -69,11 +69,11 @@ public:
         return eventProcessorInfo->eventProcessor();
     }
 
-    std::shared_ptr<ISequence> getSequenceFor(const std::shared_ptr<IEventHandler<T>> &eventHandler) {
+    std::shared_ptr<Sequence> getSequenceFor(const std::shared_ptr<IEventHandler<T>> &eventHandler) {
         return getEventProcessorFor(eventHandler)->sequence();
     }
 
-    void unMarkEventProcessorsAsEndOfChain(const std::vector<std::shared_ptr<ISequence>> &barrierEventProcessors) {
+    void unMarkEventProcessorsAsEndOfChain(const std::vector<std::shared_ptr<Sequence>> &barrierEventProcessors) {
         for (auto &&barrierEventProcessor : barrierEventProcessors) {
             auto it = _eventProcessorInfoBySequence.find(barrierEventProcessor);
             if (it != _eventProcessorInfoBySequence.end()) {

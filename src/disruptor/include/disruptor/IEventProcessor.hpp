@@ -2,9 +2,9 @@
 
 #include <memory>
 
-namespace opencmw::disruptor {
+#include "Sequence.hpp"
 
-class ISequence;
+namespace opencmw::disruptor {
 
 class IEventProcessor {
 public:
@@ -13,7 +13,7 @@ public:
     /**
      * Return a reference to the ISequence being used by this IEventProcessor
      */
-    virtual std::shared_ptr<ISequence> sequence() const = 0;
+    virtual std::shared_ptr<Sequence> sequence() const = 0;
 
     /**
      * Signal that this IEventProcessor should stop when it has finished consuming at the next clean break.

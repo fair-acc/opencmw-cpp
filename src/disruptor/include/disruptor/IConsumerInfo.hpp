@@ -4,8 +4,8 @@
 #include <vector>
 
 #include "IExecutor.hpp"
-#include "ISequence.hpp"
 #include "ISequenceBarrier.hpp"
+#include "Sequence.hpp"
 
 namespace opencmw::disruptor {
 
@@ -13,7 +13,7 @@ class IConsumerInfo {
 public:
     virtual ~IConsumerInfo()                                                                           = default;
 
-    virtual std::vector<std::shared_ptr<ISequence>>  sequences() const                                 = 0;
+    virtual std::vector<std::shared_ptr<Sequence>>   sequences() const                                 = 0;
 
     virtual const std::shared_ptr<ISequenceBarrier> &barrier() const                                   = 0;
 

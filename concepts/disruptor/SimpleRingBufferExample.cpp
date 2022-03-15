@@ -3,7 +3,6 @@
 #include <thread>
 
 #include <disruptor/BlockingQueue.hpp>
-#include <disruptor/ISequence.hpp>
 #include <disruptor/RingBuffer.hpp>
 
 #include <ThreadAffinity.hpp>
@@ -116,7 +115,8 @@ int main() {
             opencmw::thread::setThreadAffinity(std::array{ true, false }, publisher);
             sync_point.arrive_and_wait();
             for (auto i = 0U; i < nLoop; i++) {
-                queue.push(++counter);
+                ++counter;
+                queue.push(counter);
             } });
 
         std::jthread            consumer([&sync_point, &consumer, &received, &queue]() {

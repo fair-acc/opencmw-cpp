@@ -6,7 +6,7 @@
 #include "ConsumerRepository.hpp"
 #include "IEventHandler.hpp"
 #include "IEventProcessorFactory.hpp"
-#include "ISequence.hpp"
+#include "Sequence.hpp"
 
 namespace opencmw::disruptor {
 
@@ -22,14 +22,14 @@ class EventHandlerGroup {
 private:
     using EventHandlerGroupType = EventHandlerGroup<T, SIZE, TDisruptor>;
 
-    std::shared_ptr<TDisruptor<T, SIZE>>    _disruptor;
-    std::shared_ptr<ConsumerRepository<T>>  _consumerRepository;
-    std::vector<std::shared_ptr<ISequence>> _sequences;
+    std::shared_ptr<TDisruptor<T, SIZE>>   _disruptor;
+    std::shared_ptr<ConsumerRepository<T>> _consumerRepository;
+    std::vector<std::shared_ptr<Sequence>> _sequences;
 
 public:
     EventHandlerGroup(const std::shared_ptr<TDisruptor<T, SIZE>> &disruptor,
             const std::shared_ptr<ConsumerRepository<T>>         &consumerRepository,
-            const std::vector<std::shared_ptr<ISequence>>        &sequences)
+            const std::vector<std::shared_ptr<Sequence>>         &sequences)
         : _disruptor(disruptor)
         , _consumerRepository(consumerRepository)
         , _sequences(sequences) {
@@ -42,8 +42,8 @@ public:
      * \returns a new EventHandlerGroup combining the existing and new consumers into a single dependency group
      */
     std::shared_ptr<EventHandlerGroupType> And(const std::shared_ptr<EventHandlerGroupType> &otherHandlerGroup) {
-        std::vector<std::shared_ptr<ISequence>> sequences(_sequences);
-        std::copy(otherHandlerGroup->_sequences.begin(), otherHandlerGroup->_sequences.end(), std::back_inserter(sequences));
+        std::vector<std::shared_ptr<Sequence>> sequences(_sequences);
+        std::ranges::copy(otherHandlerGroup->_sequences, std::back_inserter(sequences));
 
         return std::make_shared<EventHandlerGroupType>(_disruptor, _consumerRepository, sequences);
     }
@@ -55,14 +55,14 @@ public:
      * \returns a new EventHandlerGroup combining the existing and new processors into a single dependency group
      */
     std::shared_ptr<EventHandlerGroupType> And(const std::vector<std::shared_ptr<IEventProcessor>> &processors) {
-        std::vector<std::shared_ptr<ISequence>> sequences;
+        std::vector<std::shared_ptr<Sequence>> sequences;
 
         for (auto &&eventProcessor : processors) {
             _consumerRepository->add(eventProcessor);
             sequences.push_back(eventProcessor->sequence());
         }
 
-        std::copy(_sequences.begin(), _sequences.end(), std::back_inserter(sequences));
+        std::ranges::copy(_sequences, std::back_inserter(sequences));
 
         return std::make_shared<EventHandlerGroupType>(_disruptor, _consumerRepository, sequences);
     }
@@ -124,7 +124,7 @@ public:
     /**
      * Set up a worker pool to handle events from the ring buffer. The worker pool will only process events after every IEventProcessor in this group has processed the event.
      * Each event will be processed by one of the work handler instances. This method is generally used as part of a chain. For example if the handler A must process events
-     * before the worker pool with handlers B, C: dw.handleEventsWith(A).thenHandleEventsWithWorkerPool(B, C);
+     * before the worker pool with handlers B, C: @code dw.handleEventsWith(A).thenHandleEventsWithWorkerPool(B, C);
      *
      * \param handlers the work handlers that will process events. Each work handler instance will provide an extra thread in the worker pool.
      * \returns EventHandlerGroupType that can be used to chain dependencies.
@@ -181,7 +181,7 @@ public:
      * Set up a worker pool to handle events from the ring buffer. The worker pool will only process events after every IEventProcessor in this group has processed the event.
      * Each event will be processed by one of the work handler instances.
      * This method is generally used as part of a chain. For example if the handler A must process events before the worker pool with handlers B, C:
-     * dw.handleEventsWith(A).thenHandleEventsWithWorkerPool(B, C);
+     * @code dw.handleEventsWith(A).thenHandleEventsWithWorkerPool(B, C);
      *
      * \param handlers the work handlers that will process events. Each work handler instance will provide an extra thread in the worker pool.
      * \returns a\returns <see cref="EventHandlerGroup{T}"/>\returns that can be used to set up a event processor barrier over the created event processors.

@@ -23,14 +23,14 @@ namespace opencmw::disruptor {
 template<typename T>
 class BatchEventProcessor : public IEventProcessor {
 private:
-    std::atomic<bool>                     _running;
+    std::atomic<bool>                     _running{ false };
     std::shared_ptr<IDataProvider<T>>     _dataProvider;
     IDataProvider<T>                     &_dataProviderRef;
     std::shared_ptr<ISequenceBarrier>     _sequenceBarrier;
     ISequenceBarrier                     &_sequenceBarrierRef;
     std::shared_ptr<IEventHandler<T>>     _eventHandler;
     IEventHandler<T>                     &_eventHandlerRef;
-    std::shared_ptr<Sequence>             _sequence;
+    std::shared_ptr<Sequence>             _sequence{ std::make_shared<Sequence>() };
     Sequence                             &_sequenceRef;
     std::shared_ptr<ITimeoutHandler>      _timeoutHandler;
     std::shared_ptr<IExceptionHandler<T>> _exceptionHandler;
@@ -47,17 +47,14 @@ public:
     BatchEventProcessor(const std::shared_ptr<IDataProvider<T>> &dataProvider,
             const std::shared_ptr<ISequenceBarrier>             &sequenceBarrier,
             const std::shared_ptr<IEventHandler<T>>             &eventHandler)
-        : _running(false)
-        , _dataProvider(dataProvider)
+        : _dataProvider(dataProvider)
         , _dataProviderRef(*_dataProvider)
         , _sequenceBarrier(sequenceBarrier)
         , _sequenceBarrierRef(*_sequenceBarrier)
         , _eventHandler(eventHandler)
         , _eventHandlerRef(*_eventHandler)
-        , _sequence(std::make_shared<Sequence>())
         , _sequenceRef(*_sequence) {
-        auto processorSequenceAware = std::dynamic_pointer_cast<IEventProcessorSequenceAware>(eventHandler);
-        if (processorSequenceAware != nullptr)
+        if (auto processorSequenceAware = std::dynamic_pointer_cast<IEventProcessorSequenceAware>(eventHandler); processorSequenceAware != nullptr)
             processorSequenceAware->setSequenceCallback(_sequence);
 
         _timeoutHandler = std::dynamic_pointer_cast<ITimeoutHandler>(eventHandler);
@@ -66,7 +63,7 @@ public:
     /**
      * \see IEventProcessor::Sequence
      */
-    std::shared_ptr<ISequence> sequence() const override {
+    std::shared_ptr<Sequence> sequence() const override {
         return _sequence;
     };
 
@@ -104,7 +101,7 @@ public:
      * It is ok to have another thread rerun this method after a halt().
      */
     void run() override {
-        if (_running.exchange(true) != false) {
+        if (_running.exchange(true)) {
             throw std::runtime_error("Thread is already running");
         }
 

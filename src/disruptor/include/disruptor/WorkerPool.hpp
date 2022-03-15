@@ -74,8 +74,8 @@ public:
     /**
      * Get an array of Sequences representing the progress of the workers.
      */
-    std::vector<std::shared_ptr<ISequence>> getWorkerSequences() {
-        std::vector<std::shared_ptr<ISequence>> sequences(_workProcessors.size() + 1);
+    std::vector<std::shared_ptr<Sequence>> getWorkerSequences() {
+        std::vector<std::shared_ptr<Sequence>> sequences(_workProcessors.size() + 1);
         for (auto i = 0u; i < _workProcessors.size(); ++i) {
             sequences[i] = _workProcessors[i]->sequence();
         }
@@ -110,7 +110,7 @@ public:
      */
     void drainAndHalt() {
         auto workerSequences = getWorkerSequences();
-        while (_ringBuffer->cursor() > util::getMinimumSequence(workerSequences)) {
+        while (_ringBuffer->cursor() > detail::getMinimumSequence(workerSequences)) {
             std::this_thread::sleep_for(std::chrono::milliseconds(0));
         }
 

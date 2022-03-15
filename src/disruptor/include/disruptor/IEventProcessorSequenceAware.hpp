@@ -2,7 +2,7 @@
 
 #include <memory>
 
-#include "ISequence.hpp"
+#include "Sequence.hpp"
 
 namespace opencmw::disruptor {
 
@@ -25,7 +25,7 @@ public:
      *
      * \param sequenceCallback callback on which to notify the <see cref="T:Disruptor.IEventProcessor" /> that the sequence has progressed.
      */
-    virtual void setSequenceCallback(const std::shared_ptr<ISequence> &sequenceCallback) = 0;
+    virtual void setSequenceCallback(const std::shared_ptr<Sequence> &sequenceCallback) = 0;
 };
 
 } // namespace opencmw::disruptor

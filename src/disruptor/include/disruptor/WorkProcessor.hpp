@@ -36,7 +36,7 @@ private:
     std::shared_ptr<ISequenceBarrier>     _sequenceBarrier;
     std::shared_ptr<IWorkHandler<T>>      _workHandler;
     std::shared_ptr<IExceptionHandler<T>> _exceptionHandler;
-    std::shared_ptr<ISequence>            _workSequence;
+    std::shared_ptr<Sequence>             _workSequence;
     std::shared_ptr<IEventReleaser>       _eventReleaser;
     std::shared_ptr<ITimeoutHandler>      _timeoutHandler;
 
@@ -54,13 +54,13 @@ public:
             const std::shared_ptr<ISequenceBarrier>                                                  &sequenceBarrier,
             const std::shared_ptr<IWorkHandler<T>>                                                   &workHandler,
             const std::shared_ptr<IExceptionHandler<T>>                                              &exceptionHandler,
-            const std::shared_ptr<ISequence>                                                         &workSequence) {
-        auto processor                = std::make_shared<WorkProcessor<T, SIZE>>(ringBuffer, sequenceBarrier, workHandler, exceptionHandler, workSequence, PrivateKey());
-        processor->_eventReleaser     = std::make_shared<EventReleaser>(processor);
+            const std::shared_ptr<Sequence>                                                          &workSequence) {
+        auto processor            = std::make_shared<WorkProcessor<T, SIZE>>(ringBuffer, sequenceBarrier, workHandler, exceptionHandler, workSequence, PrivateKey());
+        processor->_eventReleaser = std::make_shared<EventReleaser>(processor);
 
-        auto eventReleaseAwareHandler = std::dynamic_pointer_cast<IEventReleaseAware>(processor->_workHandler);
-        if (eventReleaseAwareHandler != nullptr)
+        if (auto eventReleaseAwareHandler = std::dynamic_pointer_cast<IEventReleaseAware>(processor->_workHandler); eventReleaseAwareHandler != nullptr) {
             eventReleaseAwareHandler->setEventReleaser(processor->_eventReleaser);
+        }
 
         return processor;
     }
@@ -78,21 +78,19 @@ public:
             const std::shared_ptr<ISequenceBarrier>          &sequenceBarrier,
             const std::shared_ptr<IWorkHandler<T>>           &workHandler,
             const std::shared_ptr<IExceptionHandler<T>>      &exceptionHandler,
-            const std::shared_ptr<ISequence>                 &workSequence,
-            PrivateKey) {
-        _ringBuffer       = ringBuffer;
-        _sequenceBarrier  = sequenceBarrier;
-        _workHandler      = workHandler;
-        _exceptionHandler = exceptionHandler;
-        _workSequence     = workSequence;
-
-        _timeoutHandler   = std::dynamic_pointer_cast<ITimeoutHandler>(_workHandler);
-    }
+            const std::shared_ptr<Sequence>                  &workSequence,
+            PrivateKey)
+        : _ringBuffer(ringBuffer)
+        , _sequenceBarrier(sequenceBarrier)
+        , _workHandler(workHandler)
+        , _exceptionHandler(exceptionHandler)
+        , _workSequence(workSequence)
+        , _timeoutHandler(std::dynamic_pointer_cast<ITimeoutHandler>(_workHandler)) {}
 
     /**
      * Return a reference to the IEventProcessor.Sequence being used by this IEventProcessor
      */
-    std::shared_ptr<ISequence> sequence() const override {
+    [[nodiscard]] std::shared_ptr<Sequence> sequence() const override {
         return _sequence;
     }
 
@@ -104,12 +102,7 @@ public:
         _sequenceBarrier->alert();
     }
 
-    /**
-     * \see IEventProcessor::IsRunning()
-     */
-    bool isRunning() const override {
-        return _running == 1;
-    }
+    [[nodiscard]] bool isRunning() const override { return _running == 1; }
 
     /**
      * It is ok to have another thread re-run this method after a halt().
@@ -145,9 +138,9 @@ public:
                 } else {
                     cachedAvailableSequence = _sequenceBarrier->waitFor(nextSequence);
                 }
-            } catch (TimeoutException &) {
+            } catch (const TimeoutException &) {
                 notifyTimeout(_sequence->value());
-            } catch (AlertException &) {
+            } catch (const AlertException &) {
                 if (_running == 0) {
                     break;
                 }
