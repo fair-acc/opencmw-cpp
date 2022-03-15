@@ -26,6 +26,8 @@ FetchContent_Declare(
         gsl-lite
         GIT_REPOSITORY https://github.com/gsl-lite/gsl-lite.git
         GIT_TAG v0.40.0
+        # including gsl-lite produces some warnings, has to be fixed upstream
+        # upstream fix see https://github.com/gsl-lite/gsl-lite/issues/325 and https://github.com/gsl-lite/gsl-lite/pull/321
         )
 
 # prefers usage via conan, but cmake should work, but doesn't find gsl-lite in targets
@@ -34,8 +36,10 @@ FetchContent_Declare(
         GIT_REPOSITORY https://github.com/mpusz/units.git
         GIT_TAG v0.7.0
         SOURCE_SUBDIR src/
+        # comment out find_package for gsl-lite and fmt since we use cmakeFetch for them
         PATCH_COMMAND sed -e "s%find_package(gsl-lite CONFIG REQUIRED)%#find_package (gsl-lite CONFIG REQUIRED)%" -i src/core/CMakeLists.txt
         COMMAND sed -e "s%find_package(fmt CONFIG REQUIRED)%#find_package (gsl-lite CONFIG REQUIRED)%" -i src/core-fmt/CMakeLists.txt
+        # make fmt use the header only library and only reference it in the build interface
         COMMAND sed -e "s% fmt::fmt% $--foo--BUILD_INTERFACE:fmt::fmt-header-only>%" -i src/core-fmt/CMakeLists.txt
         COMMAND sed -e "s%--foo--%<%" -i src/core-fmt/CMakeLists.txt # hack to ensure that the Generator expression is not evaluated for COMMAND but in the resulting context
 )
@@ -87,7 +91,8 @@ FetchContent_Declare(
     rxcpp
     GIT_REPOSITORY https://github.com/ReactiveX/RxCpp
     GIT_TAG        7f97aa901701343593869acad1ee5a02292f39cf # TODO Change to the latest tested release of RxCpp before making a release of OpenCMW
-    # Silence warnings when using rxcpp by exporting the header directories as system includes TODO: upstream this change
+    # Silence warnings when using rxcpp by exporting the header directories as system includes
+    # see upstream issue: https://github.com/ReactiveX/RxCpp/pull/580
     PATCH_COMMAND sed -e "s%target_include_directories(rxcpp INTERFACE%target_include_directories(rxcpp SYSTEM INTERFACE%" -i projects/CMake/CMakeLists.txt
 )
 FetchContent_MakeAvailable(rxcpp)
