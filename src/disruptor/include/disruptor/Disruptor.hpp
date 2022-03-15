@@ -226,7 +226,7 @@ public:
      * \returns EventHandlerGroupType that can be used to setup a dependency barrier over the specified event handlers.
      */
     std::shared_ptr<EventHandlerGroupType> after(const std::vector<std::shared_ptr<IEventHandler<T>>> &handlers) {
-        std::vector<std::shared_ptr<ISequence>> sequences;
+        std::vector<std::shared_ptr<Sequence>> sequences;
         for (auto &&handler : handlers)
             sequences.push_back(_consumerRepository->getSequenceFor(handler));
 
@@ -374,11 +374,11 @@ public:
         return _consumerRepository->getBarrierFor(handler);
     }
 
-    std::shared_ptr<EventHandlerGroupType> createEventProcessors(const std::vector<std::shared_ptr<ISequence>> &barrierSequences,
-            const std::vector<std::shared_ptr<IEventHandler<T>>>                                               &eventHandlers) {
+    std::shared_ptr<EventHandlerGroupType> createEventProcessors(const std::vector<std::shared_ptr<Sequence>> &barrierSequences,
+            const std::vector<std::shared_ptr<IEventHandler<T>>>                                              &eventHandlers) {
         checkNotStarted();
 
-        std::vector<std::shared_ptr<ISequence>> processorSequences;
+        std::vector<std::shared_ptr<Sequence>> processorSequences;
         processorSequences.reserve(eventHandlers.size());
 
         auto barrier = _ringBuffer->newBarrier(barrierSequences);
@@ -399,8 +399,8 @@ public:
         return std::make_shared<EventHandlerGroupType>(this->shared_from_this(), _consumerRepository, processorSequences);
     }
 
-    std::shared_ptr<EventHandlerGroupType> createWorkerPool(const std::vector<std::shared_ptr<ISequence>> &barrierSequences,
-            const std::vector<std::shared_ptr<IWorkHandler<T>>>                                           &workHandlers) {
+    std::shared_ptr<EventHandlerGroupType> createWorkerPool(const std::vector<std::shared_ptr<Sequence>> &barrierSequences,
+            const std::vector<std::shared_ptr<IWorkHandler<T>>>                                          &workHandlers) {
         auto sequenceBarrier = _ringBuffer->newBarrier(barrierSequences);
         auto workerPool      = std::make_shared<WorkerPool<T>>(_ringBuffer, sequenceBarrier, _exceptionHandler, workHandlers);
         _consumerRepository->add(workerPool, sequenceBarrier);
@@ -408,8 +408,8 @@ public:
         return std::make_shared<EventHandlerGroupType>(this->shared_from_this(), _consumerRepository, workerPool->getWorkerSequences());
     }
 
-    std::shared_ptr<EventHandlerGroupType> createEventProcessors(const std::vector<std::shared_ptr<ISequence>> &barrierSequences,
-            const std::vector<std::shared_ptr<IEventProcessorFactory<T, SIZE>>>                                &processorFactories) {
+    std::shared_ptr<EventHandlerGroupType> createEventProcessors(const std::vector<std::shared_ptr<Sequence>> &barrierSequences,
+            const std::vector<std::shared_ptr<IEventProcessorFactory<T, SIZE>>>                               &processorFactories) {
         std::vector<std::shared_ptr<IEventProcessor>> processors;
         for (auto &&processorFactory : processorFactories) {
             processors.push_back(processorFactory->createEventProcessor(_ringBuffer, barrierSequences));

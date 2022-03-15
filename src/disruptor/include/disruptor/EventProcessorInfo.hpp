@@ -22,15 +22,13 @@ public:
             const std::shared_ptr<ISequenceBarrier>           &barrier)
         : _eventProcessor(eventProcessor)
         , _eventHandler(eventHandler)
-        , _barrier(barrier)
-        , _isEndOfChain(true) {
-    }
+        , _barrier(barrier) {}
 
-    const std::shared_ptr<IEventProcessor> &eventProcessor() const {
+    [[nodiscard]] const std::shared_ptr<IEventProcessor> &eventProcessor() const {
         return _eventProcessor;
     }
 
-    std::vector<std::shared_ptr<ISequence>> sequences() const override {
+    std::vector<std::shared_ptr<Sequence>> sequences() const override {
         return { _eventProcessor->sequence() };
     }
 

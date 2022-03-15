@@ -15,7 +15,6 @@
 #include "ISequenceBarrier.hpp"
 #include "ProcessingSequenceBarrier.hpp"
 #include "RingBuffer.hpp"
-#include "SequenceGroups.hpp"
 #include "Util.hpp"
 #include "WaitStrategy.hpp"
 
@@ -67,7 +66,7 @@ public:
      *
      * \param gatingSequences The sequences to add.
      */
-    virtual void addGatingSequences(const std::vector<std::shared_ptr<ISequence>> &gatingSequences) = 0;
+    virtual void addGatingSequences(const std::vector<std::shared_ptr<Sequence>> &gatingSequences) = 0;
 
     /**
      * Remove the specified sequence from this sequencer.
@@ -75,26 +74,26 @@ public:
      * \param sequence to be removed.
      * \returns true if this sequence was found, false otherwise.
      */
-    virtual bool removeGatingSequence(const std::shared_ptr<ISequence> &sequence) = 0;
+    virtual bool removeGatingSequence(const std::shared_ptr<Sequence> &sequence) = 0;
 
     /**
      * Create a ISequenceBarrier that gates on the the cursor and a list of Sequences
      *
      * \param sequencesToTrack
      */
-    virtual std::shared_ptr<ISequenceBarrier> newBarrier(const std::vector<std::shared_ptr<ISequence>> &sequencesToTrack) = 0;
+    virtual std::shared_ptr<ISequenceBarrier> newBarrier(const std::vector<std::shared_ptr<Sequence>> &sequencesToTrack) = 0;
 
     /**
      * Get the minimum sequence value from all of the gating sequences added to this ringBuffer.
      *
      * \returns The minimum gating sequence or the cursor sequence if no sequences have been added.
      */
-    virtual std::int64_t                          getMinimumSequence()                                                                                                            = 0;
+    virtual std::int64_t                          getMinimumSequence()                                                                                                           = 0;
 
-    virtual std::shared_ptr<EventPoller<T, SIZE>> newPoller(const std::shared_ptr<RingBuffer<T, SIZE>> &provider, const std::vector<std::shared_ptr<ISequence>> &gatingSequences) = 0;
+    virtual std::shared_ptr<EventPoller<T, SIZE>> newPoller(const std::shared_ptr<RingBuffer<T, SIZE>> &provider, const std::vector<std::shared_ptr<Sequence>> &gatingSequences) = 0;
 
-    virtual void                                  writeDescriptionTo(std::ostream &stream) const                                                                                  = 0;
-    virtual ~Sequencer()                                                                                                                                                          = default;
+    virtual void                                  writeDescriptionTo(std::ostream &stream) const                                                                                 = 0;
+    virtual ~Sequencer()                                                                                                                                                         = default;
 };
 
 static const std::int32_t rbPad = 128 / sizeof(int *);
@@ -140,8 +139,8 @@ public:
     [[nodiscard]] std::int64_t           getRemainingCapacity() override { return _sequencer->getRemainingCapacity(); }
     void                                 publish(std::int64_t sequence) override { _sequencer->publish(sequence); }
     bool                                 isPublished(std::int64_t sequence) { return _sequencer->isAvailable(sequence); }
-    void                                 addGatingSequences(const std::vector<std::shared_ptr<ISequence>> &gatingSequences) { _sequencer->addGatingSequences(gatingSequences); }
-    bool                                 removeGatingSequence(const std::shared_ptr<ISequence> &sequence) { return _sequencer->removeGatingSequence(sequence); }
+    void                                 addGatingSequences(const std::vector<std::shared_ptr<Sequence>> &gatingSequences) { _sequencer->addGatingSequences(gatingSequences); }
+    bool                                 removeGatingSequence(const std::shared_ptr<Sequence> &sequence) { return _sequencer->removeGatingSequence(sequence); }
     std::int64_t                         getMinimumGatingSequence() { return _sequencer->getMinimumSequence(); }
 
     /**
@@ -150,7 +149,7 @@ public:
      * \param sequencesToTrack the additional sequences to track
      * \returns A sequence barrier that will track the specified sequences.
      */
-    std::shared_ptr<ISequenceBarrier> newBarrier(const std::vector<std::shared_ptr<ISequence>> &sequencesToTrack = {}) {
+    std::shared_ptr<ISequenceBarrier> newBarrier(const std::vector<std::shared_ptr<Sequence>> &sequencesToTrack = {}) {
         return _sequencer->newBarrier(sequencesToTrack);
     }
 
@@ -160,7 +159,7 @@ public:
      * \param gatingSequences
      * \returns A poller that will gate on this ring buffer and the supplied sequences.
      */
-    std::shared_ptr<EventPoller<T, SIZE>> newPoller(const std::vector<std::shared_ptr<ISequence>> &gatingSequences = {}) {
+    std::shared_ptr<EventPoller<T, SIZE>> newPoller(const std::vector<std::shared_ptr<Sequence>> &gatingSequences = {}) {
         return _sequencer->newPoller(this->shared_from_this(), gatingSequences);
     }
 
@@ -214,49 +213,45 @@ private:
 template<typename T, std::size_t SIZE>
 class SequencerBase : public Sequencer<T, SIZE>, public std::enable_shared_from_this<SequencerBase<T, SIZE>> {
 protected:
-    /**
-     * Volatile in the Java version => always use Volatile.Read/Write or Interlocked methods to access this field.
-     */
-    std::vector<std::shared_ptr<ISequence>> _gatingSequences;
-    std::shared_ptr<WaitStrategy>           _waitStrategy;
-    std::shared_ptr<Sequence>               _cursor = std::make_shared<Sequence>();
-    WaitStrategy                           &_waitStrategyRef;
-    Sequence                               &_cursorRef;
+    std::shared_ptr<std::vector<std::shared_ptr<Sequence>>> _gatingSequences{ std::make_shared<std::vector<std::shared_ptr<Sequence>>>() };
+    std::shared_ptr<WaitStrategy>                           _waitStrategy;
+    std::shared_ptr<Sequence>                               _cursor = std::make_shared<Sequence>();
+    WaitStrategy                                           &_waitStrategyRef;
 
 public:
     explicit SequencerBase(std::shared_ptr<WaitStrategy> waitStrategy)
         : _waitStrategy(std::move(waitStrategy))
-        , _waitStrategyRef(*_waitStrategy)
-        , _cursorRef(*_cursor) {}
+        , _waitStrategyRef(*_waitStrategy) {}
 
-    [[nodiscard]] std::shared_ptr<ISequenceBarrier> newBarrier(const std::vector<std::shared_ptr<ISequence>> &sequencesToTrack) override {
+    [[nodiscard]] std::shared_ptr<ISequenceBarrier> newBarrier(const std::vector<std::shared_ptr<Sequence>> &sequencesToTrack) override {
         return std::make_shared<ProcessingSequenceBarrier>(this->shared_from_this(), _waitStrategy, _cursor, sequencesToTrack);
     }
 
     [[nodiscard]] std::int32_t            bufferSize() const override { return SIZE; }
-    [[nodiscard]] std::int64_t            cursor() const override { return _cursorRef.value(); }
-    void                                  addGatingSequences(const std::vector<std::shared_ptr<ISequence>> &gatingSequences) override { SequenceGroups::addSequences(_gatingSequences, *this, gatingSequences); }
-    bool                                  removeGatingSequence(const std::shared_ptr<ISequence> &sequence) override { return SequenceGroups::removeSequence(_gatingSequences, sequence); }
-    [[nodiscard]] std::int64_t            getMinimumSequence() override { return util::getMinimumSequence(_gatingSequences, _cursorRef.value()); }
+    [[nodiscard]] std::int64_t            cursor() const override { return _cursor->value(); }
+    void                                  addGatingSequences(const std::vector<std::shared_ptr<Sequence>> &gatingSequences) override { detail::addSequences(_gatingSequences, *_cursor, gatingSequences); }
+    bool                                  removeGatingSequence(const std::shared_ptr<Sequence> &sequence) override { return detail::removeSequence(_gatingSequences, sequence); }
+    [[nodiscard]] std::int64_t            getMinimumSequence() override { return detail::getMinimumSequence(*_gatingSequences, _cursor->value()); }
 
-    std::shared_ptr<EventPoller<T, SIZE>> newPoller(const std::shared_ptr<RingBuffer<T, SIZE>> &provider, const std::vector<std::shared_ptr<ISequence>> &gatingSequences) override {
-        return EventPoller<T, SIZE>::newInstance(provider, this->shared_from_this(), std::make_shared<Sequence>(), _cursor, gatingSequences);
+    std::shared_ptr<EventPoller<T, SIZE>> newPoller(const std::shared_ptr<RingBuffer<T, SIZE>> &provider, const std::vector<std::shared_ptr<Sequence>> &gatingSequences) override {
+        if (gatingSequences.empty()) {
+            return std::make_shared<EventPoller<T, SIZE>>(provider, this->shared_from_this(), std::make_shared<Sequence>(), std::vector{ _cursor });
+        }
+        return std::make_shared<EventPoller<T, SIZE>>(provider, this->shared_from_this(), std::make_shared<Sequence>(), gatingSequences);
     }
 
     void writeDescriptionTo(std::ostream &stream) const override {
-        stream << fmt::format("WaitStrategy: {{ {}, Cursor: ", typeName<std::remove_cvref_t<decltype(opencmw::unwrapPointer(_waitStrategy))>>);
-        _cursor->writeDescriptionTo(stream);
-        stream << ", GatingSequences: [ ";
+        stream << fmt::format("WaitStrategy: {{ {}, Cursor: {}, GatingSequences: [ ",
+                typeName<std::remove_cvref_t<decltype(opencmw::unwrapPointer(_waitStrategy))>>, _cursor->value());
 
         auto firstItem = true;
-        for (auto &&sequence : _gatingSequences) {
-            if (firstItem)
+        for (const auto &sequence : *_gatingSequences) {
+            if (firstItem) {
                 firstItem = false;
-            else
+            } else {
                 stream << ", ";
-            stream << "{ ";
-            sequence->writeDescriptionTo(stream);
-            stream << " }";
+            }
+            stream << fmt::format("{{ {} }}", sequence->value());
         }
 
         stream << " ]";
@@ -273,7 +268,7 @@ class SingleProducerSequencer : public SequencerBase<T, SIZE> {
         std::int64_t  cachedValue;
         const uint8_t padding1[56]{}; // NOSONAR
 
-        Fields(std::int64_t _nextValue = Sequence::InitialCursorValue, std::int64_t _cachedValue = Sequence::InitialCursorValue)
+        Fields(std::int64_t _nextValue = kInitialCursorValue, std::int64_t _cachedValue = kInitialCursorValue)
             : nextValue(_nextValue)
             , cachedValue(_cachedValue) {}
     };
@@ -292,7 +287,7 @@ public:
         const std::int64_t cachedGatingSequence = _fields.cachedValue;
 
         if (wrapPoint > cachedGatingSequence || cachedGatingSequence > nextValue) {
-            auto minSequence    = util::getMinimumSequence(this->_gatingSequences, nextValue);
+            auto minSequence    = detail::getMinimumSequence(*this->_gatingSequences, nextValue);
             _fields.cachedValue = minSequence;
 
             if (wrapPoint > minSequence) {
@@ -306,18 +301,17 @@ public:
     std::int64_t next(const std::int32_t n_slots_to_claim = 1) override {
         assert((n_slots_to_claim > 0 && n_slots_to_claim < static_cast<std::int32_t>(SIZE)) && "n_slots_to_claim must be > 0 and < bufferSize");
 
-        auto nextValue            = _fields.nextValue;
+        auto nextValue    = _fields.nextValue;
 
-        auto nextSequence         = nextValue + n_slots_to_claim;
-        auto wrapPoint            = nextSequence - static_cast<std::int64_t>(SIZE);
-        auto cachedGatingSequence = _fields.cachedValue;
+        auto nextSequence = nextValue + n_slots_to_claim;
+        auto wrapPoint    = nextSequence - static_cast<std::int64_t>(SIZE);
 
-        if (wrapPoint > cachedGatingSequence || cachedGatingSequence > nextValue) {
-            this->_cursorRef.setValue(nextValue);
+        if (const auto cachedGatingSequence = _fields.cachedValue; wrapPoint > cachedGatingSequence || cachedGatingSequence > nextValue) {
+            this->_cursor->setValue(nextValue);
 
             SpinWait     spinWait;
             std::int64_t minSequence;
-            while (wrapPoint > (minSequence = util::getMinimumSequence(this->_gatingSequences, nextValue))) {
+            while (wrapPoint > (minSequence = detail::getMinimumSequence(*this->_gatingSequences, nextValue))) {
                 if constexpr (requires { this->_waitStrategyRef.signalAllWhenBlocking(); }) {
                     this->_waitStrategyRef.signalAllWhenBlocking();
                 }
@@ -347,20 +341,20 @@ public:
 
     std::int64_t getRemainingCapacity() override {
         const auto nextValue = _fields.nextValue;
-        const auto consumed  = util::getMinimumSequence(this->_gatingSequences, nextValue);
+        const auto consumed  = detail::getMinimumSequence(*this->_gatingSequences, nextValue);
         const auto produced  = nextValue;
 
         return this->bufferSize() - (produced - consumed);
     }
 
     void publish(std::int64_t sequence) override {
-        this->_cursorRef.setValue(sequence);
+        this->_cursor->setValue(sequence);
         if constexpr (requires { this->_waitStrategyRef.signalAllWhenBlocking(); }) {
             this->_waitStrategyRef.signalAllWhenBlocking();
         }
     }
 
-    forceinline bool isAvailable(std::int64_t sequence) const noexcept override { return sequence <= this->_cursorRef.value(); }
+    forceinline bool isAvailable(std::int64_t sequence) const noexcept override { return sequence <= this->_cursor->value(); }
     std::int64_t     getHighestPublishedSequence(std::int64_t /*nextSequence*/, std::int64_t availableSequence) override { return availableSequence; }
 };
 
@@ -389,7 +383,7 @@ public:
     }
 
     bool hasAvailableCapacity(std::int32_t requiredCapacity) override {
-        return hasAvailableCapacity(this->_gatingSequences, requiredCapacity, this->_cursorRef.value());
+        return hasAvailableCapacity(*this->_gatingSequences, requiredCapacity, this->_cursor->value());
     }
 
     std::int64_t next(std::int32_t n_slots_to_claim) override {
@@ -402,14 +396,14 @@ public:
 
         SpinWait     spinWait;
         do {
-            current                           = this->_cursorRef.value();
+            current                           = this->_cursor->value();
             next                              = current + n_slots_to_claim;
 
             std::int64_t wrapPoint            = next - static_cast<std::int64_t>(SIZE);
             std::int64_t cachedGatingSequence = _gatingSequenceCache->value();
 
             if (wrapPoint > cachedGatingSequence || cachedGatingSequence > current) {
-                std::int64_t gatingSequence = util::getMinimumSequence(this->_gatingSequences, current);
+                std::int64_t gatingSequence = detail::getMinimumSequence(*this->_gatingSequences, current);
 
                 if (wrapPoint > gatingSequence) {
                     if constexpr (requires { this->_waitStrategy->signalAllWhenBlocking(); }) {
@@ -420,7 +414,7 @@ public:
                 }
 
                 _gatingSequenceCache->setValue(gatingSequence);
-            } else if (this->_cursorRef.compareAndSet(current, next)) {
+            } else if (this->_cursor->compareAndSet(current, next)) {
                 break;
             }
         } while (true);
@@ -435,20 +429,20 @@ public:
         std::int64_t next;
 
         do {
-            current = this->_cursorRef.value();
+            current = this->_cursor->value();
             next    = current + n_slots_to_claim;
 
-            if (!hasAvailableCapacity(this->_gatingSequences, n_slots_to_claim, current)) {
+            if (!hasAvailableCapacity(*this->_gatingSequences, n_slots_to_claim, current)) {
                 throw NoCapacityException();
             }
-        } while (!this->_cursorRef.compareAndSet(current, next));
+        } while (!this->_cursor->compareAndSet(current, next));
 
         return next;
     }
 
     std::int64_t getRemainingCapacity() override {
-        auto consumed = util::getMinimumSequence(this->_gatingSequences, this->_cursorRef.value());
-        auto produced = this->_cursorRef.value();
+        const auto produced = this->_cursor->value();
+        const auto consumed = detail::getMinimumSequence(*this->_gatingSequences, produced);
 
         return this->bufferSize() - (produced - consumed);
     }
@@ -478,11 +472,11 @@ public:
     }
 
 private:
-    [[nodiscard]] bool hasAvailableCapacity(const std::vector<std::shared_ptr<ISequence>> &gatingSequences, std::int32_t requiredCapacity, std::int64_t cursorValue) const noexcept {
+    [[nodiscard]] bool hasAvailableCapacity(const std::vector<std::shared_ptr<Sequence>> &gatingSequences, std::int32_t requiredCapacity, std::int64_t cursorValue) const noexcept {
         const auto wrapPoint = (cursorValue + requiredCapacity) - static_cast<std::int64_t>(SIZE);
 
         if (const auto cachedGatingSequence = _gatingSequenceCache->value(); wrapPoint > cachedGatingSequence || cachedGatingSequence > cursorValue) {
-            const auto minSequence = util::getMinimumSequence(gatingSequences, cursorValue);
+            const auto minSequence = detail::getMinimumSequence(gatingSequences, cursorValue);
             _gatingSequenceCache->setValue(minSequence);
 
             if (wrapPoint > minSequence) {
@@ -510,39 +504,25 @@ enum class PollState {
 
 template<typename T, std::size_t SIZE>
 class EventPoller {
-    std::shared_ptr<RingBuffer<T, SIZE>> _dataProvider;
-    std::shared_ptr<Sequencer<T, SIZE>>  _sequencer;
-    std::shared_ptr<ISequence>           _sequence;
-    std::shared_ptr<ISequence>           _gatingSequence;
-    std::int64_t                         _lastAvailableSequence = Sequence::InitialCursorValue;
+    std::shared_ptr<RingBuffer<T, SIZE>>   _dataProvider;
+    std::shared_ptr<Sequencer<T, SIZE>>    _sequencer;
+    std::shared_ptr<Sequence>              _sequence;
+    std::vector<std::shared_ptr<Sequence>> _gatingSequences;
+    std::int64_t                           _lastAvailableSequence = kInitialCursorValue;
 
 public:
+    EventPoller()                     = delete;
+    EventPoller(const EventPoller &)  = delete;
+    EventPoller(const EventPoller &&) = delete;
+    void operator=(const EventPoller &) = delete;
     EventPoller(const std::shared_ptr<RingBuffer<T, SIZE>> &dataProvider,
             const std::shared_ptr<Sequencer<T, SIZE>>      &sequencer,
-            const std::shared_ptr<ISequence>               &sequence,
-            const std::shared_ptr<ISequence>               &gatingSequence)
+            const std::shared_ptr<Sequence>                &sequence,
+            const std::vector<std::shared_ptr<Sequence>>   &gatingSequences)
         : _dataProvider(dataProvider)
         , _sequencer(sequencer)
         , _sequence(sequence)
-        , _gatingSequence(gatingSequence) {}
-
-    static std::shared_ptr<EventPoller<T, SIZE>> newInstance(const std::shared_ptr<RingBuffer<T, SIZE>> &dataProvider,
-            const std::shared_ptr<Sequencer<T, SIZE>>                                                   &sequencer,
-            const std::shared_ptr<ISequence>                                                            &sequence,
-            const std::shared_ptr<ISequence>                                                            &cursorSequence,
-            const std::vector<std::shared_ptr<ISequence>>                                               &gatingSequences) {
-        std::shared_ptr<ISequence> gatingSequence;
-
-        if (gatingSequences.empty()) {
-            gatingSequence = cursorSequence;
-        } else if (gatingSequences.size() == 1) {
-            gatingSequence = *gatingSequences.begin();
-        } else {
-            gatingSequence = std::make_shared<FixedSequenceGroup>(gatingSequences);
-        }
-
-        return std::make_shared<EventPoller<T, SIZE>>(dataProvider, sequencer, sequence, gatingSequence);
-    }
+        , _gatingSequences(gatingSequences) {}
 
     /**
      * Polls for events using the given handler. <br>
@@ -565,7 +545,7 @@ public:
         const auto lastAvailableSequence = _lastAvailableSequence;
         const bool shareSameSign         = ((nextSequence < 0) == (lastAvailableSequence < 0));
         const auto min                   = shareSameSign && lastAvailableSequence > nextSequence ? lastAvailableSequence : nextSequence;
-        const auto availableSequence     = _sequencer->getHighestPublishedSequence(min, _gatingSequence->value());
+        const auto availableSequence     = _sequencer->getHighestPublishedSequence(min, detail::getMinimumSequence(_gatingSequences));
         _lastAvailableSequence           = availableSequence;
 
         if (nextSequence <= availableSequence) {
@@ -602,7 +582,7 @@ public:
         return PollState::Idle;
     }
 
-    std::shared_ptr<ISequence> sequence() const {
+    [[nodiscard]] std::shared_ptr<Sequence> sequence() const {
         return _sequence;
     };
 };

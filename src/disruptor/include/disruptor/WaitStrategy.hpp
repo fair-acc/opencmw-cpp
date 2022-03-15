@@ -7,7 +7,6 @@
 #include <thread>
 
 #include "Exception.hpp"
-#include "ISequence.hpp"
 #include "ISequenceBarrier.hpp"
 #include "Sequence.hpp"
 #include "SpinWait.hpp"
@@ -26,8 +25,8 @@ namespace opencmw::disruptor {
  * \returns the sequence that is available which may be greater than the requested sequence.
  */
 template<typename T>
-constexpr bool isWaitStrategy = requires(T /*const*/ t, const std::int64_t sequence, const Sequence &cursor, ISequence &dependentSequence, ISequenceBarrier &barrier) {
-    { t.waitFor(sequence, cursor, dependentSequence, barrier) } -> std::same_as<std::int64_t>;
+constexpr bool isWaitStrategy = requires(T /*const*/ t, const std::int64_t sequence, const Sequence &cursor, std::vector<std::shared_ptr<Sequence>> &dependentSequences, ISequenceBarrier &barrier) {
+    { t.waitFor(sequence, cursor, dependentSequences, barrier) } -> std::same_as<std::int64_t>;
 };
 static_assert(!isWaitStrategy<int>);
 
@@ -48,7 +47,7 @@ struct WaitStrategy {
      * \param barrier barrier the IEventProcessor is waiting on.
      * \returns the sequence that is available which may be greater than the requested sequence.
      */
-    virtual std::int64_t waitFor(const std::int64_t sequence, const Sequence &cursor, ISequence &dependentSequence, ISequenceBarrier &barrier) = 0;
+    virtual std::int64_t waitFor(const std::int64_t sequence, const Sequence &cursor, const std::vector<std::shared_ptr<Sequence>> &dependentSequences, ISequenceBarrier &barrier) = 0;
 
     /**
      * Signal those IEventProcessor waiting that the cursor has advanced.
@@ -65,7 +64,7 @@ class BlockingWaitStrategy : public WaitStrategy {
     std::condition_variable_any _conditionVariable;
 
 public:
-    std::int64_t waitFor(const std::int64_t sequence, const Sequence &cursor, ISequence &dependentSequence, ISequenceBarrier &barrier) override {
+    std::int64_t waitFor(const std::int64_t sequence, const Sequence &cursor, const std::vector<std::shared_ptr<Sequence>> &dependentSequences, ISequenceBarrier &barrier) override {
         if (cursor.value() < sequence) {
             std::unique_lock uniqueLock(_gate);
 
@@ -76,7 +75,7 @@ public:
         }
 
         std::int64_t availableSequence;
-        while ((availableSequence = dependentSequence.value()) < sequence) {
+        while ((availableSequence = detail::getMinimumSequence(dependentSequences)) < sequence) {
             barrier.checkAlert();
         }
 
@@ -95,9 +94,9 @@ static_assert(WaitStrategyConcept<BlockingWaitStrategy>);
  * This strategy will use CPU resource to avoid syscalls which can introduce latency jitter.  It is best used when threads can be bound to specific CPU cores.
  */
 struct BusySpinWaitStrategy : public WaitStrategy {
-    std::int64_t waitFor(const std::int64_t sequence, const Sequence & /*cursor*/, ISequence &dependentSequence, ISequenceBarrier &barrier) override {
+    std::int64_t waitFor(const std::int64_t sequence, const Sequence & /*cursor*/, const std::vector<std::shared_ptr<Sequence>> &dependentSequences, ISequenceBarrier &barrier) override {
         std::int64_t availableSequence;
-        while ((availableSequence = dependentSequence.value()) < sequence) {
+        while ((availableSequence = detail::getMinimumSequence(dependentSequences)) < sequence) {
             barrier.checkAlert();
         }
         return availableSequence;
@@ -121,7 +120,7 @@ public:
         : _retries(retries) {
     }
 
-    std::int64_t waitFor(const std::int64_t sequence, const Sequence & /*cursor*/, ISequence &dependentSequence, ISequenceBarrier &barrier) override {
+    std::int64_t waitFor(const std::int64_t sequence, const Sequence & /*cursor*/, const std::vector<std::shared_ptr<Sequence>> &dependentSequences, ISequenceBarrier &barrier) override {
         auto       counter    = _retries;
         const auto waitMethod = [&]() {
             barrier.checkAlert();
@@ -139,7 +138,7 @@ public:
         };
 
         std::int64_t availableSequence;
-        while ((availableSequence = dependentSequence.value()) < sequence) {
+        while ((availableSequence = detail::getMinimumSequence(dependentSequences)) < sequence) {
             counter = waitMethod();
         }
 
@@ -155,11 +154,11 @@ static_assert(WaitStrategyConcept<SleepingWaitStrategy>);
  * This strategy is a good compromise between performance and CPU resource. Latency spikes can occur after quiet periods.
  */
 struct SpinWaitWaitStrategy : public WaitStrategy {
-    std::int64_t waitFor(const std::int64_t sequence, const Sequence & /*cursor*/, ISequence &dependentSequence, ISequenceBarrier &barrier) override {
+    std::int64_t waitFor(const std::int64_t sequence, const Sequence & /*cursor*/, const std::vector<std::shared_ptr<Sequence>> &dependentSequences, ISequenceBarrier &barrier) override {
         std::int64_t availableSequence;
 
         SpinWait     spinWait;
-        while ((availableSequence = dependentSequence.value()) < sequence) {
+        while ((availableSequence = detail::getMinimumSequence(dependentSequences)) < sequence) {
             barrier.checkAlert();
             spinWait.spinOnce();
         }
@@ -182,7 +181,7 @@ public:
     explicit TimeoutBlockingWaitStrategy(Clock::duration timeout)
         : _timeout(timeout) {}
 
-    std::int64_t waitFor(const std::int64_t sequence, const Sequence &cursor, ISequence &dependentSequence, ISequenceBarrier &barrier) override {
+    std::int64_t waitFor(const std::int64_t sequence, const Sequence &cursor, const std::vector<std::shared_ptr<Sequence>> &dependentSequences, ISequenceBarrier &barrier) override {
         auto timeSpan = std::chrono::microseconds(std::chrono::duration_cast<std::chrono::microseconds>(_timeout).count());
 
         if (cursor.value() < sequence) {
@@ -198,7 +197,7 @@ public:
         }
 
         std::int64_t availableSequence;
-        while ((availableSequence = dependentSequence.value()) < sequence) {
+        while ((availableSequence = detail::getMinimumSequence(dependentSequences)) < sequence) {
             barrier.checkAlert();
         }
 
@@ -220,7 +219,7 @@ class YieldingWaitStrategy : public WaitStrategy {
     const std::size_t _spinTries = 100;
 
 public:
-    std::int64_t waitFor(const std::int64_t sequence, const Sequence & /*cursor*/, ISequence &dependentSequence, ISequenceBarrier &barrier) override {
+    std::int64_t waitFor(const std::int64_t sequence, const Sequence & /*cursor*/, const std::vector<std::shared_ptr<Sequence>> &dependentSequences, ISequenceBarrier &barrier) override {
         auto       counter    = _spinTries;
         const auto waitMethod = [&]() {
             barrier.checkAlert();
@@ -234,7 +233,7 @@ public:
         };
 
         std::int64_t availableSequence;
-        while ((availableSequence = dependentSequence.value()) < sequence) {
+        while ((availableSequence = detail::getMinimumSequence(dependentSequences)) < sequence) {
             counter = waitMethod();
         }
 
@@ -247,7 +246,7 @@ public:
 static_assert(WaitStrategyConcept<YieldingWaitStrategy>);
 
 struct NoWaitStrategy {
-    std::int64_t waitFor(const std::int64_t sequence, const Sequence & /*cursor*/, const ISequence & /*dependentSequence*/, const ISequenceBarrier & /*barrier*/) const {
+    std::int64_t waitFor(const std::int64_t sequence, const Sequence & /*cursor*/, const std::vector<std::shared_ptr<Sequence>> & /*dependentSequences*/, const ISequenceBarrier & /*barrier*/) const {
         // wait for nothing
         return sequence;
     }
