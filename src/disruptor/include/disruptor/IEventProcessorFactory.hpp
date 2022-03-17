@@ -10,7 +10,7 @@ namespace opencmw::disruptor {
 /**
  * A factory interface to make it possible to include custom event processors in a chain
  */
-template<typename T, std::size_t SIZE>
+template<typename T>
 class IEventProcessorFactory {
 public:
     virtual ~IEventProcessorFactory() = default;
@@ -22,7 +22,7 @@ public:
      * \param barrierSequences barrierSequences the sequences to gate on
      * \returns a new EventProcessor that gates on before processing events
      */
-    virtual std::shared_ptr<IEventProcessor> createEventProcessor(const std::shared_ptr<RingBuffer<T, SIZE>> &ringBuffer, const std::vector<std::shared_ptr<Sequence>> &barrierSequences) = 0;
+    virtual std::shared_ptr<IEventProcessor> createEventProcessor(const std::shared_ptr<DataProvider<T>> &ringBuffer, const std::vector<std::shared_ptr<Sequence>> &barrierSequences) = 0;
 };
 
 } // namespace opencmw::disruptor

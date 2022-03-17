@@ -36,6 +36,12 @@ requires units::is_derived_from_specialization_of<T, units::quantity> && require
 inline constexpr const bool is_quantity<T> = true;
 } // namespace units::detail
 
+template<class T, class U>
+struct is_same_template : std::is_same<T, U> {};
+
+template<template<class...> class T, class T1, class T2>
+struct is_same_template<T<T1>, T<T2>> : std::true_type {};
+
 namespace opencmw {
 template<typename>
 constexpr bool always_false = false;
