@@ -3,7 +3,7 @@
 namespace opencmw::disruptor {
 
 /**
- * Callback interface to be implemented for processing units of work as they become available in the RingBuffer<T>
+ * Callback interface to be implemented for processing units of work as they become available in the DataProvider<T>
  *
  * \tparam T event implementation storing the data for sharing during exchange or parallel coordination of an event.
  */
@@ -15,7 +15,7 @@ public:
     /**
      * Callback to indicate a unit of work needs to be processed.
      *
-     * \param evt event published to the RingBuffer<T>
+     * \param evt event published to the DataProvider<T>
      */
     virtual void onEvent(T &evt) = 0;
 };

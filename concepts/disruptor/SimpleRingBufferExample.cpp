@@ -11,7 +11,7 @@ int main() {
     using namespace opencmw;
     using namespace opencmw::disruptor;
 
-    auto        ringBuffer = std::make_shared<RingBuffer<int, 8192>>(ProducerType::Single, std::make_shared<BusySpinWaitStrategy>());
+    auto        ringBuffer = newRingBuffer<int, 8192, BusySpinWaitStrategy, /* optional */ ProducerType::Single>();
 
     const auto &poller     = ringBuffer->newPoller();
     // register poller sequence and poller -- w/o it's just a free idling RingBuffer

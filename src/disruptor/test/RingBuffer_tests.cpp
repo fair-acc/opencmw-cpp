@@ -16,9 +16,10 @@ TEST_CASE("RingBuffer basic tests", "[Disruptor]") {
     using namespace opencmw;
     using namespace opencmw::disruptor;
 
-    auto ringBuffer = std::make_shared<RingBuffer<int, 8192>>(ProducerType::Single, std::make_shared<disruptor::BusySpinWaitStrategy>());
+    REQUIRE_NOTHROW(newRingBuffer<int, 1024, BusySpinWaitStrategy>());
+
+    auto ringBuffer = std::make_shared<RingBuffer<int, 8192, BusySpinWaitStrategy, SingleThreadedStrategy>>();
     REQUIRE(ringBuffer->bufferSize() == 8192);
-    REQUIRE(ringBuffer->getSequencer().bufferSize() == 8192);
     REQUIRE(ringBuffer->hasAvailableCapacity(8192));
     REQUIRE(!ringBuffer->hasAvailableCapacity(8193));
     REQUIRE_NOTHROW(ringBuffer->getMinimumGatingSequence());
@@ -99,13 +100,17 @@ TEST_CASE("RingBuffer basic tests", "[Disruptor]") {
 
     REQUIRE_NOTHROW(ringBuffer->publishEvent([](int &&, std::int64_t) { /* empty notify */ }));
     REQUIRE_THROWS(poller->poll([](const int & /*event*/, std::int64_t /*sequenceID*/, bool /*endOfBatch*/) { throw std::exception(); }));
+
+    std::stringstream ss;
+    ss << ringBuffer;
+    REQUIRE(ss.str().size() != 0);
 }
 
 TEST_CASE("RingBuffer low-level operation", "[Disruptor]") {
     using namespace opencmw;
     using namespace opencmw::disruptor;
 
-    auto    ringBuffer = std::make_shared<RingBuffer<int, 8192>>(ProducerType::Single, std::make_shared<disruptor::BusySpinWaitStrategy>());
+    auto    ringBuffer = std::make_shared<RingBuffer<int, 8192, BusySpinWaitStrategy, SingleThreadedStrategy>>();
 
     int64_t sequenceID = ringBuffer->next();
     REQUIRE(sequenceID == 0);
@@ -127,7 +132,7 @@ TEST_CASE("RingBuffer single-thread poller", "[Disruptor]") {
     using namespace opencmw;
     using namespace opencmw::disruptor;
 
-    auto        ringBuffer = std::make_shared<RingBuffer<int, 8192>>(ProducerType::Multi, std::make_shared<disruptor::BusySpinWaitStrategy>());
+    auto        ringBuffer = std::make_shared<RingBuffer<int, 8192, BusySpinWaitStrategy, MultiThreadedStrategy>>();
 
     const auto &poller     = ringBuffer->newPoller();
     // register poller sequence and poller -- w/o it's just a free idling RingBuffer
@@ -151,15 +156,16 @@ TEST_CASE("RingBuffer single-thread poller", "[Disruptor]") {
     }
     std::chrono::duration<double, std::milli> time_elapsed = std::chrono::system_clock::now() - time_start;
     REQUIRE(counter == nLoop);
-    REQUIRE(ringBuffer->getSequencer().getRemainingCapacity() == ringBuffer->bufferSize());
+    REQUIRE(ringBuffer->getRemainingCapacity() == ringBuffer->bufferSize());
     fmt::print("RingBuffer read-write performance (single-thread):    {} events in {:6.2f} ms -> {:.1E} ops/s\n", nLoop, time_elapsed.count(), 1e3 * nLoop / time_elapsed.count());
 }
 
-void ringBufferPollerTest(opencmw::disruptor::ProducerType producer = opencmw::disruptor::ProducerType::Single) {
+template<std::size_t SIZE, template<size_t, typename> typename CLAIM_STRATEGY>
+void ringBufferPollerTest() {
     using namespace opencmw;
     using namespace opencmw::disruptor;
 
-    auto        ringBuffer = std::make_shared<RingBuffer<int, 8192>>(producer, std::make_shared<disruptor::BusySpinWaitStrategy>());
+    auto        ringBuffer = std::make_shared<RingBuffer<int, SIZE, BusySpinWaitStrategy, CLAIM_STRATEGY>>();
 
     const auto &poller     = ringBuffer->newPoller();
     // register poller sequence and poller -- w/o it's just a free idling RingBuffer
@@ -212,8 +218,8 @@ void ringBufferPollerTest(opencmw::disruptor::ProducerType producer = opencmw::d
     std::chrono::duration<double, std::milli> time_elapsed = std::chrono::system_clock::now() - time_start;
     REQUIRE(counter == nLoop);
     REQUIRE(received == nLoop);
-    REQUIRE(ringBuffer->getSequencer().getRemainingCapacity() == ringBuffer->bufferSize());
-    if (producer == ProducerType::Single) {
+    REQUIRE(ringBuffer->getRemainingCapacity() == ringBuffer->bufferSize());
+    if (is_same_template<CLAIM_STRATEGY<SIZE, BusySpinWaitStrategy>, SingleThreadedStrategy<SIZE, BusySpinWaitStrategy>>::value) {
         fmt::print("RingBuffer read-write performance (two-threads,SPSC): {} events in {:6.2f} ms -> {:.1E} ops/s (waitingForReader: {})\n", nLoop, time_elapsed.count(), 1e3 * nLoop / time_elapsed.count(), waitingForReader);
     } else {
         fmt::print("RingBuffer read-write performance (two-threads,MPSC): {} events in {:6.2f} ms -> {:.1E} ops/s (waitingForReader: {})\n", nLoop, time_elapsed.count(), 1e3 * nLoop / time_elapsed.count(), waitingForReader);
@@ -221,11 +227,13 @@ void ringBufferPollerTest(opencmw::disruptor::ProducerType producer = opencmw::d
 }
 
 TEST_CASE("RingBuffer two-thread poller SPSC", "[Disruptor]") {
-    ringBufferPollerTest(opencmw::disruptor::ProducerType::Single);
+    using namespace opencmw::disruptor;
+    ringBufferPollerTest<8192, SingleThreadedStrategy>();
 }
 
 TEST_CASE("RingBuffer two-thread poller MPSC", "[Disruptor]") {
-    ringBufferPollerTest(opencmw::disruptor::ProducerType::Multi);
+    using namespace opencmw::disruptor;
+    ringBufferPollerTest<8192, MultiThreadedStrategy>();
 }
 
 TEST_CASE("BlockingQueue two-thread poller (classic)", "[Disruptor]") {
@@ -245,7 +253,8 @@ TEST_CASE("BlockingQueue two-thread poller (classic)", "[Disruptor]") {
         opencmw::thread::setThreadAffinity(std::array{ true, false }, publisher);
         sync_point.arrive_and_wait();
         for (int i = 0; i < nLoop; i++) {
-            queue.push(++counter);
+            ++counter;
+            queue.push(counter);
         } });
 
     using opencmw::disruptor::PollState;

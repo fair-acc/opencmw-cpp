@@ -23,7 +23,7 @@ namespace opencmw::disruptor {
  *
  * \tparam T event implementation storing the details for the work to processed.
  */
-template<typename T, std::size_t SIZE>
+template<typename T>
 class WorkProcessor : public IEventProcessor {
 private:
     class EventReleaser;
@@ -32,7 +32,7 @@ private:
 
     std::atomic<std::int32_t>             _running{ 0 };
     std::shared_ptr<Sequence>             _sequence = std::make_shared<Sequence>();
-    std::shared_ptr<RingBuffer<T, SIZE>>  _ringBuffer;
+    std::shared_ptr<DataProvider<T>>      _ringBuffer;
     std::shared_ptr<ISequenceBarrier>     _sequenceBarrier;
     std::shared_ptr<IWorkHandler<T>>      _workHandler;
     std::shared_ptr<IExceptionHandler<T>> _exceptionHandler;
@@ -50,12 +50,12 @@ public:
      * \param exceptionHandler exceptionHandler to be called back when an error occurs
      * \param workSequence workSequence from which to claim the next event to be worked on. It should always be initialised Disruptor.Sequence.InitialCursorValue
      */
-    static std::shared_ptr<WorkProcessor<T, SIZE>> create(const std::shared_ptr<RingBuffer<T, SIZE>> &ringBuffer,
-            const std::shared_ptr<ISequenceBarrier>                                                  &sequenceBarrier,
-            const std::shared_ptr<IWorkHandler<T>>                                                   &workHandler,
-            const std::shared_ptr<IExceptionHandler<T>>                                              &exceptionHandler,
-            const std::shared_ptr<Sequence>                                                          &workSequence) {
-        auto processor            = std::make_shared<WorkProcessor<T, SIZE>>(ringBuffer, sequenceBarrier, workHandler, exceptionHandler, workSequence, PrivateKey());
+    static std::shared_ptr<WorkProcessor<T>> create(const std::shared_ptr<DataProvider<T>> &ringBuffer,
+            const std::shared_ptr<ISequenceBarrier>                                        &sequenceBarrier,
+            const std::shared_ptr<IWorkHandler<T>>                                         &workHandler,
+            const std::shared_ptr<IExceptionHandler<T>>                                    &exceptionHandler,
+            const std::shared_ptr<Sequence>                                                &workSequence) {
+        auto processor            = std::make_shared<WorkProcessor<T>>(ringBuffer, sequenceBarrier, workHandler, exceptionHandler, workSequence, PrivateKey());
         processor->_eventReleaser = std::make_shared<EventReleaser>(processor);
 
         if (auto eventReleaseAwareHandler = std::dynamic_pointer_cast<IEventReleaseAware>(processor->_workHandler); eventReleaseAwareHandler != nullptr) {
@@ -74,11 +74,11 @@ public:
      * \param exceptionHandler exceptionHandler to be called back when an error occurs
      * \param workSequence workSequence from which to claim the next event to be worked on.  It should always be initialised Disruptor.Sequence.InitialCursorValue
      */
-    WorkProcessor(const std::shared_ptr<RingBuffer<T, SIZE>> &ringBuffer,
-            const std::shared_ptr<ISequenceBarrier>          &sequenceBarrier,
-            const std::shared_ptr<IWorkHandler<T>>           &workHandler,
-            const std::shared_ptr<IExceptionHandler<T>>      &exceptionHandler,
-            const std::shared_ptr<Sequence>                  &workSequence,
+    WorkProcessor(const std::shared_ptr<DataProvider<T>> &ringBuffer,
+            const std::shared_ptr<ISequenceBarrier>      &sequenceBarrier,
+            const std::shared_ptr<IWorkHandler<T>>       &workHandler,
+            const std::shared_ptr<IExceptionHandler<T>>  &exceptionHandler,
+            const std::shared_ptr<Sequence>              &workSequence,
             PrivateKey)
         : _ringBuffer(ringBuffer)
         , _sequenceBarrier(sequenceBarrier)
@@ -188,10 +188,10 @@ private:
     }
 };
 
-template<typename T, std::size_t SIZE>
-class WorkProcessor<T, SIZE>::EventReleaser : public IEventReleaser {
+template<typename T>
+class WorkProcessor<T>::EventReleaser : public IEventReleaser {
 public:
-    explicit EventReleaser(const std::shared_ptr<WorkProcessor<T, SIZE>> &workProcessor)
+    explicit EventReleaser(const std::shared_ptr<WorkProcessor<T>> &workProcessor)
         : _workProcessor(workProcessor) {
     }
 
@@ -202,7 +202,7 @@ public:
     }
 
 private:
-    std::weak_ptr<WorkProcessor<T, SIZE>> _workProcessor;
+    std::weak_ptr<WorkProcessor<T>> _workProcessor;
 };
 
 } // namespace opencmw::disruptor

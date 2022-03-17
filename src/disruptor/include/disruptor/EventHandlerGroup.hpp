@@ -15,21 +15,19 @@ namespace opencmw::disruptor {
  *
  * \tparam T the type of event used by IEventProcessor's.
  */
-template<
-        class T, std::size_t SIZE,
-        template<typename, std::size_t> typename TDisruptor>
+template<class T, std::size_t SIZE, WaitStrategyConcept WAIT_STRATEGY, template<std::size_t, typename> typename CLAIM_STRATEGY, template<typename, std::size_t, typename, template<std::size_t, typename> typename> typename TDisruptor>
 class EventHandlerGroup {
 private:
-    using EventHandlerGroupType = EventHandlerGroup<T, SIZE, TDisruptor>;
+    using EventHandlerGroupType = EventHandlerGroup<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY, TDisruptor>;
 
-    std::shared_ptr<TDisruptor<T, SIZE>>   _disruptor;
-    std::shared_ptr<ConsumerRepository<T>> _consumerRepository;
-    std::vector<std::shared_ptr<Sequence>> _sequences;
+    std::shared_ptr<TDisruptor<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY>> _disruptor;
+    std::shared_ptr<ConsumerRepository<T>>                              _consumerRepository;
+    std::vector<std::shared_ptr<Sequence>>                              _sequences;
 
 public:
-    EventHandlerGroup(const std::shared_ptr<TDisruptor<T, SIZE>> &disruptor,
-            const std::shared_ptr<ConsumerRepository<T>>         &consumerRepository,
-            const std::vector<std::shared_ptr<Sequence>>         &sequences)
+    EventHandlerGroup(const std::shared_ptr<TDisruptor<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY>> &disruptor,
+            const std::shared_ptr<ConsumerRepository<T>>                                        &consumerRepository,
+            const std::vector<std::shared_ptr<Sequence>>                                        &sequences)
         : _disruptor(disruptor)
         , _consumerRepository(consumerRepository)
         , _sequences(sequences) {
@@ -106,7 +104,7 @@ public:
      * \param eventProcessorFactories the event processor factories to use to create the event processors that will process events.
      * \returns EventHandlerGroupType that can be used to chain dependencies.
      */
-    std::shared_ptr<EventHandlerGroupType> then(const std::vector<std::shared_ptr<IEventProcessorFactory<T, SIZE>>> &eventProcessorFactories) {
+    std::shared_ptr<EventHandlerGroupType> then(const std::vector<std::shared_ptr<IEventProcessorFactory<T>>> &eventProcessorFactories) {
         return handleEventsWith(eventProcessorFactories);
     }
 
@@ -117,8 +115,8 @@ public:
      * \param eventProcessorFactory the event processor factory to use to create the event processors that will process events.
      * \returns EventHandlerGroupType that can be used to chain dependencies.
      */
-    std::shared_ptr<EventHandlerGroupType> then(const std::shared_ptr<IEventProcessorFactory<T, SIZE>> &eventProcessorFactory) {
-        return then(std::vector<std::shared_ptr<IEventProcessorFactory<T, SIZE>>>{ eventProcessorFactory });
+    std::shared_ptr<EventHandlerGroupType> then(const std::shared_ptr<IEventProcessorFactory<T>> &eventProcessorFactory) {
+        return then(std::vector<std::shared_ptr<IEventProcessorFactory<T>>>{ eventProcessorFactory });
     }
 
     /**
@@ -162,7 +160,7 @@ public:
      * \param eventProcessorFactories the event processor factories to use to create the event processors that will process events.
      * \returns EventHandlerGroupType that can be used to chain dependencies.
      */
-    std::shared_ptr<EventHandlerGroupType> handleEventsWith(const std::vector<std::shared_ptr<IEventProcessorFactory<T, SIZE>>> &eventProcessorFactories) {
+    std::shared_ptr<EventHandlerGroupType> handleEventsWith(const std::vector<std::shared_ptr<IEventProcessorFactory<T>>> &eventProcessorFactories) {
         return _disruptor->createEventProcessors(_sequences, eventProcessorFactories);
     }
 
@@ -173,8 +171,8 @@ public:
      * \param eventProcessorFactory the event processor factory to use to create the event processors that will process events.
      * \returns EventHandlerGroupType that can be used to chain dependencies.
      */
-    std::shared_ptr<EventHandlerGroupType> handleEventsWith(const std::shared_ptr<IEventProcessorFactory<T, SIZE>> &eventProcessorFactory) {
-        return handleEventsWith(std::vector<std::shared_ptr<IEventProcessorFactory<T, SIZE>>>{ eventProcessorFactory });
+    std::shared_ptr<EventHandlerGroupType> handleEventsWith(const std::shared_ptr<IEventProcessorFactory<T>> &eventProcessorFactory) {
+        return handleEventsWith(std::vector<std::shared_ptr<IEventProcessorFactory<T>>>{ eventProcessorFactory });
     }
 
     /**
@@ -196,7 +194,7 @@ public:
      * \returns ISequenceBarrier including all the processors in this group.
      */
     std::shared_ptr<ISequenceBarrier> asSequenceBarrier() {
-        return _disruptor->ringBuffer()->newBarrier(_sequences);
+        return newBarrier(_disruptor->ringBuffer(), _sequences);
     }
 };
 

@@ -90,6 +90,7 @@ double                         testBlockingQueue(const std::uint64_t nLoop, cons
     return opsPerSecond;
 }
 
+template<opencmw::disruptor::ProducerType producerType>
 double testDisruptor(const std::uint64_t nLoop, const std::uint64_t nProducer, const std::uint64_t nConsumer, bool printCheck = true) {
     using namespace opencmw;
     using namespace opencmw::disruptor;
@@ -102,8 +103,8 @@ double testDisruptor(const std::uint64_t nLoop, const std::uint64_t nProducer, c
     [[maybe_unused]] const std::uint64_t nEventsTotalProducer = nEventsProducer * nProducer;
     [[maybe_unused]] const std::uint64_t nEventsConsumer      = nEventsTotalProducer;
 
-    // init Disruptor RingBuffer
-    auto ringBuffer = std::make_shared<RingBuffer<std::uint64_t, 8192>>(nProducer == 1 ? ProducerType::Single : ProducerType::Multi, std::make_shared<BusySpinWaitStrategy>());
+    auto                                 ringBuffer           = newRingBuffer<std::uint64_t, 8192, BusySpinWaitStrategy, producerType>();
+
     // start/stop barriers
     auto                                      time_start = std::chrono::system_clock::now();
     std::chrono::duration<double, std::milli> time_elapsed;
@@ -213,7 +214,11 @@ int main() {
         for (unsigned p = 0; p <= maxProducerBit; p++) {
             for (unsigned i = 0; i < nIter; i++) {
                 opsBlockingQueue[p][c] += testBlockingQueue(nLoop, 1 << p, 1 << c, i == 0);
-                opsRingBuffer[p][c] += testDisruptor(nLoop, 1 << p, 1 << c, i == 0);
+                if (p == 0) {
+                    opsRingBuffer[p][c] += testDisruptor<ProducerType::Single>(nLoop, 1 << p, 1 << c, i == 0);
+                } else {
+                    opsRingBuffer[p][c] += testDisruptor<ProducerType::Multi>(nLoop, 1 << p, 1 << c, i == 0);
+                }
             }
         }
     }

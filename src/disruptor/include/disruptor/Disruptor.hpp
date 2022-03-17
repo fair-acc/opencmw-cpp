@@ -17,6 +17,7 @@
 #include "IEventProcessorFactory.hpp"
 #include "ITaskScheduler.hpp"
 #include "IWorkHandler.hpp"
+#include "ProcessingSequenceBarrier.hpp"
 #include "RingBuffer.hpp"
 #include "Util.hpp"
 #include "WorkerPool.hpp"
@@ -37,54 +38,28 @@ namespace opencmw::disruptor {
  *
  * \tparam T the type of event used.
  */
-template<typename T, std::size_t SIZE>
-class DisruptorCore : public std::enable_shared_from_this<DisruptorCore<T, SIZE>> {
+template<typename T, std::size_t SIZE, WaitStrategyConcept WAIT_STRATEGY, template<std::size_t, typename> typename CLAIM_STRATEGY = MultiThreadedStrategy>
+requires opencmw::is_power2_v<SIZE>
+class DisruptorCore : public std::enable_shared_from_this<DisruptorCore<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY>> {
     using Clock                 = std::conditional_t<std::chrono::high_resolution_clock::is_steady, std::chrono::high_resolution_clock, std::chrono::steady_clock>;
     using Duration              = Clock::duration;
-    using EventHandlerGroupType = EventHandlerGroup<T, SIZE, ::opencmw::disruptor::DisruptorCore>;
+    using EventHandlerGroupType = EventHandlerGroup<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY, ::opencmw::disruptor::DisruptorCore>;
 
-    std::shared_ptr<RingBuffer<T, SIZE>>   _ringBuffer;
-    std::shared_ptr<IExecutor>             _executor;
-    std::shared_ptr<ConsumerRepository<T>> _consumerRepository = std::make_shared<ConsumerRepository<T>>();
-    std::shared_ptr<IExceptionHandler<T>>  _exceptionHandler   = std::make_shared<ExceptionHandlerWrapper<T>>();
-    std::atomic<int>                       _started{ 0 };
+    std::shared_ptr<RingBuffer<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY>> _ringBuffer;
+    std::shared_ptr<IExecutor>                                          _executor;
+    std::shared_ptr<ConsumerRepository<T>>                              _consumerRepository = std::make_shared<ConsumerRepository<T>>();
+    std::shared_ptr<IExceptionHandler<T>>                               _exceptionHandler   = std::make_shared<ExceptionHandlerWrapper<T>>();
+    std::atomic<int>                                                    _started{ 0 };
 
 public:
-    /**
-     * Create a new Disruptor. Will default to BlockingWaitStrategy and ProducerType::Multi
-     *
-
-     * \param ringBufferSize the size of the ring buffer
-     * \param taskScheduler a TaskSchedule to create threads to for processors
-     */
-    DisruptorCore(const std::shared_ptr<ITaskScheduler> &taskScheduler)
-        : DisruptorCore(RingBuffer<T, SIZE>::createMultiProducer(), std::make_shared<BasicExecutor>(taskScheduler)) {
-    }
-
     /**
      * Create a new Disruptor.
      *
      * \param ringBufferSize the size of the ring buffer, must be power of 2
      * \param taskScheduler a TaskScheduler to create threads to for processors
-     * \param producerType the claim strategy to use for the ring buffer
-     * \param waitStrategy the wait strategy to use for the ring buffer
      */
-    DisruptorCore(
-            const std::shared_ptr<ITaskScheduler> &taskScheduler,
-            ProducerType                           producerType,
-            const std::shared_ptr<WaitStrategy>   &waitStrategy)
-        : DisruptorCore(std::make_shared<RingBuffer<T, SIZE>>(producerType, waitStrategy), std::make_shared<BasicExecutor>(taskScheduler)) {
-    }
-
-    /**
-     * Allows the executor to be specified
-     *
-     * \param eventFactory
-     * \param ringBufferSize
-     * \param executor
-     */
-    DisruptorCore(const std::shared_ptr<IExecutor> &executor)
-        : DisruptorCore(RingBuffer<T, SIZE>::createMultiProducer(), executor) {
+    DisruptorCore(const std::shared_ptr<ITaskScheduler> &taskScheduler)
+        : DisruptorCore(std::make_shared<RingBuffer<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY>>(), std::make_shared<BasicExecutor>(taskScheduler)) {
     }
 
     /**
@@ -123,7 +98,7 @@ public:
      * \param eventProcessorFactories the event processor factories to use to create the event processors that will process events.
      * \returns EventHandlerGroupType that can be used to chain dependencies.
      */
-    std::shared_ptr<EventHandlerGroupType> handleEventsWith(const std::vector<std::shared_ptr<IEventProcessorFactory<T, SIZE>>> &eventProcessorFactories) {
+    std::shared_ptr<EventHandlerGroupType> handleEventsWith(const std::vector<std::shared_ptr<IEventProcessorFactory<T>>> &eventProcessorFactories) {
         return createEventProcessors({}, eventProcessorFactories);
     }
 
@@ -137,8 +112,8 @@ public:
      * \param eventProcessorFactory the event processor factory to use to create the event processors that will process events.
      * \returns EventHandlerGroupType that can be used to chain dependencies.
      */
-    std::shared_ptr<EventHandlerGroupType> handleEventsWith(const std::shared_ptr<IEventProcessorFactory<T, SIZE>> &eventProcessorFactory) {
-        return handleEventsWith(std::vector<std::shared_ptr<IEventProcessorFactory<T, SIZE>>>{ eventProcessorFactory });
+    std::shared_ptr<EventHandlerGroupType> handleEventsWith(const std::shared_ptr<IEventProcessorFactory<T>> &eventProcessorFactory) {
+        return handleEventsWith(std::vector<std::shared_ptr<IEventProcessorFactory<T>>>{ eventProcessorFactory });
     }
 
     /**
@@ -282,7 +257,7 @@ public:
      *
      * \returns the configured ring buffer
      */
-    std::shared_ptr<RingBuffer<T, SIZE>> start() {
+    std::shared_ptr<DataProvider<T>> start() {
         _ringBuffer->addGatingSequences(_consumerRepository->getLastSequenceInChain(true));
 
         checkOnlyStartedOnce();
@@ -336,7 +311,14 @@ public:
     /**
      * The RingBuffer<T> used by this Disruptor. This is useful for creating custom event processors if the behaviour of BatchEventProcessor<T> is not suitable.
      */
-    std::shared_ptr<RingBuffer<T, SIZE>> ringBuffer() const {
+    std::shared_ptr<RingBuffer<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY>> ringBuffer() const {
+        return _ringBuffer;
+    }
+
+    /**
+     * The DataProvider<T> used by this Disruptor. This is useful for creating custom event processors if the behaviour of BatchEventProcessor<T> is not suitable.
+     */
+    std::shared_ptr<DataProvider<T>> eventStore() const {
         return _ringBuffer;
     }
 
@@ -381,7 +363,7 @@ public:
         std::vector<std::shared_ptr<Sequence>> processorSequences;
         processorSequences.reserve(eventHandlers.size());
 
-        auto barrier = _ringBuffer->newBarrier(barrierSequences);
+        auto barrier = newBarrier(_ringBuffer, barrierSequences);
 
         for (auto &&eventHandler : eventHandlers) {
             auto batchEventProcessor = std::make_shared<BatchEventProcessor<T>>(_ringBuffer, barrier, eventHandler);
@@ -409,7 +391,7 @@ public:
     }
 
     std::shared_ptr<EventHandlerGroupType> createEventProcessors(const std::vector<std::shared_ptr<Sequence>> &barrierSequences,
-            const std::vector<std::shared_ptr<IEventProcessorFactory<T, SIZE>>>                               &processorFactories) {
+            const std::vector<std::shared_ptr<IEventProcessorFactory<T>>>                                     &processorFactories) {
         std::vector<std::shared_ptr<IEventProcessor>> processors;
         for (auto &&processorFactory : processorFactories) {
             processors.push_back(processorFactory->createEventProcessor(_ringBuffer, barrierSequences));
@@ -422,7 +404,7 @@ private:
     /**
      * Private constructor helper
      */
-    DisruptorCore(const std::shared_ptr<RingBuffer<T, SIZE>> &ringBuffer, const std::shared_ptr<IExecutor> &executor)
+    DisruptorCore(const std::shared_ptr<RingBuffer<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY>> &ringBuffer, const std::shared_ptr<IExecutor> &executor)
         : _ringBuffer(ringBuffer)
         , _executor(executor) {
     }
@@ -450,23 +432,21 @@ private:
     }
 };
 
-template<typename T, std::size_t SIZE, auto ProducerType, typename Scheduler, typename WaitStrategy>
+template<typename T, std::size_t SIZE, ProducerType producerType, typename Scheduler, typename WaitStrategy>
 class Disruptor {
 private:
-    std::shared_ptr<Scheduler>              _scheduler;
-    std::shared_ptr<WaitStrategy>           _waitStrategy;
-    std::shared_ptr<DisruptorCore<T, SIZE>> _disruptorCore;
+    std::shared_ptr<Scheduler> _scheduler;
+    // std::shared_ptr<DisruptorCore<T, SIZE, WaitStrategy, producerType == ProducerType::Single ? SingleThreadedStrategy<SIZE, WaitStrategy> : MultiThreadedStrategy<SIZE, WaitStrategy>>> _disruptorCore;
+    std::shared_ptr<DisruptorCore<T, SIZE, WaitStrategy, MultiThreadedStrategy>> _disruptorCore;
 
 public:
     using EventType = T;
 
-    template<typename... Args>
-    Disruptor(std::size_t threadsCount, Args &&...args) {
+    Disruptor(std::size_t threadsCount) {
         _scheduler = std::make_shared<Scheduler>();
         _scheduler->start(threadsCount);
 
-        _waitStrategy  = std::make_shared<WaitStrategy>();
-        _disruptorCore = std::make_shared<DisruptorCore<EventType, SIZE>>(std::forward<Args>(args)..., _scheduler, ProducerType, _waitStrategy);
+        _disruptorCore = std::make_shared<DisruptorCore<EventType, SIZE, WaitStrategy, MultiThreadedStrategy>>(_scheduler);
     }
 
     auto operator->() const {

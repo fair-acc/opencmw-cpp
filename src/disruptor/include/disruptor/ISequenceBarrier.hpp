@@ -5,7 +5,7 @@
 namespace opencmw::disruptor {
 
 /**
- * Coordination barrier for tracking the cursor for producers and sequence of dependent IEventProcessor's for a RingBuffer<T>
+ * Coordination barrier for tracking the cursor for producers and sequence of dependent IEventProcessor's for a DataProvider<T>
  */
 class ISequenceBarrier {
 public:
