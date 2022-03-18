@@ -7,6 +7,21 @@
 
 namespace opencmw::disruptor {
 
+template<typename T>
+inline constexpr bool isClaimStrategy = requires(T /*const*/ t, const std::vector<std::shared_ptr<Sequence>> &dependents, const int requiredCapacity,
+        const std::int64_t cursorValue, const std::int64_t sequence, const std::int64_t availableSequence, const std::int32_t n_slots_to_claim) {
+    { t.hasAvailableCapacity(dependents, requiredCapacity, cursorValue) } -> std::same_as<bool>;
+    { t.next(dependents, n_slots_to_claim) } -> std::same_as<std::int64_t>;
+    { t.tryNext(dependents, n_slots_to_claim) } -> std::same_as<std::int64_t>;
+    { t.getRemainingCapacity(dependents) } -> std::same_as<std::int64_t>;
+    { t.publish(sequence) } -> std::same_as<void>;
+    { t.isAvailable(sequence) } -> std::same_as<bool>;
+    { t.getHighestPublishedSequence(sequence, availableSequence) } -> std::same_as<std::int64_t>;
+};
+
+template<typename T>
+concept ClaimStrategy = isClaimStrategy<T>;
+
 template<std::size_t SIZE, WaitStrategy WAIT_STRATEGY>
 class alignas(kCacheLine) SingleThreadedStrategy {
     alignas(kCacheLine) Sequence &_cursor;
@@ -86,6 +101,7 @@ public:
     [[nodiscard]] forceinline bool isAvailable(std::int64_t sequence) const noexcept { return sequence <= _cursor.value(); }
     [[nodiscard]] std::int64_t     getHighestPublishedSequence(std::int64_t /*nextSequence*/, std::int64_t availableSequence) const noexcept { return availableSequence; }
 };
+static_assert(ClaimStrategy<SingleThreadedStrategy<1024, NoWaitStrategy>>);
 
 /**
  * Claim strategy for claiming sequences for access to a data structure while tracking dependent Sequences.
@@ -218,52 +234,7 @@ private:
     [[nodiscard]] forceinline std::int32_t calculateAvailabilityFlag(const std::int64_t sequence) const noexcept { return static_cast<std::int32_t>(static_cast<std::uint64_t>(sequence) >> _indexShift); }
     [[nodiscard]] forceinline std::size_t calculateIndex(const std::int64_t sequence) const noexcept { return static_cast<std::size_t>(static_cast<std::int32_t>(sequence) & _indexMask); }
 };
-
-template<std::size_t SIZE, typename WAIT_STRATEGY>
-class MultiThreadedStrategy2 {
-    alignas(kCacheLine) Sequence &_cursor;
-    alignas(kCacheLine) WAIT_STRATEGY &_waitStrategy;
-    alignas(kCacheLine) Sequence last_claimed_sequence_;
-    alignas(kCacheLine) Sequence last_consumer_sequence_;
-
-public:
-    MultiThreadedStrategy2()                                = default;
-    MultiThreadedStrategy2(const MultiThreadedStrategy2 &)  = delete;
-    MultiThreadedStrategy2(const MultiThreadedStrategy2 &&) = delete;
-    void    operator=(const MultiThreadedStrategy2 &) = delete;
-
-    int64_t IncrementAndGet(const std::vector<std::shared_ptr<Sequence>> &dependents,
-            size_t                                                        delta = 1) {
-        const int64_t next_sequence = last_claimed_sequence_.addAndGet(delta);
-        const int64_t wrap_point    = next_sequence - SIZE;
-        if (last_consumer_sequence_.value() < wrap_point) {
-            while (detail::getMinimumSequence(dependents) < wrap_point) {
-                // xTODO: configurable yield strategy
-                std::this_thread::yield();
-            }
-        }
-        return next_sequence;
-    }
-
-    bool hasAvailableCapacity(const std::vector<std::shared_ptr<Sequence>> &dependents, const int requiredCapacity) {
-        const int64_t wrap_point = last_claimed_sequence_.value() + requiredCapacity - SIZE;
-        if (wrap_point > last_consumer_sequence_.value()) {
-            const int64_t min_sequence = detail::getMinimumSequence(dependents);
-            last_consumer_sequence_.setValue(min_sequence);
-            if (wrap_point > min_sequence) return false;
-        }
-        return true;
-    }
-
-    void publish(const std::int64_t &sequence, const Sequence &cursor, const std::int32_t n_slots_to_claim = 1) {
-        const std::int64_t my_first_sequence = sequence - n_slots_to_claim;
-
-        while (cursor.value() < my_first_sequence) {
-            // xTODO: configurable yield strategy
-            std::this_thread::yield();
-        }
-    }
-};
+static_assert(ClaimStrategy<MultiThreadedStrategy<1024, NoWaitStrategy>>);
 
 } // namespace opencmw::disruptor
 
