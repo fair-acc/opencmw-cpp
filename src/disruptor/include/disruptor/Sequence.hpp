@@ -57,7 +57,7 @@ namespace detail {
  * \param minimum an initial default minimum.  If the array is empty this value will returned.
  * \returns the minimum sequence found or lon.MaxValue if the array is empty.
  */
-inline std::int64_t getMinimumSequence(const std::vector<std::shared_ptr<Sequence>> &sequences, std::int64_t minimum = std::numeric_limits<std::int64_t>::max()) {
+inline std::int64_t getMinimumSequence(const std::vector<std::shared_ptr<Sequence>> &sequences, std::int64_t minimum = std::numeric_limits<std::int64_t>::max()) noexcept {
     if (sequences.empty()) {
         return minimum;
     }

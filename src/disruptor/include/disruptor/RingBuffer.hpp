@@ -17,7 +17,7 @@
 
 namespace opencmw::disruptor {
 
-template<typename T, std::size_t SIZE, WaitStrategyConcept WAIT_STRATEGY, template<std::size_t, typename> typename CLAIM_STRATEGY>
+template<typename T, std::size_t SIZE, WaitStrategy WAIT_STRATEGY, template<std::size_t, typename> typename CLAIM_STRATEGY>
 class EventPoller;
 
 static const std::int32_t rbPad = 128 / sizeof(int *);
@@ -26,7 +26,7 @@ static const std::int32_t rbPad = 128 / sizeof(int *);
  *
  * \tparam T implementation storing the data for sharing during exchange or parallel coordination of an event.
  */
-template<typename T, std::size_t SIZE, WaitStrategyConcept WAIT_STRATEGY, template<std::size_t, typename> typename CLAIM_STRATEGY = MultiThreadedStrategy>
+template<typename T, std::size_t SIZE, WaitStrategy WAIT_STRATEGY, template<std::size_t, typename> typename CLAIM_STRATEGY = MultiThreadedStrategy>
 requires opencmw::is_power2_v<SIZE>
 class RingBuffer : public DataProvider<T>, public std::enable_shared_from_this<RingBuffer<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY>> {
     const uint8_t                           padding0[56]{}; // NOSONAR
@@ -136,7 +136,7 @@ enum class ProducerType {
     Multi
 };
 
-template<typename T, std::size_t SIZE, WaitStrategyConcept WAIT_STRATEGY, ProducerType producerType = ProducerType::Multi>
+template<typename T, std::size_t SIZE, WaitStrategy WAIT_STRATEGY, ProducerType producerType = ProducerType::Multi>
 static auto newRingBuffer() {
     if constexpr (producerType == ProducerType::Single) {
         return std::make_shared<RingBuffer<T, SIZE, WAIT_STRATEGY, SingleThreadedStrategy>>();
@@ -152,7 +152,7 @@ enum class PollState {
     UNKNOWN
 };
 
-template<typename T, std::size_t SIZE, WaitStrategyConcept WAIT_STRATEGY, template<std::size_t, typename> typename CLAIM_STRATEGY = MultiThreadedStrategy>
+template<typename T, std::size_t SIZE, WaitStrategy WAIT_STRATEGY, template<std::size_t, typename> typename CLAIM_STRATEGY = MultiThreadedStrategy>
 class EventPoller {
     std::shared_ptr<RingBuffer<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY>> _dataProvider;
     std::shared_ptr<Sequence>                                           _sequence;
@@ -236,7 +236,7 @@ public:
 
 } // namespace opencmw::disruptor
 
-template<typename T, std::size_t SIZE, opencmw::disruptor::WaitStrategyConcept WAIT_STRATEGY, template<std::size_t, opencmw::disruptor::WaitStrategyConcept> typename CLAIM_STRATEGY>
+template<typename T, std::size_t SIZE, opencmw::disruptor::WaitStrategy WAIT_STRATEGY, template<std::size_t, opencmw::disruptor::WaitStrategy> typename CLAIM_STRATEGY>
 struct fmt::formatter<opencmw::disruptor::RingBuffer<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY>> {
     template<typename ParseContext>
     constexpr auto parse(ParseContext &ctx) { return ctx.begin(); }
@@ -285,7 +285,7 @@ struct fmt::formatter<opencmw::disruptor::PollState> {
 
 namespace opencmw {
 
-template<typename T, std::size_t SIZE, disruptor::WaitStrategyConcept WAIT_STRATEGY, template<std::size_t, disruptor::WaitStrategyConcept> typename CLAIM_STRATEGY>
+template<typename T, std::size_t SIZE, disruptor::WaitStrategy WAIT_STRATEGY, template<std::size_t, disruptor::WaitStrategy> typename CLAIM_STRATEGY>
 std::ostream &operator<<(std::ostream &stream, const opencmw::disruptor::RingBuffer<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY> &ringBuffer) { return stream << fmt::format("{}", ringBuffer); }
 std::ostream &operator<<(std::ostream &stream, opencmw::disruptor::PollState &pollState) { return stream << fmt::format("{}", pollState); }
 

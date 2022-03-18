@@ -14,7 +14,7 @@ namespace opencmw::disruptor {
  *
  * ISequenceBarrier handed out for gating IEventProcessor on a cursor sequence and optional dependent IEventProcessors, using the given WaitStrategy.
  */
-template<typename T, std::size_t SIZE, WaitStrategyConcept WAIT_STRATEGY, template<std::size_t, typename> typename CLAIM_STRATEGY>
+template<typename T, std::size_t SIZE, WaitStrategy WAIT_STRATEGY, template<std::size_t, typename> typename CLAIM_STRATEGY>
 class ProcessingSequenceBarrier : public ISequenceBarrier, public std::enable_shared_from_this<ProcessingSequenceBarrier<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY>> {
     std::shared_ptr<WAIT_STRATEGY>                          _waitStrategy;
     std::shared_ptr<std::vector<std::shared_ptr<Sequence>>> _dependentSequences{ std::make_shared<std::vector<std::shared_ptr<Sequence>>>() };
@@ -60,7 +60,7 @@ public:
 
     void alert() override {
         _alerted = true;
-        if constexpr (requires { _waitStrategyRef.signalAllWhenBlocking(); }) {
+        if constexpr (hasSignalAllWhenBlocking<WAIT_STRATEGY>) {
             _waitStrategyRef.signalAllWhenBlocking();
         }
     }
@@ -93,7 +93,7 @@ private:
  * \param sequencesToTrack the additional sequences to track
  * \returns A sequence barrier that will track the specified sequences.
  */
-template<typename T, std::size_t SIZE, WaitStrategyConcept WAIT_STRATEGY, template<std::size_t, typename> typename CLAIM_STRATEGY>
+template<typename T, std::size_t SIZE, WaitStrategy WAIT_STRATEGY, template<std::size_t, typename> typename CLAIM_STRATEGY>
 [[nodiscard]] std::shared_ptr<ISequenceBarrier> newBarrier(const std::shared_ptr<RingBuffer<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY>> &ringBuffer, const std::vector<std::shared_ptr<Sequence>> &sequencesToTrack) {
     return std::make_shared<ProcessingSequenceBarrier<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY>>(ringBuffer, ringBuffer->waitStrategy(), ringBuffer->cursorSequence(), sequencesToTrack);
 }
