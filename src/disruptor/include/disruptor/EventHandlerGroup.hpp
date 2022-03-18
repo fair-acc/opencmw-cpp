@@ -15,7 +15,7 @@ namespace opencmw::disruptor {
  *
  * \tparam T the type of event used by IEventProcessor's.
  */
-template<class T, std::size_t SIZE, WaitStrategyConcept WAIT_STRATEGY, template<std::size_t, typename> typename CLAIM_STRATEGY, template<typename, std::size_t, typename, template<std::size_t, typename> typename> typename TDisruptor>
+template<class T, std::size_t SIZE, WaitStrategy WAIT_STRATEGY, template<std::size_t, typename> typename CLAIM_STRATEGY, template<typename, std::size_t, typename, template<std::size_t, typename> typename> typename TDisruptor>
 class EventHandlerGroup {
 private:
     using EventHandlerGroupType = EventHandlerGroup<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY, TDisruptor>;

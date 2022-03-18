@@ -7,7 +7,7 @@
 
 namespace opencmw::disruptor {
 
-template<std::size_t SIZE, WaitStrategyConcept WAIT_STRATEGY>
+template<std::size_t SIZE, WaitStrategy WAIT_STRATEGY>
 class alignas(kCacheLine) SingleThreadedStrategy {
     alignas(kCacheLine) Sequence &_cursor;
     alignas(kCacheLine) WAIT_STRATEGY &_waitStrategy;
@@ -44,7 +44,7 @@ public:
             SpinWait     spinWait;
             std::int64_t minSequence;
             while (wrapPoint > (minSequence = detail::getMinimumSequence(dependents, _nextValue))) {
-                if constexpr (requires { _waitStrategy.signalAllWhenBlocking(); }) {
+                if constexpr (hasSignalAllWhenBlocking<WAIT_STRATEGY>) {
                     _waitStrategy.signalAllWhenBlocking();
                 }
                 spinWait.spinOnce();
@@ -78,7 +78,7 @@ public:
 
     void publish(std::int64_t sequence) {
         _cursor.setValue(sequence);
-        if constexpr (requires { _waitStrategy.signalAllWhenBlocking(); }) {
+        if constexpr (hasSignalAllWhenBlocking<WAIT_STRATEGY>) {
             _waitStrategy.signalAllWhenBlocking();
         }
     }
@@ -93,7 +93,7 @@ public:
  * Note on cursor:  With this sequencer the cursor value is updated after the call to SequencerBase::next(),
  * to determine the highest available sequence that can be read, then getHighestPublishedSequence should be used.
  */
-template<std::size_t SIZE, WaitStrategyConcept WAIT_STRATEGY>
+template<std::size_t SIZE, WaitStrategy WAIT_STRATEGY>
 class MultiThreadedStrategy {
     alignas(kCacheLine) Sequence &_cursor;
     alignas(kCacheLine) WAIT_STRATEGY &_waitStrategy;
@@ -147,7 +147,7 @@ public:
                 std::int64_t gatingSequence = detail::getMinimumSequence(dependents, current);
 
                 if (wrapPoint > gatingSequence) {
-                    if constexpr (requires { _waitStrategy.signalAllWhenBlocking(); }) {
+                    if constexpr (hasSignalAllWhenBlocking<WAIT_STRATEGY>) {
                         _waitStrategy.signalAllWhenBlocking();
                     }
                     spinWait.spinOnce();
@@ -190,7 +190,7 @@ public:
 
     void publish(std::int64_t sequence) {
         setAvailable(sequence);
-        if constexpr (requires { _waitStrategy.signalAllWhenBlocking(); }) {
+        if constexpr (hasSignalAllWhenBlocking<WAIT_STRATEGY>) {
             _waitStrategy.signalAllWhenBlocking();
         }
     }

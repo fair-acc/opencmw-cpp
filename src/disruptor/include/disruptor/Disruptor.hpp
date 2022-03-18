@@ -9,6 +9,7 @@
 
 #include "BasicExecutor.hpp"
 #include "BatchEventProcessor.hpp"
+#include "ClaimStrategy.hpp"
 #include "ConsumerRepository.hpp"
 #include "EventHandlerGroup.hpp"
 #include "ExceptionHandlerSetting.hpp"
@@ -38,7 +39,7 @@ namespace opencmw::disruptor {
  *
  * \tparam T the type of event used.
  */
-template<typename T, std::size_t SIZE, WaitStrategyConcept WAIT_STRATEGY, template<std::size_t, typename> typename CLAIM_STRATEGY = MultiThreadedStrategy>
+template<typename T, std::size_t SIZE, WaitStrategy WAIT_STRATEGY, template<std::size_t, typename> typename CLAIM_STRATEGY = MultiThreadedStrategy>
 requires opencmw::is_power2_v<SIZE>
 class DisruptorCore : public std::enable_shared_from_this<DisruptorCore<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY>> {
     using Clock                 = std::conditional_t<std::chrono::high_resolution_clock::is_steady, std::chrono::high_resolution_clock, std::chrono::steady_clock>;
@@ -436,7 +437,7 @@ template<typename T, std::size_t SIZE, ProducerType producerType, typename Sched
 class Disruptor {
 private:
     std::shared_ptr<Scheduler> _scheduler;
-    // std::shared_ptr<DisruptorCore<T, SIZE, WaitStrategy, producerType == ProducerType::Single ? SingleThreadedStrategy<SIZE, WaitStrategy> : MultiThreadedStrategy<SIZE, WaitStrategy>>> _disruptorCore;
+    //    std::shared_ptr<DisruptorCore<T, SIZE, WaitStrategy, producerType == ProducerType::Single ? SingleThreadedStrategy<SIZE, WaitStrategy> : MultiThreadedStrategy<SIZE, WaitStrategy>>> _disruptorCore
     std::shared_ptr<DisruptorCore<T, SIZE, WaitStrategy, MultiThreadedStrategy>> _disruptorCore;
 
 public:
