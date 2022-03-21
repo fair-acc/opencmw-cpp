@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.19)
 set(CMAKE_CXX_STANDARD 20)
 
+include(cmake/Dependencies.cmake)
+
 project(opencmw-cpp CXX)
 include(cmake/StandardProjectSettings.cmake)
 include(cmake/PreventInSourceBuilds.cmake)
@@ -22,16 +24,22 @@ else ()
             "in case of build problems consider updating your compiler or check if you can switch to gcc or clang")
 endif ()
 
-# Link this 'library' to set the c++ standard / compile-time options requested
-add_library(project_options INTERFACE)
-target_include_directories(project_options INTERFACE ${CMAKE_SOURCE_DIR}/3rd_party)
+# Determine if OpenCMW is built as a subproject (using add_subdirectory) or if it is the master project.
+set(opencmw_MASTER_PROJECT OFF)
+if (CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
+    set(opencmw_MASTER_PROJECT ON)
+    message(STATUS "CMake version: ${CMAKE_VERSION}")
+endif ()
 
-target_compile_features(project_options INTERFACE cxx_std_20)
+# Link this 'library' to set the c++ standard / compile-time options requested
+add_library(opencmw_project_options INTERFACE)
+
+target_compile_features(opencmw_project_options INTERFACE cxx_std_20)
 
 if (CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
     option(ENABLE_BUILD_WITH_TIME_TRACE "Enable -ftime-trace to generate time tracing .json files on clang" OFF)
     if (ENABLE_BUILD_WITH_TIME_TRACE)
-        target_compile_options(project_options INTERFACE -ftime-trace)
+        target_compile_options(opencmw_project_options INTERFACE -ftime-trace)
     endif ()
 endif ()
 
@@ -39,14 +47,14 @@ endif ()
 include(cmake/Cache.cmake)
 
 # Link this 'library' to use the warnings specified in CompilerWarnings.cmake
-add_library(project_warnings INTERFACE)
+add_library(opencmw_project_warnings INTERFACE)
 # standard compiler warnings
 include(cmake/CompilerWarnings.cmake)
-set_project_warnings(project_warnings)
+set_project_warnings(opencmw_project_warnings)
 
 # sanitizer options if supported by compiler
 include(cmake/Sanitizers.cmake)
-enable_sanitizers(project_options)
+enable_sanitizers(opencmw_project_options)
 
 # enable doxygen
 include(cmake/Doxygen.cmake)
@@ -55,13 +63,13 @@ enable_doxygen()
 # allow for static analysis options
 include(cmake/StaticAnalyzers.cmake)
 
-option(ENABLE_TESTING "Enable Test Builds" ON)
+option(ENABLE_TESTING "Enable Test Builds" ${opencmw_MASTER_PROJECT})
 if (CMAKE_BUILD_TYPE STREQUAL "Debug" OR GENERATOR_IS_MULTI_CONFIG)
     option(ENABLE_COVERAGE "Enable Coverage" ON)
 else ()
     option(ENABLE_COVERAGE "Enable Coverage" OFF)
 endif ()
-option(ENABLE_CONCEPTS "Enable Concepts Builds" ON)
+option(ENABLE_CONCEPTS "Enable Concepts Builds" ${opencmw_MASTER_PROJECT})
 
 # Very basic PCH example
 option(ENABLE_PCH "Enable Precompiled Headers" OFF)
@@ -69,16 +77,12 @@ if (ENABLE_PCH)
     # This sets a global PCH parameter, each project will build its own PCH, which is a good idea if any #define's change
     #
     # consider breaking this out per project as necessary
-    target_precompile_headers(project_options INTERFACE
+    target_precompile_headers(opencmw_project_options INTERFACE
             <vector>
             <string>
             <map>
             <utility>)
 endif ()
-
-include(cmake/Conan.cmake)
-run_conan()
-include(cmake/ReflCpp.cmake) # todo: switch to obtaining reflcpp from conan
 
 if (ENABLE_TESTING)
     enable_testing()
@@ -88,8 +92,8 @@ if (ENABLE_TESTING)
             message("Coverage reporting enabled")
             include(cmake/CodeCoverage.cmake) # https://github.com/bilke/cmake-modules/blob/master/CodeCoverage.cmake
             # (License: BSL-1.0)
-            target_compile_options(project_options INTERFACE --coverage -O0 -g -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0) # fortify_source is not possible without optimization
-            target_link_libraries(project_options INTERFACE --coverage)
+            target_compile_options(opencmw_project_options INTERFACE --coverage -O0 -g -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0) # fortify_source is not possible without optimization
+            target_link_libraries(opencmw_project_options INTERFACE --coverage)
             append_coverage_compiler_flags()
             setup_target_for_coverage_gcovr_xml(
                     NAME coverage

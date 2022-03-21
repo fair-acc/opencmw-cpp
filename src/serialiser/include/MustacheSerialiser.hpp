@@ -1,7 +1,7 @@
 #ifndef OPENCMW_MUSTACHESERIALISER_H
 #define OPENCMW_MUSTACHESERIALISER_H
 
-#include <kainjow/mustache.hpp>
+#include <mustache.hpp>
 
 #include <IoSerialiserJson.hpp>
 #include <MIME.hpp>
