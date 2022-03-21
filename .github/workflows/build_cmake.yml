@@ -9,10 +9,6 @@ on:
     types: [ created ]
 
 env:
-  # Conan cache environment variables
-  CONAN_SYSREQUIRES_MODE: enabled
-  CONAN_USER_HOME: "${{ github.workspace }}/conan-cache"
-  CONAN_USER_HOME_SHORT: "${{ github.workspace }}/conan-cache/short"
   REFERENCE_CONFIG: 'Ubuntu Latest gcc' # configuration used for coverage etc
 
 jobs:
@@ -48,7 +44,7 @@ jobs:
         cache-name: cache-fetchContent-cache
       with:
         path: ${{runner.workspace}}/build/_deps
-        key: ${{ runner.os }}-${{ matrix.cmake-build-type }}-${{ hashFiles('CMakeLists.txt') }}-${{ hashFiles('cmake/Dependencies.cmake') }}
+        key: ${{ runner.os }}-${{ matrix.configurations.compiler }}-${{ matrix.cmake-build-type }}-${{ hashFiles('CMakeLists.txt') }}-${{ hashFiles('cmake/Dependencies.cmake') }}
 
     - name: Install gcc-11
       if: matrix.configurations.compiler == 'gcc'
