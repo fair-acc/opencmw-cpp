@@ -89,9 +89,6 @@ FetchContent_Declare(
     rxcpp
     GIT_REPOSITORY https://github.com/ReactiveX/RxCpp
     GIT_TAG        7f97aa901701343593869acad1ee5a02292f39cf # TODO Change to the latest tested release of RxCpp before making a release of OpenCMW
-    # Silence warnings when using rxcpp by exporting the header directories as system includes
-    # see upstream issue: https://github.com/ReactiveX/RxCpp/pull/580
-    PATCH_COMMAND sed -e "s%target_include_directories(rxcpp INTERFACE%target_include_directories(rxcpp SYSTEM INTERFACE%" -i projects/CMake/CMakeLists.txt
 )
 FetchContent_MakeAvailable(rxcpp)
 

@@ -2,7 +2,13 @@
 
 #include <optional>
 
+#pragma gcc diagnostic push
+#pragma GCC diagnostic ignored "-Wshadow"
+#pragma GCC diagnostic ignored "-Wuseless-cast"
+#pragma GCC diagnostic ignored "-Wold-style-cast"
+#pragma GCC diagnostic ignored "-Wsign-conversion"
 #include <rxcpp/rx.hpp>
+#pragma GCC diagnostic pop
 
 #include <disruptor/Disruptor.hpp>
 
