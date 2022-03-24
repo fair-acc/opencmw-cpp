@@ -26,8 +26,6 @@ FetchContent_Declare(
         gsl-lite
         GIT_REPOSITORY https://github.com/gsl-lite/gsl-lite.git
         GIT_TAG v0.40.0
-        # including gsl-lite produces some warnings, has to be fixed upstream
-        # upstream fix see https://github.com/gsl-lite/gsl-lite/issues/325 and https://github.com/gsl-lite/gsl-lite/pull/321
         )
 
 # prefers usage via conan, but cmake should work, but doesn't find gsl-lite in targets
