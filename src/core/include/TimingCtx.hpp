@@ -10,9 +10,12 @@
 #include <string_view>
 
 #include <fmt/format.h>
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wuseless-cast" // suppress warning caused by gsl-lite: https://github.com/gsl-lite/gsl-lite/issues/325
 #include <units/chrono.h>
 #include <units/isq/dimensions/time.h>
 #include <units/isq/si/time.h>
+#pragma GCC diagnostic pop
 
 namespace opencmw {
 
