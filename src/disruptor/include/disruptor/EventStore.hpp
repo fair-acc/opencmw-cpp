@@ -7,10 +7,17 @@
 
 namespace opencmw::disruptor {
 
+/**
+ * @brief The EventStore class is a thread-safe store of events.
+ * This follows the event-sourcing programming paradigm as described in
+ * <a href="https://martinfowler.com/eaaDev/EventSourcing.html">Event Sourcing</a>.
+ *
+ * @tparam T The type of event stored.
+ */
 template<typename T>
-class DataProvider {
+class EventStore {
 public:
-    virtual ~DataProvider()                                                                                                                           = default;
+    virtual ~EventStore()                                                                                                                             = default;
 
     [[nodiscard]] virtual T                                        &operator[](std::int64_t sequence) const                                           = 0;
 

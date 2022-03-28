@@ -3,8 +3,9 @@
 #include <iostream>
 #include <sstream>
 
+#include <opencmw.hpp>
+
 #include "IExceptionHandler.hpp"
-#include "TypeInfo.hpp"
 
 namespace opencmw::disruptor {
 
@@ -23,7 +24,7 @@ public:
      */
     void handleEventException(const std::exception &ex, std::int64_t sequence, T & /*evt*/) override {
         std::stringstream stream;
-        stream << "Exception processing sequence " << sequence << " for event " << Utils::getMetaTypeInfo<T>().fullyQualifiedName() << ": " << ex.what();
+        stream << "Exception processing sequence " << sequence << " for event " << typeName<T> << ": " << ex.what();
 
         std::cerr << stream.str() << std::endl;
     }
@@ -60,7 +61,7 @@ public:
      */
     void handleOnTimeoutException(const std::exception &ex, std::int64_t sequence) override {
         std::stringstream stream;
-        stream << "Exception during OnTimeout() processing sequence " << sequence << " for event " << Utils::getMetaTypeInfo<T>().fullyQualifiedName() << ": " << ex.what();
+        stream << "Exception during OnTimeout() processing sequence " << sequence << " for event " << typeName<T> << ": " << ex.what();
 
         std::cerr << stream.str() << std::endl;
     }

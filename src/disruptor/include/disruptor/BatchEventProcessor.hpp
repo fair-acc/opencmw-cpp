@@ -1,6 +1,6 @@
 #pragma once
 
-#include "DataProvider.hpp"
+#include "EventStore.hpp"
 #include "Exception.hpp"
 #include "IEventHandler.hpp"
 #include "IEventProcessor.hpp"
@@ -24,8 +24,8 @@ template<typename T>
 class BatchEventProcessor : public IEventProcessor {
 private:
     std::atomic<bool>                     _running{ false };
-    std::shared_ptr<DataProvider<T>>      _dataProvider;
-    DataProvider<T>                      &_dataProviderRef;
+    std::shared_ptr<EventStore<T>>        _dataProvider;
+    EventStore<T>                        &_dataProviderRef;
     std::shared_ptr<ISequenceBarrier>     _sequenceBarrier;
     ISequenceBarrier                     &_sequenceBarrierRef;
     std::shared_ptr<IEventHandler<T>>     _eventHandler;
@@ -44,9 +44,9 @@ public:
      * \param sequenceBarrier SequenceBarrier on which it is waiting.
      * \param eventHandler eventHandler is the delegate to which events are dispatched.
      */
-    BatchEventProcessor(const std::shared_ptr<DataProvider<T>> &dataProvider,
-            const std::shared_ptr<ISequenceBarrier>            &sequenceBarrier,
-            const std::shared_ptr<IEventHandler<T>>            &eventHandler)
+    BatchEventProcessor(const std::shared_ptr<EventStore<T>> &dataProvider,
+            const std::shared_ptr<ISequenceBarrier>          &sequenceBarrier,
+            const std::shared_ptr<IEventHandler<T>>          &eventHandler)
         : _dataProvider(dataProvider)
         , _dataProviderRef(*_dataProvider)
         , _sequenceBarrier(sequenceBarrier)

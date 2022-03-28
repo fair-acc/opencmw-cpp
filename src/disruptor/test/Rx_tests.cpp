@@ -136,14 +136,14 @@ requires(std::is_same_v<T, TestEvent> || std::is_same_v<T, AggregatedEvent>)
 
 class Publisher {
 private:
-    std::shared_ptr<DataProvider<TestEvent>> m_ringBuffer;
-    TestEvents                               m_events;
-    std::size_t                              m_patternRepeat;
+    std::shared_ptr<EventStore<TestEvent>> m_ringBuffer;
+    TestEvents                             m_events;
+    std::size_t                            m_patternRepeat;
 
 public:
-    Publisher(std::shared_ptr<DataProvider<TestEvent>> ringBuffer,
-            TestEvents                                 events,
-            std::size_t                                patternRepeatCount)
+    Publisher(std::shared_ptr<EventStore<TestEvent>> ringBuffer,
+            TestEvents                               events,
+            std::size_t                              patternRepeatCount)
         : m_ringBuffer(std::move(ringBuffer))
         , m_events(std::move(events))
         , m_patternRepeat(patternRepeatCount) {}
@@ -182,9 +182,9 @@ public:
 };
 
 std::shared_ptr<Publisher> makePublisher(
-        const std::shared_ptr<DataProvider<TestEvent>> &buffer,
-        const TestEvents                               &events,
-        std::size_t                                     patternRepeatCount) {
+        const std::shared_ptr<EventStore<TestEvent>> &buffer,
+        const TestEvents                             &events,
+        std::size_t                                   patternRepeatCount) {
     return std::make_shared<Publisher>(buffer, events, patternRepeatCount);
 }
 

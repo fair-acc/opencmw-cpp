@@ -2,7 +2,7 @@
 
 #include <memory>
 
-#include "IEventProcessor.hpp"
+#include "EventStore.hpp"
 #include "RingBuffer.hpp"
 
 namespace opencmw::disruptor {
@@ -22,7 +22,7 @@ public:
      * \param barrierSequences barrierSequences the sequences to gate on
      * \returns a new EventProcessor that gates on before processing events
      */
-    virtual std::shared_ptr<IEventProcessor> createEventProcessor(const std::shared_ptr<DataProvider<T>> &ringBuffer, const std::vector<std::shared_ptr<Sequence>> &barrierSequences) = 0;
+    virtual std::shared_ptr<IEventProcessor> createEventProcessor(const std::shared_ptr<EventStore<T>> &ringBuffer, const std::vector<std::shared_ptr<Sequence>> &barrierSequences) = 0;
 };
 
 } // namespace opencmw::disruptor
