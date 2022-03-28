@@ -6,9 +6,10 @@
 #include <thread>
 #include <vector>
 
+#include <ThreadAffinity.hpp>
+
 #include "BlockingQueue.hpp"
 #include "ITaskScheduler.hpp"
-#include "ThreadHelper.hpp"
 
 namespace opencmw::disruptor {
 
@@ -16,7 +17,6 @@ namespace opencmw::disruptor {
  * An implementation of TaskScheduler which creates an underlying thread pool and set processor affinity to each thread.
  */
 class RoundRobinThreadAffinedTaskScheduler : public ITaskScheduler {
-private:
     BlockingQueue<std::packaged_task<void()>> _tasks;
     std::atomic<bool>                         _started{ false };
     std::vector<std::jthread>                 _threads;
@@ -30,7 +30,7 @@ public:
         _started = true;
 
         if (numberOfThreads < 1) {
-            throw std::out_of_range("number of threads must be at least 1"); // TODO: replace by concept restriction
+            throw std::out_of_range("number of threads must be at least 1");
         }
 
         createThreads(numberOfThreads);
@@ -64,13 +64,12 @@ private:
     }
 
     void workingLoop(std::size_t threadId) {
-        static const auto processorCount = std::thread::hardware_concurrency();
+        static const auto     processorCount = std::thread::hardware_concurrency();
 
-        const auto        processorIndex = threadId % processorCount;
-
-        const auto        affinityMask   = thread_helper::AffinityMask(1ULL << processorIndex);
-
-        thread_helper::setThreadAffinity(affinityMask);
+        std::array<bool, 128> threadMap{};
+        const auto            processorIndex = threadId % processorCount;
+        threadMap[processorIndex]            = true;
+        opencmw::thread::setThreadAffinity(threadMap);
 
         while (_started) {
             std::packaged_task<void()> task;
