@@ -20,9 +20,9 @@ namespace opencmw::disruptor {
  */
 template<typename T, std::size_t SIZE = 1024>
 class WorkerPool {
-    std::atomic<std::int32_t>        _running{ 0 };
-    std::shared_ptr<Sequence>        _workSequence = std::make_shared<Sequence>();
-    std::shared_ptr<DataProvider<T>> _ringBuffer;
+    std::atomic<std::int32_t>      _running{ 0 };
+    std::shared_ptr<Sequence>      _workSequence = std::make_shared<Sequence>();
+    std::shared_ptr<EventStore<T>> _ringBuffer;
     // WorkProcessors are created to wrap each of the provided WorkHandlers
     std::vector<std::shared_ptr<WorkProcessor<T>>> _workProcessors;
 
@@ -36,7 +36,7 @@ public:
      * \param exceptionHandler exceptionHandler to callback when an error occurs which is not handled by the<see cref="IWorkHandler{T}"/>s.
      * \param workHandlers workHandlers to distribute the work load across.
      */
-    WorkerPool(const std::shared_ptr<DataProvider<T>>           &ringBuffer,
+    WorkerPool(const std::shared_ptr<EventStore<T>>             &ringBuffer,
             const std::shared_ptr<ISequenceBarrier>             &sequenceBarrier,
             const std::shared_ptr<IExceptionHandler<T>>         &exceptionHandler,
             const std::vector<std::shared_ptr<IWorkHandler<T>>> &workHandlers)
@@ -60,7 +60,7 @@ public:
             const std::vector<std::shared_ptr<IWorkHandler<T>>> &workHandlers)
 
     {
-        _ringBuffer  = DataProvider<T>::createMultiProducer(eventFactory, 1024, std::make_shared<BlockingWaitStrategy>());
+        _ringBuffer  = EventStore<T>::createMultiProducer(eventFactory, 1024, std::make_shared<BlockingWaitStrategy>());
         auto barrier = _ringBuffer->newBarrier();
         _workProcessors.resize(workHandlers.size());
 
@@ -89,7 +89,7 @@ public:
      *
      * \returns the DataProvider<T> used for the work queue.
      */
-    std::shared_ptr<DataProvider<T>> start(const std::shared_ptr<IExecutor> &executor) {
+    std::shared_ptr<EventStore<T>> start(const std::shared_ptr<IExecutor> &executor) {
         if (std::atomic_exchange(&_running, 1) != 0) {
             throw std::logic_error("WorkerPool has already been started and cannot be restarted until halted");
         }

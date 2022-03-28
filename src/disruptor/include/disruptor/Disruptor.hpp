@@ -258,7 +258,7 @@ public:
      *
      * \returns the configured ring buffer
      */
-    std::shared_ptr<DataProvider<T>> start() {
+    std::shared_ptr<EventStore<T>> start() {
         _ringBuffer->addGatingSequences(_consumerRepository->getLastSequenceInChain(true));
 
         checkOnlyStartedOnce();
@@ -319,7 +319,7 @@ public:
     /**
      * The DataProvider<T> used by this Disruptor. This is useful for creating custom event processors if the behaviour of BatchEventProcessor<T> is not suitable.
      */
-    std::shared_ptr<DataProvider<T>> eventStore() const {
+    std::shared_ptr<EventStore<T>> eventStore() const {
         return _ringBuffer;
     }
 

@@ -10,7 +10,7 @@
 #include <opencmw.hpp>
 
 #include "ClaimStrategy.hpp"
-#include "DataProvider.hpp"
+#include "EventStore.hpp"
 #include "Exception.hpp"
 #include "ISequenceBarrier.hpp"
 #include "WaitStrategy.hpp"
@@ -28,7 +28,7 @@ static const std::int32_t rbPad = 128 / sizeof(int *);
  */
 template<typename T, std::size_t SIZE, WaitStrategy WAIT_STRATEGY, template<std::size_t, typename> typename CLAIM_STRATEGY = MultiThreadedStrategy>
 requires opencmw::is_power2_v<SIZE>
-class RingBuffer : public DataProvider<T>, public std::enable_shared_from_this<RingBuffer<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY>> {
+class RingBuffer : public EventStore<T>, public std::enable_shared_from_this<RingBuffer<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY>> {
     const uint8_t                           padding0[56]{}; // NOSONAR
     mutable std::array<T, SIZE + 2 * rbPad> _entries;       // N.B. includes extra padding in front and back
     static constexpr std::int32_t           _indexMask = SIZE - 1;

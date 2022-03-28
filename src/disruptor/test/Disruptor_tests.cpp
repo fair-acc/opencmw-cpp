@@ -38,11 +38,11 @@ struct TestEvent {
 
 class Publisher {
 private:
-    std::shared_ptr<DataProvider<TestEvent>> m_ringBuffer;
-    int                                      m_iterations;
+    std::shared_ptr<EventStore<TestEvent>> m_ringBuffer;
+    int                                    m_iterations;
 
 public:
-    Publisher(std::shared_ptr<DataProvider<TestEvent>> ringBuffer, int iterations)
+    Publisher(std::shared_ptr<EventStore<TestEvent>> ringBuffer, int iterations)
         : m_ringBuffer(std::move(ringBuffer))
         , m_iterations(iterations) {}
 
@@ -82,7 +82,7 @@ public:
 };
 
 std::vector<std::shared_ptr<Publisher>> makePublishers(size_t size,
-        const std::shared_ptr<DataProvider<TestEvent>>       &buffer,
+        const std::shared_ptr<EventStore<TestEvent>>         &buffer,
         int                                                   messageCount) {
     std::vector<std::shared_ptr<Publisher>> result;
 

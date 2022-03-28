@@ -22,7 +22,7 @@ class ProcessingSequenceBarrier : public ISequenceBarrier, public std::enable_sh
     std::shared_ptr<DataProvider<T>>                        _sequenceProvider;
 
     WAIT_STRATEGY                                          &_waitStrategyRef;
-    DataProvider<T>                                        &_sequenceProviderRef;
+    EventStore<T>                                          &_sequenceProviderRef;
 
     bool                                                    _alerted = false;
 
