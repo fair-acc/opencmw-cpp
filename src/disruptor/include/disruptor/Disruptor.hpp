@@ -317,7 +317,7 @@ public:
     }
 
     /**
-     * The DataProvider<T> used by this Disruptor. This is useful for creating custom event processors if the behaviour of BatchEventProcessor<T> is not suitable.
+     * The EventStore<T> used by this Disruptor. This is useful for creating custom event processors if the behaviour of BatchEventProcessor<T> is not suitable.
      */
     std::shared_ptr<EventStore<T>> eventStore() const {
         return _ringBuffer;

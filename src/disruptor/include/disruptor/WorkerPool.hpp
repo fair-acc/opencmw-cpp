@@ -28,7 +28,7 @@ class WorkerPool {
 
 public:
     /**
-     * Create a worker pool to enable an array of IWorkHandler<T> to consume published sequences. This option requires a pre-configured DataProvider<T> which must have
+     * Create a worker pool to enable an array of IWorkHandler<T> to consume published sequences. This option requires a pre-configured EventStore<T> which must have
      * SequencerBase::setGatingSequences() called before the work pool is started.
      *
      * \param ringBuffer ringBuffer of events to be consumed.
@@ -49,7 +49,7 @@ public:
     }
 
     /**
-     * Construct a work pool with an internal DataProvider<T> for convenience. This option does not require SequencerBase::setGatingSequences() to be called before the work pool is started.
+     * Construct a work pool with an internal EventStore<T> for convenience. This option does not require SequencerBase::setGatingSequences() to be called before the work pool is started.
      *
      * \param eventFactory eventFactory for filling the<see cref="RingBuffer{T}"/>
      * \param exceptionHandler exceptionHandler to callback when an error occurs which is not handled by the<see cref="IWorkHandler{T}"/>s.
@@ -87,7 +87,7 @@ public:
     /**
      * Start the worker pool processing events in sequence.
      *
-     * \returns the DataProvider<T> used for the work queue.
+     * \returns the EventStore<T> used for the work queue.
      */
     std::shared_ptr<EventStore<T>> start(const std::shared_ptr<IExecutor> &executor) {
         if (std::atomic_exchange(&_running, 1) != 0) {
@@ -106,7 +106,7 @@ public:
     }
 
     /**
-     * Wait for the DataProvider<T> to drain of published events then halt the workers.
+     * Wait for the EventStore<T> to drain of published events then halt the workers.
      */
     void drainAndHalt() {
         auto workerSequences = getWorkerSequences();

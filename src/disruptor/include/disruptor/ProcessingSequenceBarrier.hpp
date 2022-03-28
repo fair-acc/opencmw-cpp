@@ -19,7 +19,7 @@ class ProcessingSequenceBarrier : public ISequenceBarrier, public std::enable_sh
     std::shared_ptr<WAIT_STRATEGY>                          _waitStrategy;
     std::shared_ptr<std::vector<std::shared_ptr<Sequence>>> _dependentSequences{ std::make_shared<std::vector<std::shared_ptr<Sequence>>>() };
     std::shared_ptr<Sequence>                               _cursorSequence;
-    std::shared_ptr<DataProvider<T>>                        _sequenceProvider;
+    std::shared_ptr<EventStore<T>>                          _sequenceProvider;
 
     WAIT_STRATEGY                                          &_waitStrategyRef;
     EventStore<T>                                          &_sequenceProviderRef;
@@ -27,10 +27,10 @@ class ProcessingSequenceBarrier : public ISequenceBarrier, public std::enable_sh
     bool                                                    _alerted = false;
 
 public:
-    ProcessingSequenceBarrier(const std::shared_ptr<DataProvider<T>> &sequenceProvider,
-            const std::shared_ptr<WAIT_STRATEGY>                     &waitStrategy,
-            const std::shared_ptr<Sequence>                          &cursorSequence,
-            const std::vector<std::shared_ptr<Sequence>>             &dependentSequences)
+    ProcessingSequenceBarrier(const std::shared_ptr<EventStore<T>> &sequenceProvider,
+            const std::shared_ptr<WAIT_STRATEGY>                   &waitStrategy,
+            const std::shared_ptr<Sequence>                        &cursorSequence,
+            const std::vector<std::shared_ptr<Sequence>>           &dependentSequences)
         : _waitStrategy(waitStrategy)
         , _dependentSequences(getDependentSequence(cursorSequence, dependentSequences))
         , _cursorSequence(cursorSequence)
