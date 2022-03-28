@@ -3,9 +3,10 @@
 #include <iostream>
 #include <sstream>
 
+#include <opencmw.hpp>
+
 #include "Exception.hpp"
 #include "IExceptionHandler.hpp"
-#include "TypeInfo.hpp"
 
 namespace opencmw::disruptor {
 
@@ -23,8 +24,7 @@ public:
      * \param evt event being processed when the exception occurred.
      */
     void handleEventException(const std::exception &ex, std::int64_t sequence, T & /*evt*/) override {
-        auto message = fmt::format("Exception processing sequence {} for event {}: {}", sequence, Utils::getMetaTypeInfo<T>().fullyQualifiedName(), ex.what());
-        std::cerr << message;
+        auto message = fmt::format("Exception processing sequence {} for event {}: {}", sequence, typeName<T>, ex.what());
         throw WrappedException(ex, message);
     }
 
@@ -35,7 +35,6 @@ public:
      */
     void handleOnStartException(const std::exception &ex) override {
         auto message = fmt::format("Exception during OnStart(): {}", ex.what());
-        std::cerr << message;
         throw WrappedException(ex, message);
     }
 
@@ -46,7 +45,6 @@ public:
      */
     void handleOnShutdownException(const std::exception &ex) override {
         auto message = fmt::format("Exception during OnShutdown(): {}", ex.what());
-        std::cerr << message;
         throw WrappedException(ex, message);
     }
 
@@ -57,8 +55,7 @@ public:
      * \param sequence sequence of the event which cause the exception.
      */
     void handleOnTimeoutException(const std::exception &ex, std::int64_t sequence) override {
-        auto message = fmt::format("Exception during OnTimeout() processing sequence {} for event {}: {}", sequence, Utils::getMetaTypeInfo<T>().fullyQualifiedName(), ex.what());
-        std::cerr << message;
+        auto message = fmt::format("Exception during OnTimeout() processing sequence {} for event {}: {}", sequence, typeName<T>, ex.what());
         throw WrappedException(ex, message);
     }
 };
