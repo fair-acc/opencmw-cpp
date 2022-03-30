@@ -83,61 +83,36 @@ provides also an optional light-weight `constexpr` annotation template wrapper `
 that in turn can be used to (re-)generate and document the class definition (e.g. for other programming languages or projects that do not have the primary domain-object definition at hand) 
 or to generate a generic [OpenAPI](https://swagger.io/specification/) definition. More details can be found [here](docs/CompileTimeSerialiser.md).
 
+### Building from source
 
-### Example
-The following provides some flavour of how a simple service can be implemented using OpenCMW with only a few lines of
-custom user-code ([full sample](https://github.com/fair-acc/opencmw-java/tree/createReadme/server-rest/src/test/java/io/opencmw/server/rest/samples/BasicSample.java)):
+Note that building from source is only required if you want to modify opencmw-cpp itself.
 
-```Java
-// TODO: Java Concept to be ported/implemented in C++
-@MetaInfo(description = "My first 'Hello World!' Service")
-public static class HelloWorldWorker extends MajordomoWorker<BasicRequestCtx, NoData, ReplyData> {
-    public HelloWorldWorker(final ZContext ctx, final String serviceName, final RbacRole<?>... rbacRoles) {
-        super(ctx, serviceName, BasicRequestCtx.class, NoData.class, ReplyData.class, rbacRoles);
+If you only want to make use of opencmw-cpp in your project to implement a service, it is not required to clone/build opencmw-cpp.
+In that case, rather take a look at the project [opencmw-cpp-example](https://github.com/alexxcons/opencmw-cpp-example), which demonstrates how a simple, first service can be implemented.
 
-        // the custom used code:
-        this.setHandler((rawCtx, requestContext, requestData, replyContext, replyData) -> {
-            final String name = Objects.requireNonNullElse(requestContext.name, "");
-            LOGGER.atInfo().addArgument(rawCtx.req.command).addArgument(rawCtx.req.topic)
-                    .log("{} request for worker - requested topic '{}'");
-            replyData.returnValue = name.isBlank() ? "Hello World" : "Hello, " + name + "!";
-            replyContext.name = name.isBlank() ? "At" : (name + ", at") + " your service!";
-        });
 
-        // simple asynchronous notify example - (real-world use-cases would use another updater than Timer)
-        new Timer(true).scheduleAtFixedRate(new TimerTask() {
-            private final BasicRequestCtx notifyContext = new BasicRequestCtx(); // re-use to avoid gc
-            private final ReplyData notifyData = new ReplyData(); // re-use to avoid gc
-            private int i;
-            @Override
-            public void run() {
-                notifyContext.name = "update context #" + i;
-                notifyData.returnValue = "arbitrary data - update iteration #" + i++;
-                try {
-                    HelloWorldWorker.this.notify(notifyContext, notifyData);
-                } catch (Exception e) {
-                    LOGGER.atError().setCause(e).log("could not notify update");
-                    // further handle exception if necessary
-                }
-            }
-        }, TimeUnit.SECONDS.toMillis(1), TimeUnit.SECONDS.toMillis(2));
-    }
-}
+Building on linux operating systems:
 
-@MetaInfo(description = "arbitrary request domain context object", direction = "IN")
-public static class BasicRequestCtx {
-    @MetaInfo(description = " optional 'name' OpenAPI documentation")
-    public String name;
-}
+```
+git clone https://github.com/alexxcons/opencmw-cpp.git
+cd opencmw-cpp
+mkdir build
+ccmake -S . -B ./build
+```
+* press 'c' and wait until 'configure' is done, check for errors and try to install missing dependencies
+* If there are no errors, press 'g' and wait until 'generate' is done and start the build:
 
-@MetaInfo(description = "arbitrary reply domain object", direction = "OUT")
-public static class ReplyData {
-    @MetaInfo(description = " optional 'returnValue' OpenAPI documentation", unit = "a string")
-    public String returnValue;
-}
+```
+cmake --build ./build
 ```
 
-These services can be accessed using OpenCMW's own [DataSourcePublisher](DataSourceExample.cpp)
+For detailed, advanced options or installation on non-linux operating systems, please check the [detailed build instructions](docs/BuildInstructions.md).
+
+### Example
+
+For an example on how to implement a simple, first service using opencmw-cpp, please take a look at the project [opencmw-cpp-example](https://github.com/alexxcons/opencmw-cpp-example).
+
+Services can be accessed using OpenCMW's own [DataSourcePublisher](DataSourceExample.cpp)
 client that queries or subscribes using one of the highly-optimised binary, JSON or other wire-formats and [ZeroMQ](https://zeromq.org/)-
 or RESTful (HTTP)-based high-level protocols, or through a simple RESTful web-interface that also provides simple
 'get', 'set' and 'subscribe' functionalities while developing, for testing, or debugging:
