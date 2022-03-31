@@ -96,7 +96,59 @@ For concrete build instructions, please check the [build instructions page](docs
 
 For an example on how to implement a simple, first service using opencmw-cpp, please take a look at the project [opencmw-cpp-example](https://github.com/alexxcons/opencmw-cpp-example).
 
-Services can be accessed using OpenCMW's own [DataSourcePublisher](DataSourceExample.cpp)
+The following provides some flavour of how a simple service can be implemented using OpenCMW with only a few lines of
+custom user-code ([full sample](https://github.com/fair-acc/opencmw-java/tree/createReadme/server-rest/src/test/java/io/opencmw/server/rest/samples/BasicSample.java)):
+
+```Java
+// TODO: Java Concept to be ported/implemented in C++
+@MetaInfo(description = "My first 'Hello World!' Service")
+public static class HelloWorldWorker extends MajordomoWorker<BasicRequestCtx, NoData, ReplyData> {
+    public HelloWorldWorker(final ZContext ctx, final String serviceName, final RbacRole<?>... rbacRoles) {
+        super(ctx, serviceName, BasicRequestCtx.class, NoData.class, ReplyData.class, rbacRoles);
+
+        // the custom used code:
+        this.setHandler((rawCtx, requestContext, requestData, replyContext, replyData) -> {
+            final String name = Objects.requireNonNullElse(requestContext.name, "");
+            LOGGER.atInfo().addArgument(rawCtx.req.command).addArgument(rawCtx.req.topic)
+                    .log("{} request for worker - requested topic '{}'");
+            replyData.returnValue = name.isBlank() ? "Hello World" : "Hello, " + name + "!";
+            replyContext.name = name.isBlank() ? "At" : (name + ", at") + " your service!";
+        });
+
+        // simple asynchronous notify example - (real-world use-cases would use another updater than Timer)
+        new Timer(true).scheduleAtFixedRate(new TimerTask() {
+            private final BasicRequestCtx notifyContext = new BasicRequestCtx(); // re-use to avoid gc
+            private final ReplyData notifyData = new ReplyData(); // re-use to avoid gc
+            private int i;
+            @Override
+            public void run() {
+                notifyContext.name = "update context #" + i;
+                notifyData.returnValue = "arbitrary data - update iteration #" + i++;
+                try {
+                    HelloWorldWorker.this.notify(notifyContext, notifyData);
+                } catch (Exception e) {
+                    LOGGER.atError().setCause(e).log("could not notify update");
+                    // further handle exception if necessary
+                }
+            }
+        }, TimeUnit.SECONDS.toMillis(1), TimeUnit.SECONDS.toMillis(2));
+    }
+}
+
+@MetaInfo(description = "arbitrary request domain context object", direction = "IN")
+public static class BasicRequestCtx {
+    @MetaInfo(description = " optional 'name' OpenAPI documentation")
+    public String name;
+}
+
+@MetaInfo(description = "arbitrary reply domain object", direction = "OUT")
+public static class ReplyData {
+    @MetaInfo(description = " optional 'returnValue' OpenAPI documentation", unit = "a string")
+    public String returnValue;
+}
+```
+
+These services can be accessed using OpenCMW's own [DataSourcePublisher](DataSourceExample.cpp)
 client that queries or subscribes using one of the highly-optimised binary, JSON or other wire-formats and [ZeroMQ](https://zeromq.org/)-
 or RESTful (HTTP)-based high-level protocols, or through a simple RESTful web-interface that also provides simple
 'get', 'set' and 'subscribe' functionalities while developing, for testing, or debugging:
