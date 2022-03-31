@@ -90,23 +90,7 @@ Note that building from source is only required if you want to modify opencmw-cp
 If you only want to make use of opencmw-cpp in your project to implement a service, it is not required to clone/build opencmw-cpp.
 In that case, rather take a look at the project [opencmw-cpp-example](https://github.com/alexxcons/opencmw-cpp-example), which demonstrates how a simple, first service can be implemented.
 
-
-Building on linux operating systems:
-
-```
-git clone https://github.com/alexxcons/opencmw-cpp.git
-cd opencmw-cpp
-mkdir build
-ccmake -S . -B ./build
-```
-* press 'c' and wait until 'configure' is done, check for errors and try to install missing dependencies
-* If there are no errors, press 'g' and wait until 'generate' is done and start the build:
-
-```
-cmake --build ./build
-```
-
-For detailed, advanced options or installation on non-linux operating systems, please check the [detailed build instructions](docs/BuildInstructions.md).
+For concrete build instructions, please check the [build instructions page](docs/BuildInstructions.md).
 
 ### Example
 
