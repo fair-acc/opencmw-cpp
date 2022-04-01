@@ -83,8 +83,19 @@ provides also an optional light-weight `constexpr` annotation template wrapper `
 that in turn can be used to (re-)generate and document the class definition (e.g. for other programming languages or projects that do not have the primary domain-object definition at hand) 
 or to generate a generic [OpenAPI](https://swagger.io/specification/) definition. More details can be found [here](docs/CompileTimeSerialiser.md).
 
+### Building from source
+
+Note that building from source is only required if you want to modify opencmw-cpp itself.
+
+If you only want to make use of opencmw-cpp in your project to implement a service, it is not required to clone/build opencmw-cpp.
+In that case, rather take a look at the project [opencmw-cpp-example](https://github.com/alexxcons/opencmw-cpp-example), which demonstrates how a simple, first service can be implemented.
+
+For concrete build instructions, please check the [build instructions page](docs/BuildInstructions.md).
 
 ### Example
+
+For an example on how to implement a simple, first service using opencmw-cpp, please take a look at the project [opencmw-cpp-example](https://github.com/alexxcons/opencmw-cpp-example).
+
 The following provides some flavour of how a simple service can be implemented using OpenCMW with only a few lines of
 custom user-code ([full sample](https://github.com/fair-acc/opencmw-java/tree/createReadme/server-rest/src/test/java/io/opencmw/server/rest/samples/BasicSample.java)):
 

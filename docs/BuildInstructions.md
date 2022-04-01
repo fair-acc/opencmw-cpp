@@ -1,4 +1,37 @@
-## Build Instructions
+# Build Instructions
+
+## Simplified build and test
+
+Simplified build steps to checkout and build the project on linux operating systems:
+
+``` bash
+git clone https://github.com/fair-acc/opencmw-cpp.git
+cd opencmw-cpp
+mkdir build; cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release # for debug builds use 'Debug'
+make -j 4
+```
+
+Now you can run all tests with:
+
+
+``` bash
+ctest
+```
+
+There are as well various samples inside `concepts/<core|cmrc|disruptor|majordomo|serialiser>` which can be executed: 
+
+
+``` bash
+./concepts/core/collection_example
+./concepts/core/URI_example
+./concepts/cmrc/cmrc_example
+...
+```
+
+## Advanced build options
+
+The steps below will show how various configuration and build options can be used.
 
 ### Build directory
 
