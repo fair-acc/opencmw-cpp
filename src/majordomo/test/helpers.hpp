@@ -1,8 +1,8 @@
 #ifndef MAJORDOMO_TESTS_HELPERS_H
 #define MAJORDOMO_TESTS_HELPERS_H
 
-#include <majordomo/Client.hpp>
 #include <majordomo/Message.hpp>
+#include <majordomo/MockClient.hpp>
 #include <majordomo/Settings.hpp>
 #include <majordomo/Utils.hpp>
 #include <majordomo/Worker.hpp>
@@ -82,9 +82,14 @@ public:
     }
 
     std::optional<MessageType> tryReadOne(std::chrono::milliseconds timeout = std::chrono::milliseconds(3000)) {
-        std::array<zmq_pollitem_t, 1> pollerItems{ zmq_pollitem_t{ .socket = _socket.zmq_ptr, .fd = 0, .events = ZMQ_POLLIN, .revents = 0 } };
-        const auto                    result = opencmw::majordomo::zmq_invoke(zmq_poll, pollerItems.data(), static_cast<int>(pollerItems.size()), timeout.count());
-        if (!result.isValid()) return {};
+        std::array<zmq_pollitem_t, 1> pollerItems;
+        pollerItems[0].socket = _socket.zmq_ptr;
+        pollerItems[0].events = ZMQ_POLLIN;
+
+        const auto result     = opencmw::majordomo::zmq_invoke(zmq_poll, pollerItems.data(), static_cast<int>(pollerItems.size()), timeout.count());
+        if (!result.isValid())
+            return {};
+
         return MessageType::receive(_socket);
     }
 
