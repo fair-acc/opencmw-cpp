@@ -1,9 +1,9 @@
 #include "helpers.hpp"
 
 #include <majordomo/Broker.hpp>
-#include <majordomo/Client.hpp>
 #include <majordomo/Constants.hpp>
 #include <majordomo/Message.hpp>
+#include <majordomo/MockClient.hpp>
 #include <majordomo/Worker.hpp>
 
 #include <fmt/format.h>
@@ -12,10 +12,10 @@ using URI = opencmw::URI<>;
 using opencmw::majordomo::BasicWorker;
 using opencmw::majordomo::BindOption;
 using opencmw::majordomo::Broker;
-using opencmw::majordomo::Client;
 using opencmw::majordomo::Command;
 using opencmw::majordomo::Context;
 using opencmw::majordomo::MdpMessage;
+using opencmw::majordomo::MockClient;
 using opencmw::majordomo::RequestContext;
 using opencmw::majordomo::Settings;
 
@@ -50,10 +50,10 @@ public:
     }
 };
 
-class TestClient : public Client {
+class TestClient : public MockClient {
 public:
     explicit TestClient(const Context &context)
-        : Client(context) {
+        : MockClient(context) {
     }
 
     void handleResponse(MdpMessage &&) override {

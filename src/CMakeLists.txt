@@ -3,7 +3,7 @@ add_subdirectory(utils)
 add_subdirectory(serialiser)
 add_subdirectory(disruptor)
 add_subdirectory(majordomo)
-# add_subdirectory(client)
+add_subdirectory(client)
 
 # installation
 include(CMakePackageConfigHelpers)
