@@ -76,20 +76,15 @@ public:
         return zmq_invoke(zmq_setsockopt, _socket, ZMQ_UNSUBSCRIBE, subscription.data(), subscription.size()).isValid();
     }
 
-    bool sendRawFrame(std::string data) {
+    bool sendRawFrame(const std::string &data) {
         opencmw::majordomo::MessageFrame f(data, opencmw::majordomo::MessageFrame::dynamic_bytes_tag{});
         return f.send(_socket, 0).isValid(); // blocking for simplicity
     }
 
     std::optional<MessageType> tryReadOne(std::chrono::milliseconds timeout = std::chrono::milliseconds(3000)) {
-        std::array<zmq_pollitem_t, 1> pollerItems;
-        pollerItems[0].socket = _socket.zmq_ptr;
-        pollerItems[0].events = ZMQ_POLLIN;
-
-        const auto result     = opencmw::majordomo::zmq_invoke(zmq_poll, pollerItems.data(), static_cast<int>(pollerItems.size()), timeout.count());
-        if (!result.isValid())
-            return {};
-
+        std::array<zmq_pollitem_t, 1> pollerItems{ zmq_pollitem_t{ .socket = _socket.zmq_ptr, .fd = 0, .events = ZMQ_POLLIN, .revents = 0 } };
+        const auto                    result = opencmw::majordomo::zmq_invoke(zmq_poll, pollerItems.data(), static_cast<int>(pollerItems.size()), timeout.count());
+        if (!result.isValid()) return {};
         return MessageType::receive(_socket);
     }
 
