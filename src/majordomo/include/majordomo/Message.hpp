@@ -28,8 +28,10 @@ public:
     struct static_bytes_tag {};
     struct dynamic_bytes_tag {};
 
-    MessageFrame() { zmq_msg_init(&_message); }
-    explicit MessageFrame(Bytes *buf, dynamic_bytes_tag /*tag*/ = {}) {
+    MessageFrame()
+        : _message() { zmq_msg_init(&_message); }
+    explicit MessageFrame(Bytes *buf, dynamic_bytes_tag /*tag*/ = {})
+        : _message() {
         zmq_msg_init_data(
                 &_message, buf->data(), buf->size(),
                 [](void * /*unused*/, void *bufOwned) {
@@ -41,7 +43,8 @@ public:
     explicit MessageFrame(std::string_view view, dynamic_bytes_tag tag)
         : MessageFrame(new std::string(view), tag) {}
 
-    explicit MessageFrame(std::string_view buf, static_bytes_tag) {
+    explicit MessageFrame(std::string_view buf, static_bytes_tag)
+        : _message() {
         zmq_msg_init_data(
                 &_message, const_cast<char *>(buf.data()), buf.size(),
                 [](void *, void *) {
@@ -94,8 +97,8 @@ public:
     // See: http://api.zeromq.org/3-2:zmq-msg-send
     [[nodiscard]] auto send(const Socket &socket, int flags) {
         auto result = zmq_invoke(zmq_msg_send, &_message, socket, flags);
-        assert(result.isValid());
-        _owning = false;
+        assert(result.isValid() || result.error() == EAGAIN);
+        _owning = !result.isValid();
         return result;
     }
 
@@ -106,8 +109,7 @@ public:
     }
 
     std::string_view data() const {
-        return std::string_view(
-                static_cast<char *>(zmq_msg_data(&_message)), size());
+        return { static_cast<char *>(zmq_msg_data(&_message)), size() };
     }
 };
 
@@ -201,13 +203,13 @@ private:
         mutable BytesPtr ptr;
 
         // Getting the unique_ptr from the wrapper
-        operator BytesPtr() const && { return std::move(ptr); }
-        MovableBytesPtrWrapper(BytesPtr &&_ptr)
+        operator BytesPtr() const && { return std::move(ptr); } // NOLINT(google-explicit-constructor)
+        MovableBytesPtrWrapper(BytesPtr &&_ptr)                 // NOLINT(google-explicit-constructor)
             : ptr{ std::move(_ptr) } {}
     };
 
 public:
-    BasicMdpMessage() {}
+    BasicMdpMessage() = default;
 
     explicit BasicMdpMessage(Command command) {
         setCommand(command);
@@ -322,7 +324,7 @@ public:
         return r;
     }
 
-    bool isValid() const {
+    [[nodiscard]] bool isValid() const {
         // TODO better error reporting
         const auto &commandStr = _frames[index(Frame::Command)];
 
@@ -376,8 +378,8 @@ public:
         return static_cast<Command>(frameAt(Frame::Command).data()[0]);
     }
 
-    std::size_t availableFrameCount() const { return _frames.size(); }
-    std::size_t requiredFrameCount() const { return RequiredFrameCount; } // TODO: make field public?
+    [[nodiscard]] std::size_t availableFrameCount() const { return _frames.size(); }
+    [[nodiscard]] std::size_t requiredFrameCount() const { return RequiredFrameCount; } // TODO: make field public?
 
     template<typename Field, typename T, typename Tag>
     void setFrameData(Field field, T &&value, Tag tag) { frameAt(field) = MessageFrame(std::forward<T>(value), tag); }
