@@ -24,7 +24,7 @@ template<std::int32_t YIELD_THRESHOLD = 10, std::int32_t SLEEP_0_EVERY_HOW_MANY_
 class SpinWait {
     using Clock         = std::conditional_t<std::chrono::high_resolution_clock::is_steady, std::chrono::high_resolution_clock, std::chrono::steady_clock>;
     std::int32_t _count = 0;
-    static void spinWaitInternal(std::int32_t iterationCount) noexcept {
+    static void  spinWaitInternal(std::int32_t iterationCount) noexcept {
         for (auto i = 0; i < iterationCount; i++) {
             yieldProcessor();
         }
@@ -34,10 +34,10 @@ class SpinWait {
 public:
     SpinWait() = default;
 
-    [[nodiscard]] std::int32_t count() const noexcept{ return _count; }
-    [[nodiscard]] bool nextSpinWillYield() const noexcept { return _count > YIELD_THRESHOLD; }
+    [[nodiscard]] std::int32_t count() const noexcept { return _count; }
+    [[nodiscard]] bool         nextSpinWillYield() const noexcept { return _count > YIELD_THRESHOLD; }
 
-    void spinOnce() {
+    void                       spinOnce() {
         if (nextSpinWillYield()) {
             auto num = _count >= YIELD_THRESHOLD ? _count - 10 : _count;
             if (num % SLEEP_1_EVERY_HOW_MANY_TIMES == SLEEP_1_EVERY_HOW_MANY_TIMES - 1) {
