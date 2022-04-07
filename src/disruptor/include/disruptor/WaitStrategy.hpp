@@ -6,10 +6,11 @@
 #include <mutex>
 #include <thread>
 
+#include <SpinWait.hpp>
+
 #include "Exception.hpp"
 #include "ISequenceBarrier.hpp"
 #include "Sequence.hpp"
-#include "SpinWait.hpp"
 
 namespace opencmw::disruptor {
 
