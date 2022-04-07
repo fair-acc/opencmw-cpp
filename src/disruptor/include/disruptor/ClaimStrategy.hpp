@@ -1,8 +1,9 @@
 #ifndef OPENCMW_CPP_CLAIMSTRATEGY_HPP
 #define OPENCMW_CPP_CLAIMSTRATEGY_HPP
 
+#include <SpinWait.hpp>
+
 #include <disruptor/Sequence.hpp>
-#include <disruptor/SpinWait.hpp>
 #include <disruptor/WaitStrategy.hpp>
 
 namespace opencmw::disruptor {
