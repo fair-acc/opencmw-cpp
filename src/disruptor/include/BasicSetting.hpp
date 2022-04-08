@@ -56,6 +56,7 @@ class NonRealtimeMutable;
  *   &#x2f;&#x2f; guardedValue = 43; &#x2f;&#x2f; should not compile
  *   REQUIRE(guardedValue == 43);
  * }
+ * </pre>
  *
  * @tparam T object type to synchronise.
  * @tparam mutableBy whether the object is mutable by the non-real-time threads or real-time thread only.
@@ -105,7 +106,10 @@ public:
     }
 
     template<AccessType threadType>
-    auto accessGuard() { return ScopedAccess<threadType>(this->_settingStore); }
+    [[nodiscard]] auto accessGuard() { return ScopedAccess<threadType>(this->_settingStore); }
+
+    [[nodiscard]] auto nonRealTimeAccessGuard() { return ScopedAccess<AccessType::NonRealTime>(this->_settingStore); }
+    [[nodiscard]] auto realTimeAccessGuard() { return ScopedAccess<AccessType::RealTime>(this->_settingStore); }
 
     template<AccessType threadType, typename... Args>
     void replace(Args &&...args) noexcept {

@@ -24,6 +24,15 @@ TEST_CASE("BasicSetting Real-Time tests", "[BasicSetting]") {
         // guardedValue = 43; // should not compile
         REQUIRE(guardedValue == 43);
     }
+
+    REQUIRE_NOTHROW([]<typename T>(BasicSetting<T, RealTimeMutable> &s) {
+        auto guardedValue = s.template accessGuard<AccessType::NonRealTime>();
+        REQUIRE(guardedValue == 43);
+    });
+    REQUIRE_NOTHROW([]<typename T>(BasicSetting<T, RealTimeMutable> &s) {
+        auto guardedValue = s.nonRealTimeAccessGuard();
+        REQUIRE(guardedValue == 43);
+    });
 }
 
 TEST_CASE("BasicSetting Non-Real-Time tests", "[BasicSetting]") {
@@ -48,4 +57,13 @@ TEST_CASE("BasicSetting Non-Real-Time tests", "[BasicSetting]") {
         // guardedValue = 43; // should not compile
         REQUIRE(guardedValue == 43);
     }
+
+    REQUIRE_NOTHROW([]<typename T>(BasicSetting<T, NonRealTimeMutable> &s) {
+        auto guardedValue = s.template accessGuard<AccessType::RealTime>();
+        REQUIRE(guardedValue == 43);
+    });
+    REQUIRE_NOTHROW([]<typename T>(BasicSetting<T, NonRealTimeMutable> &s) {
+        auto guardedValue = s.realTimeAccessGuard();
+        REQUIRE(guardedValue == 43);
+    });
 }
