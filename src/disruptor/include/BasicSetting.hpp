@@ -29,7 +29,7 @@ class NonRealtimeMutable;
  * @brief BasicSetting is a class that synchronises access to a copyable type T object from multiple non-real-time
  * and a single real-time threads. The one designated real-time thread will never wait to get access to the object.
  *
- * The MutableOption determines whether the object is mutable by the non-real-time threads or real-time thread only.
+ * The MutableOption determines whether the object is mutable by either the non-real-time threads or a single real-time thread only.
  * Changes to the setting is guarded by a scoped accessGuard (safe recommended use, similar to a ScopedLock), or low-level pair of
  * <code>acquire()</code> and <code>release()</code> (N.B. less safe, requires matching).
  *
@@ -101,8 +101,9 @@ public:
     void release() noexcept {
         if constexpr (threadType == AccessType::RealTime) {
             _settingStore.realtimeRelease();
+        } else {
+            _settingStore.nonRealtimeRelease();
         }
-        _settingStore.nonRealtimeRelease();
     }
 
     template<AccessType threadType>
@@ -249,7 +250,7 @@ class RealtimeMutable {
     explicit RealtimeMutable(bool, Args &&...args)
         : data({ T(std::forward(args)...), T(std::forward(args)...) }), realtimeCopy(std::forward(args)...) {}
     unsigned acquireIndex() noexcept { return control.fetch_or(BUSY_BIT, std::memory_order_acquire) & INDEX_BIT; }
-    void     releaseIndex(unsigned idx) noexcept { control.store((idx & INDEX_BIT) | NEWDATA_BIT, std::memory_order_release); }
+    void     releaseIndex(unsigned idx) noexcept { control.store(static_cast<int>((idx & INDEX_BIT) | NEWDATA_BIT), std::memory_order_release); }
 
 public:
     RealtimeMutable() = default;
