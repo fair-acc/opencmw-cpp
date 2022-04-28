@@ -13,6 +13,8 @@ TEST_CASE("Basic TimingCtx tests", "[TimingCtx][basic]") {
     REQUIRE("ALL" == TimingCtx("ALL"));
     REQUIRE(TimingCtx("all") == "ALL");
     REQUIRE(TimingCtx("ALL").bpcts.value() == 0);
+    REQUIRE(TimingCtx("All").hash() != 0);
+
     auto changeMyFields = TimingCtx("ALL");
     REQUIRE(changeMyFields == "ALL");
     REQUIRE(changeMyFields.cid() == -1);
