@@ -5,6 +5,7 @@
 #include <charconv>
 #include <chrono>
 #include <exception>
+#include <functional>
 #include <opencmw.hpp>
 #include <ranges>
 #include <string_view>
@@ -20,6 +21,11 @@
 namespace opencmw {
 
 namespace detail {
+template<class T>
+inline constexpr void hash_combine(std::size_t &seed, const T &v) noexcept {
+    std::hash<T> hasher;
+    seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+}
 constexpr uint32_t           const_hash(char const *input) noexcept { return *input ? static_cast<uint32_t>(*input) + 33 * const_hash(input + 1) : 5381; } // NOLINT
 constexpr basic_fixed_string TIMING_DESCRIPTION = "FAIR Timing Selector (e.g. 'FAIR.SELECTOR.C=1:S=2:P=3:T=4'. 'FAIR.SELECTOR.ALL' or 'ALL'";
 } // namespace detail
@@ -87,6 +93,17 @@ public:
         if (!isWildcard(_gid)) { segments.emplace_back(fmt::format("T={}", _gid)); }
         // clang-format on
         return fmt::format("{}{}", SELECTOR_PREFIX, fmt::join(segments, ":"));
+    }
+
+    [[nodiscard]] std::size_t hash() const noexcept {
+        parse();
+        std::size_t seed = 0;
+        detail::hash_combine(seed, _cid);
+        detail::hash_combine(seed, _sid);
+        detail::hash_combine(seed, _pid);
+        detail::hash_combine(seed, _gid);
+        detail::hash_combine(seed, bpcts.value());
+        return seed;
     }
 
     void parse() const {
@@ -186,14 +203,25 @@ private:
     }
 };
 
-[[nodiscard]] inline bool operator==(const TimingCtx &lhs, const std::string_view &rhs) { return (lhs.bpcts == 0) && (lhs.selector.value() == rhs); }
+inline static const TimingCtx NullTimingCtx = TimingCtx{};
 
-inline std::ostream      &operator<<(std::ostream &os, const opencmw::TimingCtx &v) {
+[[nodiscard]] inline bool     operator==(const TimingCtx &lhs, const std::string_view &rhs) { return (lhs.bpcts == 0) && (lhs.selector.value() == rhs); }
+
+inline std::ostream          &operator<<(std::ostream &os, const opencmw::TimingCtx &v) {
     return os << fmt::format("{}", v);
 }
 
 } // namespace opencmw
 ENABLE_REFLECTION_FOR(opencmw::TimingCtx, selector, bpcts);
+
+namespace std {
+template<>
+struct hash<opencmw::TimingCtx> {
+    [[nodiscard]] size_t operator()(const opencmw::TimingCtx &ctx) const noexcept {
+        return ctx.hash();
+    }
+};
+} // namespace std
 
 template<>
 struct fmt::formatter<opencmw::TimingCtx> {
