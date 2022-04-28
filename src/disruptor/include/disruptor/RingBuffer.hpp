@@ -286,7 +286,7 @@ struct fmt::formatter<opencmw::disruptor::PollState> {
 namespace opencmw {
 
 template<typename T, std::size_t SIZE, disruptor::WaitStrategy WAIT_STRATEGY, template<std::size_t, disruptor::WaitStrategy> typename CLAIM_STRATEGY>
-std::ostream &operator<<(std::ostream &stream, const opencmw::disruptor::RingBuffer<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY> &ringBuffer) { return stream << fmt::format("{}", ringBuffer); }
-std::ostream &operator<<(std::ostream &stream, opencmw::disruptor::PollState &pollState) { return stream << fmt::format("{}", pollState); }
+inline std::ostream &operator<<(std::ostream &stream, const opencmw::disruptor::RingBuffer<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY> &ringBuffer) { return stream << fmt::format("{}", ringBuffer); }
+inline std::ostream &operator<<(std::ostream &stream, opencmw::disruptor::PollState &pollState) { return stream << fmt::format("{}", pollState); }
 
 } // namespace opencmw
