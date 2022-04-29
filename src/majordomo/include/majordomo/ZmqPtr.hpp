@@ -154,12 +154,17 @@ struct ZmqPtr {
         : zmq_ptr{ _ptr } { assert(zmq_ptr != nullptr); }
     ZmqPtr()         = delete;
     ZmqPtr(ZmqPtr &) = delete;
+    ZmqPtr(ZmqPtr &&other) noexcept
+        : zmq_ptr{ other.zmq_ptr } {
+        other.zmq_ptr = nullptr;
+    }
     ZmqPtr &operator=(const ZmqPtr &) = delete;
 };
 
 struct Context : ZmqPtr {
     Context()
         : ZmqPtr{ zmq_ctx_new() } {}
+    Context(Context &&other) = default;
     ~Context() { zmq_ctx_term(zmq_ptr); }
 };
 
@@ -167,7 +172,8 @@ struct Socket : ZmqPtr {
     Socket(const Context &context, const int type)
         : ZmqPtr(zmq_socket(context.zmq_ptr, type)) {
     }
-    Socket() = delete;
+    Socket()               = delete;
+    Socket(Socket &&other) = default;
     ~Socket() { zmq_close(zmq_ptr); }
 };
 
