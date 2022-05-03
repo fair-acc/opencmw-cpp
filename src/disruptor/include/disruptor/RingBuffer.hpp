@@ -160,9 +160,9 @@ class EventPoller {
     std::int64_t                                                        _lastAvailableSequence = kInitialCursorValue;
 
 public:
-    EventPoller()                       = delete;
-    EventPoller(const EventPoller &)    = delete;
-    EventPoller(const EventPoller &&)   = delete;
+    EventPoller()                     = delete;
+    EventPoller(const EventPoller &)  = delete;
+    EventPoller(const EventPoller &&) = delete;
     void operator=(const EventPoller &) = delete;
     EventPoller(const std::shared_ptr<RingBuffer<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY>> &dataProvider,
             const std::shared_ptr<Sequence>                                               &sequence,

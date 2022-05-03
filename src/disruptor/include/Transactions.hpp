@@ -296,9 +296,9 @@ requires(opencmw::is_power2_v<N_HISTORY> &&N_HISTORY > 8) class CtxSetting {
     };
 
 public:
-    using Node                                               = settings::node<T>;
-    CtxSetting()                                             = default;
-    CtxSetting(const CtxSetting &)                           = delete;
+    using Node                         = settings::node<T>;
+    CtxSetting()                       = default;
+    CtxSetting(const CtxSetting &)     = delete;
     CtxSetting                &operator=(const CtxSetting &) = delete;
 
     std::pair<bool, TimeStamp> stage(const TimingCtx &timingCtx, T &&newValue, const TransactionToken &transactionToken = NullToken<TransactionToken>) {
@@ -314,9 +314,9 @@ public:
     [[nodiscard]] std::size_t                        nCtxHistory(const std::int64_t idx = 0) const { return _setting.get(idx).value->size(); }
     [[nodiscard]] std::vector<TransactionToken>      getPendingTransactions() const { return _setting.getPendingTransactions(); }
     void                                             retireExpired() {
-                                                    _setting.historyLock().template scopedGuard<ReaderWriterLockType::WRITE>();
-                                                    _setting.retireExpired();
-                                                    retireOldSettings(*_setting.get().value);
+        _setting.historyLock().template scopedGuard<ReaderWriterLockType::WRITE>();
+        _setting.retireExpired();
+        retireOldSettings(*_setting.get().value);
     }
 
 private:
