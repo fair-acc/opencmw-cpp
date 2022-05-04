@@ -92,10 +92,10 @@ public:
     [[nodiscard]] std::size_t hash() const noexcept { return detail::const_hash(selector.data()); }
 
     void                      parse() const {
-                             // lazy revaluation in case selector changed -- not mathematically perfect but should be sufficient given the limited/constraint selector syntax
+        // lazy revaluation in case selector changed -- not mathematically perfect but should be sufficient given the limited/constraint selector syntax
         const size_t selectorHash = detail::const_hash(selector.data());
         if (_hash == selectorHash) {
-                                 return;
+            return;
         }
         _cid                                = WILDCARD_VALUE;
         _sid                                = WILDCARD_VALUE;
@@ -104,75 +104,75 @@ public:
         _hash                               = selectorHash;
         const std::string upperCaseSelector = toUpper(selector);
         if (upperCaseSelector.empty() || upperCaseSelector == WILDCARD) {
-                                 return;
+            return;
         }
 
         if (!upperCaseSelector.starts_with(SELECTOR_PREFIX)) {
-                                 throw std::invalid_argument(fmt::format("Invalid tag '{}'", selector));
+            throw std::invalid_argument(fmt::format("Invalid tag '{}'", selector));
         }
         auto upperCaseSelectorView = std::string_view{ upperCaseSelector.data() + SELECTOR_PREFIX.length(), upperCaseSelector.size() - SELECTOR_PREFIX.length() };
 
         if (upperCaseSelectorView == WILDCARD) {
-                                 return;
+            return;
         }
 
         while (true) {
-                                 const auto posColon = upperCaseSelectorView.find(':');
-                                 const auto tag      = posColon != std::string_view::npos ? upperCaseSelectorView.substr(0, posColon) : upperCaseSelectorView;
+            const auto posColon = upperCaseSelectorView.find(':');
+            const auto tag      = posColon != std::string_view::npos ? upperCaseSelectorView.substr(0, posColon) : upperCaseSelectorView;
 
-                                 if (tag.length() < 3) {
-                                     _hash = 0;
-                                     throw std::invalid_argument(fmt::format("Invalid tag '{}'", tag));
+            if (tag.length() < 3) {
+                _hash = 0;
+                throw std::invalid_argument(fmt::format("Invalid tag '{}'", tag));
             }
 
-                                 const auto posEqual = tag.find('=');
+            const auto posEqual = tag.find('=');
 
-                                 // there must be one char left of the '=', at least one after, and there must be only one '='
-                                 if (posEqual != 1 || tag.find('=', posEqual + 1) != std::string_view::npos) {
-                                     _hash = 0;
-                                     throw std::invalid_argument(fmt::format("Tag has invalid format: '{}'", tag));
+            // there must be one char left of the '=', at least one after, and there must be only one '='
+            if (posEqual != 1 || tag.find('=', posEqual + 1) != std::string_view::npos) {
+                _hash = 0;
+                throw std::invalid_argument(fmt::format("Tag has invalid format: '{}'", tag));
             }
 
-                                 const auto key         = tag.substr(0, posEqual);
-                                 const auto valueString = tag.substr(posEqual + 1, tag.length() - posEqual - 1);
+            const auto key         = tag.substr(0, posEqual);
+            const auto valueString = tag.substr(posEqual + 1, tag.length() - posEqual - 1);
 
-                                 int32_t    value       = -1;
+            int32_t    value       = -1;
 
-                                 if (WILDCARD != valueString) {
-                                     int32_t intValue = 0;
-                                     if (const auto result = std::from_chars(valueString.begin(), valueString.end(), intValue); result.ec == std::errc::invalid_argument) {
-                                         _hash = 0;
-                                         throw std::invalid_argument(fmt::format("Value: '{}' in '{}' is not a valid integer", valueString, tag));
+            if (WILDCARD != valueString) {
+                int32_t intValue = 0;
+                if (const auto result = std::from_chars(valueString.begin(), valueString.end(), intValue); result.ec == std::errc::invalid_argument) {
+                    _hash = 0;
+                    throw std::invalid_argument(fmt::format("Value: '{}' in '{}' is not a valid integer", valueString, tag));
                 }
 
-                                     value = intValue;
+                value = intValue;
             }
 
-                                 switch (key[0]) {
-                                 case 'C':
+            switch (key[0]) {
+            case 'C':
                 _cid = value;
                 break;
-                                 case 'S':
+            case 'S':
                 _sid = value;
                 break;
-                                 case 'P':
+            case 'P':
                 _pid = value;
                 break;
-                                 case 'T':
+            case 'T':
                 _gid = value;
                 break;
-                                 default:
+            default:
                 _hash = 0;
                 throw std::invalid_argument(fmt::format("Unknown key '{}' in '{}'.", key[0], tag));
             }
 
-                                 if (posColon == std::string_view::npos) {
-                                     // if there's no other segment, we're done
+            if (posColon == std::string_view::npos) {
+                // if there's no other segment, we're done
                 return;
             }
 
-                                 // otherwise, advance to after the ":"
-                                 upperCaseSelectorView.remove_prefix(posColon + 1);
+            // otherwise, advance to after the ":"
+            upperCaseSelectorView.remove_prefix(posColon + 1);
         }
     }
 
@@ -181,10 +181,10 @@ private:
     [[nodiscard]] static constexpr bool wildcardMatch(int lhs, int rhs) { return isWildcard(rhs) || lhs == rhs; }
     [[nodiscard]] static constexpr bool bpcTimeStampMatch(units::isq::Time auto lhs, units::isq::Time auto rhs) { return rhs == 0 || lhs == rhs; }
     static inline std::string           toUpper(const std::string_view &mixedCase) noexcept {
-                  std::string retval;
-                  retval.resize(mixedCase.size());
-                  std::ranges::transform(mixedCase, retval.begin(), [](char c) noexcept { return (c >= 'a' && c <= 'z') ? c - ('a' - 'A') : c; });
-                  return retval;
+        std::string retval;
+        retval.resize(mixedCase.size());
+        std::ranges::transform(mixedCase, retval.begin(), [](char c) noexcept { return (c >= 'a' && c <= 'z') ? c - ('a' - 'A') : c; });
+        return retval;
     }
 };
 
@@ -193,7 +193,7 @@ inline static const TimingCtx NullTimingCtx = TimingCtx{};
 [[nodiscard]] inline bool     operator==(const TimingCtx &lhs, const std::string_view &rhs) { return (lhs.bpcts == 0) && (lhs.selector.value() == rhs); }
 
 inline std::ostream          &operator<<(std::ostream &os, const opencmw::TimingCtx &v) {
-             return os << fmt::format("{}", v);
+    return os << fmt::format("{}", v);
 }
 
 } // namespace opencmw
