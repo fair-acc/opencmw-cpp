@@ -212,8 +212,7 @@ public:
         return retired;
     }
 
-    void retireExpired() {
-        const auto now = std::chrono::system_clock::now();
+    void retireExpired(const auto now = std::chrono::system_clock::now()) {
         if (timeOutTransactions > 0) {
             // time-out old transactions
             bool expected = false;
@@ -325,22 +324,22 @@ public:
     std::pair<bool, TimeStamp> stage(const TimingCtx &timingCtx, T &&newValue, const TransactionToken &transactionToken = NullToken<TransactionToken>) {
         return _setting.stage({ timingCtx, FWD(newValue) }, transactionToken);
     }
-    [[maybe_unused]] bool                            retireStaged(const TransactionToken &transactionToken = NullToken<TransactionToken>) { return _setting.retireStaged(transactionToken); }
-    std::pair<bool, TimeStamp>                       commit(const TimingCtx &timingCtx, T &&newValue) { return stage(timingCtx, FWD(newValue)); }
-    std::pair<bool, TimeStamp>                       commit(const TransactionToken &transactionToken = NullToken<TransactionToken>) { return _setting.commit(transactionToken); }
+    [[maybe_unused]] bool                            retireStaged(const TransactionToken &transactionToken = NullToken<TransactionToken>, const auto now = std::chrono::system_clock::now()) { return _setting.retireStaged(transactionToken, now); }
+    std::pair<bool, TimeStamp>                       commit(const TimingCtx &timingCtx, T &&newValue, const auto now = std::chrono::system_clock::now()) { return stage(timingCtx, FWD(newValue), now); }
+    std::pair<bool, TimeStamp>                       commit(const TransactionToken &transactionToken = NullToken<TransactionToken>, const auto now = std::chrono::system_clock::now()) { return _setting.commit(transactionToken, now); }
 
     [[nodiscard]] std::pair<TimingCtx, const Node &> get(const TimingCtx &timingCtx = NullTimingCtx, const std::int64_t idx = 0) const noexcept { return get(*_setting.get(idx).value, timingCtx); }
     [[nodiscard]] std::pair<TimingCtx, const Node &> get(const TimingCtx &timingCtx, const TimeStamp &timeStamp) const noexcept { return get(*_setting.get(timeStamp).value, timingCtx); }
     [[nodiscard]] std::size_t                        nHistory() const { return _setting.nHistory(); }
     [[nodiscard]] std::size_t                        nCtxHistory(const std::int64_t idx = 0) const { return _setting.get(idx).value->size(); }
     [[nodiscard]] std::vector<TransactionToken>      getPendingTransactions() const { return _setting.getPendingTransactions(); }
-    void                                             retireExpired() {
+    void                                             retireExpired(const auto now = std::chrono::system_clock::now()) {
         _setting.historyLock().template scopedGuard<ReaderWriterLockType::WRITE>();
-        _setting.retireExpired();
-        retireOldSettings(*_setting.get().value);
+        _setting.retireExpired(now);
+        retireOldSettings(*_setting.get().value, now);
     }
     template<bool exactMatch = false>
-    [[maybe_unused]] bool retire(const TimingCtx &ctx) {
+    [[maybe_unused]] bool retire(const TimingCtx &ctx, const auto now = std::chrono::system_clock::now()) {
         bool modifiedSettings = false;
         _setting.modifySetting([&ctx, &modifiedSettings](const std::unordered_map<TimingCtx, settings::node<T>> &oldSetting) {
             auto newSetting = oldSetting;
@@ -350,7 +349,7 @@ public:
                 modifiedSettings = std::erase_if(newSetting, [&ctx](const auto &pair) { return pair.first.matches(ctx); });
             }
             return newSetting;
-        });
+        }, now);
         return modifiedSettings;
     }
 
@@ -393,8 +392,7 @@ private:
         return { NullTimingCtx, settings::node<T>(T{}) }; // implicitly stored non-multiplexed value
     }
 
-    void retireOldSettings(auto &settingsMap) const noexcept {
-        const auto now = std::chrono::system_clock::now();
+    void retireOldSettings(auto &settingsMap, const auto now = std::chrono::system_clock::now()) const noexcept {
         for (auto it = settingsMap.begin(); it != settingsMap.end();) {
             if (it->second.lastAccess - now + TimeDiff{ timeOut } < TimeDiff{ 0 }) {
                 it = settingsMap.erase(it);
