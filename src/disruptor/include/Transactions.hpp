@@ -97,8 +97,7 @@ public:
     }
     ReaderWriterLock          &historyLock() noexcept { return _historyLock; }
 
-    std::pair<bool, TimeStamp> stage(T &&t, const TransactionToken &transactionToken = NullToken<TransactionToken>) {
-        const auto now = std::chrono::system_clock::now();
+    std::pair<bool, TimeStamp> stage(T &&t, const TransactionToken &transactionToken = NullToken<TransactionToken>, const TimeStamp &now = std::chrono::system_clock::now()) {
         if (transactionToken.empty()) {
             const auto result = _ringBuffer->tryPublishEvent([&t, this, &now](Node &&eventData, std::int64_t sequence) {
                 const auto oldValue  = get();
@@ -126,19 +125,19 @@ public:
         return { false, now };
     }
 
-    std::pair<bool, TimeStamp> commit(T &&t) {
-        return stage(std::move(t), NullToken<TransactionToken>);
+    std::pair<bool, TimeStamp> commit(T &&t, const TimeStamp &now = std::chrono::system_clock::now()) {
+        return stage(std::move(t), NullToken<TransactionToken>, now);
     }
 
-    std::pair<bool, TimeStamp> commit(const TransactionToken &transactionToken = NullToken<TransactionToken>) {
+    std::pair<bool, TimeStamp> commit(const TransactionToken &transactionToken, const TimeStamp &now = std::chrono::system_clock::now()) {
         bool expected  = false;
         bool submitted = false;
         while (std::atomic_compare_exchange_strong(&_transactionListLock, &expected, true)) // spin-lock
             ;
 
-        const auto [first, last] = std::ranges::remove_if(_transactionList, [&transactionToken, &submitted, this](const auto &setting) {
+        const auto [first, last] = std::ranges::remove_if(_transactionList, [&transactionToken, &submitted, this, &now](const auto &setting) {
             if (transactionToken == NullToken<TransactionToken> || setting.first == transactionToken) {
-                commit(std::move(*setting.second.value));
+                commit(std::move(*setting.second.value), now);
                 submitted = true;
                 return true;
             }
@@ -147,14 +146,13 @@ public:
         _transactionList.erase(first, last);
         std::atomic_store_explicit(&_transactionListLock, false, std::memory_order_release);
 
-        return { submitted, std::chrono::system_clock::now() };
+        return { submitted, now };
     }
 
     template<class Fn>
     requires std::is_invocable_r_v<U, Fn &&, const U &>
     bool
-    modifySetting(Fn &&modFunction) {
-        const auto now    = std::chrono::system_clock::now();
+    modifySetting(Fn &&modFunction, const TimeStamp &now = std::chrono::system_clock::now()) {
         const auto result = _ringBuffer->tryPublishEvent([this, &modFunction, &now](Node &&eventData, std::int64_t sequence) {
             const auto oldValue  = get();
             eventData.value      = std::make_shared<U>(modFunction(*oldValue.value));
@@ -214,8 +212,7 @@ public:
         return retired;
     }
 
-    void retireExpired() {
-        const auto now = std::chrono::system_clock::now();
+    void retireExpired(const TimeStamp &now = std::chrono::system_clock::now()) {
         if (timeOutTransactions > 0) {
             // time-out old transactions
             bool expected = false;
@@ -324,25 +321,25 @@ public:
     CtxSetting(const CtxSetting &)     = delete;
     CtxSetting                &operator=(const CtxSetting &) = delete;
 
-    std::pair<bool, TimeStamp> stage(const TimingCtx &timingCtx, T &&newValue, const TransactionToken &transactionToken = NullToken<TransactionToken>) {
-        return _setting.stage({ timingCtx, FWD(newValue) }, transactionToken);
+    std::pair<bool, TimeStamp> stage(const TimingCtx &timingCtx, T &&newValue, const TransactionToken &transactionToken = NullToken<TransactionToken>, const TimeStamp &now = std::chrono::system_clock::now()) {
+        return _setting.stage({ timingCtx, FWD(newValue) }, transactionToken, now);
     }
     [[maybe_unused]] bool                            retireStaged(const TransactionToken &transactionToken = NullToken<TransactionToken>) { return _setting.retireStaged(transactionToken); }
-    std::pair<bool, TimeStamp>                       commit(const TimingCtx &timingCtx, T &&newValue) { return stage(timingCtx, FWD(newValue)); }
-    std::pair<bool, TimeStamp>                       commit(const TransactionToken &transactionToken = NullToken<TransactionToken>) { return _setting.commit(transactionToken); }
+    std::pair<bool, TimeStamp>                       commit(const TimingCtx &timingCtx, T &&newValue, const TimeStamp &now = std::chrono::system_clock::now()) { return stage(timingCtx, FWD(newValue), NullToken<TransactionToken>, now); }
+    std::pair<bool, TimeStamp>                       commit(const TransactionToken &transactionToken = NullToken<TransactionToken>, const TimeStamp &now = std::chrono::system_clock::now()) { return _setting.commit(transactionToken, now); }
 
     [[nodiscard]] std::pair<TimingCtx, const Node &> get(const TimingCtx &timingCtx = NullTimingCtx, const std::int64_t idx = 0) const noexcept { return get(*_setting.get(idx).value, timingCtx); }
     [[nodiscard]] std::pair<TimingCtx, const Node &> get(const TimingCtx &timingCtx, const TimeStamp &timeStamp) const noexcept { return get(*_setting.get(timeStamp).value, timingCtx); }
     [[nodiscard]] std::size_t                        nHistory() const { return _setting.nHistory(); }
     [[nodiscard]] std::size_t                        nCtxHistory(const std::int64_t idx = 0) const { return _setting.get(idx).value->size(); }
     [[nodiscard]] std::vector<TransactionToken>      getPendingTransactions() const { return _setting.getPendingTransactions(); }
-    void                                             retireExpired() {
+    void                                             retireExpired(const TimeStamp &now = std::chrono::system_clock::now()) {
         _setting.historyLock().template scopedGuard<ReaderWriterLockType::WRITE>();
-        _setting.retireExpired();
-        retireOldSettings(*_setting.get().value);
+        _setting.retireExpired(now);
+        retireOldSettings(*_setting.get().value, now);
     }
     template<bool exactMatch = false>
-    [[maybe_unused]] bool retire(const TimingCtx &ctx) {
+    [[maybe_unused]] bool retire(const TimingCtx &ctx, const TimeStamp &now = std::chrono::system_clock::now()) {
         bool modifiedSettings = false;
         _setting.modifySetting([&ctx, &modifiedSettings](const std::unordered_map<TimingCtx, settings::node<T>> &oldSetting) {
             auto newSetting = oldSetting;
@@ -352,7 +349,8 @@ public:
                 modifiedSettings = std::erase_if(newSetting, [&ctx](const auto &pair) { return pair.first.matches(ctx); });
             }
             return newSetting;
-        });
+        },
+                now);
         return modifiedSettings;
     }
 
@@ -395,8 +393,7 @@ private:
         return { NullTimingCtx, settings::node<T>(T{}) }; // implicitly stored non-multiplexed value
     }
 
-    void retireOldSettings(auto &settingsMap) const noexcept {
-        const auto now = std::chrono::system_clock::now();
+    void retireOldSettings(auto &settingsMap, const TimeStamp &now = std::chrono::system_clock::now()) const noexcept {
         for (auto it = settingsMap.begin(); it != settingsMap.end();) {
             if (it->second.lastAccess - now + TimeDiff{ timeOut } < TimeDiff{ 0 }) {
                 it = settingsMap.erase(it);
