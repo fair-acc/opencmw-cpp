@@ -65,8 +65,7 @@ inline static const TransactionToken NullToken = TransactionToken{};
  * @tparam timeOutTransactions maximum time given in units of TimeDiff after which a transaction automatically expires if not being committed. (default: -1 -> disabled)
  */
 template<std::movable T, std::movable U = T, std::equality_comparable TransactionToken = std::string, std::size_t N_HISTORY = 1024, typename TimeDiff = std::chrono::seconds, int timeOut = -1, int timeOutTransactions = -1>
-    requires(opencmw::is_power2_v<N_HISTORY> && N_HISTORY > 8)
-class SettingBase {
+requires(opencmw::is_power2_v<N_HISTORY> &&N_HISTORY > 8) class SettingBase {
     using TimeStamp  = std::chrono::system_clock::time_point;
     using RingBuffer = opencmw::disruptor::RingBuffer<settings::node<U>, N_HISTORY, disruptor::BusySpinWaitStrategy, disruptor::MultiThreadedStrategy>;
     using Sequence   = disruptor::Sequence;
@@ -85,7 +84,7 @@ public:
     SettingBase()
         : SettingBase([](const U & /*old*/, T &&in) -> U { return static_cast<U>(std::move(in)); }){};
     template<class Fn>
-        requires std::is_invocable_r_v<U, Fn &&, const U &, T &&>
+    requires std::is_invocable_r_v<U, Fn &&, const U &, T &&>
     explicit SettingBase(Fn &&onCommit)
         : _onCommit(FWD(onCommit)) {
         _ringBuffer->tryPublishEvent([](Node &&eventData, std::int64_t) { eventData.value = std::make_shared<U>(U()); }); // init with default setting
@@ -152,7 +151,8 @@ public:
     }
 
     template<class Fn>
-        requires std::is_invocable_r_v<U, Fn &&, const U &> bool
+    requires std::is_invocable_r_v<U, Fn &&, const U &>
+    bool
     modifySetting(Fn &&modFunction) {
         const auto now    = std::chrono::system_clock::now();
         const auto result = _ringBuffer->tryPublishEvent([this, &modFunction, &now](Node &&eventData, std::int64_t sequence) {
@@ -246,12 +246,10 @@ public:
 };
 
 template<std::movable T, std::size_t N_HISTORY, typename TimeDiff = std::chrono::seconds, int timeOut = -1>
-    requires(opencmw::is_power2_v<N_HISTORY> && N_HISTORY > 8)
-class Setting : public SettingBase<T, T, std::string, N_HISTORY, TimeDiff, timeOut> {};
+requires(opencmw::is_power2_v<N_HISTORY> &&N_HISTORY > 8) class Setting : public SettingBase<T, T, std::string, N_HISTORY, TimeDiff, timeOut> {};
 
 template<std::movable T, std::equality_comparable TransactionToken, std::size_t N_HISTORY = 1024, typename TimeDiff = std::chrono::seconds, int timeOut = -1, int timeOutTransactions = -1>
-    requires(opencmw::is_power2_v<N_HISTORY> && N_HISTORY > 8)
-class TransactionSetting : public SettingBase<T, T, TransactionToken, N_HISTORY, TimeDiff, timeOut, timeOutTransactions> {};
+requires(opencmw::is_power2_v<N_HISTORY> &&N_HISTORY > 8) class TransactionSetting : public SettingBase<T, T, TransactionToken, N_HISTORY, TimeDiff, timeOut, timeOutTransactions> {};
 
 /**
  * @brief A transactional setting that can be used to store a value of the user-defined type T for a given FAIR TimingCtx, user-defined transaction token, and for a given history length.
@@ -304,8 +302,7 @@ class TransactionSetting : public SettingBase<T, T, TransactionToken, N_HISTORY,
  * @tparam timeOutTransactions maximum time given in units of TimeDiff after which a transaction automatically expires if not being committed. (default: -1 -> disabled)
  */
 template<std::movable T, std::equality_comparable TransactionToken, std::size_t N_HISTORY = 1024, typename TimeDiff = std::chrono::seconds, int timeOut = -1, int timeOutTransactions = -1>
-    requires(opencmw::is_power2_v<N_HISTORY> && N_HISTORY > 8)
-class CtxSetting {
+requires(opencmw::is_power2_v<N_HISTORY> &&N_HISTORY > 8) class CtxSetting {
     using TimeStamp = std::chrono::system_clock::time_point;
     using Setting   = std::pair<TimingCtx, T>;
     //
@@ -322,9 +319,9 @@ class CtxSetting {
     };
 
 public:
-    using Node                                               = settings::node<T>;
-    CtxSetting()                                             = default;
-    CtxSetting(const CtxSetting &)                           = delete;
+    using Node                         = settings::node<T>;
+    CtxSetting()                       = default;
+    CtxSetting(const CtxSetting &)     = delete;
     CtxSetting                &operator=(const CtxSetting &) = delete;
 
     std::pair<bool, TimeStamp> stage(const TimingCtx &timingCtx, T &&newValue, const TransactionToken &transactionToken = NullToken<TransactionToken>) {
@@ -340,9 +337,9 @@ public:
     [[nodiscard]] std::size_t                        nCtxHistory(const std::int64_t idx = 0) const { return _setting.get(idx).value->size(); }
     [[nodiscard]] std::vector<TransactionToken>      getPendingTransactions() const { return _setting.getPendingTransactions(); }
     void                                             retireExpired() {
-                                                    _setting.historyLock().template scopedGuard<ReaderWriterLockType::WRITE>();
-                                                    _setting.retireExpired();
-                                                    retireOldSettings(*_setting.get().value);
+        _setting.historyLock().template scopedGuard<ReaderWriterLockType::WRITE>();
+        _setting.retireExpired();
+        retireOldSettings(*_setting.get().value);
     }
     template<bool exactMatch = false>
     [[maybe_unused]] bool retire(const TimingCtx &ctx) {
