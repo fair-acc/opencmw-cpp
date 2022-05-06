@@ -319,7 +319,7 @@ struct NotCopyable {
     NotCopyable() = default;
     explicit NotCopyable(int i)
         : value(i) {}
-    NotCopyable(const NotCopyable &)            = delete;
+    NotCopyable(const NotCopyable &) = delete;
     NotCopyable &operator=(const NotCopyable &) = delete;
     NotCopyable(NotCopyable &&other) noexcept {
         std::cout << "move constructor called" << std::endl;
