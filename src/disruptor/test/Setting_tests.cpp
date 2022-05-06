@@ -116,6 +116,15 @@ TEST_CASE("SettingBase basic tests", "[SettingBase]") {
     REQUIRE(a.retireStaged("transactionToken#2"));
     REQUIRE(a.nHistory() == 5);
     REQUIRE(a.getPendingTransactions().size() == 0);
+
+    // test staging duplicate transaction token -- last should survive
+    REQUIRE(a.getPendingTransactions().size() == 0);
+    REQUIRE(not a.stage(80, "transactionToken#2").first);
+    REQUIRE(a.getPendingTransactions().size() == 1);
+    REQUIRE(not a.stage(81, "transactionToken#2").first);
+    REQUIRE(a.getPendingTransactions().size() == 1);
+    REQUIRE(a.commit("transactionToken#2").first);
+    REQUIRE(a.get() == 81);
 }
 
 TEST_CASE("SettingBase time-out and expiry", "[SettingBase]") {
@@ -310,7 +319,7 @@ struct NotCopyable {
     NotCopyable() = default;
     explicit NotCopyable(int i)
         : value(i) {}
-    NotCopyable(const NotCopyable &) = delete;
+    NotCopyable(const NotCopyable &)            = delete;
     NotCopyable &operator=(const NotCopyable &) = delete;
     NotCopyable(NotCopyable &&other) noexcept {
         std::cout << "move constructor called" << std::endl;
