@@ -97,8 +97,7 @@ public:
     }
     ReaderWriterLock          &historyLock() noexcept { return _historyLock; }
 
-    std::pair<bool, TimeStamp> stage(T &&t, const TransactionToken &transactionToken = NullToken<TransactionToken>) {
-        const auto now = std::chrono::system_clock::now();
+    std::pair<bool, TimeStamp> stage(T &&t, const TransactionToken &transactionToken = NullToken<TransactionToken>, const TimeStamp &now = std::chrono::system_clock::now()) {
         if (transactionToken.empty()) {
             const auto result = _ringBuffer->tryPublishEvent([&t, this, &now](Node &&eventData, std::int64_t sequence) {
                 const auto oldValue  = get();
@@ -126,19 +125,19 @@ public:
         return { false, now };
     }
 
-    std::pair<bool, TimeStamp> commit(T &&t) {
-        return stage(std::move(t), NullToken<TransactionToken>);
+    std::pair<bool, TimeStamp> commit(T &&t, const TimeStamp &now = std::chrono::system_clock::now()) {
+        return stage(std::move(t), NullToken<TransactionToken>, now);
     }
 
-    std::pair<bool, TimeStamp> commit(const TransactionToken &transactionToken = NullToken<TransactionToken>) {
+    std::pair<bool, TimeStamp> commit(const TransactionToken &transactionToken = NullToken<TransactionToken>, const TimeStamp &now = std::chrono::system_clock::now()) {
         bool expected  = false;
         bool submitted = false;
         while (std::atomic_compare_exchange_strong(&_transactionListLock, &expected, true)) // spin-lock
             ;
 
-        const auto [first, last] = std::ranges::remove_if(_transactionList, [&transactionToken, &submitted, this](const auto &setting) {
+        const auto [first, last] = std::ranges::remove_if(_transactionList, [&transactionToken, &submitted, this, &now](const auto &setting) {
             if (transactionToken == NullToken<TransactionToken> || setting.first == transactionToken) {
-                commit(std::move(*setting.second.value));
+                commit(std::move(*setting.second.value), now);
                 submitted = true;
                 return true;
             }
@@ -147,14 +146,13 @@ public:
         _transactionList.erase(first, last);
         std::atomic_store_explicit(&_transactionListLock, false, std::memory_order_release);
 
-        return { submitted, std::chrono::system_clock::now() };
+        return { submitted, now };
     }
 
     template<class Fn>
     requires std::is_invocable_r_v<U, Fn &&, const U &>
     bool
-    modifySetting(Fn &&modFunction) {
-        const auto now    = std::chrono::system_clock::now();
+    modifySetting(Fn &&modFunction, const TimeStamp &now = std::chrono::system_clock::now()) {
         const auto result = _ringBuffer->tryPublishEvent([this, &modFunction, &now](Node &&eventData, std::int64_t sequence) {
             const auto oldValue  = get();
             eventData.value      = std::make_shared<U>(modFunction(*oldValue.value));
