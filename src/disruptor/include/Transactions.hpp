@@ -349,7 +349,8 @@ public:
                 modifiedSettings = std::erase_if(newSetting, [&ctx](const auto &pair) { return pair.first.matches(ctx); });
             }
             return newSetting;
-        }, now);
+        },
+                now);
         return modifiedSettings;
     }
 
