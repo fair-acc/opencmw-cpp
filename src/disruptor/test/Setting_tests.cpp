@@ -128,9 +128,14 @@ TEST_CASE("SettingBase basic tests", "[SettingBase]") {
 }
 
 TEST_CASE("SettingBase time-out and expiry", "[SettingBase]") {
+    const auto timeStart = std::chrono::system_clock::now();
     using namespace std::chrono_literals;
     opencmw::SettingBase<int, int, std::string, 16, std::chrono::milliseconds, 100> a;
     REQUIRE(a.nHistory() == 1U);
+    REQUIRE_THROWS_AS(a.get(timeStart), std::out_of_range);
+    REQUIRE_THROWS_AS(a.get(1), std::out_of_range);
+    REQUIRE_THROWS_AS(a.get(-a.nHistory()), std::out_of_range);
+    REQUIRE_NOTHROW(a.get(-a.nHistory() + 1));
 
     for (int i = 0; i < 8; ++i) {
         auto [r1, t1] = a.commit(FWD(i));
@@ -319,7 +324,7 @@ struct NotCopyable {
     NotCopyable() = default;
     explicit NotCopyable(int i)
         : value(i) {}
-    NotCopyable(const NotCopyable &)            = delete;
+    NotCopyable(const NotCopyable &) = delete;
     NotCopyable &operator=(const NotCopyable &) = delete;
     NotCopyable(NotCopyable &&other) noexcept {
         std::cout << "move constructor called" << std::endl;

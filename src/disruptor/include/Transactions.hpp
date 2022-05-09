@@ -2,12 +2,15 @@
 #define OPENCMW_CPP_TRANSACTIONS_HPP
 
 #include <atomic>
+#include <cassert>
 #include <chrono>
 #include <concepts>
 #include <functional>
 #include <list>
 #include <unordered_map>
 #include <utility>
+
+#include <fmt/chrono.h>
 
 #include <disruptor/RingBuffer.hpp>
 #include <opencmw.hpp>
@@ -190,20 +193,28 @@ public:
         return result;
     }
 
-    [[nodiscard]] Node get(const TimeStamp &timeStamp) const noexcept {
+    [[nodiscard]] Node get(const TimeStamp &timeStamp) const {
         auto lHead = _sequenceHead->value();
         auto guard = _historyLock.scopedGuard<ReaderWriterLockType::READ>(); // to prevent the writer/clean-up task to potentially expire a node at the tail
         while ((*_ringBuffer)[lHead].validSince > timeStamp && lHead != _sequenceTail->value()) {
             lHead--;
         }
+        if ((*_ringBuffer)[lHead].validSince > timeStamp) {
+            throw std::out_of_range(fmt::format("no settings found for the given time stamp {}", timeStamp));
+        }
         (*_ringBuffer)[lHead].touch();
         return (*_ringBuffer)[lHead]; // performs thread-safe copy of immutable object
     }
 
-    [[nodiscard]] Node get(const std::int64_t idx = 0) const noexcept {
+    [[nodiscard]] Node get(const std::int64_t idx = 0) const {
+        if (idx > 0) {
+            throw std::out_of_range(fmt::format("index {} must be negative or zero", idx));
+        }
         auto       guard   = _historyLock.scopedGuard<ReaderWriterLockType::READ>(); // to prevent the writer/clean-up task to potentially expire a node at the tail
         const auto readIdx = _sequenceHead->value() + idx;
-        assert(readIdx >= _sequenceTail->value() && "index out of range");
+        if (readIdx < _sequenceTail->value()) {
+            throw std::out_of_range(fmt::format("no settings found for the given index {}", idx));
+        }
         (*_ringBuffer)[readIdx].touch();
         return (*_ringBuffer)[readIdx]; // performs thread-safe copy of immutable object
     }
@@ -331,11 +342,11 @@ requires(opencmw::is_power2_v<N_HISTORY> &&N_HISTORY > 8) class CtxSetting {
     };
 
 public:
-    using Node                                      = settings::node<T>;
-    using TransactionResult                         = settings::TransactionResult;
-    using CtxResult                                 = settings::CtxResult<T>;
-    CtxSetting()                                    = default;
-    CtxSetting(const CtxSetting &)                  = delete;
+    using Node                     = settings::node<T>;
+    using TransactionResult        = settings::TransactionResult;
+    using CtxResult                = settings::CtxResult<T>;
+    CtxSetting()                   = default;
+    CtxSetting(const CtxSetting &) = delete;
     CtxSetting       &operator=(const CtxSetting &) = delete;
 
     TransactionResult stage(const TimingCtx &timingCtx, T &&newValue, const TransactionToken &transactionToken = NullToken<TransactionToken>, const TimeStamp &now = std::chrono::system_clock::now()) {
@@ -345,15 +356,15 @@ public:
     TransactionResult                           commit(const TimingCtx &timingCtx, T &&newValue, const TimeStamp &now = std::chrono::system_clock::now()) { return stage(timingCtx, FWD(newValue), NullToken<TransactionToken>, now); }
     TransactionResult                           commit(const TransactionToken &transactionToken = NullToken<TransactionToken>, const TimeStamp &now = std::chrono::system_clock::now()) { return _setting.commit(transactionToken, now); }
 
-    [[nodiscard]] CtxResult                     get(const TimingCtx &timingCtx = NullTimingCtx, const std::int64_t idx = 0) const noexcept { return get(*_setting.get(idx).value, timingCtx); }
-    [[nodiscard]] CtxResult                     get(const TimingCtx &timingCtx, const TimeStamp &timeStamp) const noexcept { return get(*_setting.get(timeStamp).value, timingCtx); }
+    [[nodiscard]] CtxResult                     get(const TimingCtx &timingCtx = NullTimingCtx, const std::int64_t idx = 0) const { return get(*_setting.get(idx).value, timingCtx); }
+    [[nodiscard]] CtxResult                     get(const TimingCtx &timingCtx, const TimeStamp &timeStamp) const { return get(*_setting.get(timeStamp).value, timingCtx); }
     [[nodiscard]] std::size_t                   nHistory() const { return _setting.nHistory(); }
     [[nodiscard]] std::size_t                   nCtxHistory(const std::int64_t idx = 0) const { return _setting.get(idx).value->size(); }
     [[nodiscard]] std::vector<TransactionToken> getPendingTransactions() const { return _setting.getPendingTransactions(); }
     void                                        retireExpired(const TimeStamp &now = std::chrono::system_clock::now()) {
-                                               _setting.historyLock().template scopedGuard<ReaderWriterLockType::WRITE>();
-                                               _setting.retireExpired(now);
-                                               retireOldSettings(*_setting.get().value, now);
+        _setting.historyLock().template scopedGuard<ReaderWriterLockType::WRITE>();
+        _setting.retireExpired(now);
+        retireOldSettings(*_setting.get().value, now);
     }
     template<bool exactMatch = false>
     [[maybe_unused]] bool retire(const TimingCtx &ctx, const TimeStamp &now = std::chrono::system_clock::now()) {
