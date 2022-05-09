@@ -119,11 +119,11 @@ TEST_CASE("SettingBase basic tests", "[SettingBase]") {
 
     // test staging duplicate transaction token -- last should survive
     REQUIRE(a.getPendingTransactions().size() == 0);
-    REQUIRE(not a.stage(80, "transactionToken#2").first);
+    REQUIRE(not a.stage(80, "transactionToken#2").isCommitted);
     REQUIRE(a.getPendingTransactions().size() == 1);
-    REQUIRE(not a.stage(81, "transactionToken#2").first);
+    REQUIRE(not a.stage(81, "transactionToken#2").isCommitted);
     REQUIRE(a.getPendingTransactions().size() == 1);
-    REQUIRE(a.commit("transactionToken#2").first);
+    REQUIRE(a.commit("transactionToken#2").isCommitted);
     REQUIRE(a.get() == 81);
 }
 
@@ -210,9 +210,9 @@ TEST_CASE("CtxSetting", "[SettingBase]") {
     REQUIRE(a.get(TimingCtx(1)).second == 55);
     REQUIRE(a.get(TimingCtx(2)).second == 56);
 
-    REQUIRE(a.commit(TimingCtx(1, 1, 1, 1), 101).first);
-    REQUIRE(a.commit(TimingCtx(1, 1, 1), 102).first);
-    REQUIRE(a.commit(TimingCtx(1, 1), 103).first);
+    REQUIRE(a.commit(TimingCtx(1, 1, 1, 1), 101).isCommitted);
+    REQUIRE(a.commit(TimingCtx(1, 1, 1), 102).isCommitted);
+    REQUIRE(a.commit(TimingCtx(1, 1), 103).isCommitted);
     REQUIRE(a.get(TimingCtx(1)).second == 55);
     REQUIRE(a.get(TimingCtx(1, 1, 1, 1)).second == 101);
     REQUIRE(a.get(TimingCtx(1, 1, 1, 1)).first == TimingCtx(1, 1, 1, 1));
@@ -223,10 +223,10 @@ TEST_CASE("CtxSetting", "[SettingBase]") {
 
     // fill settings with high-update for a particular chain
     for (int i = 0; i < 100; i++) {
-        REQUIRE(a.commit(TimingCtx(1), 55 + i).first);
+        REQUIRE(a.commit(TimingCtx(1), 55 + i).isCommitted);
     }
     REQUIRE(a.nHistory() == 9);
-    REQUIRE(a.commit(TimingCtx(1), 55).first);
+    REQUIRE(a.commit(TimingCtx(1), 55).isCommitted);
 
     // check that unrelated old settings prevailed
     REQUIRE(a.get(TimingCtx(1, 1, 1, 1)).second == 101);
@@ -248,10 +248,10 @@ TEST_CASE("CtxSetting", "[SettingBase]") {
     REQUIRE(a.nCtxHistory() == 4);
     REQUIRE(a.get(TimingCtx(1, 1, 1, 2)).second == 55);
 
-    REQUIRE(a.commit(TimingCtx(1, 1, 1, 1), 101).first);
-    REQUIRE(a.commit(TimingCtx(1, 1, 1), 102).first);
-    REQUIRE(a.commit(TimingCtx(1, 1), 103).first);
-    REQUIRE(a.commit(TimingCtx(1), 104).first);
+    REQUIRE(a.commit(TimingCtx(1, 1, 1, 1), 101).isCommitted);
+    REQUIRE(a.commit(TimingCtx(1, 1, 1), 102).isCommitted);
+    REQUIRE(a.commit(TimingCtx(1, 1), 103).isCommitted);
+    REQUIRE(a.commit(TimingCtx(1), 104).isCommitted);
     REQUIRE(a.nCtxHistory() == 6);
     REQUIRE(a.retire<false>(TimingCtx(1, 1, 1)));
     REQUIRE(a.nCtxHistory() == 4);
@@ -259,13 +259,13 @@ TEST_CASE("CtxSetting", "[SettingBase]") {
 
     // check transactions
     REQUIRE(a.getPendingTransactions().size() == 0);
-    REQUIRE(not a.stage(TimingCtx(1), 555, "token#1").first);
-    REQUIRE(not a.stage(TimingCtx(1), 556, "token#2").first);
+    REQUIRE(not a.stage(TimingCtx(1), 555, "token#1").isCommitted);
+    REQUIRE(not a.stage(TimingCtx(1), 556, "token#2").isCommitted);
     REQUIRE(a.get(TimingCtx(1)).second == 104);
 
-    REQUIRE(a.commit("token#1").first);
+    REQUIRE(a.commit("token#1").isCommitted);
     REQUIRE(a.get(TimingCtx(1)).second == 555);
-    REQUIRE(a.commit("token#2").first);
+    REQUIRE(a.commit("token#2").isCommitted);
     REQUIRE(a.get(TimingCtx(1)).second == 556);
 }
 
@@ -277,17 +277,17 @@ TEST_CASE("CtxSetting time-out and expiry", "[SettingBase]") {
     REQUIRE(a.nHistory() == 1U);
 
     for (int i = 0; i < 8; ++i) {
-        REQUIRE(a.commit(TimingCtx(1), 55 + i).first);
+        REQUIRE(a.commit(TimingCtx(1), 55 + i).isCommitted);
         REQUIRE(a.nHistory() == static_cast<std::size_t>(i + 2));
     }
-    REQUIRE(a.commit(TimingCtx(1), 55).first);
-    REQUIRE(a.commit(TimingCtx(2), 55).first);
-    REQUIRE(a.commit(TimingCtx(3), 55).first);
+    REQUIRE(a.commit(TimingCtx(1), 55).isCommitted);
+    REQUIRE(a.commit(TimingCtx(2), 55).isCommitted);
+    REQUIRE(a.commit(TimingCtx(3), 55).isCommitted);
     REQUIRE(a.nHistory() == 16 - 8 + 1);
     REQUIRE(a.nCtxHistory() == 3);
 
     for (int i = 0; i < 8; ++i) {
-        REQUIRE(a.commit(TimingCtx(1), 55 + i).first);
+        REQUIRE(a.commit(TimingCtx(1), 55 + i).isCommitted);
     }
     REQUIRE(a.nHistory() == 16 - 8 + 1);
 
@@ -295,7 +295,7 @@ TEST_CASE("CtxSetting time-out and expiry", "[SettingBase]") {
     opencmw::CtxSetting<int, std::string, 16, std::chrono::milliseconds, -1, 100> b;
     REQUIRE(b.getPendingTransactions().size() == 0);
     for (int i = 0; i < 6; ++i) {
-        REQUIRE(not b.stage(TimingCtx(1), FWD(i), fmt::format("token#{}", i)).first);
+        REQUIRE(not b.stage(TimingCtx(1), FWD(i), fmt::format("token#{}", i)).isCommitted);
     }
     REQUIRE(b.retireStaged("token#5"));
     REQUIRE(b.getPendingTransactions().size() == 5);
@@ -319,7 +319,7 @@ struct NotCopyable {
     NotCopyable() = default;
     explicit NotCopyable(int i)
         : value(i) {}
-    NotCopyable(const NotCopyable &) = delete;
+    NotCopyable(const NotCopyable &)            = delete;
     NotCopyable &operator=(const NotCopyable &) = delete;
     NotCopyable(NotCopyable &&other) noexcept {
         std::cout << "move constructor called" << std::endl;
@@ -336,7 +336,7 @@ struct NotCopyable {
     ~NotCopyable() { std::cout << "destructor called" << std::endl; }
 
     explicit(false) constexpr operator int const &() const noexcept { return value; }
-    [[nodiscard]] auto        operator<=>(const NotCopyable &other) const noexcept { return value <=> other.value; }
+    [[nodiscard]] auto        operator<=>(const NotCopyable &other) const noexcept = default;
 };
 } // namespace detail
 
@@ -345,11 +345,11 @@ TEST_CASE("CtxSetting check reference semantic", "[SettingBase]") {
     using opencmw::TimingCtx;
     opencmw::CtxSetting<NotCopyable, std::string, 16> a;
     std::cout << "constructed" << std::endl;
-    REQUIRE(a.commit(TimingCtx(1), NotCopyable(42)).first);
+    REQUIRE(a.commit(TimingCtx(1), NotCopyable(42)).isCommitted);
     std::cout << "committed - NotCopyable(42)" << std::endl;
-    REQUIRE(a.commit(TimingCtx(2), NotCopyable(43)).first);
+    REQUIRE(a.commit(TimingCtx(2), NotCopyable(43)).isCommitted);
     std::cout << "committed - NotCopyable(43)" << std::endl;
-    REQUIRE(a.commit(TimingCtx(1), NotCopyable(44)).first);
+    REQUIRE(a.commit(TimingCtx(1), NotCopyable(44)).isCommitted);
     std::cout << "committed - NotCopyable(44)" << std::endl;
     REQUIRE(a.nCtxHistory() == 2);
     REQUIRE(a.get(TimingCtx(1)).first == TimingCtx(1));

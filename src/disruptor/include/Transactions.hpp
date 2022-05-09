@@ -30,6 +30,20 @@ struct alignas(disruptor::kCacheLine) node {
     explicit(false) constexpr operator T const &() const noexcept { return *value; }
 };
 static_assert(sizeof(node<int>) % disruptor::kCacheLine == 0, "node size must be cache line aligned");
+
+struct TransactionResult {
+    using TimeStamp = std::chrono::system_clock::time_point;
+    bool      isCommitted;
+    TimeStamp timeStamp;
+};
+
+template<typename T>
+struct CtxResult {
+    TimingCtx                first;
+    const settings::node<T> &second;
+    auto                     operator<=>(const CtxResult &) const noexcept = default;
+};
+
 } // namespace settings
 
 template<std::equality_comparable TransactionToken>
@@ -46,9 +60,9 @@ inline static const TransactionToken NullToken = TransactionToken{};
  * auto [ok2, timeStamp2] = a.commit(43); // store 43 in settings
  *
  * assert(settings.get() == 43); // get the latest value
- * assert(settings.get(timeStamp2) == 43); // get the first valid value since timeStamp2
- * assert(settings.get(-1) == 42); // get the second to last value
- * assert(settings.get(timeStamp1) == 42); // get the first valid value since timeStamp2
+ * assert(settings.get(timeStamp2) == 43); // get the first isCommitted value since timeStamp2
+ * assert(settings.get(-1) == 42); // get the second to last value (for lib development only)
+ * assert(settings.get(timeStamp1) == 42); // get the first isCommitted value since timeStamp1
  *
  * auto [ok3, timeStamp3] = a.stage(53, "transactionToken#1"); // stage 53 in settings, N.B. setting is not yet committed
  * assert(settings.get() == 43); // get the latest value
@@ -80,7 +94,8 @@ requires(opencmw::is_power2_v<N_HISTORY> &&N_HISTORY > 8) class SettingBase {
     alignas(disruptor::kCacheLine) const std::function<U(const U &, T &&)> _onCommit;
 
 public:
-    using Node = settings::node<U>;
+    using Node              = settings::node<U>;
+    using TransactionResult = settings::TransactionResult;
     SettingBase()
         : SettingBase([](const U & /*old*/, T &&in) -> U { return static_cast<U>(std::move(in)); }){};
     template<class Fn>
@@ -95,11 +110,11 @@ public:
         _historyLock.scopedGuard<ReaderWriterLockType::READ>();
         return static_cast<std::size_t>(_sequenceHead->value() - _sequenceTail->value() + 1);
     }
-    ReaderWriterLock          &historyLock() noexcept { return _historyLock; }
+    ReaderWriterLock &historyLock() noexcept { return _historyLock; }
 
-    std::pair<bool, TimeStamp> stage(T &&t, const TransactionToken &transactionToken = NullToken<TransactionToken>, const TimeStamp &now = std::chrono::system_clock::now()) {
+    TransactionResult stage(T &&t, const TransactionToken &transactionToken = NullToken<TransactionToken>, const TimeStamp &now = std::chrono::system_clock::now()) {
         if (transactionToken.empty()) {
-            const auto result = _ringBuffer->tryPublishEvent([&t, this, &now](Node &&eventData, std::int64_t sequence) {
+            const auto isCommitted = _ringBuffer->tryPublishEvent([&t, this, &now](Node &&eventData, std::int64_t sequence) {
                 const auto oldValue  = get();
                 eventData.value      = std::make_shared<U>(_onCommit(*oldValue.value, FWD(t)));
                 eventData.validSince = now;
@@ -108,7 +123,7 @@ public:
             });
             retireExpired();
 
-            return { result, now };
+            return { isCommitted, now };
         }
 
         bool expected = false;
@@ -125,11 +140,11 @@ public:
         return { false, now };
     }
 
-    std::pair<bool, TimeStamp> commit(T &&t, const TimeStamp &now = std::chrono::system_clock::now()) {
+    TransactionResult commit(T &&t, const TimeStamp &now = std::chrono::system_clock::now()) {
         return stage(std::move(t), NullToken<TransactionToken>, now);
     }
 
-    std::pair<bool, TimeStamp> commit(const TransactionToken &transactionToken, const TimeStamp &now = std::chrono::system_clock::now()) {
+    TransactionResult commit(const TransactionToken &transactionToken, const TimeStamp &now = std::chrono::system_clock::now()) {
         bool expected  = false;
         bool submitted = false;
         while (std::atomic_compare_exchange_strong(&_transactionListLock, &expected, true)) // spin-lock
@@ -260,8 +275,8 @@ requires(opencmw::is_power2_v<N_HISTORY> &&N_HISTORY > 8) class TransactionSetti
  * auto [ok2, timeStamp2] = a.commit(43); // store 43 in settings
  *
  * assert(settings.get().second == 43); // get the last committed value
- * assert(settings.get(NullTimingCtx, timeStamp2).second == 43); // get the first valid value since timeStamp2 for the NullTimingCtx
- * assert(settings.get(NullTimingCtx, -1).second == 42); // get the second last value for the NullTimingCtx
+ * assert(settings.get(NullTimingCtx, timeStamp2).second == 43); // get the first isCommitted value since timeStamp2 for the NullTimingCtx
+ * assert(settings.get(NullTimingCtx, -1).second == 42); // get the second last value for the NullTimingCtx (for lib-developers only)
  * assert(settings.get(NullTimingCtx, t1).second == 42);
  *
  * assert(settings.commit(TimingCtx(1, 1, 1, 1), 101).first); // store 101 in settings for 'TimingCtx(cid=1, sid=1, pid=1, gid=1)'
@@ -316,27 +331,29 @@ requires(opencmw::is_power2_v<N_HISTORY> &&N_HISTORY > 8) class CtxSetting {
     };
 
 public:
-    using Node                         = settings::node<T>;
-    CtxSetting()                       = default;
-    CtxSetting(const CtxSetting &)     = delete;
-    CtxSetting                &operator=(const CtxSetting &) = delete;
+    using Node                                      = settings::node<T>;
+    using TransactionResult                         = settings::TransactionResult;
+    using CtxResult                                 = settings::CtxResult<T>;
+    CtxSetting()                                    = default;
+    CtxSetting(const CtxSetting &)                  = delete;
+    CtxSetting       &operator=(const CtxSetting &) = delete;
 
-    std::pair<bool, TimeStamp> stage(const TimingCtx &timingCtx, T &&newValue, const TransactionToken &transactionToken = NullToken<TransactionToken>, const TimeStamp &now = std::chrono::system_clock::now()) {
+    TransactionResult stage(const TimingCtx &timingCtx, T &&newValue, const TransactionToken &transactionToken = NullToken<TransactionToken>, const TimeStamp &now = std::chrono::system_clock::now()) {
         return _setting.stage({ timingCtx, FWD(newValue) }, transactionToken, now);
     }
-    [[maybe_unused]] bool                            retireStaged(const TransactionToken &transactionToken = NullToken<TransactionToken>) { return _setting.retireStaged(transactionToken); }
-    std::pair<bool, TimeStamp>                       commit(const TimingCtx &timingCtx, T &&newValue, const TimeStamp &now = std::chrono::system_clock::now()) { return stage(timingCtx, FWD(newValue), NullToken<TransactionToken>, now); }
-    std::pair<bool, TimeStamp>                       commit(const TransactionToken &transactionToken = NullToken<TransactionToken>, const TimeStamp &now = std::chrono::system_clock::now()) { return _setting.commit(transactionToken, now); }
+    [[maybe_unused]] bool                       retireStaged(const TransactionToken &transactionToken = NullToken<TransactionToken>) { return _setting.retireStaged(transactionToken); }
+    TransactionResult                           commit(const TimingCtx &timingCtx, T &&newValue, const TimeStamp &now = std::chrono::system_clock::now()) { return stage(timingCtx, FWD(newValue), NullToken<TransactionToken>, now); }
+    TransactionResult                           commit(const TransactionToken &transactionToken = NullToken<TransactionToken>, const TimeStamp &now = std::chrono::system_clock::now()) { return _setting.commit(transactionToken, now); }
 
-    [[nodiscard]] std::pair<TimingCtx, const Node &> get(const TimingCtx &timingCtx = NullTimingCtx, const std::int64_t idx = 0) const noexcept { return get(*_setting.get(idx).value, timingCtx); }
-    [[nodiscard]] std::pair<TimingCtx, const Node &> get(const TimingCtx &timingCtx, const TimeStamp &timeStamp) const noexcept { return get(*_setting.get(timeStamp).value, timingCtx); }
-    [[nodiscard]] std::size_t                        nHistory() const { return _setting.nHistory(); }
-    [[nodiscard]] std::size_t                        nCtxHistory(const std::int64_t idx = 0) const { return _setting.get(idx).value->size(); }
-    [[nodiscard]] std::vector<TransactionToken>      getPendingTransactions() const { return _setting.getPendingTransactions(); }
-    void                                             retireExpired(const TimeStamp &now = std::chrono::system_clock::now()) {
-        _setting.historyLock().template scopedGuard<ReaderWriterLockType::WRITE>();
-        _setting.retireExpired(now);
-        retireOldSettings(*_setting.get().value, now);
+    [[nodiscard]] CtxResult                     get(const TimingCtx &timingCtx = NullTimingCtx, const std::int64_t idx = 0) const noexcept { return get(*_setting.get(idx).value, timingCtx); }
+    [[nodiscard]] CtxResult                     get(const TimingCtx &timingCtx, const TimeStamp &timeStamp) const noexcept { return get(*_setting.get(timeStamp).value, timingCtx); }
+    [[nodiscard]] std::size_t                   nHistory() const { return _setting.nHistory(); }
+    [[nodiscard]] std::size_t                   nCtxHistory(const std::int64_t idx = 0) const { return _setting.get(idx).value->size(); }
+    [[nodiscard]] std::vector<TransactionToken> getPendingTransactions() const { return _setting.getPendingTransactions(); }
+    void                                        retireExpired(const TimeStamp &now = std::chrono::system_clock::now()) {
+                                               _setting.historyLock().template scopedGuard<ReaderWriterLockType::WRITE>();
+                                               _setting.retireExpired(now);
+                                               retireOldSettings(*_setting.get().value, now);
     }
     template<bool exactMatch = false>
     [[maybe_unused]] bool retire(const TimingCtx &ctx, const TimeStamp &now = std::chrono::system_clock::now()) {
@@ -355,7 +372,7 @@ public:
     }
 
 private:
-    [[nodiscard]] std::pair<TimingCtx, const Node &> get(const auto &settingsMap, const TimingCtx &timingCtx) const noexcept {
+    [[nodiscard]] CtxResult get(const auto &settingsMap, const TimingCtx &timingCtx) const noexcept {
         for (const auto &[key, value] : settingsMap) {
             if (key == timingCtx) {
                 value.touch();
