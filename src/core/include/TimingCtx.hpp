@@ -196,10 +196,10 @@ private:
     [[nodiscard]] static constexpr bool wildcardMatch(int lhs, int rhs) { return isWildcard(rhs) || lhs == rhs; }
     [[nodiscard]] static constexpr bool bpcTimeStampMatch(units::isq::Time auto lhs, units::isq::Time auto rhs) { return rhs == 0 || lhs == rhs; }
     static inline std::string           toUpper(const std::string_view &mixedCase) noexcept {
-                  std::string retval;
-                  retval.resize(mixedCase.size());
-                  std::ranges::transform(mixedCase, retval.begin(), [](char c) noexcept { return (c >= 'a' && c <= 'z') ? c - ('a' - 'A') : c; });
-                  return retval;
+        std::string retval;
+        retval.resize(mixedCase.size());
+        std::ranges::transform(mixedCase, retval.begin(), [](char c) noexcept { return (c >= 'a' && c <= 'z') ? c - ('a' - 'A') : c; });
+        return retval;
     }
 };
 
@@ -208,7 +208,7 @@ inline static const TimingCtx NullTimingCtx = TimingCtx{};
 [[nodiscard]] inline bool     operator==(const TimingCtx &lhs, const std::string_view &rhs) { return (lhs.bpcts == 0) && (lhs.selector.value() == rhs); }
 
 inline std::ostream          &operator<<(std::ostream &os, const opencmw::TimingCtx &v) {
-             return os << fmt::format("{}", v);
+    return os << fmt::format("{}", v);
 }
 
 } // namespace opencmw
