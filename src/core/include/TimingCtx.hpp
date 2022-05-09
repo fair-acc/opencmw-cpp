@@ -5,6 +5,7 @@
 #include <charconv>
 #include <chrono>
 #include <exception>
+#include <functional>
 #include <opencmw.hpp>
 #include <ranges>
 #include <string_view>
@@ -20,6 +21,11 @@
 namespace opencmw {
 
 namespace detail {
+template<class T>
+inline constexpr void hash_combine(std::size_t &seed, const T &v) noexcept {
+    std::hash<T> hasher;
+    seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+}
 constexpr uint32_t           const_hash(char const *input) noexcept { return *input ? static_cast<uint32_t>(*input) + 33 * const_hash(input + 1) : 5381; } // NOLINT
 constexpr basic_fixed_string TIMING_DESCRIPTION = "FAIR Timing Selector (e.g. 'FAIR.SELECTOR.C=1:S=2:P=3:T=4'. 'FAIR.SELECTOR.ALL' or 'ALL'";
 } // namespace detail
@@ -89,9 +95,18 @@ public:
         return fmt::format("{}{}", SELECTOR_PREFIX, fmt::join(segments, ":"));
     }
 
-    [[nodiscard]] std::size_t hash() const noexcept { return detail::const_hash(selector.data()); }
+    [[nodiscard]] std::size_t hash() const noexcept {
+        parse();
+        std::size_t seed = 0;
+        detail::hash_combine(seed, _cid);
+        detail::hash_combine(seed, _sid);
+        detail::hash_combine(seed, _pid);
+        detail::hash_combine(seed, _gid);
+        detail::hash_combine(seed, bpcts.value());
+        return seed;
+    }
 
-    void                      parse() const {
+    void parse() const {
         // lazy revaluation in case selector changed -- not mathematically perfect but should be sufficient given the limited/constraint selector syntax
         const size_t selectorHash = detail::const_hash(selector.data());
         if (_hash == selectorHash) {
@@ -181,10 +196,10 @@ private:
     [[nodiscard]] static constexpr bool wildcardMatch(int lhs, int rhs) { return isWildcard(rhs) || lhs == rhs; }
     [[nodiscard]] static constexpr bool bpcTimeStampMatch(units::isq::Time auto lhs, units::isq::Time auto rhs) { return rhs == 0 || lhs == rhs; }
     static inline std::string           toUpper(const std::string_view &mixedCase) noexcept {
-        std::string retval;
-        retval.resize(mixedCase.size());
-        std::ranges::transform(mixedCase, retval.begin(), [](char c) noexcept { return (c >= 'a' && c <= 'z') ? c - ('a' - 'A') : c; });
-        return retval;
+                  std::string retval;
+                  retval.resize(mixedCase.size());
+                  std::ranges::transform(mixedCase, retval.begin(), [](char c) noexcept { return (c >= 'a' && c <= 'z') ? c - ('a' - 'A') : c; });
+                  return retval;
     }
 };
 
@@ -193,7 +208,7 @@ inline static const TimingCtx NullTimingCtx = TimingCtx{};
 [[nodiscard]] inline bool     operator==(const TimingCtx &lhs, const std::string_view &rhs) { return (lhs.bpcts == 0) && (lhs.selector.value() == rhs); }
 
 inline std::ostream          &operator<<(std::ostream &os, const opencmw::TimingCtx &v) {
-    return os << fmt::format("{}", v);
+             return os << fmt::format("{}", v);
 }
 
 } // namespace opencmw

@@ -14,6 +14,12 @@ TEST_CASE("Basic TimingCtx tests", "[TimingCtx][basic]") {
     REQUIRE(TimingCtx("all") == "ALL");
     REQUIRE(TimingCtx("ALL").bpcts.value() == 0);
     REQUIRE(TimingCtx("All").hash() != 0);
+    REQUIRE(TimingCtx("All").hash() == TimingCtx("FAIR.SELECTOR.ALL").hash());
+    REQUIRE(TimingCtx("All").hash() == TimingCtx("FAIR.SELECTOR.C=-1").hash());
+    REQUIRE(TimingCtx("All").hash() == TimingCtx("FAIR.SELECTOR.C=-1:S=-1").hash());
+    REQUIRE(TimingCtx("All").hash() == TimingCtx("FAIR.SELECTOR.C=-1:S=-1:P=-1").hash());
+    REQUIRE(TimingCtx("All").hash() == TimingCtx("FAIR.SELECTOR.C=-1:S=-1:P=-1:T=-1").hash());
+    REQUIRE(TimingCtx("All").hash() != TimingCtx("FAIR.SELECTOR.C=-1:S=-1:P=-1:T=0").hash());
 
     auto changeMyFields = TimingCtx("ALL");
     REQUIRE(changeMyFields == "ALL");
