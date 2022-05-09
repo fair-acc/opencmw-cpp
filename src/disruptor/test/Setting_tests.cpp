@@ -208,7 +208,7 @@ TEST_CASE("CtxSetting", "[SettingBase]") {
     REQUIRE(a.nHistory() == 4);
     REQUIRE(a.get(TimingCtx(1)) == 55);
     REQUIRE(a.get(TimingCtx(2)).timingCtx != TimingCtx(2)); // non-matching context
-    REQUIRE(a.get(TimingCtx(2)) != TimingCtx(2)); // non-matching context, short-hand notation
+    REQUIRE(a.get(TimingCtx(2)) != TimingCtx(2));           // non-matching context, short-hand notation
 
     auto [r4, t4] = a.commit(TimingCtx(2), 56);
     REQUIRE(r4);
@@ -307,7 +307,7 @@ TEST_CASE("CtxSetting time-out and expiry", "[SettingBase]") {
     REQUIRE(b.retireStaged("token#5"));
     REQUIRE(b.getPendingTransactions().size() == 5);
 
-    std::this_thread::sleep_for(200ms);        // wait for timeout to expire for both 'a' and 'b'
+    std::this_thread::sleep_for(200ms); // wait for timeout to expire for both 'a' and 'b'
     REQUIRE(a.get(TimingCtx(1)) == 62); // update read for CID == 1 -> others should be expired
     REQUIRE(a.nHistory() == static_cast<std::size_t>(16 - 8 + 1));
     REQUIRE(a.nCtxHistory() == 3);
