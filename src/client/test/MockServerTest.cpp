@@ -3,7 +3,7 @@
 #include <majordomo/MockClient.hpp>
 #include <MockServer.hpp>
 
-TEST_CASE("SET/GET", "[mock-server][lambda_handler]") {
+TEST_CASE("SET/GET of MockServer", "[mock-server][lambda_handler]") {
     using namespace opencmw::majordomo;
     using namespace std::chrono_literals;
 
@@ -30,6 +30,12 @@ TEST_CASE("SET/GET", "[mock-server][lambda_handler]") {
         REQUIRE(message.error() == "");
         REQUIRE(message.body() == "Value set. All good!");
     });
+    server.processRequest([](auto &&req, auto &reply) {
+        REQUIRE(req.command() == Command::Set);
+        REQUIRE(req.body() == "42");
+        reply.setBody("Value set. All good!", MessageFrame::static_bytes_tag{});
+    });
+    REQUIRE(client.tryRead(3s));
 
     client.get("a.service", "", [](auto &&message) {
         fmt::print("C: {}\n", message);
@@ -38,19 +44,14 @@ TEST_CASE("SET/GET", "[mock-server][lambda_handler]") {
     });
 
     server.processRequest([](auto &&req, auto &reply) {
-        REQUIRE(req.command() == Command::Set);
-        REQUIRE(req.body() == "42");
-        reply.setBody("Value set. All good!", MessageFrame::static_bytes_tag{});
-    });
-    server.processRequest([](auto &&req, auto &reply) {
         REQUIRE(req.command() == Command::Get);
         reply.setBody(std::to_string(42), MessageFrame::dynamic_bytes_tag{});
     });
-    REQUIRE(client.tryRead(3s));
+
     REQUIRE(client.tryRead(3s));
 }
 
-TEST_CASE("Subscription Test", "[mock-server][lambda_handler]") {
+TEST_CASE("MockServer Subscription Test", "[mock-server][lambda_handler]") {
     using opencmw::majordomo::BasicMdpMessage;
     using opencmw::majordomo::Command;
     using opencmw::majordomo::Context;
