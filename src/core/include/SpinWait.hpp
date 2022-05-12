@@ -64,11 +64,13 @@ public:
 
     template<typename T>
     requires std::is_nothrow_invocable_r_v<bool, T>
-    bool spinUntil(const T &condition) const { return spinUntil(condition, -1); }
+    bool
+    spinUntil(const T &condition) const { return spinUntil(condition, -1); }
 
     template<typename T>
     requires std::is_nothrow_invocable_r_v<bool, T>
-    bool spinUntil(const T &condition, std::int64_t millisecondsTimeout) const {
+    bool
+    spinUntil(const T &condition, std::int64_t millisecondsTimeout) const {
         if (millisecondsTimeout < -1) {
             throw std::out_of_range("Timeout value is out of range");
         }
@@ -95,6 +97,32 @@ public:
     }
 
     [[nodiscard]] static std::int64_t getTickCount() { return std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now().time_since_epoch()).count(); }
+};
+
+struct NO_SPIN_WAIT {};
+
+template<typename SPIN_WAIT = NO_SPIN_WAIT>
+class AtomicMutex {
+    std::atomic_flag _lock{ ATOMIC_FLAG_INIT };
+    SPIN_WAIT        _spin_wait;
+
+public:
+    AtomicMutex()                    = default;
+    AtomicMutex(const AtomicMutex &) = delete;
+    AtomicMutex &operator=(const AtomicMutex &) = delete;
+
+    //
+    void lock() {
+        while (_lock.test_and_set(std::memory_order_acquire)) {
+            if constexpr (requires { _spin_wait.spin_once(); }) {
+                _spin_wait.spin_once();
+            }
+        }
+        if constexpr (requires { _spin_wait.spin_once(); }) {
+            _spin_wait.reset();
+        }
+    }
+    void unlock() { _lock.clear(std::memory_order::release); }
 };
 
 } // namespace opencmw

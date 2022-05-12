@@ -29,3 +29,16 @@ TEST_CASE("SpinWait basic tests", "[SpinWait]") {
     REQUIRE(waiter.spinUntil(validate, 10));
     REQUIRE(!waiter.spinUntil([]() noexcept -> bool { return false; }, 0));
 }
+
+TEST_CASE("AtomicMutex basic tests", "[AtomicMutex]") {
+    using namespace opencmw;
+    opencmw::AtomicMutex<NO_SPIN_WAIT> mutex1;
+    REQUIRE_NOTHROW(mutex1.lock());
+    REQUIRE_NOTHROW(mutex1.unlock());
+
+    opencmw::AtomicMutex<SpinWait<10, 5, 20>> mutex2;
+    REQUIRE_NOTHROW(mutex2.lock());
+    REQUIRE_NOTHROW(mutex2.unlock());
+
+    REQUIRE_NOTHROW(opencmw::AtomicMutex());
+}
