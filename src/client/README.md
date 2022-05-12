@@ -9,7 +9,7 @@ publish responses and subscription updates into an event store.
 ___________________________________________________________________________________________________
 |                     ___________________                 _____                                   |
 |     == cmw-sub ==> | cmw-client        | ------->     / ring \     -----> consumers             |
-|                    |ClientPublisher|             | buffer |               ^                 |
+|                    |ClientContext|             | buffer |               ^                 |
 |     == rest-sub => | rest-client       |              \______/                |                 |
 |                    |___________________|                                  setup consumers       |
 |                             ^                                                 |                 |
@@ -18,7 +18,7 @@ ________________________________________________________________________________
 |_________________________________________________________________________________________________|
 ```
 
-The `ClientPublisher` is compromised by one poll loop, which polls all active connections and a control socket, 
+The `ClientContext` is compromised by one poll loop, which polls all active connections and a control socket, 
 which is used to set up new requests. All replies are deserialised and published into a disruptor, along with some
 metadata.
 

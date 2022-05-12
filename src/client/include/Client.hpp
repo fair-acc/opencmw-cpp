@@ -5,7 +5,7 @@
 #include <atomic>
 #include <charconv>
 #include <chrono>
-#include <ClientPublisher.hpp>
+#include <ClientContext.hpp>
 #include <disruptor/Disruptor.hpp>
 #include <functional>
 #include <IoSerialiser.hpp>

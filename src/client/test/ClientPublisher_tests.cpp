@@ -8,7 +8,7 @@ namespace opencmw_client_publisher_test {
 using opencmw::URI;
 using opencmw::uri_check;
 using opencmw::client::Client;
-using opencmw::client::ClientPublisher;
+using opencmw::client::ClientContext;
 using opencmw::client::SubscriptionClient;
 using opencmw::disruptor::Disruptor;
 using opencmw::majordomo::Command;
@@ -17,14 +17,14 @@ using opencmw::majordomo::MessageFrame;
 using opencmw::majordomo::MockServer;
 using namespace std::chrono_literals;
 
-TEST_CASE("Basic get/set test", "[ClientPublisher]") {
+TEST_CASE("Basic get/set test", "[ClientContext]") {
     const Context context{};
     MockServer    server(context);
     // setup publisher which contains the poll loop
     std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
     clients.emplace_back(std::make_unique<Client>(context, 100ms, "opencmwClient"));
     clients.emplace_back(std::make_unique<SubscriptionClient>(context, 100ms, "opencmwSubClient"));
-    ClientPublisher publisher(std::move(clients));
+    ClientContext publisher(std::move(clients));
     // send some requests
     auto endpoint = URI<uri_check::RELAXED>::factory(URI<uri_check::RELAXED>(server.address())).scheme("mdp").path("/a.service").addQueryParameter("C", "2").build();
     fmt::print("subscribing\n");
@@ -58,14 +58,14 @@ TEST_CASE("Basic get/set test", "[ClientPublisher]") {
     publisher.stop();
 }
 
-TEST_CASE("Basic subscription test", "[ClientPublisher]") {
+TEST_CASE("Basic subscription test", "[ClientContext]") {
     const Context context{};
     MockServer    server(context);
     // setup publisher which contains the poll loop
     std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
     clients.emplace_back(std::make_unique<Client>(context, 100ms));
     clients.emplace_back(std::make_unique<SubscriptionClient>(context, 100ms));
-    ClientPublisher publisher(std::move(clients));
+    ClientContext publisher(std::move(clients));
     // subscription
     auto endpoint = URI<uri_check::RELAXED>::factory(URI<uri_check::RELAXED>(server.addressSub())).scheme("mds").path("/a.service").addQueryParameter("C", "2").build();
     fmt::print("subscribing\n");

@@ -76,7 +76,7 @@ auto make_vector(T &&...t) {
  * Disruptor Publisher which can poll various clients which can get data from different protocols.
  * The commands can be issued by any thread, because the communication is decoupled using a command disruptor.
  */
-class ClientPublisher {
+class ClientContext {
     constexpr static const std::chrono::milliseconds _defaultTimeout = 1000ms; // default interval to check for maintenance tasks
     static constexpr std::size_t                     CMD_RB_SIZE     = 32;
     using CmdBufferType                                              = opencmw::disruptor::RingBuffer<Command, CMD_RB_SIZE, opencmw::disruptor::SpinWaitWaitStrategy>;
@@ -91,7 +91,7 @@ class ClientPublisher {
     std::shared_ptr<CmdPollerType>                _cmdPoller;
 
 public:
-    explicit ClientPublisher(std::vector<std::unique_ptr<ClientBase>> &&clients)
+    explicit ClientContext(std::vector<std::unique_ptr<ClientBase>> &&clients)
         : _clients{ std::move(clients) }, // move construction for move-only types is hard: https://stackoverflow.com/a/42915152
         _commandRingBuffer{ std::make_shared<CmdBufferType>() }
         , _cmdPoller{ _commandRingBuffer->newPoller() } {

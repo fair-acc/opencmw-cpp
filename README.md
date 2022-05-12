@@ -59,7 +59,7 @@ the EventStore provides datastructures and setup methods to define processing pi
 
 *EventHandler:* used to define specific internal processing steps based on EventStore events. The last EventHandler is usually also a Majordomo worker to export the processed information via the network.
 
-*Publisher:* the [ClientPublisher](DataSourceExample.cpp) provides an interface to populate the EventStore
+*Publisher:* the [ClientContext](DataSourceExample.cpp) provides an interface to populate the EventStore
 ring-buffer with events from OpenCMW, REST services or other sources.
 While using disruptor ring-buffers is the preferred and most performing options, the client also supports classic patterns of registering call-back functions or returning `Future<reyly objects>` objects.
 
@@ -148,7 +148,7 @@ public static class ReplyData {
 }
 ```
 
-These services can be accessed using OpenCMW's own [ClientPublisher](DataSourceExample.cpp)
+These services can be accessed using OpenCMW's own [ClientContext](DataSourceExample.cpp)
 client that queries or subscribes using one of the highly-optimised binary, JSON or other wire-formats and [ZeroMQ](https://zeromq.org/)-
 or RESTful (HTTP)-based high-level protocols, or through a simple RESTful web-interface that also provides simple
 'get', 'set' and 'subscribe' functionalities while developing, for testing, or debugging:
