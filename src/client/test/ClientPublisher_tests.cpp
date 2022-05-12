@@ -9,6 +9,7 @@ using opencmw::URI;
 using opencmw::uri_check;
 using opencmw::client::Client;
 using opencmw::client::ClientContext;
+using opencmw::client::MDClientCtx;
 using opencmw::client::SubscriptionClient;
 using opencmw::disruptor::Disruptor;
 using opencmw::majordomo::Command;
@@ -18,18 +19,19 @@ using opencmw::majordomo::MockServer;
 using namespace std::chrono_literals;
 
 TEST_CASE("Basic get/set test", "[ClientContext]") {
-    const Context context{};
-    MockServer    server(context);
-    // setup publisher which contains the poll loop
-    std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
-    clients.emplace_back(std::make_unique<Client>(context, 100ms, "opencmwClient"));
-    clients.emplace_back(std::make_unique<SubscriptionClient>(context, 100ms, "opencmwSubClient"));
-    ClientContext publisher(std::move(clients));
+    const Context zctx{};
+    MockServer    server(zctx);
+    // setup clientContext which contains the poll loop
+    //std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
+    //clients.emplace_back(std::make_unique<Client>(zctx, 100ms, "opencmwClient"));
+    //clients.emplace_back(std::make_unique<SubscriptionClient>(zctx, 100ms, "opencmwSubClient"));
+    ClientContext clientContext();
+    clientContext.addClientContext<MDClientCtx>(zctx);
     // send some requests
     auto endpoint = URI<uri_check::RELAXED>::factory(URI<uri_check::RELAXED>(server.address())).scheme("mdp").path("/a.service").addQueryParameter("C", "2").build();
     fmt::print("subscribing\n");
     std::atomic<int> received{ 0 };
-    publisher.get(endpoint, [&received](const opencmw::client::RawMessage &message) {
+    clientContext.get(endpoint, [&received](const opencmw::client::RawMessage &message) {
         REQUIRE(message.data.size() == 3); // == "100");
         received++;
     });
@@ -40,7 +42,7 @@ TEST_CASE("Basic get/set test", "[ClientContext]") {
         reply.setTopic(endpoint.str, MessageFrame::dynamic_bytes_tag{});
     });
     std::this_thread::sleep_for(20ms); // hacky: this is needed because the requests are only identified using their uri, so we cannot have multiple requests with identical uris
-    publisher.set(
+    clientContext.set(
             endpoint, [&received](const opencmw::client::RawMessage &message) {
                 REQUIRE(message.data.empty()); // == "100");
                 received++;
@@ -55,7 +57,7 @@ TEST_CASE("Basic get/set test", "[ClientContext]") {
     });
     std::this_thread::sleep_for(10ms); // allow the reply to reach the client
     REQUIRE(received == 2);
-    publisher.stop();
+    clientContext.stop();
 }
 
 TEST_CASE("Basic subscription test", "[ClientContext]") {
