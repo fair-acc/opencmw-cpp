@@ -23,24 +23,29 @@
 
 namespace opencmw::thread {
 
-constexpr size_t THREAD_MAX_NAME_LENGTH = 16;
-constexpr int    THREAD_UNINITIALISED   = 1;
-constexpr int    THREAD_ERROR_UNKNOWN   = 2;
-constexpr int    THREAD_VALUE_RANGE     = 3;
-constexpr int    THREAD_ERANGE          = 34;
+constexpr size_t THREAD_MAX_NAME_LENGTH  = 16;
+constexpr int    THREAD_UNINITIALISED    = 1;
+constexpr int    THREAD_ERROR_UNKNOWN    = 2;
+constexpr int    THREAD_VALUE_RANGE      = 3;
+constexpr int    THREAD_INVALID_ARGUMENT = 22;
+constexpr int    THREAD_ERANGE           = 34;
 
 class thread_exception : public std::error_category {
+    using std::error_category::error_category;
+
 public:
     constexpr thread_exception()
         : std::error_category(){};
 
-    const char *name() const noexcept { return "thread_exception"; };
-    std::string message(int errorCode) const {
+    const char *name() const noexcept override { return "thread_exception"; };
+    std::string message(int errorCode) const override {
         switch (errorCode) {
         case THREAD_UNINITIALISED:
             return "thread uninitialised or user does not have the appropriate rights (ie. CAP_SYS_NICE capability)";
         case THREAD_ERROR_UNKNOWN:
             return "thread error code 2";
+        case THREAD_INVALID_ARGUMENT:
+            return "invalid argument";
         case THREAD_ERANGE:
             return fmt::format("length of the string specified pointed to by name exceeds the allowed limit THREAD_MAX_NAME_LENGTH = '{}'", THREAD_MAX_NAME_LENGTH);
         case THREAD_VALUE_RANGE:
@@ -54,43 +59,43 @@ public:
 template<class type>
 concept thread_type = std::is_same_v<type, std::thread> || std::is_same_v<type, std::jthread>;
 
-namespace detail{
+namespace detail {
 #ifdef _POSIX_VERSION
     template<typename Tp, typename... Us>
-    constexpr decltype(auto) firstElement(Tp && t, Us &&...) noexcept {
-            return std::forward<Tp>(t);
-}
-
-inline constexpr pthread_t getPosixHandler(thread_type auto &...t) noexcept {
-    if constexpr (sizeof...(t) > 0) {
-        return firstElement(t...).native_handle();
-    } else {
-        return pthread_self();
+    constexpr decltype(auto) firstElement(Tp && t, Us && ...) noexcept {
+        return std::forward<Tp>(t);
     }
-}
 
-std::string getThreadName(const pthread_t &handle) {
-    if (handle == 0U) {
-        return "uninitialised thread";
+    inline constexpr pthread_t getPosixHandler(thread_type auto &...t) noexcept {
+        if constexpr (sizeof...(t) > 0) {
+            return firstElement(t...).native_handle();
+        } else {
+            return pthread_self();
+        }
     }
-    char threadName[THREAD_MAX_NAME_LENGTH];
-    if (int rc = pthread_getname_np(handle, threadName, THREAD_MAX_NAME_LENGTH); rc != 0) {
-        throw std::system_error(rc, thread_exception(), fmt::format("getThreadName(thread_type)"));
-    }
-    return std::string{ threadName, std::min(strlen(threadName), THREAD_MAX_NAME_LENGTH) };
-}
 
-int getPid() { return getpid(); }
+    inline std::string getThreadName(const pthread_t &handle) {
+        if (handle == 0U) {
+            return "uninitialised thread";
+        }
+        char threadName[THREAD_MAX_NAME_LENGTH];
+        if (int rc = pthread_getname_np(handle, threadName, THREAD_MAX_NAME_LENGTH); rc != 0) {
+            throw std::system_error(rc, thread_exception(), fmt::format("getThreadName(thread_type)"));
+        }
+        return std::string{ threadName, std::min(strlen(threadName), THREAD_MAX_NAME_LENGTH) };
+    }
+
+    inline int getPid() { return getpid(); }
 #else
-    int detail::getPid(){ return 0;
-}
+    int detail::getPid() {
+        return 0;
+    }
 #endif
 } // namespace detail
 
-std::string getProcessName(const int pid = detail::getPid()) {
+inline std::string getProcessName(const int pid = detail::getPid()) {
 #ifdef _POSIX_VERSION
-    std::ifstream in(fmt::format("/proc/{}/comm", pid), std::ios::in);
-    if (in.is_open()) {
+    if (std::ifstream in(fmt::format("/proc/{}/comm", pid), std::ios::in); in.is_open()) {
         std::string fileContent;
         std::getline(in, fileContent, '\n');
         return fileContent;
@@ -99,7 +104,7 @@ std::string getProcessName(const int pid = detail::getPid()) {
     return "unknown_process";
 } // namespace detail
 
-std::string getThreadName(thread_type auto &...thread) {
+inline std::string getThreadName(thread_type auto &...thread) {
 #ifdef _POSIX_VERSION
     const pthread_t handle = detail::getPosixHandler(thread...);
     if (handle == 0U) {
@@ -111,7 +116,7 @@ std::string getThreadName(thread_type auto &...thread) {
 #endif
 }
 
-void setProcessName(const std::string_view &processName, int pid = detail::getPid()) {
+inline void setProcessName(const std::string_view &processName, int pid = detail::getPid()) {
 #ifdef _POSIX_VERSION
     std::ofstream out(fmt::format("/proc/{}/comm", pid), std::ios::out);
     if (!out.is_open()) {
@@ -122,7 +127,7 @@ void setProcessName(const std::string_view &processName, int pid = detail::getPi
 #endif
 }
 
-void setThreadName(const std::string_view &threadName, thread_type auto &...thread) {
+inline void setThreadName(const std::string_view &threadName, thread_type auto &...thread) {
 #ifdef _POSIX_VERSION
     const pthread_t handle = detail::getPosixHandler(thread...);
     if (handle == 0U) {
@@ -136,7 +141,7 @@ void setThreadName(const std::string_view &threadName, thread_type auto &...thre
 
 namespace detail {
 #ifdef _POSIX_VERSION
-std::vector<bool> getAffinityMask(const cpu_set_t &cpuSet) {
+inline std::vector<bool> getAffinityMask(const cpu_set_t &cpuSet) {
     std::vector<bool> bitMask(std::min(sizeof(cpu_set_t), static_cast<size_t>(std::thread::hardware_concurrency())));
     for (size_t i = 0; i < bitMask.size(); i++) {
         bitMask[i] = CPU_ISSET(i, &cpuSet);
@@ -145,8 +150,8 @@ std::vector<bool> getAffinityMask(const cpu_set_t &cpuSet) {
 }
 
 template<class T>
-requires requires(T value) { std::get<0>(value); }
-constexpr cpu_set_t getAffinityMask(const T &threadMap) {
+requires requires(T value) { value[0]; }
+inline constexpr cpu_set_t getAffinityMask(const T &threadMap) {
     cpu_set_t cpuSet;
     CPU_ZERO(&cpuSet);
     size_t nMax = std::min(threadMap.size(), static_cast<size_t>(std::thread::hardware_concurrency()));
@@ -163,7 +168,7 @@ constexpr cpu_set_t getAffinityMask(const T &threadMap) {
 } // namespace detail
 
 #ifdef _POSIX_VERSION
-std::vector<bool> getThreadAffinity(thread_type auto &...thread) {
+inline std::vector<bool> getThreadAffinity(thread_type auto &...thread) {
     const pthread_t handle = detail::getPosixHandler(thread...);
     if (handle == 0U) {
         throw std::system_error(THREAD_UNINITIALISED, thread_exception(), fmt::format("getThreadAffinity(thread_type)"));
@@ -181,9 +186,9 @@ std::vector<bool> getThreadAffinity(thread_type auto &...) {
 #endif
 
 template<class T>
-requires requires(T value) { std::get<0>(value); }
+requires requires(T value) { value[0]; }
 #ifdef _POSIX_VERSION
-constexpr bool setThreadAffinity(const T &threadMap, thread_type auto &...thread) {
+inline constexpr void setThreadAffinity(const T &threadMap, thread_type auto &...thread) {
     const pthread_t handle = detail::getPosixHandler(thread...);
     if (handle == 0U) {
         throw std::system_error(THREAD_UNINITIALISED, thread_exception(), fmt::format("setThreadAffinity(std::vector<bool, {}> = {{{}}}, thread_type)", threadMap.size(), fmt::join(threadMap, ", ")));
@@ -192,7 +197,6 @@ constexpr bool setThreadAffinity(const T &threadMap, thread_type auto &...thread
     if (int rc = pthread_setaffinity_np(handle, sizeof(cpu_set_t), &cpuSet); rc != 0) {
         throw std::system_error(rc, thread_exception(), fmt::format("setThreadAffinity(std::vector<bool, {}> = {{{}}}, {})", threadMap.size(), fmt::join(threadMap, ", "), detail::getThreadName(handle)));
     }
-    return true;
 }
 #else
 constexpr bool setThreadAffinity(const T &threadMap, thread_type auto &...) {
@@ -200,7 +204,7 @@ constexpr bool setThreadAffinity(const T &threadMap, thread_type auto &...) {
 }
 #endif
 
-std::vector<bool> getProcessAffinity(const int pid = detail::getPid()) {
+inline std::vector<bool> getProcessAffinity(const int pid = detail::getPid()) {
 #ifdef _POSIX_VERSION
     if (pid <= 0) {
         throw std::system_error(THREAD_UNINITIALISED, thread_exception(), fmt::format("getProcessAffinity({}) -- invalid pid", pid));
@@ -217,7 +221,7 @@ std::vector<bool> getProcessAffinity(const int pid = detail::getPid()) {
 
 template<class T>
 requires requires(T value) { std::get<0>(value); }
-constexpr bool setProcessAffinity(const T &threadMap, const int pid = detail::getPid()) {
+inline constexpr bool setProcessAffinity(const T &threadMap, const int pid = detail::getPid()) {
 #ifdef _POSIX_VERSION
     if (pid <= 0) {
         throw std::system_error(THREAD_UNINITIALISED, thread_exception(), fmt::format("setProcessAffinity(std::vector<bool, {}> = {{{}}}, {})", threadMap.size(), fmt::join(threadMap, ", "), pid));
@@ -245,7 +249,7 @@ struct SchedulingParameter {
 };
 
 namespace detail {
-Policy getEnumPolicy(const int policy) {
+inline Policy getEnumPolicy(const int policy) {
     switch (policy) {
 #ifdef _POSIX_VERSION
     case SCHED_FIFO: return Policy::FIFO;
@@ -258,7 +262,7 @@ Policy getEnumPolicy(const int policy) {
 }
 } // namespace detail
 
-struct SchedulingParameter getProcessSchedulingParameter(const int pid = detail::getPid()) {
+inline struct SchedulingParameter getProcessSchedulingParameter(const int pid = detail::getPid()) {
 #ifdef _POSIX_VERSION
     if (pid <= 0) {
         throw std::system_error(THREAD_UNINITIALISED, thread_exception(), fmt::format("getProcessSchedulingParameter({}) -- invalid pid", pid));
@@ -274,7 +278,7 @@ struct SchedulingParameter getProcessSchedulingParameter(const int pid = detail:
 #endif
 }
 
-void setProcessSchedulingParameter(Policy scheduler, int priority, const int pid = detail::getPid()) {
+inline void setProcessSchedulingParameter(Policy scheduler, int priority, const int pid = detail::getPid()) {
 #ifdef _POSIX_VERSION
     if (pid <= 0) {
         throw std::system_error(THREAD_UNINITIALISED, thread_exception(), fmt::format("setProcessSchedulingParameter({}, {}, {}) -- invalid pid", scheduler, priority, pid));
@@ -293,7 +297,7 @@ void setProcessSchedulingParameter(Policy scheduler, int priority, const int pid
 #endif
 }
 
-struct SchedulingParameter getThreadSchedulingParameter(thread_type auto &...thread) {
+inline struct SchedulingParameter getThreadSchedulingParameter(thread_type auto &...thread) {
 #ifdef _POSIX_VERSION
     const pthread_t handle = detail::getPosixHandler(thread...);
     if (handle == 0U) {
@@ -310,7 +314,7 @@ struct SchedulingParameter getThreadSchedulingParameter(thread_type auto &...thr
 #endif
 }
 
-void setThreadSchedulingParameter(Policy scheduler, int priority, thread_type auto &...thread) {
+inline void setThreadSchedulingParameter(Policy scheduler, int priority, thread_type auto &...thread) {
 #ifdef _POSIX_VERSION
     const pthread_t handle = detail::getPosixHandler(thread...);
     if (handle == 0U) {
