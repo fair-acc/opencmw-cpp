@@ -15,10 +15,10 @@
 namespace opencmw::client {
 using namespace std::chrono_literals;
 using opencmw::uri_check::STRICT;
-using timeUnit = std::chrono::milliseconds;
+using timeUnit                                  = std::chrono::milliseconds;
 constexpr static const timeUnit _defaultTimeout = 1000ms; // default interval to check for maintenance tasks
 
-struct RawMessage { // return object for received data
+struct RawMessage {                                // return object for received data
     std::string                           context; // use context type?
     std::unique_ptr<opencmw::URI<STRICT>> endpoint;
     std::vector<std::byte>                data; // using vector here allows using non zmq transports... try to move data into here without copying or use zmq messages if that is not possible
@@ -32,13 +32,13 @@ struct Request {
 };
 
 struct Subscription {
-    URI<STRICT >                      uri;
+    URI<STRICT>                       uri;
     std::function<void(RawMessage &)> callback;
     std::chrono::milliseconds         timestamp_received = 0s;
 };
 
 struct Command { // TODO: Q: merge with Request/subscription type? just have a single object which gets added to the ring buffer and is then moved to the respective map? -> less objects, less code
-    enum class Type{
+    enum class Type {
         Get,
         Set,
         Subscribe,
@@ -52,13 +52,13 @@ struct Command { // TODO: Q: merge with Request/subscription type? just have a s
     std::chrono::milliseconds               timestamp_received = 0s;
 };
 
-static constexpr std::size_t    CMD_RB_SIZE     = 32;
-using CmdBufferType = opencmw::disruptor::RingBuffer<Command, CMD_RB_SIZE, opencmw::disruptor::SpinWaitWaitStrategy>;
-using CmdPollerType = disruptor::EventPoller<Command, CMD_RB_SIZE, disruptor::SpinWaitWaitStrategy, disruptor::MultiThreadedStrategy>;
+static constexpr std::size_t CMD_RB_SIZE = 32;
+using CmdBufferType                      = opencmw::disruptor::RingBuffer<Command, CMD_RB_SIZE, opencmw::disruptor::SpinWaitWaitStrategy>;
+using CmdPollerType                      = disruptor::EventPoller<Command, CMD_RB_SIZE, disruptor::SpinWaitWaitStrategy, disruptor::MultiThreadedStrategy>;
 
 class ClientBase {
 public:
-    virtual            ~ClientBase()                                                 = default;
+    virtual ~ClientBase()                                                            = default;
     virtual bool        read(RawMessage &message)                                    = 0;
     virtual timeUnit    housekeeping(const timeUnit &now)                            = 0;
     virtual URI<STRICT> endpoint()                                                   = 0;
@@ -72,6 +72,7 @@ class ClientCtxBase {
     // keeping track of ongoing requests, maps URIs to subscriptions and other requests
     std::unordered_map<std::string, Request>      _requests;
     std::unordered_map<std::string, Subscription> _subscriptions;
+
 public:
     virtual ~ClientCtxBase() = default;
     virtual std::unique_ptr<ClientBase> &getClient(const URI<STRICT> &uri) {
@@ -85,14 +86,15 @@ public:
         return *result;
     }
 
-    virtual std::vector<std::string>    protocols() = 0;   // TODO: make this a static function and make ClientCtx a TypeParameter, which is only instantiated once one of the protocols is used
-    void stop() {
+    virtual std::vector<std::string> protocols() = 0; // TODO: make this a static function and make ClientCtx a TypeParameter, which is only instantiated once one of the protocols is used
+    void                             stop() {
         _poller.request_stop(); // request halt to all workers
-        _poller.join(); // wait for all workers to be finished
+        _poller.join();         // wait for all workers to be finished
     }
 
 private:
-    ClientCtxBase(CmdBufferType &commandRingBuffer) : _cmdPoller{ commandRingBuffer.newPoller() } {
+    ClientCtxBase(CmdBufferType &commandRingBuffer)
+        : _cmdPoller{ commandRingBuffer.newPoller() } {
         commandRingBuffer.addGatingSequences({ _cmdPoller->sequence() });
         _poller = std::jthread([this](const std::stop_token &stoken) { this->poll(stoken); });
     }
@@ -183,9 +185,9 @@ private:
         }
         return next;
     }
-    std::vector<std::unique_ptr<ClientBase>>      _clients;
-    std::jthread                                  _poller; // thread polling all the sockets
-    std::shared_ptr<CmdPollerType>                _cmdPoller;
+    std::vector<std::unique_ptr<ClientBase>> _clients;
+    std::jthread                             _poller; // thread polling all the sockets
+    std::shared_ptr<CmdPollerType>           _cmdPoller;
 };
 
 /*
@@ -193,15 +195,17 @@ private:
  * The commands can be issued by any thread, because the communication is decoupled using a command disruptor.
  */
 class ClientContext {
-    std::vector<std::unique_ptr<ClientCtxBase>>   _contexts;
+    std::vector<std::unique_ptr<ClientCtxBase>>                            _contexts;
     std::unordered_map<std::string, std::reference_wrapper<ClientCtxBase>> _schemeContexts;
-    std::shared_ptr<CmdBufferType>                _commandRingBuffer;
+    std::shared_ptr<CmdBufferType>                                         _commandRingBuffer;
 
 public:
-    explicit ClientContext(): _contexts{}, _commandRingBuffer{ std::make_shared<CmdBufferType>() } {}
+    explicit ClientContext()
+        : _contexts{}, _commandRingBuffer{ std::make_shared<CmdBufferType>() } {}
 
-    template<typename T> requires std::derived_from<T, ClientCtxBase>
-    void addClientContext(auto...args) {
+    template<typename T>
+    requires std::derived_from<T, ClientCtxBase>
+    void addClientContext(auto... args) {
         T &newCtx = _contexts.emplace_back(args...);
         for (auto scheme : newCtx.supportedEndpoints()) {
             _schemeContexts.insert(scheme, newCtx);
@@ -219,7 +223,7 @@ public:
      * Shutdown all contexts // TODO: is this necessary or should this be handled by RAII with the poller going out of scope?
      */
     void stop() {
-        for (auto &ctx :_contexts) {
+        for (auto &ctx : _contexts) {
             ctx->stop();
         }
     }
@@ -256,7 +260,6 @@ private:
             fmt::print("failed to publish command\n");
         }
     }
-
 };
 
 } // namespace opencmw::client

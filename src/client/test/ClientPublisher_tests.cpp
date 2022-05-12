@@ -22,9 +22,9 @@ TEST_CASE("Basic get/set test", "[ClientContext]") {
     const Context zctx{};
     MockServer    server(zctx);
     // setup clientContext which contains the poll loop
-    //std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
-    //clients.emplace_back(std::make_unique<Client>(zctx, 100ms, "opencmwClient"));
-    //clients.emplace_back(std::make_unique<SubscriptionClient>(zctx, 100ms, "opencmwSubClient"));
+    // std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
+    // clients.emplace_back(std::make_unique<Client>(zctx, 100ms, "opencmwClient"));
+    // clients.emplace_back(std::make_unique<SubscriptionClient>(zctx, 100ms, "opencmwSubClient"));
     ClientContext clientContext();
     clientContext.addClientContext<MDClientCtx>(zctx);
     // send some requests
