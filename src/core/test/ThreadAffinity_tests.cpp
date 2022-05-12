@@ -1,6 +1,6 @@
 #include <catch2/catch.hpp>
 #include <Debug.hpp>
-#include <fmt/chrono.h>
+#include <fmt/format.h>
 #include <ThreadAffinity.hpp>
 
 #define REQUIRE_MESSAGE(cond, msg) \
