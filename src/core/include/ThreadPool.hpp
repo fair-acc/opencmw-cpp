@@ -29,13 +29,13 @@ struct Task {
 
 class TaskQueue {
     mutable AtomicMutex<> _lock;
-    Task                           *_head = nullptr;
-    Task                           *_tail = nullptr;
-    uint32_t                        _size = 0;
+    Task                 *_head = nullptr;
+    Task                 *_tail = nullptr;
+    uint32_t              _size = 0;
 
 public:
-    TaskQueue()                                  = default;
-    TaskQueue(const TaskQueue &queue)            = delete;
+    TaskQueue()                       = default;
+    TaskQueue(const TaskQueue &queue) = delete;
     TaskQueue &operator=(const TaskQueue &queue) = delete;
     ~TaskQueue() { clear(); }
 
@@ -88,9 +88,9 @@ public:
 
 template<typename T>
 concept ThreadPool = requires(T t, std::function<void()> &&func) {
-                         { t.enqueue(std::move(func)) } -> std::same_as<void>;
-                         { t.execute(std::move(func)) } -> std::same_as<void>;
-                     };
+    { t.enqueue(std::move(func)) } -> std::same_as<void>;
+    { t.execute(std::move(func)) } -> std::same_as<void>;
+};
 
 /**
  * <h2>Basic thread pool that can optionally grow/shrink between a [min, max] number of threads.</h2>
@@ -168,10 +168,10 @@ public:
         assert(queueSize1 == 0 && "blocking task queue not empty");
         assert(queueSize2 == 0 && "task queue not empty");
     }
-    BasicThreadPool(const BasicThreadPool &)                      = delete;
-    BasicThreadPool(BasicThreadPool &&)                           = delete;
+    BasicThreadPool(const BasicThreadPool &) = delete;
+    BasicThreadPool(BasicThreadPool &&)      = delete;
     BasicThreadPool           &operator=(const BasicThreadPool &) = delete;
-    BasicThreadPool           &operator=(BasicThreadPool &&)      = delete;
+    BasicThreadPool           &operator=(BasicThreadPool &&) = delete;
 
     [[nodiscard]] std::string  poolName() const noexcept { return _poolName; }
     [[nodiscard]] uint32_t     minThreads() const noexcept { return _minThreads; };
@@ -185,27 +185,27 @@ public:
     [[nodiscard]] bool         isInitialised() const { return _initialised.load(std::memory_order::acquire); }
     void                       waitUntilInitialised() const { _initialised.wait(false); }
     void                       requestShutdown() {
-                              _shutdown = true;
-                              _condition.notify_all();
+        _shutdown = true;
+        _condition.notify_all();
     }
     [[nodiscard]] bool isShutdown() const { return _shutdown; }
 
     //
     [[nodiscard]] auto getAffinityMask() const { return _affinityMask; }
     void               setAffinityMask(std::vector<bool> threadAffinityMask) {
-                      _affinityMask.clear();
-                      std::ranges::copy(threadAffinityMask, std::back_inserter(_affinityMask));
-                      cleanupFinishedThreads();
-                      updateThreadConstraints();
+        _affinityMask.clear();
+        std::ranges::copy(threadAffinityMask, std::back_inserter(_affinityMask));
+        cleanupFinishedThreads();
+        updateThreadConstraints();
     }
 
     [[nodiscard]] auto getSchedulingPolicy() const { return _schedulingPolicy; }
     [[nodiscard]] auto getSchedulingPriority() const { return _schedulingPriority; }
     void               setThreadSchedulingPolicy(const thread::Policy schedulingPolicy = thread::Policy::OTHER, const int schedulingPriority = 0) {
-                      _schedulingPolicy   = schedulingPolicy;
-                      _schedulingPriority = schedulingPriority;
-                      cleanupFinishedThreads();
-                      updateThreadConstraints();
+        _schedulingPolicy   = schedulingPolicy;
+        _schedulingPriority = schedulingPriority;
+        cleanupFinishedThreads();
+        updateThreadConstraints();
     }
 
     void enqueue(std::function<void()> &&func) {

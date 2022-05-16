@@ -56,35 +56,35 @@ concept thread_type = std::is_same_v<type, std::thread> || std::is_same_v<type, 
 
 namespace detail {
 #ifdef _POSIX_VERSION
-template<typename Tp, typename... Us>
-constexpr decltype(auto) firstElement(Tp &&t, Us &&...) noexcept {
-    return std::forward<Tp>(t);
-}
-
-inline constexpr pthread_t getPosixHandler(thread_type auto &...t) noexcept {
-    if constexpr (sizeof...(t) > 0) {
-        return firstElement(t...).native_handle();
-    } else {
-        return pthread_self();
+    template<typename Tp, typename... Us>
+    constexpr decltype(auto) firstElement(Tp && t, Us && ...) noexcept {
+        return std::forward<Tp>(t);
     }
-}
 
-inline std::string getThreadName(const pthread_t &handle) {
-    if (handle == 0U) {
-        return "uninitialised thread";
+    inline constexpr pthread_t getPosixHandler(thread_type auto &...t) noexcept {
+        if constexpr (sizeof...(t) > 0) {
+            return firstElement(t...).native_handle();
+        } else {
+            return pthread_self();
+        }
     }
-    char threadName[THREAD_MAX_NAME_LENGTH];
-    if (int rc = pthread_getname_np(handle, threadName, THREAD_MAX_NAME_LENGTH); rc != 0) {
-        throw std::system_error(rc, thread_exception(), fmt::format("getThreadName(thread_type)"));
-    }
-    return std::string{ threadName, std::min(strlen(threadName), THREAD_MAX_NAME_LENGTH) };
-}
 
-inline int getPid() { return getpid(); }
+    inline std::string getThreadName(const pthread_t &handle) {
+        if (handle == 0U) {
+            return "uninitialised thread";
+        }
+        char threadName[THREAD_MAX_NAME_LENGTH];
+        if (int rc = pthread_getname_np(handle, threadName, THREAD_MAX_NAME_LENGTH); rc != 0) {
+            throw std::system_error(rc, thread_exception(), fmt::format("getThreadName(thread_type)"));
+        }
+        return std::string{ threadName, std::min(strlen(threadName), THREAD_MAX_NAME_LENGTH) };
+    }
+
+    inline int getPid() { return getpid(); }
 #else
-int detail::getPid() {
-    return 0;
-}
+    int detail::getPid() {
+        return 0;
+    }
 #endif
 } // namespace detail
 
@@ -145,7 +145,7 @@ inline std::vector<bool> getAffinityMask(const cpu_set_t &cpuSet) {
 }
 
 template<class T>
-    requires requires(T value) { value[0]; }
+requires requires(T value) { value[0]; }
 inline constexpr cpu_set_t getAffinityMask(const T &threadMap) {
     cpu_set_t cpuSet;
     CPU_ZERO(&cpuSet);
@@ -181,7 +181,7 @@ std::vector<bool> getThreadAffinity(thread_type auto &...) {
 #endif
 
 template<class T>
-    requires requires(T value) { value[0]; }
+requires requires(T value) { value[0]; }
 #ifdef _POSIX_VERSION
 inline constexpr void setThreadAffinity(const T &threadMap, thread_type auto &...thread) {
     const pthread_t handle = detail::getPosixHandler(thread...);
@@ -215,7 +215,7 @@ inline std::vector<bool> getProcessAffinity(const int pid = detail::getPid()) {
 }
 
 template<class T>
-    requires requires(T value) { std::get<0>(value); }
+requires requires(T value) { std::get<0>(value); }
 inline constexpr bool setProcessAffinity(const T &threadMap, const int pid = detail::getPid()) {
 #ifdef _POSIX_VERSION
     if (pid <= 0) {

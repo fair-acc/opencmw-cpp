@@ -87,6 +87,5 @@ int main() {
                 duration_cast<microseconds>(diff1), duration_cast<milliseconds>(diff2), nTasks);
     }
 
-
     pool.requestShutdown(); // request the pool to shutdown
 }
