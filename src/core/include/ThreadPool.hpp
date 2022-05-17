@@ -40,6 +40,7 @@ public:
     ~TaskQueue() { clear(); }
 
     uint32_t clear() {
+        std::scoped_lock lock(_lock);
         const uint32_t res = _size;
         for (Task *job = pop(); job != nullptr; job = pop()) {
             delete job;
