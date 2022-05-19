@@ -7,8 +7,8 @@ TEST_CASE("Basic ThreadPool tests", "[ThreadPool]") {
         REQUIRE_NOTHROW(opencmw::BasicThreadPool<opencmw::IO_BOUND>());
         REQUIRE_NOTHROW(opencmw::BasicThreadPool<opencmw::CPU_BOUND>());
 
-        std::atomic<int>         enqueueCount{ 0 };
-        std::atomic<int>         executeCount{ 0 };
+        std::atomic<int>                            enqueueCount{ 0 };
+        std::atomic<int>                            executeCount{ 0 };
         opencmw::BasicThreadPool<opencmw::IO_BOUND> pool("TestPool", 1, 2);
         REQUIRE_NOTHROW(pool.sleepDuration() = std::chrono::milliseconds(1));
         REQUIRE_NOTHROW(pool.keepAliveDuration() = std::chrono::seconds(10));
@@ -36,7 +36,7 @@ TEST_CASE("Basic ThreadPool tests", "[ThreadPool]") {
     }
 
     SECTION("contention tests") {
-        std::atomic<int>         counter{ 0 };
+        std::atomic<int>                            counter{ 0 };
         opencmw::BasicThreadPool<opencmw::IO_BOUND> pool("contention", 1, 4);
         pool.waitUntilInitialised();
         REQUIRE(pool.isInitialised());

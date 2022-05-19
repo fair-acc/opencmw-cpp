@@ -34,8 +34,8 @@ class TaskQueue {
     uint32_t              _size = 0;
 
 public:
-    TaskQueue()                                  = default;
-    TaskQueue(const TaskQueue &queue)            = delete;
+    TaskQueue()                       = default;
+    TaskQueue(const TaskQueue &queue) = delete;
     TaskQueue &operator=(const TaskQueue &queue) = delete;
     ~TaskQueue() { clear(); }
 
@@ -44,7 +44,7 @@ public:
         if constexpr (lock) {
             _lock.lock();
         }
-        const uint32_t   res = _size;
+        const uint32_t res = _size;
         for (Task *job = pop<false>(); job != nullptr; job = pop<false>()) {
             delete job;
         }
@@ -63,7 +63,7 @@ public:
     template<bool lock = true>
     void push(Task *job) {
         if constexpr (lock) {
-         _lock.lock();
+            _lock.lock();
         }
         job->next = nullptr;
         if (_head == nullptr) {
@@ -86,7 +86,7 @@ public:
         if constexpr (lock) {
             _lock.lock();
         }
-        Task            *head = _head;
+        Task *head = _head;
         if (head != nullptr) {
             _head = head->next;
             _size--;
@@ -110,8 +110,8 @@ enum TaskType {
 
 template<typename T>
 concept ThreadPool = requires(T t, std::function<void()> &&func) {
-                         { t.execute(std::move(func)) } -> std::same_as<void>;
-                     };
+    { t.execute(std::move(func)) } -> std::same_as<void>;
+};
 
 /**
  * <h2>Basic thread pool that uses a fixed-number or optionally grow/shrink between a [min, max] number of threads.</h2>
@@ -185,10 +185,10 @@ public:
         [[maybe_unused]] const auto queueSize = _taskQueue.clear();
         assert(queueSize == 0 && "task queue not empty");
     }
-    BasicThreadPool(const BasicThreadPool &)                      = delete;
-    BasicThreadPool(BasicThreadPool &&)                           = delete;
+    BasicThreadPool(const BasicThreadPool &) = delete;
+    BasicThreadPool(BasicThreadPool &&)      = delete;
     BasicThreadPool           &operator=(const BasicThreadPool &) = delete;
-    BasicThreadPool           &operator=(BasicThreadPool &&)      = delete;
+    BasicThreadPool           &operator=(BasicThreadPool &&) = delete;
 
     [[nodiscard]] std::string  poolName() const noexcept { return _poolName; }
     [[nodiscard]] uint32_t     minThreads() const noexcept { return _minThreads; };
@@ -203,8 +203,8 @@ public:
     [[nodiscard]] bool         isInitialised() const { return _initialised.load(std::memory_order::acquire); }
     void                       waitUntilInitialised() const { _initialised.wait(false); }
     void                       requestShutdown() {
-                              _shutdown = true;
-                              _condition.notify_all();
+        _shutdown = true;
+        _condition.notify_all();
     }
     [[nodiscard]] bool isShutdown() const { return _shutdown; }
 
@@ -213,10 +213,10 @@ public:
     [[nodiscard]] std::vector<bool> getAffinityMask() const { return _affinityMask; }
 
     void                            setAffinityMask(const std::vector<bool> &threadAffinityMask) {
-                                   _affinityMask.clear();
-                                   std::ranges::copy(threadAffinityMask, std::back_inserter(_affinityMask));
-                                   cleanupFinishedThreads();
-                                   updateThreadConstraints();
+        _affinityMask.clear();
+        std::ranges::copy(threadAffinityMask, std::back_inserter(_affinityMask));
+        cleanupFinishedThreads();
+        updateThreadConstraints();
     }
 
     [[nodiscard]] auto getSchedulingPolicy() const { return _schedulingPolicy; }
@@ -224,10 +224,10 @@ public:
     [[nodiscard]] auto getSchedulingPriority() const { return _schedulingPriority; }
 
     void               setThreadSchedulingPolicy(const thread::Policy schedulingPolicy = thread::Policy::OTHER, const int schedulingPriority = 0) {
-                      _schedulingPolicy   = schedulingPolicy;
-                      _schedulingPriority = schedulingPriority;
-                      cleanupFinishedThreads();
-                      updateThreadConstraints();
+        _schedulingPolicy   = schedulingPolicy;
+        _schedulingPriority = schedulingPriority;
+        cleanupFinishedThreads();
+        updateThreadConstraints();
     }
 
     void execute(std::function<void()> &&func) {
@@ -280,8 +280,8 @@ private:
             return {};
         }
         std::vector<bool> affinityMask;
-        int coreCount = 0;
-        for (bool value: globalAffinityMask) {
+        int               coreCount = 0;
+        for (bool value : globalAffinityMask) {
             if (value) {
                 affinityMask.push_back(coreCount++ % _minThreads == threadID);
             } else {

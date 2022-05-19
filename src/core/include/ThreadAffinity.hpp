@@ -32,6 +32,7 @@ constexpr int    THREAD_ERANGE           = 34;
 
 class thread_exception : public std::error_category {
     using std::error_category::error_category;
+
 public:
     constexpr thread_exception()
         : std::error_category(){};
@@ -60,35 +61,35 @@ concept thread_type = std::is_same_v<type, std::thread> || std::is_same_v<type, 
 
 namespace detail {
 #ifdef _POSIX_VERSION
-template<typename Tp, typename... Us>
-constexpr decltype(auto) firstElement(Tp &&t, Us &&...) noexcept {
-    return std::forward<Tp>(t);
-}
-
-inline constexpr pthread_t getPosixHandler(thread_type auto &...t) noexcept {
-    if constexpr (sizeof...(t) > 0) {
-        return firstElement(t...).native_handle();
-    } else {
-        return pthread_self();
+    template<typename Tp, typename... Us>
+    constexpr decltype(auto) firstElement(Tp && t, Us && ...) noexcept {
+        return std::forward<Tp>(t);
     }
-}
 
-inline std::string getThreadName(const pthread_t &handle) {
-    if (handle == 0U) {
-        return "uninitialised thread";
+    inline constexpr pthread_t getPosixHandler(thread_type auto &...t) noexcept {
+        if constexpr (sizeof...(t) > 0) {
+            return firstElement(t...).native_handle();
+        } else {
+            return pthread_self();
+        }
     }
-    char threadName[THREAD_MAX_NAME_LENGTH];
-    if (int rc = pthread_getname_np(handle, threadName, THREAD_MAX_NAME_LENGTH); rc != 0) {
-        throw std::system_error(rc, thread_exception(), fmt::format("getThreadName(thread_type)"));
-    }
-    return std::string{ threadName, std::min(strlen(threadName), THREAD_MAX_NAME_LENGTH) };
-}
 
-inline int getPid() { return getpid(); }
+    inline std::string getThreadName(const pthread_t &handle) {
+        if (handle == 0U) {
+            return "uninitialised thread";
+        }
+        char threadName[THREAD_MAX_NAME_LENGTH];
+        if (int rc = pthread_getname_np(handle, threadName, THREAD_MAX_NAME_LENGTH); rc != 0) {
+            throw std::system_error(rc, thread_exception(), fmt::format("getThreadName(thread_type)"));
+        }
+        return std::string{ threadName, std::min(strlen(threadName), THREAD_MAX_NAME_LENGTH) };
+    }
+
+    inline int getPid() { return getpid(); }
 #else
-int detail::getPid() {
-    return 0;
-}
+    int detail::getPid() {
+        return 0;
+    }
 #endif
 } // namespace detail
 
