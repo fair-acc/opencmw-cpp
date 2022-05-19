@@ -31,6 +31,12 @@ TEST_CASE("Basic ThreadPool tests", "[ThreadPool]") {
         REQUIRE(enqueueCount == 1);
         REQUIRE(executeCount == 1);
 
+        auto ret = pool.execute([] { return 42; });
+        REQUIRE(ret.get() == 42);
+
+        auto taskName = pool.execute<"taskName", 0, -1>([] { return opencmw::thread::getThreadName(); });
+        REQUIRE(taskName.get() == "taskName");
+
         REQUIRE_NOTHROW(pool.setAffinityMask(pool.getAffinityMask()));
         REQUIRE_NOTHROW(pool.setThreadSchedulingPolicy(pool.getSchedulingPolicy(), pool.getSchedulingPriority()));
     }
