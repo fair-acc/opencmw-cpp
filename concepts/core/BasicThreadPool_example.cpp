@@ -5,19 +5,34 @@
 #include <fmt/format.h>
 #pragma GCC diagnostic pop
 
+#include <opencmw.hpp>
 #include <ThreadPool.hpp>
 
 int main() {
     using namespace std::chrono;
+    using opencmw::thread::getThreadName;
 
-    opencmw::BasicThreadPool<opencmw::CPU_BOUND> poolWork("CustomIOPool", 1, 1);  // pool for CPU-bound tasks with exactly 1 thread
+    opencmw::BasicThreadPool<opencmw::CPU_BOUND> poolWork("CustomCpuPool", 1, 1); // pool for CPU-bound tasks with exactly 1 thread
     opencmw::BasicThreadPool<opencmw::IO_BOUND>  poolIO("CustomIOPool", 1, 1000); // pool for IO-bound (potentially blocking) tasks with at least 1 and a max of 1000 threads
     poolIO.keepAliveDuration() = seconds(10);                                     // keeps idling threads alive for 10 seconds
     poolIO.waitUntilInitialised();                                                // wait until the pool is initialised (optional)
     assert(poolIO.isInitialised());                                               // check if the pool is initialised
 
-    // enqueue and add task to list
-    poolIO.execute([] { fmt::print("Hello World from thread '{}'!\n", opencmw::thread::getThreadName()); });
+    // enqueue and add task to list -- w/o return type
+    poolWork.execute([] { fmt::print("Hello World from thread '{}'!\n", getThreadName()); });
+    poolWork.execute([](const auto &...args) { fmt::print("Hello World from thread '{}'!\n", args...); }, getThreadName());
+
+    constexpr auto           func1  = [](const auto &...args) { return fmt::format("thread '{1}' scheduled task '{0}'!\n", getThreadName(), args...); };
+    std::future<std::string> result = poolIO.execute<"customTaskName">(func1, getThreadName());
+    // do something else ... get result, wait if necessary
+    std::cout << result.get() << std::endl;
+    poolIO.setAffinityMask({ true, true, true, false });
+    poolIO.execute<"task name", 20U, 2>([]() { fmt::print("Hello World from custom thread '{}'!\n", getThreadName()); }); // execute a task with a name, a priority and single-core affinity
+    try {
+        poolIO.execute<"customName", 20U, 3>([]() { /* this potentially long-running task is trackable via it's 'customName' thread name */ });
+    } catch (const std::invalid_argument &e) {
+        fmt::print("caught exception: {}\n", e.what());
+    }
 
     constexpr int nTestRun = 5;
     constexpr int nTasks   = 100;
@@ -54,9 +69,9 @@ int main() {
 
     for (int testRun = 0; testRun < nTestRun; testRun++) {
         // execute nTasks tasks, each on a new jthreads (N.B. worst case timing <-> base-line benchmark)
-        const auto                start = steady_clock::now();
-        std::atomic<int>          counter(0);
-        std::vector<std::jthread> threads;
+        const auto              start = steady_clock::now();
+        std::atomic<int>        counter(0);
+        std::list<std::jthread> threads;
         for (int i = 0; i < nTasks; i++) {
             threads.emplace_back([&counter] { std::this_thread::sleep_for(milliseconds(10)); ++counter; counter.notify_one(); });
         }
