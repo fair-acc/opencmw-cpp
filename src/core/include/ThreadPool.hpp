@@ -5,26 +5,116 @@
 #include <cassert>
 #include <chrono>
 #include <condition_variable>
+#include <deque>
+#include <functional>
+#include <future>
+#include <iostream>
 #include <list>
 #include <mutex>
 #include <span>
 #include <string>
 #include <thread>
+#include <type_traits>
+#include <utility>
 
 #include <fmt/format.h>
+#include <fmt/ranges.h>
 
+#include <opencmw.hpp>
 #include <SpinWait.hpp>
 #include <ThreadAffinity.hpp>
 
 namespace opencmw {
 
+class TaskQueue;
+
 namespace thread_pool::detail {
+
+/**
+ * @brief a move-only implementation of std::function
+ * originally from: https://stackoverflow.com/questions/25330716/move-only-version-of-stdfunction#answer-52358928
+ * to be replaced once C++23 is out/available.
+ * For details see:
+ * https://en.cppreference.com/w/cpp/utility/functional/move_only_function/move_only_function
+ */
+template<typename T>
+class unique_function : public std::function<T> {
+    template<typename Fn>
+    struct wrapper;
+
+    template<std::copy_constructible Fn>
+    struct wrapper<Fn> {
+        Fn fn;
+
+        template<typename... Args>
+        auto operator()(Args &&...args) { return fn(FWD(args)...); }
+    };
+
+    template<std::move_constructible Fn>
+    requires(!std::is_copy_constructible_v<Fn>) struct wrapper<Fn> {
+        Fn fn;
+
+        explicit wrapper(Fn &&func) noexcept
+            : fn(std::move(func)) {}
+
+        wrapper(wrapper &&) noexcept = default;
+        wrapper &operator=(wrapper &&) noexcept = default;
+
+        // these two functions are instantiated by std::function and are never called
+        wrapper(const wrapper &rhs)
+            : fn(const_cast<Fn &&>(rhs.fn)) { throw 0; } // hack to initialize fn for non-DefaultConstructible types
+        wrapper &operator=(wrapper &) { throw 0; }
+
+        template<typename... Args>
+        auto operator()(Args &&...args) { return fn(FWD(args)...); }
+    };
+
+    using base = std::function<T>;
+
+public:
+    using base::operator();
+
+    unique_function() noexcept = default;
+    explicit unique_function(std::nullptr_t) noexcept
+        : base(nullptr) {}
+
+    template<typename Fn>
+    unique_function(Fn &&f) noexcept
+        : base(wrapper<Fn>{ FWD(f) }) {}
+
+    unique_function(unique_function &&) noexcept = default;
+    unique_function &operator=(unique_function &&) noexcept = default;
+
+    unique_function &operator                               =(std::nullptr_t) {
+        base::operator=(nullptr);
+        return *this;
+    }
+
+    template<typename Fn>
+    unique_function &operator=(Fn &&f) {
+        base::operator=(wrapper<Fn>{ FWD(f) });
+        return *this;
+    }
+};
+
 struct Task {
-    uint64_t              id;
-    std::function<void()> func;
-    Task                 *next = nullptr;
-    Task                 *self = this;
-    bool                  operator==(const Task &other) const { return self == other.self; }
+    uint64_t                id;
+    unique_function<void()> func;
+    std::string             name     = "";
+    int32_t                 priority = 0;
+    int32_t                 cpuID    = -1;
+    Task                   *next     = nullptr;
+    Task                   *self     = this;
+    bool                    operator==(const Task &other) const noexcept { return self == other.self; }
+    auto                    operator<=>(const Task &other) const noexcept { return priority <=> other.priority; }
+
+    [[nodiscard]] Task     *init() noexcept {
+        priority = 0;
+        cpuID    = -1;
+        name.resize(0);
+        next = nullptr;
+        return this;
+    }
 };
 
 class TaskQueue {
@@ -65,21 +155,44 @@ public:
         if constexpr (lock) {
             _lock.lock();
         }
-        job->next = nullptr;
-        if (_head == nullptr) {
+        job->next           = nullptr;
+        const auto priority = job->priority;
+        if (_head == nullptr) { // add task to the start/end of the empty queue
             _head = job;
-        }
-        if (_tail == nullptr) {
             _tail = job;
-        } else {
-            _tail->next = job;
-            _tail       = job;
+            _size++;
+            if constexpr (lock) {
+                _lock.unlock();
+            }
+            return;
+        }
+
+        if (priority >= 0) { // sort-in task by priority
+            Task *head = _head;
+            Task *prev;
+            while (head != nullptr && head->priority >= priority) {
+                prev = head;
+                head = head->next;
+            }
+            if (head == nullptr) {
+                prev->next = job;
+            } else {
+                job->next = head->next;
+                head      = job;
+            }
+        } else { // add task to the end of the queue
+            if (_tail == nullptr) {
+                _tail = job;
+            } else {
+                _tail->next = job;
+                _tail       = job;
+            }
         }
         _size++;
         if constexpr (lock) {
             _lock.unlock();
         }
-    };
+    }
 
     template<bool lock = true>
     Task *pop() {
@@ -98,7 +211,7 @@ public:
             _lock.unlock();
         }
         return head;
-    };
+    }
 };
 
 } // namespace thread_pool::detail
@@ -230,22 +343,53 @@ public:
         updateThreadConstraints();
     }
 
-    void execute(std::function<void()> &&func) {
+    template<const basic_fixed_string taskName = "", uint32_t priority = 0, int32_t cpuID = -1, std::invocable Callable, typename... Args, typename R = std::result_of_t<Callable(Args...)>>
+    requires(std::is_same_v<R, void>) void execute(Callable &&func, Args &&...args) {
         static thread_local SpinWait spinWait;
+        if constexpr (cpuID >= 0) {
+            if (cpuID >= _affinityMask.size() || (cpuID >= 0 && !_affinityMask[cpuID])) {
+                throw std::invalid_argument(fmt::format("requested cpuID {} incompatible with set affinity mask({}): [{}]",
+                        cpuID, _affinityMask.size(), fmt::join(_affinityMask, ", ")));
+            }
+        }
         std::atomic_fetch_add(&_numTaskedQueued, 1U);
-        _taskQueue.push(createTask(std::move(func)));
+        _taskQueue.push(createTask<taskName, priority, cpuID>(FWD(func), FWD(args)...));
         _condition.notify_one();
         if constexpr (taskType == TaskType::IO_BOUND) {
-            _condition.notify_one();
             spinWait.spinOnce();
             spinWait.spinOnce();
             while (_taskQueue.size() > 0) {
                 if (const auto nThreads = numThreads(); nThreads <= numTasksRunning() && nThreads <= _maxThreads) {
                     createWorkerThread();
                 }
+                _condition.notify_one();
+                spinWait.spinOnce();
+                spinWait.spinOnce();
             }
             spinWait.reset();
         }
+    }
+
+    template<const basic_fixed_string taskName = "", uint32_t priority = 0, int32_t cpuID = -1, std::invocable Callable, typename... Args, typename R = std::result_of_t<Callable(Args...)>>
+    requires(!std::is_same_v<R, void>)
+            [[nodiscard]] std::future<R> execute(Callable &&func, Args &&...funcArgs) {
+        if constexpr (cpuID >= 0) {
+            if (cpuID >= _affinityMask.size() || (cpuID >= 0 && !_affinityMask[cpuID])) {
+                throw std::invalid_argument(fmt::format("cpuID {} is out of range [0,{}] or incompatible with set affinity mask [{}]",
+                        cpuID, _affinityMask.size(), _affinityMask));
+            }
+        }
+        std::promise<R> promise;
+        auto            result = promise.get_future();
+        auto            lambda = [promise = std::move(promise), func = FWD(func), ... args = FWD(funcArgs)]() mutable {
+            try {
+                promise.set_value(func(args...));
+            } catch (...) {
+                promise.set_exception(std::current_exception());
+            }
+        };
+        execute<taskName, priority, cpuID>(std::move(lambda));
+        return result;
     }
 
 private:
@@ -280,7 +424,7 @@ private:
             return {};
         }
         std::vector<bool> affinityMask;
-        int               coreCount = 0;
+        std::size_t       coreCount = 0;
         for (bool value : globalAffinityMask) {
             if (value) {
                 affinityMask.push_back(coreCount++ % _minThreads == threadID);
@@ -296,17 +440,35 @@ private:
         const std::size_t nThreads = numThreads();
         std::jthread     &thread   = _threads.emplace_back(&BasicThreadPool::worker, this);
         updateThreadConstraints(nThreads + 1, thread);
-        _numThreads.wait(nThreads);
     }
 
-    Task *createTask(std::function<void()> &&func) {
-        Task *task = _recycledTasks.pop();
-        if (task == nullptr) {
-            task = new Task{ std::atomic_fetch_add(&_taskID, 1U) + 1U, std::move(func) };
-        } else {
-            task->id   = std::atomic_fetch_add(&_taskID, 1U) + 1U;
-            task->func = std::move(func);
+    template<const basic_fixed_string taskName = "", uint32_t priority = 0, int32_t cpuID = -1, std::invocable Callable, typename... Args>
+    Task *createTask(Callable &&func, Args &&...funcArgs) {
+        const auto getTask = [&recycledTasks = _recycledTasks](Callable &&f, Args &&...args) -> Task * {
+            Task *task = recycledTasks.pop();
+            if (task == nullptr) {
+                if constexpr (sizeof...(Args) == 0) {
+                    task = new Task{ .id = std::atomic_fetch_add(&_taskID, 1U) + 1U, .func = std::move(f) };
+                } else {
+                    task = new Task{ .id = std::atomic_fetch_add(&_taskID, 1U) + 1U, .func = std::move(std::bind_front(FWD(f), FWD(args)...)) };
+                }
+            } else {
+                task->id = std::atomic_fetch_add(&_taskID, 1U) + 1U;
+                if constexpr (sizeof...(Args) == 0) {
+                    task->func = std::move(f);
+                } else {
+                    task->func = std::move(std::bind_front(FWD(f), FWD(args)...));
+                }
+            }
+            return task;
+        };
+        Task *task = getTask(FWD(func), FWD(funcArgs)...);
+        if constexpr (!taskName.empty()) {
+            task->name = taskName.c_str();
         }
+        task->priority = priority;
+        task->cpuID    = cpuID;
+
         return task;
     }
 
@@ -322,12 +484,12 @@ private:
     void worker() {
         constexpr uint32_t N_SPIN       = 1 << 8;
         uint32_t           noop_counter = 0;
-        std::atomic_fetch_add(&_numThreads, 1);
-        std::mutex       mutex;
-        std::unique_lock lock(mutex);
-        auto             lastUsed              = std::chrono::steady_clock::now();
-        auto             timeDiffSinceLastUsed = std::chrono::steady_clock::now() - lastUsed;
-        Task            *currentTask           = nullptr;
+        const auto         threadID     = std::atomic_fetch_add(&_numThreads, 1);
+        std::mutex         mutex;
+        std::unique_lock   lock(mutex);
+        auto               lastUsed              = std::chrono::steady_clock::now();
+        auto               timeDiffSinceLastUsed = std::chrono::steady_clock::now() - lastUsed;
+        Task              *currentTask           = nullptr;
         if (numThreads() >= _minThreads) {
             std::atomic_store_explicit(&_initialised, true, std::memory_order_release);
             _initialised.notify_all();
@@ -336,10 +498,17 @@ private:
         do {
             if (popTask(currentTask)) {
                 std::atomic_fetch_add(&_numTasksRunning, 1);
+                if (!currentTask->name.empty()) {
+                    thread::setThreadName(currentTask->name);
+                }
                 currentTask->func();
+                // execute dependent children
+                _recycledTasks.push(currentTask->init());
                 std::atomic_fetch_sub(&_numTasksRunning, 1);
-                lastUsed = std::chrono::steady_clock::now();
-                _recycledTasks.push(currentTask);
+                if (!currentTask->name.empty()) {
+                    thread::setThreadName(fmt::format("{}#{}", _poolName, threadID));
+                }
+                lastUsed     = std::chrono::steady_clock::now();
                 noop_counter = 0;
             } else if (++noop_counter > N_SPIN) [[unlikely]] {
                 // perform some thread maintenance tasks before going to sleep
@@ -358,14 +527,6 @@ private:
             _recycledTasks.clear();
             [[maybe_unused]] const auto queueSize = _taskQueue.clear();
             assert(queueSize == 0 && "task queue not empty");
-        }
-    }
-
-    void sleepOrYield() const {
-        if (_sleepDuration.count() > 0) {
-            std::this_thread::sleep_for(_sleepDuration);
-        } else {
-            std::this_thread::yield();
         }
     }
 };
