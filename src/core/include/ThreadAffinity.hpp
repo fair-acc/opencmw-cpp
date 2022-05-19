@@ -23,24 +23,28 @@
 
 namespace opencmw::thread {
 
-constexpr size_t THREAD_MAX_NAME_LENGTH = 16;
-constexpr int    THREAD_UNINITIALISED   = 1;
-constexpr int    THREAD_ERROR_UNKNOWN   = 2;
-constexpr int    THREAD_VALUE_RANGE     = 3;
-constexpr int    THREAD_ERANGE          = 34;
+constexpr size_t THREAD_MAX_NAME_LENGTH  = 16;
+constexpr int    THREAD_UNINITIALISED    = 1;
+constexpr int    THREAD_ERROR_UNKNOWN    = 2;
+constexpr int    THREAD_VALUE_RANGE      = 3;
+constexpr int    THREAD_INVALID_ARGUMENT = 22;
+constexpr int    THREAD_ERANGE           = 34;
 
 class thread_exception : public std::error_category {
+    using std::error_category::error_category;
 public:
     constexpr thread_exception()
         : std::error_category(){};
 
-    const char *name() const noexcept { return "thread_exception"; };
-    std::string message(int errorCode) const {
+    const char *name() const noexcept override { return "thread_exception"; };
+    std::string message(int errorCode) const override {
         switch (errorCode) {
         case THREAD_UNINITIALISED:
             return "thread uninitialised or user does not have the appropriate rights (ie. CAP_SYS_NICE capability)";
         case THREAD_ERROR_UNKNOWN:
             return "thread error code 2";
+        case THREAD_INVALID_ARGUMENT:
+            return "invalid argument";
         case THREAD_ERANGE:
             return fmt::format("length of the string specified pointed to by name exceeds the allowed limit THREAD_MAX_NAME_LENGTH = '{}'", THREAD_MAX_NAME_LENGTH);
         case THREAD_VALUE_RANGE:
@@ -56,35 +60,35 @@ concept thread_type = std::is_same_v<type, std::thread> || std::is_same_v<type, 
 
 namespace detail {
 #ifdef _POSIX_VERSION
-    template<typename Tp, typename... Us>
-    constexpr decltype(auto) firstElement(Tp && t, Us && ...) noexcept {
-        return std::forward<Tp>(t);
-    }
+template<typename Tp, typename... Us>
+constexpr decltype(auto) firstElement(Tp &&t, Us &&...) noexcept {
+    return std::forward<Tp>(t);
+}
 
-    inline constexpr pthread_t getPosixHandler(thread_type auto &...t) noexcept {
-        if constexpr (sizeof...(t) > 0) {
-            return firstElement(t...).native_handle();
-        } else {
-            return pthread_self();
-        }
+inline constexpr pthread_t getPosixHandler(thread_type auto &...t) noexcept {
+    if constexpr (sizeof...(t) > 0) {
+        return firstElement(t...).native_handle();
+    } else {
+        return pthread_self();
     }
+}
 
-    inline std::string getThreadName(const pthread_t &handle) {
-        if (handle == 0U) {
-            return "uninitialised thread";
-        }
-        char threadName[THREAD_MAX_NAME_LENGTH];
-        if (int rc = pthread_getname_np(handle, threadName, THREAD_MAX_NAME_LENGTH); rc != 0) {
-            throw std::system_error(rc, thread_exception(), fmt::format("getThreadName(thread_type)"));
-        }
-        return std::string{ threadName, std::min(strlen(threadName), THREAD_MAX_NAME_LENGTH) };
+inline std::string getThreadName(const pthread_t &handle) {
+    if (handle == 0U) {
+        return "uninitialised thread";
     }
+    char threadName[THREAD_MAX_NAME_LENGTH];
+    if (int rc = pthread_getname_np(handle, threadName, THREAD_MAX_NAME_LENGTH); rc != 0) {
+        throw std::system_error(rc, thread_exception(), fmt::format("getThreadName(thread_type)"));
+    }
+    return std::string{ threadName, std::min(strlen(threadName), THREAD_MAX_NAME_LENGTH) };
+}
 
-    inline int getPid() { return getpid(); }
+inline int getPid() { return getpid(); }
 #else
-    int detail::getPid() {
-        return 0;
-    }
+int detail::getPid() {
+    return 0;
+}
 #endif
 } // namespace detail
 

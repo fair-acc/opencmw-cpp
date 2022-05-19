@@ -34,18 +34,24 @@ class TaskQueue {
     uint32_t              _size = 0;
 
 public:
-    TaskQueue()                       = default;
-    TaskQueue(const TaskQueue &queue) = delete;
+    TaskQueue()                                  = default;
+    TaskQueue(const TaskQueue &queue)            = delete;
     TaskQueue &operator=(const TaskQueue &queue) = delete;
     ~TaskQueue() { clear(); }
 
+    template<bool lock = true>
     uint32_t clear() {
-        std::scoped_lock lock(_lock);
-        const uint32_t res = _size;
-        for (Task *job = pop(); job != nullptr; job = pop()) {
+        if constexpr (lock) {
+            _lock.lock();
+        }
+        const uint32_t   res = _size;
+        for (Task *job = pop<false>(); job != nullptr; job = pop<false>()) {
             delete job;
         }
         assert(_size == 0 && "TaskQueue::clear() failed");
+        if constexpr (lock) {
+            _lock.unlock();
+        }
         return res;
     }
 
@@ -54,8 +60,11 @@ public:
         return _size;
     }
 
+    template<bool lock = true>
     void push(Task *job) {
-        std::scoped_lock lock(_lock);
+        if constexpr (lock) {
+         _lock.lock();
+        }
         job->next = nullptr;
         if (_head == nullptr) {
             _head = job;
@@ -67,12 +76,16 @@ public:
             _tail       = job;
         }
         _size++;
+        if constexpr (lock) {
+            _lock.unlock();
+        }
     };
 
+    template<bool lock = true>
     Task *pop() {
-        if (_head == nullptr) return nullptr;
-        std::scoped_lock lock(_lock);
-
+        if constexpr (lock) {
+            _lock.lock();
+        }
         Task            *head = _head;
         if (head != nullptr) {
             _head = head->next;
@@ -81,31 +94,37 @@ public:
                 _tail = nullptr;
             }
         }
+        if constexpr (lock) {
+            _lock.unlock();
+        }
         return head;
     };
 };
 
 } // namespace thread_pool::detail
 
-template<typename T>
-concept ThreadPool = requires(T t, std::function<void()> &&func) {
-    { t.enqueue(std::move(func)) } -> std::same_as<void>;
-    { t.execute(std::move(func)) } -> std::same_as<void>;
+enum TaskType {
+    IO_BOUND  = 0,
+    CPU_BOUND = 1
 };
 
+template<typename T>
+concept ThreadPool = requires(T t, std::function<void()> &&func) {
+                         { t.execute(std::move(func)) } -> std::same_as<void>;
+                     };
+
 /**
- * <h2>Basic thread pool that can optionally grow/shrink between a [min, max] number of threads.</h2>
- * The growth policy is controlled by:
- * <ol type="a">
- *   <li> the minimum/maximum thresholds, and</li>
- *   <li> whether a task is scheduled via:</li>
- *   <ol type="1">
- *     <li> <code>enqueue(...)</code> i.e. re-using and queuing on an existing thread, or</li>
- *     <li> <code>execute(...)</code> which may spawn a new thread if no free one is available.</li>
- *   </ol>
+ * <h2>Basic thread pool that uses a fixed-number or optionally grow/shrink between a [min, max] number of threads.</h2>
+ * The growth policy is controlled by the TaskType template parameter:
+ * <ol type="A">
+ *   <li> <code>TaskType::IO_BOUND</code> if the task is IO bound, i.e. it is likely to block the thread for a long time, or
+ *   <li> <code>TaskType::CPU_BOUND</code> if the task is CPU bound, i.e. it is primarily limited by the CPU and memory bandwidth.
  * </ol>
- * Unused threads are kept alive for a pre-defined amount of time to be reused and gracefully shut down to the
- * minimum number of threads when unused.
+ * <br>
+ * For the IO_BOUND policy, unused threads are kept alive for a pre-defined amount of time to be reused and gracefully
+ * shut down to the minimum number of threads when unused.
+ * <br>
+ * For the CPU_BOUND policy, the threads are equally spread and pinned across the set CPU affinity.
  * <br>
  * The CPU affinity and OS scheduling policy and priorities are controlled by:
  * <ul>
@@ -113,6 +132,7 @@ concept ThreadPool = requires(T t, std::function<void()> &&func) {
  *  <li> <code>setThreadSchedulingPolicy(const thread::Policy schedulingPolicy, const int schedulingPriority)</code> </li>
  * </ul>
  */
+template<TaskType taskType>
 class BasicThreadPool {
     using Task      = thread_pool::detail::Task;
     using TaskQueue = thread_pool::detail::TaskQueue;
@@ -125,12 +145,11 @@ class BasicThreadPool {
 
     std::condition_variable      _condition;
     TaskQueue                    _taskQueue;
-    TaskQueue                    _blockingTaskQueue;
     std::atomic<std::size_t>     _numTaskedQueued{ 0U };
     std::atomic<std::size_t>     _numTasksRunning{ 0U };
     TaskQueue                    _recycledTasks;
 
-    std::mutex                   _threadListMutex;
+    std::mutex                   _threadListMutex{};
     std::atomic<std::size_t>     _numThreads{ 0U };
     std::list<std::jthread>      _threads;
 
@@ -141,8 +160,8 @@ class BasicThreadPool {
     const std::string            _poolName;
     const uint32_t               _minThreads;
     const uint32_t               _maxThreads;
-    std::chrono::microseconds    _sleepDuration     = std::chrono::milliseconds(1);
-    std::chrono::seconds         _keepAliveDuration = std::chrono::seconds(10);
+    std::chrono::microseconds    _sleepDuration       = std::chrono::milliseconds(1);
+    std::chrono::seconds         _keepAliveDurationIO = std::chrono::seconds(10);
 
 public:
     BasicThreadPool()
@@ -162,72 +181,71 @@ public:
         while (_numThreads > 0) {
             std::this_thread::sleep_for(_sleepDuration);
         }
-        _threads.clear();
         _recycledTasks.clear();
-        [[maybe_unused]] const auto queueSize1 = _blockingTaskQueue.clear();
-        [[maybe_unused]] const auto queueSize2 = _taskQueue.clear();
-        assert(queueSize1 == 0 && "blocking task queue not empty");
-        assert(queueSize2 == 0 && "task queue not empty");
+        [[maybe_unused]] const auto queueSize = _taskQueue.clear();
+        assert(queueSize == 0 && "task queue not empty");
     }
-    BasicThreadPool(const BasicThreadPool &) = delete;
-    BasicThreadPool(BasicThreadPool &&)      = delete;
+    BasicThreadPool(const BasicThreadPool &)                      = delete;
+    BasicThreadPool(BasicThreadPool &&)                           = delete;
     BasicThreadPool           &operator=(const BasicThreadPool &) = delete;
-    BasicThreadPool           &operator=(BasicThreadPool &&) = delete;
+    BasicThreadPool           &operator=(BasicThreadPool &&)      = delete;
 
     [[nodiscard]] std::string  poolName() const noexcept { return _poolName; }
     [[nodiscard]] uint32_t     minThreads() const noexcept { return _minThreads; };
     [[nodiscard]] uint32_t     maxThreads() const noexcept { return _maxThreads; };
+
     [[nodiscard]] std::size_t  numThreads() const noexcept { return std::atomic_load_explicit(&_numThreads, std::memory_order_acquire); }
     [[nodiscard]] std::size_t  numTasksRunning() const noexcept { return std::atomic_load_explicit(&_numTasksRunning, std::memory_order_acquire); }
     [[nodiscard]] std::size_t  numTasksQueued() const { return std::atomic_load_explicit(&_numTaskedQueued, std::memory_order_acquire); }
     [[nodiscard]] std::size_t  numTasksRecycled() const { return _recycledTasks.size(); }
     std::chrono::microseconds &sleepDuration() noexcept { return _sleepDuration; }
-    std::chrono::seconds      &keepAliveDuration() noexcept { return _keepAliveDuration; }
+    std::chrono::seconds      &keepAliveDuration() noexcept { return _keepAliveDurationIO; }
     [[nodiscard]] bool         isInitialised() const { return _initialised.load(std::memory_order::acquire); }
     void                       waitUntilInitialised() const { _initialised.wait(false); }
     void                       requestShutdown() {
-        _shutdown = true;
-        _condition.notify_all();
+                              _shutdown = true;
+                              _condition.notify_all();
     }
     [[nodiscard]] bool isShutdown() const { return _shutdown; }
 
     //
-    [[nodiscard]] auto getAffinityMask() const { return _affinityMask; }
-    void               setAffinityMask(std::vector<bool> threadAffinityMask) {
-        _affinityMask.clear();
-        std::ranges::copy(threadAffinityMask, std::back_inserter(_affinityMask));
-        cleanupFinishedThreads();
-        updateThreadConstraints();
+
+    [[nodiscard]] std::vector<bool> getAffinityMask() const { return _affinityMask; }
+
+    void                            setAffinityMask(const std::vector<bool> &threadAffinityMask) {
+                                   _affinityMask.clear();
+                                   std::ranges::copy(threadAffinityMask, std::back_inserter(_affinityMask));
+                                   cleanupFinishedThreads();
+                                   updateThreadConstraints();
     }
 
     [[nodiscard]] auto getSchedulingPolicy() const { return _schedulingPolicy; }
-    [[nodiscard]] auto getSchedulingPriority() const { return _schedulingPriority; }
-    void               setThreadSchedulingPolicy(const thread::Policy schedulingPolicy = thread::Policy::OTHER, const int schedulingPriority = 0) {
-        _schedulingPolicy   = schedulingPolicy;
-        _schedulingPriority = schedulingPriority;
-        cleanupFinishedThreads();
-        updateThreadConstraints();
-    }
 
-    void enqueue(std::function<void()> &&func) {
-        std::atomic_fetch_add(&_numTaskedQueued, 1U);
-        _taskQueue.push(createTask(std::move(func)));
-        _condition.notify_one();
+    [[nodiscard]] auto getSchedulingPriority() const { return _schedulingPriority; }
+
+    void               setThreadSchedulingPolicy(const thread::Policy schedulingPolicy = thread::Policy::OTHER, const int schedulingPriority = 0) {
+                      _schedulingPolicy   = schedulingPolicy;
+                      _schedulingPriority = schedulingPriority;
+                      cleanupFinishedThreads();
+                      updateThreadConstraints();
     }
 
     void execute(std::function<void()> &&func) {
         static thread_local SpinWait spinWait;
         std::atomic_fetch_add(&_numTaskedQueued, 1U);
-        _blockingTaskQueue.push(createTask(std::move(func)));
+        _taskQueue.push(createTask(std::move(func)));
         _condition.notify_one();
-        spinWait.spinOnce();
-        spinWait.spinOnce();
-        while (_blockingTaskQueue.size() > 0) {
-            if (const auto nThreads = numThreads(); nThreads <= numTasksRunning() && nThreads <= _maxThreads) {
-                createWorkerThread();
+        if constexpr (taskType == TaskType::IO_BOUND) {
+            _condition.notify_one();
+            spinWait.spinOnce();
+            spinWait.spinOnce();
+            while (_taskQueue.size() > 0) {
+                if (const auto nThreads = numThreads(); nThreads <= numTasksRunning() && nThreads <= _maxThreads) {
+                    createWorkerThread();
+                }
             }
+            spinWait.reset();
         }
-        spinWait.reset();
     }
 
 private:
@@ -239,15 +257,38 @@ private:
     void updateThreadConstraints() {
         std::size_t      threadID = 0;
         std::scoped_lock lock(_threadListMutex);
-        std::ranges::for_each(_threads, [&](auto &thread) { updateThreadConstraints(++threadID, thread); });
+        std::erase_if(_threads, [](auto &thread) { return !thread.joinable(); });
+        std::ranges::for_each(_threads, [&](auto &thread) { updateThreadConstraints(threadID++, thread); });
     }
 
     void updateThreadConstraints(const std::size_t threadID, std::jthread &thread) const {
         thread::setThreadName(fmt::format("{}#{}", _poolName, threadID), thread);
-        if (!_affinityMask.empty()) {
-            thread::setThreadAffinity(_affinityMask, thread);
-        }
         thread::setThreadSchedulingParameter(_schedulingPolicy, _schedulingPriority, thread);
+        if (!_affinityMask.empty()) {
+            if (taskType == TaskType::IO_BOUND) {
+                thread::setThreadAffinity(_affinityMask);
+                return;
+            }
+            const std::vector<bool> affinityMask = distributeThreadAffinityAcrossCores(_affinityMask, threadID);
+            std::cout << fmt::format("{}#{} affinity mask: {}", _poolName, threadID, fmt::join(affinityMask, ",")) << std::endl;
+            thread::setThreadAffinity(affinityMask);
+        }
+    }
+
+    std::vector<bool> distributeThreadAffinityAcrossCores(const std::vector<bool> &globalAffinityMask, const std::size_t threadID) const {
+        if (globalAffinityMask.empty()) {
+            return {};
+        }
+        std::vector<bool> affinityMask;
+        int coreCount = 0;
+        for (bool value: globalAffinityMask) {
+            if (value) {
+                affinityMask.push_back(coreCount++ % _minThreads == threadID);
+            } else {
+                affinityMask.push_back(false);
+            }
+        }
+        return affinityMask;
     }
 
     void createWorkerThread() {
@@ -270,15 +311,12 @@ private:
     }
 
     bool popTask(Task *&task) {
-        task = _blockingTaskQueue.pop();
+        task = _taskQueue.pop();
         if (task == nullptr) {
-            task = _taskQueue.pop();
+            return false;
         }
-        if (task != nullptr) {
-            std::atomic_fetch_sub(&_numTaskedQueued, 1U);
-            return true;
-        }
-        return false;
+        std::atomic_fetch_sub(&_numTaskedQueued, 1U);
+        return true;
     }
 
     void worker() {
@@ -308,20 +346,18 @@ private:
                 noop_counter = noop_counter / 2;
                 cleanupFinishedThreads();
 
-                _condition.wait_for(lock, _keepAliveDuration, [this] { return numTasksQueued() > 0 || isShutdown(); });
+                _condition.wait_for(lock, _keepAliveDurationIO, [this] { return numTasksQueued() > 0 || isShutdown(); });
             }
             timeDiffSinceLastUsed = std::chrono::steady_clock::now() - lastUsed;
-        } while (!isShutdown() && (numThreads() <= _minThreads || timeDiffSinceLastUsed < _keepAliveDuration));
+        } while (!isShutdown() && (numThreads() <= _minThreads || timeDiffSinceLastUsed < _keepAliveDurationIO));
         auto nThread = std::atomic_fetch_sub(&_numThreads, 1);
         _numThreads.notify_all();
 
         if (nThread == 1) {
             // cleanup
             _recycledTasks.clear();
-            [[maybe_unused]] auto clearedBlockingTasks = _blockingTaskQueue.clear();
-            assert(clearedBlockingTasks == 0 && "blocking task queue not empty");
-            [[maybe_unused]] auto clearedTasks = _taskQueue.clear();
-            assert(clearedTasks == 0 && "task queue not empty");
+            [[maybe_unused]] const auto queueSize = _taskQueue.clear();
+            assert(queueSize == 0 && "task queue not empty");
         }
     }
 
@@ -333,9 +369,12 @@ private:
         }
     }
 };
-inline std::atomic<uint64_t> BasicThreadPool::_globalPoolId = 0U;
-inline std::atomic<uint64_t> BasicThreadPool::_taskID       = 0U;
-static_assert(ThreadPool<opencmw::BasicThreadPool>);
+template<TaskType T>
+inline std::atomic<uint64_t> BasicThreadPool<T>::_globalPoolId = 0U;
+template<TaskType T>
+inline std::atomic<uint64_t> BasicThreadPool<T>::_taskID = 0U;
+static_assert(ThreadPool<opencmw::BasicThreadPool<IO_BOUND>>);
+static_assert(ThreadPool<opencmw::BasicThreadPool<CPU_BOUND>>);
 
 } /* namespace opencmw */
 

@@ -4,11 +4,12 @@
 
 TEST_CASE("Basic ThreadPool tests", "[ThreadPool]") {
     SECTION("Basic construction/destruction tests") {
-        REQUIRE_NOTHROW(opencmw::BasicThreadPool());
+        REQUIRE_NOTHROW(opencmw::BasicThreadPool<opencmw::IO_BOUND>());
+        REQUIRE_NOTHROW(opencmw::BasicThreadPool<opencmw::CPU_BOUND>());
 
         std::atomic<int>         enqueueCount{ 0 };
         std::atomic<int>         executeCount{ 0 };
-        opencmw::BasicThreadPool pool("TestPool", 1, 2);
+        opencmw::BasicThreadPool<opencmw::IO_BOUND> pool("TestPool", 1, 2);
         REQUIRE_NOTHROW(pool.sleepDuration() = std::chrono::milliseconds(1));
         REQUIRE_NOTHROW(pool.keepAliveDuration() = std::chrono::seconds(10));
         pool.waitUntilInitialised();
@@ -21,7 +22,7 @@ TEST_CASE("Basic ThreadPool tests", "[ThreadPool]") {
         REQUIRE(pool.numTasksRunning() == 0);
         REQUIRE(pool.numTasksQueued() == 0);
         REQUIRE(pool.numTasksRecycled() == 0);
-        pool.enqueue([&enqueueCount] { ++enqueueCount; enqueueCount.notify_all(); });
+        pool.execute([&enqueueCount] { ++enqueueCount; enqueueCount.notify_all(); });
         enqueueCount.wait(0);
         REQUIRE(pool.numThreads() == 1);
         pool.execute([&executeCount] { ++executeCount; executeCount.notify_all(); });
@@ -36,7 +37,7 @@ TEST_CASE("Basic ThreadPool tests", "[ThreadPool]") {
 
     SECTION("contention tests") {
         std::atomic<int>         counter{ 0 };
-        opencmw::BasicThreadPool pool("contention", 1, 4);
+        opencmw::BasicThreadPool<opencmw::IO_BOUND> pool("contention", 1, 4);
         pool.waitUntilInitialised();
         REQUIRE(pool.isInitialised());
         REQUIRE(pool.numThreads() == 1);
