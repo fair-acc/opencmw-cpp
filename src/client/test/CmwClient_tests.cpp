@@ -20,12 +20,12 @@ static std::span<const std::byte> byte_array_from_string(const std::string_view 
 }
 
 TEST_CASE("Basic Client Get/Set Test", "[Client]") {
-    const Context context{};
-    MockServer    server(context);
+    const Context               context{};
+    MockServer                  server(context);
 
     std::vector<zmq_pollitem_t> pollitems{};
-    opencmw::client::Client client(context, pollitems);
-    auto          uri = URI<uri_check::STRICT>(server.address());
+    opencmw::client::Client     client(context, pollitems);
+    auto                        uri = URI<uri_check::STRICT>(server.address());
 
     {
         client.get(URI<uri_check::STRICT>::UriFactory(uri).path("services/test").build());
@@ -72,12 +72,12 @@ TEST_CASE("Basic Client Get/Set Test", "[Client]") {
 }
 
 TEST_CASE("Basic Client Subscription Test", "[Client]") {
-    const Context      context{};
-    MockServer         server(context);
+    const Context               context{};
+    MockServer                  server(context);
 
     std::vector<zmq_pollitem_t> pollitems{};
-    SubscriptionClient subscriptionClient(context, pollitems, 1000ms, "subscriptionClientID");
-    auto               uri = URI<uri_check::STRICT>(server.addressSub());
+    SubscriptionClient          subscriptionClient(context, pollitems, 1000ms, "subscriptionClientID");
+    auto                        uri = URI<uri_check::STRICT>(server.addressSub());
     subscriptionClient.connect(uri);
     subscriptionClient.housekeeping(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()));
 
