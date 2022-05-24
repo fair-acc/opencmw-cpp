@@ -35,7 +35,7 @@ struct Subscription {
     std::chrono::milliseconds         timestamp_received = 0s;
 };
 
-struct Command { // TODO: Q: merge with Request/subscription type? just have a single object which gets added to the ring buffer and is then moved to the respective map? -> less objects, less code
+struct Command {
     enum class Type {
         Get,
         Set,
@@ -57,14 +57,14 @@ using CmdPollerType                      = disruptor::EventPoller<Command, CMD_R
 class ClientBase {
 public:
     virtual ~ClientBase()                              = default;
-    virtual bool     read(RawMessage &message)         = 0;
+    virtual bool     receive(RawMessage &message)         = 0;
     virtual timeUnit housekeeping(const timeUnit &now) = 0;
 };
 
 class ClientCtxBase {
 public:
     virtual ~ClientCtxBase()                            = default;
-    virtual std::vector<std::string> protocols()        = 0; // TODO: make this a static function and make ClientCtx a TypeParameter, which is only instantiated once one of the protocols is used
+    virtual std::vector<std::string> protocols()        = 0;
     virtual void                     stop()             = 0;
     virtual void                     request(Command &) = 0;
 };
@@ -102,7 +102,7 @@ public:
     void unsubscribe(const URI<STRICT> &endpoint) { queueCommand(endpoint, Command::Type::Unsubscribe); }
 
     /*
-     * Shutdown all contexts // TODO: is this necessary or should this be handled by RAII with the poller going out of scope?
+     * Shutdown all contexts
      */
     void stop() {
         for (auto &ctx : _contexts) {
@@ -119,9 +119,7 @@ private:
                 if (cmd.type == Command::Type::Undefined) {
                     return false;
                 }
-                auto &c = getClientCtx(*cmd.uri); // add missing clients. for now i didn't find a way to use the returned any to call the functions but have to use the visitor pattern
-                // TODO: check if client is already connected to the server in question and if not connect to it? or perform this in the command step?
-                // if (c.endpoint()._authority() != receivedEvent.uri->_authority() || c.endpoint().scheme() != receivedEvent.uri->scheme()) return nextHousekeeping < now;
+                auto &c = getClientCtx(*cmd.uri);
                 c.request(cmd);
                 return false;
             });

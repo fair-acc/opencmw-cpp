@@ -36,7 +36,7 @@ TEST_CASE("Basic Client Get/Set Test", "[Client]") {
             reply.setBody("42", MessageFrame::dynamic_bytes_tag{});
         });
         opencmw::client::RawMessage result;
-        REQUIRE(client.read(result));
+        REQUIRE(client.receive(result));
         REQUIRE(result.data == std::vector<std::byte>{ std::byte{ '4' }, std::byte{ '2' } });
         REQUIRE(result.context.empty());
     }
@@ -51,7 +51,7 @@ TEST_CASE("Basic Client Get/Set Test", "[Client]") {
         });
 
         opencmw::client::RawMessage result;
-        REQUIRE(client.read(result));
+        REQUIRE(client.receive(result));
         REQUIRE(result.data.empty());
         REQUIRE(result.context.empty());
     }
@@ -77,13 +77,13 @@ TEST_CASE("Basic Client Subscription Test", "[Client]") {
 
     {
         opencmw::client::RawMessage result;
-        REQUIRE(subscriptionClient.read(result));
+        REQUIRE(subscriptionClient.receive(result));
         REQUIRE(result.data == std::vector<std::byte>{ std::byte{ '1' }, std::byte{ '0' }, std::byte{ '1' } });
         REQUIRE(result.context.empty());
     }
     {
         opencmw::client::RawMessage result;
-        REQUIRE(subscriptionClient.read(result));
+        REQUIRE(subscriptionClient.receive(result));
         REQUIRE(result.data == std::vector<std::byte>{ std::byte{ '1' }, std::byte{ '0' }, std::byte{ '2' } });
         REQUIRE(result.context.empty());
     }

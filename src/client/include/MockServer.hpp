@@ -17,6 +17,8 @@ namespace opencmw::majordomo {
 
 /*
  * Very simple mock opencmw server to use for testing. Offers a single int property named "a.service" which can be get/set/subscribed.
+ * Does not do any processing on its own, all actions have to be queried explicitly by calling the respective handler.
+ * This allows single threaded and reproducible testing of client logic.
  */
 class MockServer {
     static int                    INSTANCE_COUNT;

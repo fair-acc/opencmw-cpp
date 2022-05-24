@@ -65,7 +65,6 @@ private:
     const majordomo::Context       &_context;
     const std::string               _clientId;
     const std::string               _sourceName;
-    std::chrono::milliseconds       _heartbeatInterval;
     std::vector<detail::Connection> _connections;
     std::vector<zmq_pollitem_t>    &_pollItems;
     long                            _nextRequestId = 0;
@@ -75,32 +74,25 @@ public:
             std::vector<zmq_pollitem_t>      &pollItems,
             const std::chrono::milliseconds   timeout  = 1s,
             std::string                       clientId = "")
-        : _clientTimeout(timeout), _context(context), _clientId(std::move(clientId)), _sourceName(fmt::format("OpenCmwClient(clientId: {})", _clientId)), _heartbeatInterval(timeout), _pollItems(pollItems) {
-        // take the minimum of the (albeit worker) heartbeat, client (if defined) or locally prescribed timeout
-        std::chrono::milliseconds HEARTBEAT_INTERVAL(1000);
-        _heartbeatInterval = std::chrono::milliseconds(std::min(HEARTBEAT_INTERVAL.count(), _clientTimeout == std::chrono::milliseconds(0) ? timeout.count() : std::min(timeout.count(), _clientTimeout.count())));
-    }
+        : _clientTimeout(timeout), _context(context), _clientId(std::move(clientId)), _sourceName(fmt::format("OpenCmwClient(clientId: {})", _clientId)), _pollItems(pollItems) {}
 
     void connect(const URI<STRICT> &uri) {
-        // _connections.emplace_back(_context, std::string_view(uri.authority().value()));
         auto con = detail::Connection(_context, uri.authority().value(), ZMQ_DEALER);
         _connections.push_back(std::move(con));
     }
 
-    URI<STRICT> connect(detail::Connection &con) {
+    void connect(detail::Connection &con) {
         using detail::ConnectionState;
-        // todo: replace this by proper logic, for now use tcp if port is specified, otherwise use inproc
-        auto        ep     = con._authority.find(':') != std::string::npos ? URI<STRICT>("tcp://"s + con._authority) : URI<STRICT>("inproc://"s + con._authority);
+        // todo: switch on scheme, for now use tcp if port is specified, otherwise use inproc
+        auto ep = con._authority.find(':') != std::string::npos ? URI<STRICT>("tcp://"s + con._authority) : URI<STRICT>("inproc://"s + con._authority);
         std::string zmq_ep = majordomo::toZeroMQEndpoint(ep);
         if (opencmw::majordomo::zmq_invoke(zmq_connect, con._socket, zmq_ep).isValid()) {
             _pollItems.push_back({ .socket = con._socket.zmq_ptr, .fd = 0, .events = ZMQ_POLLIN, .revents = 0 });
         }
         con._connectionState = ConnectionState::CONNECTED;
-        return URI<STRICT>("mdp://");
     }
 
     detail::Connection &findConnection(const URI<STRICT> &uri) {
-        // TODO: use a map for more efficient lookup? how to handle multiple uris which resolve to the same host?
         auto con = std::find_if(_connections.begin(), _connections.end(), [&uri](detail::Connection &c) { return c._authority == uri.authority().value(); });
         if (con == _connections.end()) {
             auto newCon = detail::Connection(_context, uri.authority().value(), ZMQ_DEALER);
@@ -162,7 +154,7 @@ public:
         return true;
     }
 
-    bool read(RawMessage &msg) override {
+    bool receive(RawMessage &msg) override {
         for (auto &con : _connections) {
             if (con._connectionState != detail::ConnectionState::CONNECTED) {
                 continue;
@@ -194,9 +186,8 @@ public:
             case ConnectionState::DISCONNECTING:
                 break; // do nothing
             }
-            // TODO handle client HEARTBEAT etc.
         }
-        return _heartbeatInterval;
+        return _clientTimeout/2;
     }
 
 private:
@@ -213,26 +204,19 @@ class SubscriptionClient : public MDClientBase {
     const majordomo::Context       &_context;
     const std::string               _clientId;
     const std::string               _sourceName;
-    std::chrono::milliseconds       _heartbeatInterval;
     std::vector<detail::Connection> _connections;
     std::vector<zmq_pollitem_t>    &_pollItems;
 
 public:
-    explicit SubscriptionClient(const majordomo::Context &context, std::vector<zmq_pollitem_t> &pollItems,
-            const std::chrono::milliseconds timeout  = 1s,
-            std::string                     clientId = "")
-        : _clientTimeout(timeout), _context(context), _clientId(std::move(clientId)), _sourceName(fmt::format("OpenCmwClient(clientId: {})", _clientId)), _heartbeatInterval(timeout), _pollItems(pollItems) {
-        // take the minimum of the (albeit worker) heartbeat, client (if defined) or locally prescribed timeout
-        std::chrono::milliseconds HEARTBEAT_INTERVAL(1000);
-        _heartbeatInterval = std::chrono::milliseconds(std::min(HEARTBEAT_INTERVAL.count(), _clientTimeout == std::chrono::milliseconds(0) ? timeout.count() : std::min(timeout.count(), _clientTimeout.count())));
-    }
+    explicit SubscriptionClient(const majordomo::Context &context, std::vector<zmq_pollitem_t> &pollItems, const std::chrono::milliseconds timeout  = 1s, std::string clientId = "")
+        : _clientTimeout(timeout), _context(context), _clientId(std::move(clientId)), _sourceName(fmt::format("OpenCmwClient(clientId: {})", _clientId)), _pollItems(pollItems) {}
 
     void connect(const URI<STRICT> &uri) {
         auto con = detail::Connection(_context, uri.authority().value(), ZMQ_SUB);
         _connections.push_back(std::move(con));
     }
 
-    URI<STRICT> connect(detail::Connection &con) {
+    void connect(detail::Connection &con) {
         using detail::ConnectionState;
         // todo: replace this by proper logic, for now use tcp if port is specified, otherwise use inproc... mds+tcp:// -> tcp://, mds+inproc:// -> inproc:// -> auto detect
         auto        ep     = con._authority.find(':') != std::string::npos ? URI<STRICT>("tcp://"s + con._authority) : URI<STRICT>("inproc://"s + con._authority);
@@ -241,7 +225,6 @@ public:
             _pollItems.push_back({ .socket = con._socket.zmq_ptr, .fd = 0, .events = ZMQ_POLLIN, .revents = 0 });
             con._connectionState = ConnectionState::CONNECTED;
         }
-        return URI<STRICT>("mds://");
     }
 
     detail::Connection &findConnection(const URI<STRICT> &uri) {
@@ -303,7 +286,7 @@ public:
         return true;
     }
 
-    bool read(RawMessage &msg) override {
+    bool receive(RawMessage &msg) override {
         for (detail::Connection &con : _connections) {
             if (con._connectionState != detail::ConnectionState::CONNECTED) {
                 continue;
@@ -340,9 +323,8 @@ public:
             case ConnectionState::DISCONNECTING:
                 break; // do nothing
             }
-            // TODO handle client HEARTBEAT etc.
         }
-        return _heartbeatInterval;
+        return _clientTimeout / 2;
     }
 };
 
@@ -411,8 +393,8 @@ public:
             } else if (cmd.type == Command::Type::Subscribe) {
                 _subscriptions.insert({ cmd.uri->str, Subscription{ .uri = *cmd.uri, .callback = std::move(cmd.callback), .timestamp_received = cmd.timestamp_received } });
             } else if (cmd.type == Command::Type::Unsubscribe) {
-                // just remove subscription here or track the state of the subscription
-                //_subscriptions.erase(std::remove_if(_subscriptions.begin(), _subscriptions.end(), [&cmd](Subscription &sub) {return sub.uri == *cmd.uri;}), _subscriptions.end());
+                _requests.erase(cmd.uri->str);
+
             }
         }
         sendCmd(*cmd.uri, cmd.type, cmd.data);
@@ -470,15 +452,13 @@ private:
             for (auto &clientPair : _clients) {
                 auto      &client = clientPair.second;
                 RawMessage receivedEvent;
-                while (bool received = client->read(receivedEvent)) {
-                    if (received) {
-                        if (_subscriptions.contains(receivedEvent.endpoint->str)) {
-                            _subscriptions.at(receivedEvent.endpoint->str).callback(receivedEvent); // callback
-                        }
-                        if (_requests.contains(receivedEvent.endpoint->str)) {
-                            _requests.at(receivedEvent.endpoint->str).callback(receivedEvent); // callback
-                            _requests.erase(receivedEvent.endpoint->str);
-                        }
+                while (client->receive(receivedEvent)) {
+                    if (_subscriptions.contains(receivedEvent.endpoint->str)) {
+                        _subscriptions.at(receivedEvent.endpoint->str).callback(receivedEvent); // callback
+                    }
+                    if (_requests.contains(receivedEvent.endpoint->str)) {
+                        _requests.at(receivedEvent.endpoint->str).callback(receivedEvent); // callback
+                        _requests.erase(receivedEvent.endpoint->str);
                     }
                     // perform housekeeping duties if necessary
                     if (nextHousekeeping < std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())) {
