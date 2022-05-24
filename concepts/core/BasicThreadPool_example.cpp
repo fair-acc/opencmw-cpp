@@ -29,7 +29,7 @@ int main() {
     poolIO.setAffinityMask({ true, true, true, false });
     poolIO.execute<"task name", 20U, 2>([]() { fmt::print("Hello World from custom thread '{}'!\n", getThreadName()); }); // execute a task with a name, a priority and single-core affinity
     try {
-        poolIO.execute<"customName", 20U, 3>([]() { /* this potentially long-running task is trackable via it's 'customName' thread name */});
+        poolIO.execute<"customName", 20U, 3>([]() { /* this potentially long-running task is trackable via it's 'customName' thread name */ });
     } catch (const std::invalid_argument &e) {
         fmt::print("caught exception: {}\n", e.what());
     }
@@ -69,8 +69,8 @@ int main() {
 
     for (int testRun = 0; testRun < nTestRun; testRun++) {
         // execute nTasks tasks, each on a new jthreads (N.B. worst case timing <-> base-line benchmark)
-        const auto                start = steady_clock::now();
-        std::atomic<int>          counter(0);
+        const auto              start = steady_clock::now();
+        std::atomic<int>        counter(0);
         std::list<std::jthread> threads;
         for (int i = 0; i < nTasks; i++) {
             threads.emplace_back([&counter] { std::this_thread::sleep_for(milliseconds(10)); ++counter; counter.notify_one(); });

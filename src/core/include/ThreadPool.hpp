@@ -51,14 +51,13 @@ class unique_function : public std::function<T> {
     };
 
     template<std::move_constructible Fn>
-        requires(!std::is_copy_constructible_v<Fn>)
-    struct wrapper<Fn> {
+    requires(!std::is_copy_constructible_v<Fn>) struct wrapper<Fn> {
         Fn fn;
 
         explicit wrapper(Fn &&func) noexcept
             : fn(std::move(func)) {}
 
-        wrapper(wrapper &&) noexcept            = default;
+        wrapper(wrapper &&) noexcept = default;
         wrapper &operator=(wrapper &&) noexcept = default;
 
         // these two functions are instantiated by std::function and are never called
@@ -83,10 +82,10 @@ public:
     unique_function(Fn &&f) noexcept
         : base(wrapper<Fn>{ FWD(f) }) {}
 
-    unique_function(unique_function &&) noexcept            = default;
+    unique_function(unique_function &&) noexcept = default;
     unique_function &operator=(unique_function &&) noexcept = default;
 
-    unique_function &operator=(std::nullptr_t) {
+    unique_function &operator                               =(std::nullptr_t) {
         base::operator=(nullptr);
         return *this;
     }
@@ -110,11 +109,11 @@ struct Task {
     auto                    operator<=>(const Task &other) const noexcept { return priority <=> other.priority; }
 
     [[nodiscard]] Task     *init() noexcept {
-            priority = 0;
-            cpuID    = -1;
-            name.resize(0);
-            next = nullptr;
-            return this;
+        priority = 0;
+        cpuID    = -1;
+        name.resize(0);
+        next = nullptr;
+        return this;
     }
 };
 
@@ -125,8 +124,8 @@ class TaskQueue {
     uint32_t              _size = 0;
 
 public:
-    TaskQueue()                                  = default;
-    TaskQueue(const TaskQueue &queue)            = delete;
+    TaskQueue()                       = default;
+    TaskQueue(const TaskQueue &queue) = delete;
     TaskQueue &operator=(const TaskQueue &queue) = delete;
     ~TaskQueue() { clear(); }
 
@@ -156,7 +155,7 @@ public:
         if constexpr (lock) {
             _lock.lock();
         }
-        job->next = nullptr;
+        job->next           = nullptr;
         const auto priority = job->priority;
         if (_head == nullptr) { // add task to the start/end of the empty queue
             _head = job;
@@ -224,8 +223,8 @@ enum TaskType {
 
 template<typename T>
 concept ThreadPool = requires(T t, std::function<void()> &&func) {
-                         { t.execute(std::move(func)) } -> std::same_as<void>;
-                     };
+    { t.execute(std::move(func)) } -> std::same_as<void>;
+};
 
 /**
  * <h2>Basic thread pool that uses a fixed-number or optionally grow/shrink between a [min, max] number of threads.</h2>
@@ -299,10 +298,10 @@ public:
         [[maybe_unused]] const auto queueSize = _taskQueue.clear();
         assert(queueSize == 0 && "task queue not empty");
     }
-    BasicThreadPool(const BasicThreadPool &)                      = delete;
-    BasicThreadPool(BasicThreadPool &&)                           = delete;
+    BasicThreadPool(const BasicThreadPool &) = delete;
+    BasicThreadPool(BasicThreadPool &&)      = delete;
     BasicThreadPool           &operator=(const BasicThreadPool &) = delete;
-    BasicThreadPool           &operator=(BasicThreadPool &&)      = delete;
+    BasicThreadPool           &operator=(BasicThreadPool &&) = delete;
 
     [[nodiscard]] std::string  poolName() const noexcept { return _poolName; }
     [[nodiscard]] uint32_t     minThreads() const noexcept { return _minThreads; };
@@ -317,8 +316,8 @@ public:
     [[nodiscard]] bool         isInitialised() const { return _initialised.load(std::memory_order::acquire); }
     void                       waitUntilInitialised() const { _initialised.wait(false); }
     void                       requestShutdown() {
-                              _shutdown = true;
-                              _condition.notify_all();
+        _shutdown = true;
+        _condition.notify_all();
     }
     [[nodiscard]] bool isShutdown() const { return _shutdown; }
 
@@ -327,10 +326,10 @@ public:
     [[nodiscard]] std::vector<bool> getAffinityMask() const { return _affinityMask; }
 
     void                            setAffinityMask(const std::vector<bool> &threadAffinityMask) {
-                                   _affinityMask.clear();
-                                   std::ranges::copy(threadAffinityMask, std::back_inserter(_affinityMask));
-                                   cleanupFinishedThreads();
-                                   updateThreadConstraints();
+        _affinityMask.clear();
+        std::ranges::copy(threadAffinityMask, std::back_inserter(_affinityMask));
+        cleanupFinishedThreads();
+        updateThreadConstraints();
     }
 
     [[nodiscard]] auto getSchedulingPolicy() const { return _schedulingPolicy; }
@@ -338,15 +337,14 @@ public:
     [[nodiscard]] auto getSchedulingPriority() const { return _schedulingPriority; }
 
     void               setThreadSchedulingPolicy(const thread::Policy schedulingPolicy = thread::Policy::OTHER, const int schedulingPriority = 0) {
-                      _schedulingPolicy   = schedulingPolicy;
-                      _schedulingPriority = schedulingPriority;
-                      cleanupFinishedThreads();
-                      updateThreadConstraints();
+        _schedulingPolicy   = schedulingPolicy;
+        _schedulingPriority = schedulingPriority;
+        cleanupFinishedThreads();
+        updateThreadConstraints();
     }
 
     template<const basic_fixed_string taskName = "", uint32_t priority = 0, int32_t cpuID = -1, std::invocable Callable, typename... Args, typename R = std::result_of_t<Callable(Args...)>>
-        requires(std::is_same_v<R, void>)
-    void execute(Callable &&func, Args &&...args) {
+    requires(std::is_same_v<R, void>) void execute(Callable &&func, Args &&...args) {
         static thread_local SpinWait spinWait;
         if constexpr (cpuID >= 0) {
             if (cpuID >= _affinityMask.size() || (cpuID >= 0 && !_affinityMask[cpuID])) {
@@ -373,9 +371,8 @@ public:
     }
 
     template<const basic_fixed_string taskName = "", uint32_t priority = 0, int32_t cpuID = -1, std::invocable Callable, typename... Args, typename R = std::result_of_t<Callable(Args...)>>
-        requires(!std::is_same_v<R, void>)
-                [
-                        [nodiscard]] std::future<R> execute(Callable &&func, Args &&...funcArgs) {
+    requires(!std::is_same_v<R, void>)
+            [[nodiscard]] std::future<R> execute(Callable &&func, Args &&...funcArgs) {
         if constexpr (cpuID >= 0) {
             if (cpuID >= _affinityMask.size() || (cpuID >= 0 && !_affinityMask[cpuID])) {
                 throw std::invalid_argument(fmt::format("cpuID {} is out of range [0,{}] or incompatible with set affinity mask [{}]",
