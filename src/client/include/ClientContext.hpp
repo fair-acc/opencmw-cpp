@@ -57,7 +57,7 @@ using CmdPollerType                      = disruptor::EventPoller<Command, CMD_R
 class ClientBase {
 public:
     virtual ~ClientBase()                              = default;
-    virtual bool     receive(RawMessage &message)         = 0;
+    virtual bool     receive(RawMessage &message)      = 0;
     virtual timeUnit housekeeping(const timeUnit &now) = 0;
 };
 

@@ -84,7 +84,7 @@ public:
     void connect(detail::Connection &con) {
         using detail::ConnectionState;
         // todo: switch on scheme, for now use tcp if port is specified, otherwise use inproc
-        auto ep = con._authority.find(':') != std::string::npos ? URI<STRICT>("tcp://"s + con._authority) : URI<STRICT>("inproc://"s + con._authority);
+        auto        ep     = con._authority.find(':') != std::string::npos ? URI<STRICT>("tcp://"s + con._authority) : URI<STRICT>("inproc://"s + con._authority);
         std::string zmq_ep = majordomo::toZeroMQEndpoint(ep);
         if (opencmw::majordomo::zmq_invoke(zmq_connect, con._socket, zmq_ep).isValid()) {
             _pollItems.push_back({ .socket = con._socket.zmq_ptr, .fd = 0, .events = ZMQ_POLLIN, .revents = 0 });
@@ -187,7 +187,7 @@ public:
                 break; // do nothing
             }
         }
-        return _clientTimeout/2;
+        return _clientTimeout / 2;
     }
 
 private:
@@ -208,7 +208,7 @@ class SubscriptionClient : public MDClientBase {
     std::vector<zmq_pollitem_t>    &_pollItems;
 
 public:
-    explicit SubscriptionClient(const majordomo::Context &context, std::vector<zmq_pollitem_t> &pollItems, const std::chrono::milliseconds timeout  = 1s, std::string clientId = "")
+    explicit SubscriptionClient(const majordomo::Context &context, std::vector<zmq_pollitem_t> &pollItems, const std::chrono::milliseconds timeout = 1s, std::string clientId = "")
         : _clientTimeout(timeout), _context(context), _clientId(std::move(clientId)), _sourceName(fmt::format("OpenCmwClient(clientId: {})", _clientId)), _pollItems(pollItems) {}
 
     void connect(const URI<STRICT> &uri) {
@@ -394,7 +394,6 @@ public:
                 _subscriptions.insert({ cmd.uri->str, Subscription{ .uri = *cmd.uri, .callback = std::move(cmd.callback), .timestamp_received = cmd.timestamp_received } });
             } else if (cmd.type == Command::Type::Unsubscribe) {
                 _requests.erase(cmd.uri->str);
-
             }
         }
         sendCmd(*cmd.uri, cmd.type, cmd.data);
