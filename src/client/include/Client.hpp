@@ -39,12 +39,15 @@ struct Connection {
 
 } // namespace detail
 
-class MDClientBase : public ClientBase {
+class MDClientBase {
 public:
-    virtual void get(const URI<STRICT> &, majordomo::MessageFrame &)                                     = 0;
-    virtual void set(const URI<STRICT> &, majordomo::MessageFrame &, const std::span<const std::byte> &) = 0;
-    virtual void subscribe(const URI<STRICT> &, majordomo::MessageFrame &)                               = 0;
-    virtual void unsubscribe(const URI<STRICT> &, majordomo::MessageFrame &)                             = 0;
+    virtual ~MDClientBase()                                                                                  = default;
+    virtual bool     receive(RawMessage &message)                                                            = 0;
+    virtual timeUnit housekeeping(const timeUnit &now)                                                       = 0;
+    virtual void     get(const URI<STRICT> &, majordomo::MessageFrame &)                                     = 0;
+    virtual void     set(const URI<STRICT> &, majordomo::MessageFrame &, const std::span<const std::byte> &) = 0;
+    virtual void     subscribe(const URI<STRICT> &, majordomo::MessageFrame &)                               = 0;
+    virtual void     unsubscribe(const URI<STRICT> &, majordomo::MessageFrame &)                             = 0;
 };
 
 class Client : public MDClientBase {
@@ -330,7 +333,7 @@ public:
  * Implementation of the Majordomo client protocol. Spawns a single thread which controls all client connections and sockets.
  * A dispatcher thread reads the requests from the command ring buffer and dispatches them to the zeromq poll loop using an inproc socket pair.
  */
-class MDClientCtx : public ClientCtxBase {
+class MDClientCtx : public ClientBase {
     std::unordered_map<URI<STRICT>, std::unique_ptr<MDClientBase>> _clients;
     const majordomo::Context                                      &_zctx;
     majordomo::Socket                                              _control_socket_send;

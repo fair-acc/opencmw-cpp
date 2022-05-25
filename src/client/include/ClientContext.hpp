@@ -57,14 +57,7 @@ using CmdPollerType                      = disruptor::EventPoller<Command, CMD_R
 
 class ClientBase {
 public:
-    virtual ~ClientBase()                              = default;
-    virtual bool     receive(RawMessage &message)      = 0;
-    virtual timeUnit housekeeping(const timeUnit &now) = 0;
-};
-
-class ClientCtxBase {
-public:
-    virtual ~ClientCtxBase()                            = default;
+    virtual ~ClientBase()                               = default;
     virtual std::vector<std::string> protocols()        = 0;
     virtual void                     stop()             = 0;
     virtual void                     request(Command &) = 0;
@@ -77,14 +70,14 @@ public:
  * because it might be called from an event loop.
  */
 class ClientContext {
-    std::vector<std::unique_ptr<ClientCtxBase>>                            _contexts;
-    std::shared_ptr<CmdBufferType>                                         _commandRingBuffer;
-    std::shared_ptr<CmdPollerType>                                         _cmdPoller;
-    std::unordered_map<std::string, std::reference_wrapper<ClientCtxBase>> _schemeContexts;
-    std::jthread                                                           _poller; // thread polling all the sockets
+    std::vector<std::unique_ptr<ClientBase>>                            _contexts;
+    std::shared_ptr<CmdBufferType>                                      _commandRingBuffer;
+    std::shared_ptr<CmdPollerType>                                      _cmdPoller;
+    std::unordered_map<std::string, std::reference_wrapper<ClientBase>> _schemeContexts;
+    std::jthread                                                        _poller; // thread polling all the sockets
 
 public:
-    explicit ClientContext(std::vector<std::unique_ptr<ClientCtxBase>> &&implementations)
+    explicit ClientContext(std::vector<std::unique_ptr<ClientBase>> &&implementations)
         : _contexts(std::move(implementations)), _commandRingBuffer{ std::make_shared<CmdBufferType>() }, _cmdPoller{ _commandRingBuffer->newPoller() } {
         _commandRingBuffer->addGatingSequences({ _cmdPoller->sequence() });
         _poller = std::jthread([this](const std::stop_token &stopToken) { this->poll(stopToken); });
@@ -127,7 +120,7 @@ private:
         }
     }
 
-    ClientCtxBase &getClientCtx(const URI<STRICT> &uri) {
+    ClientBase &getClientCtx(const URI<STRICT> &uri) {
         if (_schemeContexts.contains(uri.scheme().value())) {
             return _schemeContexts.at(uri.scheme().value());
         } else {

@@ -20,9 +20,9 @@ using opencmw::uri_check::STRICT;
 using namespace std::chrono_literals;
 
 TEST_CASE("Basic get/set test", "[ClientContext]") {
-    const Context                                                zctx{};
-    MockServer                                                   server(zctx);
-    std::vector<std::unique_ptr<opencmw::client::ClientCtxBase>> clients;
+    const Context                                             zctx{};
+    MockServer                                                server(zctx);
+    std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
     clients.emplace_back(std::make_unique<MDClientCtx>(zctx, 20ms, "testMajordomoClient"));
     ClientContext clientContext{ std::move(clients) };
     // send some requests
@@ -62,9 +62,9 @@ TEST_CASE("Basic get/set test", "[ClientContext]") {
 }
 
 TEST_CASE("Basic subscription test", "[ClientContext]") {
-    const Context                                                zctx{};
-    MockServer                                                   server(zctx);
-    std::vector<std::unique_ptr<opencmw::client::ClientCtxBase>> clients;
+    const Context                                             zctx{};
+    MockServer                                                server(zctx);
+    std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
     clients.emplace_back(std::make_unique<MDClientCtx>(zctx, 20ms, ""));
     ClientContext clientContext{ std::move(clients) };
     // subscription
