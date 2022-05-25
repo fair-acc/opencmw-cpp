@@ -74,7 +74,6 @@ struct Task {
     int32_t             cpuID    = -1;
     Task               *next     = nullptr;
     Task               *self     = this;
-    bool                operator==(const Task &other) const noexcept { return self == other.self; }
     auto                operator<=>(const Task &other) const noexcept { return priority <=> other.priority; }
 
     [[nodiscard]] Task *init() noexcept {
