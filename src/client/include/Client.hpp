@@ -32,19 +32,7 @@ struct Connection {
 
     Connection(const majordomo::Context &context, const std::string_view authority, const int zmq_dealer_type)
         : _authority{ authority }, _socket{ context, zmq_dealer_type } {
-        auto commonSocketInit = [](const majordomo::Socket &sock) {
-            const majordomo::Settings settings_{};
-            const int                 heartbeatInterval = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(settings_.heartbeatInterval).count());
-            const int                 ttl               = heartbeatInterval * settings_.heartbeatLiveness;
-            const int                 hb_timeout        = heartbeatInterval * settings_.heartbeatLiveness;
-            return zmq_invoke(zmq_setsockopt, sock, ZMQ_SNDHWM, &settings_.highWaterMark, sizeof(settings_.highWaterMark))
-                && zmq_invoke(zmq_setsockopt, sock, ZMQ_RCVHWM, &settings_.highWaterMark, sizeof(settings_.highWaterMark))
-                && zmq_invoke(zmq_setsockopt, sock, ZMQ_HEARTBEAT_TTL, &ttl, sizeof(ttl))
-                && zmq_invoke(zmq_setsockopt, sock, ZMQ_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_timeout))
-                && zmq_invoke(zmq_setsockopt, sock, ZMQ_HEARTBEAT_IVL, &heartbeatInterval, sizeof(heartbeatInterval))
-                && zmq_invoke(zmq_setsockopt, sock, ZMQ_LINGER, &heartbeatInterval, sizeof(heartbeatInterval));
-        };
-        commonSocketInit(_socket).assertSuccess();
+        majordomo::initializeZmqSocket(_socket).assertSuccess();
         _nextReconnectAttemptTimeStamp = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
     }
 };

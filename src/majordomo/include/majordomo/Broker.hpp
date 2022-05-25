@@ -319,34 +319,22 @@ public:
             return message;
         });
 
-        auto commonSocketInit = [this](const Socket &socket) {
-            const int heartbeatInterval = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(settings.heartbeatInterval).count());
-            const int ttl               = heartbeatInterval * settings.heartbeatLiveness;
-            const int timeout           = heartbeatInterval * settings.heartbeatLiveness;
-            return zmq_invoke(zmq_setsockopt, socket, ZMQ_SNDHWM, &settings.highWaterMark, sizeof(settings.highWaterMark))
-                && zmq_invoke(zmq_setsockopt, socket, ZMQ_RCVHWM, &settings.highWaterMark, sizeof(settings.highWaterMark))
-                && zmq_invoke(zmq_setsockopt, socket, ZMQ_HEARTBEAT_TTL, &ttl, sizeof(ttl))
-                && zmq_invoke(zmq_setsockopt, socket, ZMQ_HEARTBEAT_TIMEOUT, &timeout, sizeof(timeout))
-                && zmq_invoke(zmq_setsockopt, socket, ZMQ_HEARTBEAT_IVL, &heartbeatInterval, sizeof(heartbeatInterval))
-                && zmq_invoke(zmq_setsockopt, socket, ZMQ_LINGER, &heartbeatInterval, sizeof(heartbeatInterval));
-        };
-
         // From setDefaultSocketParameters (io/opencmw/OpenCmwConstants.java)
         // TODO: Does not exist in zmq.h/hpp
         // socket.setHeartbeatContext(PROT_CLIENT.getData());
 
-        commonSocketInit(_routerSocket).assertSuccess();
+        initializeZmqSocket(_routerSocket, settings).assertSuccess();
         zmq_invoke(zmq_bind, _routerSocket, INTERNAL_ADDRESS_BROKER.str.data()).assertSuccess();
 
-        commonSocketInit(_subSocket).assertSuccess();
+        initializeZmqSocket(_subSocket, settings).assertSuccess();
         zmq_invoke(zmq_bind, _subSocket, INTERNAL_ADDRESS_SUBSCRIBE.str.data()).assertSuccess();
 
-        commonSocketInit(_pubSocket).assertSuccess();
+        initializeZmqSocket(_pubSocket, settings).assertSuccess();
         int verbose = 1;
         zmq_invoke(zmq_setsockopt, _pubSocket, ZMQ_XPUB_VERBOSE, &verbose, sizeof(verbose)).assertSuccess();
         zmq_invoke(zmq_bind, _pubSocket, INTERNAL_ADDRESS_PUBLISHER.str.data()).assertSuccess();
 
-        commonSocketInit(_dnsSocket).assertSuccess();
+        initializeZmqSocket(_dnsSocket, settings).assertSuccess();
         if (!settings.dnsAddress.empty()) {
             zmq_invoke(zmq_connect, _dnsSocket, toZeroMQEndpoint(URI<>(settings.dnsAddress)).data()).assertSuccess();
         } else {
