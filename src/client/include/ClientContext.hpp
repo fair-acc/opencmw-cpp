@@ -21,19 +21,19 @@ struct RawMessage { // return object for received data
     std::string                           context; // use context type?
     std::unique_ptr<opencmw::URI<STRICT>> endpoint;
     std::vector<std::byte>                data; // using vector here allows using non zmq transports... try to move data into here without copying or use zmq messages if that is not possible
-    std::chrono::milliseconds             timestamp_received = 0s;
+    timeUnit                              timestamp_received = 0s;
 };
 
 struct Request {
     URI<STRICT>                       uri;
     std::function<void(RawMessage &)> callback;
-    std::chrono::milliseconds         timestamp_received = 0s;
+    timeUnit                          timestamp_received = 0s;
 };
 
 struct Subscription {
     URI<STRICT>                       uri;
     std::function<void(RawMessage &)> callback;
-    std::chrono::milliseconds         timestamp_received = 0s;
+    timeUnit                          timestamp_received = 0s;
 };
 
 struct Command {
@@ -48,7 +48,7 @@ struct Command {
     std::unique_ptr<URI<STRICT>>            uri;
     std::function<void(const RawMessage &)> callback; // callback or target ring buffer
     std::vector<std::byte>                  data;     // data for set, can also contain filters etc for other types
-    std::chrono::milliseconds               timestamp_received = 0s;
+    timeUnit                                timestamp_received = 0s;
 };
 
 static constexpr std::size_t CMD_RB_SIZE = 32;

@@ -25,15 +25,15 @@ enum class ConnectionState {
 };
 
 struct Connection {
-    std::string               _authority;
-    majordomo::Socket         _socket;
-    ConnectionState           _connectionState               = ConnectionState::DISCONNECTED;
-    std::chrono::milliseconds _nextReconnectAttemptTimeStamp = 0s;
+    std::string       _authority;
+    majordomo::Socket _socket;
+    ConnectionState   _connectionState               = ConnectionState::DISCONNECTED;
+    timeUnit          _nextReconnectAttemptTimeStamp = 0s;
 
     Connection(const majordomo::Context &context, const std::string_view authority, const int zmq_dealer_type)
         : _authority{ authority }, _socket{ context, zmq_dealer_type } {
         majordomo::initializeZmqSocket(_socket).assertSuccess();
-        _nextReconnectAttemptTimeStamp = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
+        _nextReconnectAttemptTimeStamp = std::chrono::duration_cast<timeUnit>(std::chrono::system_clock::now().time_since_epoch());
     }
 };
 
@@ -52,7 +52,7 @@ public:
 
 class Client : public MDClientBase {
 private:
-    const std::chrono::milliseconds _clientTimeout;
+    const timeUnit                  _clientTimeout;
     const majordomo::Context       &_context;
     const std::string               _clientId;
     const std::string               _sourceName;
@@ -62,7 +62,7 @@ private:
 public:
     explicit Client(const majordomo::Context &context,
             std::vector<zmq_pollitem_t>      &pollItems,
-            const std::chrono::milliseconds   timeout  = 1s,
+            const timeUnit                    timeout  = 1s,
             std::string                       clientId = "")
         : _clientTimeout(timeout), _context(context), _clientId(std::move(clientId)), _sourceName(fmt::format("OpenCmwClient(clientId: {})", _clientId)), _pollItems(pollItems) {}
 
@@ -162,7 +162,7 @@ public:
     }
 
     // method to be called in regular time intervals to send and verify heartbeats
-    std::chrono::milliseconds housekeeping(const std::chrono::milliseconds &now) override {
+    timeUnit housekeeping(const timeUnit &now) override {
         using detail::ConnectionState;
         // handle connection state
         for (auto &con : _connections) {
@@ -195,7 +195,7 @@ private:
 };
 
 class SubscriptionClient : public MDClientBase {
-    const std::chrono::milliseconds _clientTimeout;
+    const timeUnit                  _clientTimeout;
     const majordomo::Context       &_context;
     const std::string               _clientId;
     const std::string               _sourceName;
@@ -203,7 +203,7 @@ class SubscriptionClient : public MDClientBase {
     std::vector<zmq_pollitem_t>    &_pollItems;
 
 public:
-    explicit SubscriptionClient(const majordomo::Context &context, std::vector<zmq_pollitem_t> &pollItems, const std::chrono::milliseconds timeout = 1s, std::string clientId = "")
+    explicit SubscriptionClient(const majordomo::Context &context, std::vector<zmq_pollitem_t> &pollItems, const timeUnit timeout = 1s, std::string clientId = "")
         : _clientTimeout(timeout), _context(context), _clientId(std::move(clientId)), _sourceName(fmt::format("OpenCmwClient(clientId: {})", _clientId)), _pollItems(pollItems) {}
 
     void connect(const URI<STRICT> &uri) {
@@ -304,7 +304,7 @@ public:
     }
 
     // method to be called in regular time intervals to send and verify heartbeats
-    std::chrono::milliseconds housekeeping(const std::chrono::milliseconds &now) override {
+    timeUnit housekeeping(const timeUnit &now) override {
         using detail::ConnectionState;
         // handle monitor events
         // handle connection state
@@ -342,12 +342,12 @@ class MDClientCtx : public ClientBase {
     std::vector<zmq_pollitem_t>                                    _pollitems{};
     std::unordered_map<std::size_t, Request>                       _requests;
     std::unordered_map<std::size_t, Subscription>                  _subscriptions;
-    std::chrono::milliseconds                                      _timeout;
+    timeUnit                                                       _timeout;
     std::string                                                    _clientId;
     std::size_t                                                    _request_id = 0;
 
 public:
-    explicit MDClientCtx(const majordomo::Context &zeromq_context, const std::chrono::milliseconds timeout = 1s, std::string clientId = "") // todo: also pass thread pool
+    explicit MDClientCtx(const majordomo::Context &zeromq_context, const timeUnit timeout = 1s, std::string clientId = "") // todo: also pass thread pool
         : _zctx{ zeromq_context }, _control_socket_send(zeromq_context, ZMQ_PAIR), _control_socket_recv(zeromq_context, ZMQ_PAIR), _timeout(timeout), _clientId(std::move(clientId)) {
         _poller = std::jthread([this](const std::stop_token &stoken) { this->poll(stoken); });
         majordomo::zmq_invoke(zmq_bind, _control_socket_send, "inproc://mdclientControlSocket").assertSuccess();
@@ -447,11 +447,11 @@ private:
     }
 
     void poll(const std::stop_token &stoken) {
-        std::chrono::milliseconds nextHousekeeping = 0ms;
+        timeUnit nextHousekeeping = 0ms;
         majordomo::zmq_invoke(zmq_connect, _control_socket_recv, "inproc://mdclientControlSocket").assertSuccess();
         while (!stoken.stop_requested() && majordomo::zmq_invoke(zmq_poll, _pollitems.data(), static_cast<int>(_pollitems.size()), 200)) {
-            if (nextHousekeeping < std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())) {
-                nextHousekeeping = housekeeping(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()));
+            if (nextHousekeeping < std::chrono::duration_cast<timeUnit>(std::chrono::system_clock::now().time_since_epoch())) {
+                nextHousekeeping = housekeeping(std::chrono::duration_cast<timeUnit>(std::chrono::system_clock::now().time_since_epoch()));
                 // expire old subscriptions/requests/connections
             }
             handleRequests();
@@ -467,16 +467,16 @@ private:
                         _requests.erase(receivedEvent.id);
                     }
                     // perform housekeeping duties if necessary
-                    if (nextHousekeeping < std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())) {
-                        nextHousekeeping = housekeeping(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()));
+                    if (nextHousekeeping < std::chrono::duration_cast<timeUnit>(std::chrono::system_clock::now().time_since_epoch())) {
+                        nextHousekeeping = housekeeping(std::chrono::duration_cast<timeUnit>(std::chrono::system_clock::now().time_since_epoch()));
                     }
                 }
             }
         }
     }
 
-    std::chrono::milliseconds housekeeping(std::chrono::milliseconds now) {
-        std::chrono::milliseconds next = now + _timeout;
+    timeUnit housekeeping(timeUnit now) {
+        timeUnit next = now + _timeout;
         for (auto &clientPair : _clients) {
             auto &client = clientPair.second;
             next         = std::min(next, client->housekeeping(now));
