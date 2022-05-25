@@ -13,9 +13,12 @@
 #include <URI.hpp>
 
 namespace opencmw::client {
+
 using namespace std::chrono_literals;
+
 using opencmw::uri_check::STRICT;
 using timeUnit = std::chrono::milliseconds;
+
 struct RawMessage { // return object for received data
     std::size_t                           id;
     std::string                           context; // use context type?
@@ -89,11 +92,11 @@ public:
     }
 
     // user interface: can be called from any thread and will return non-blocking after submitting the job to the job queue disruptor
-    void get(const URI<STRICT> &endpoint, std::function<void(const RawMessage &)> &&callback) { queueCommand(endpoint, std::move(callback), Command::Type::Get); }
-    void set(const URI<STRICT> &endpoint, std::function<void(const RawMessage &)> &&callback, std::vector<std::byte> &&data) { queueCommand(endpoint, std::move(callback), Command::Type::Set, std::move(data)); }
-    void subscribe(const URI<STRICT> &endpoint) { queueCommand(endpoint, Command::Type::Subscribe); }
-    void subscribe(const URI<STRICT> &endpoint, std::function<void(const RawMessage &)> &&callback) { queueCommand(endpoint, std::move(callback), Command::Type::Subscribe); }
-    void unsubscribe(const URI<STRICT> &endpoint) { queueCommand(endpoint, Command::Type::Unsubscribe); }
+    void get(const URI<STRICT> &endpoint, std::function<void(const RawMessage &)> &&callback) { queueCommand(Command::Type::Get, endpoint, std::move(callback)); }
+    void set(const URI<STRICT> &endpoint, std::function<void(const RawMessage &)> &&callback, std::vector<std::byte> &&data) { queueCommand(Command::Type::Set, endpoint, std::move(callback), std::move(data)); }
+    void subscribe(const URI<STRICT> &endpoint) { queueCommand(Command::Type::Subscribe, endpoint); }
+    void subscribe(const URI<STRICT> &endpoint, std::function<void(const RawMessage &)> &&callback) { queueCommand(Command::Type::Subscribe, endpoint, std::move(callback)); }
+    void unsubscribe(const URI<STRICT> &endpoint) { queueCommand(Command::Type::Unsubscribe, endpoint); }
 
     /*
      * Shutdown all contexts
@@ -128,23 +131,7 @@ private:
         }
     };
 
-    void queueCommand(const URI<STRICT> &endpoint, Command::Type cmd) {
-        _commandRingBuffer->tryPublishEvent([&endpoint, &cmd](Command &&ev, long /*seq*/) {
-            ev.type = cmd;
-            ev.uri  = std::make_unique<URI<STRICT>>(endpoint);
-        });
-    }
-    void queueCommand(const URI<STRICT> &endpoint, std::function<void(const RawMessage &)> callback, Command::Type cmd) {
-        bool published = _commandRingBuffer->tryPublishEvent([&endpoint, &cmd, cb = std::move(callback)](Command &&ev, long /*seq*/) mutable {
-            ev.type     = cmd;
-            ev.callback = std::move(cb);
-            ev.uri      = std::make_unique<URI<STRICT>>(endpoint);
-        });
-        if (!published) {
-            fmt::print("failed to publish command\n");
-        }
-    }
-    void queueCommand(const URI<STRICT> &endpoint, std::function<void(const RawMessage &)> &&callback, Command::Type cmd, std::vector<std::byte> &&data) {
+    void queueCommand(Command::Type cmd, const URI<STRICT> &endpoint, std::function<void(const RawMessage &)> &&callback = {}, std::vector<std::byte> &&data = {}) {
         bool published = _commandRingBuffer->tryPublishEvent([&endpoint, &cmd, cb = std::move(callback), d = std::move(data)](Command &&ev, long /*seq*/) mutable {
             ev.type     = cmd;
             ev.callback = std::move(cb);
