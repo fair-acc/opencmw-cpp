@@ -44,13 +44,11 @@ public:
     constexpr function() = default;
 
     template<typename F>
-        requires(!std::is_reference_v<F>)
-    constexpr function(F &&fun)
+    requires(!std::is_reference_v<F>) constexpr function(F &&fun)
         : _erased_fun(new F(std::forward<F>(fun)), [](void *ptr) { delete static_cast<F *>(ptr); }), _call([](void *ptr) { (*static_cast<F *>(ptr))(); }) {}
 
     template<typename F>
-        requires(!std::is_reference_v<F>)
-    constexpr function &operator=(F &&fun) {
+    requires(!std::is_reference_v<F>) constexpr function &operator=(F &&fun) {
         _erased_fun = FunPtr(new F(std::forward<F>(fun)), [](void *ptr) { delete static_cast<F *>(ptr); });
         _call       = [](void *ptr) { (*static_cast<F *>(ptr))(); };
         return *this;
@@ -69,17 +67,17 @@ public:
 };
 
 struct Task {
-    uint64_t                id;
-    function                func;
-    std::string             name     = "";
-    int32_t                 priority = 0;
-    int32_t                 cpuID    = -1;
-    Task                   *next     = nullptr;
-    Task                   *self     = this;
-    bool                    operator==(const Task &other) const noexcept { return self == other.self; }
-    auto                    operator<=>(const Task &other) const noexcept { return priority <=> other.priority; }
+    uint64_t            id;
+    function            func;
+    std::string         name     = "";
+    int32_t             priority = 0;
+    int32_t             cpuID    = -1;
+    Task               *next     = nullptr;
+    Task               *self     = this;
+    bool                operator==(const Task &other) const noexcept { return self == other.self; }
+    auto                operator<=>(const Task &other) const noexcept { return priority <=> other.priority; }
 
-    [[nodiscard]] Task     *init() noexcept {
+    [[nodiscard]] Task *init() noexcept {
         priority = 0;
         cpuID    = -1;
         name.resize(0);
