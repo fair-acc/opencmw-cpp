@@ -31,84 +31,53 @@ class TaskQueue;
 namespace thread_pool::detail {
 
 /**
- * @brief a move-only implementation of std::function
- * originally from: https://stackoverflow.com/questions/25330716/move-only-version-of-stdfunction#answer-52358928
- * to be replaced once C++23 is out/available.
- * For details see:
+ * @brief a move-only implementation of std::function by Matthias Kretz, GSI
+ * to be replaced once C++23's STL version is out/available:
  * https://en.cppreference.com/w/cpp/utility/functional/move_only_function/move_only_function
  */
-template<typename T>
-class unique_function : public std::function<T> {
-    template<typename Fn>
-    struct wrapper;
-
-    template<std::copy_constructible Fn>
-    struct wrapper<Fn> {
-        Fn fn;
-
-        template<typename... Args>
-        auto operator()(Args &&...args) { return fn(FWD(args)...); }
-    };
-
-    template<std::move_constructible Fn>
-    requires(!std::is_copy_constructible_v<Fn>) struct wrapper<Fn> {
-        Fn fn;
-
-        explicit wrapper(Fn &&func) noexcept
-            : fn(std::move(func)) {}
-
-        wrapper(wrapper &&) noexcept = default;
-        wrapper &operator=(wrapper &&) noexcept = default;
-
-        // these two functions are instantiated by std::function and are never called
-        wrapper(const wrapper &rhs)
-            : fn(const_cast<Fn &&>(rhs.fn)) { throw 0; } // hack to initialize fn for non-DefaultConstructible types
-        wrapper &operator=(wrapper &) { throw 0; }
-
-        template<typename... Args>
-        auto operator()(Args &&...args) { return fn(FWD(args)...); }
-    };
-
-    using base = std::function<T>;
+class function {
+    using FunPtr          = std::unique_ptr<void, void (*)(void *)>;
+    FunPtr _erased_fun    = { nullptr, [](void *) {} };
+    void (*_call)(void *) = nullptr;
 
 public:
-    using base::operator();
+    constexpr function() = default;
 
-    unique_function() noexcept = default;
-    explicit unique_function(std::nullptr_t) noexcept
-        : base(nullptr) {}
+    template<typename F>
+    requires(!std::is_reference_v<F>) constexpr function(F &&fun)
+        : _erased_fun(new F(std::forward<F>(fun)), [](void *ptr) { delete static_cast<F *>(ptr); }), _call([](void *ptr) { (*static_cast<F *>(ptr))(); }) {}
 
-    template<typename Fn>
-    unique_function(Fn &&f) noexcept
-        : base(wrapper<Fn>{ FWD(f) }) {}
-
-    unique_function(unique_function &&) noexcept = default;
-    unique_function &operator=(unique_function &&) noexcept = default;
-
-    unique_function &operator                               =(std::nullptr_t) {
-        base::operator=(nullptr);
+    template<typename F>
+    requires(!std::is_reference_v<F>) constexpr function &operator=(F &&fun) {
+        _erased_fun = FunPtr(new F(std::forward<F>(fun)), [](void *ptr) { delete static_cast<F *>(ptr); });
+        _call       = [](void *ptr) { (*static_cast<F *>(ptr))(); };
         return *this;
     }
 
-    template<typename Fn>
-    unique_function &operator=(Fn &&f) {
-        base::operator=(wrapper<Fn>{ FWD(f) });
-        return *this;
+    constexpr void operator()() {
+        if (_call) {
+            _call(_erased_fun.get());
+        }
+    }
+    constexpr void operator()() const {
+        if (_call) {
+            _call(_erased_fun.get());
+        }
     }
 };
 
 struct Task {
-    uint64_t                id;
-    unique_function<void()> func;
-    std::string             name     = "";
-    int32_t                 priority = 0;
-    int32_t                 cpuID    = -1;
-    Task                   *next     = nullptr;
-    Task                   *self     = this;
-    bool                    operator==(const Task &other) const noexcept { return self == other.self; }
-    auto                    operator<=>(const Task &other) const noexcept { return priority <=> other.priority; }
+    uint64_t            id;
+    function            func;
+    std::string         name     = "";
+    int32_t             priority = 0;
+    int32_t             cpuID    = -1;
+    Task               *next     = nullptr;
+    Task               *self     = this;
+    bool                operator==(const Task &other) const noexcept { return self == other.self; }
+    auto                operator<=>(const Task &other) const noexcept { return priority <=> other.priority; }
 
-    [[nodiscard]] Task     *init() noexcept {
+    [[nodiscard]] Task *init() noexcept {
         priority = 0;
         cpuID    = -1;
         name.resize(0);
