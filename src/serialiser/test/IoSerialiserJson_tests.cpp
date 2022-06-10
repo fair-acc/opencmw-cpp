@@ -119,7 +119,6 @@ TEST_CASE("JsonDeserialisationInvalidJson", "[JsonSerialiser]") {
 
     for (const auto &testCase : testCases) {
         opencmw::IoBuffer buffer;
-        std::cout << "Prepared json data: " << buffer.asString() << std::endl;
         buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>(testCase);
         SimpleId foo;
         foo.id = 0;

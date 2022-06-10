@@ -9,55 +9,112 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <memory_resource>
 #include <numeric>
 #include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace opencmw {
 
+/* special memory resource which explicitly uses malloc, free and allows the containers
+ * using it to call to realloc themselves, because it is not in the allocators API.
+ */
+class Reallocator : public std::pmr::memory_resource {
+    void *do_allocate(size_t bytes, size_t /*alignment*/) override {
+        return malloc(bytes);
+    }
+
+    void do_deallocate(void *p, size_t /*bytes*/, size_t /*alignment*/) override {
+        return free(p);
+    }
+
+    [[nodiscard]] bool do_is_equal(const memory_resource &other) const noexcept override {
+        return this == &other;
+    }
+
+public:
+    static inline Reallocator *defaultReallocator() {
+        static Reallocator instance = Reallocator();
+        return &instance;
+    }
+};
+
+/*
+ * Special Memory Resource which disallows allocation to use for wrapping byte arrays
+ */
+class ThrowingAllocator : public std::pmr::memory_resource {
+    std::function<void(void *)> _deleter;
+
+    void                       *do_allocate(size_t /*bytes*/, size_t /*alignment*/) override {
+        throw std::bad_alloc{};
+    }
+
+    void do_deallocate(void *p, size_t /*bytes*/, size_t /*alignment*/) override {
+        _deleter(p);
+    }
+
+    [[nodiscard]] bool do_is_equal(const memory_resource &other) const noexcept override {
+        return this == &other;
+    }
+
+public:
+    explicit ThrowingAllocator(std::function<void(void *)> deleter)
+        : _deleter(std::move(deleter)) {}
+
+    static inline ThrowingAllocator *defaultNonOwning() {
+        static ThrowingAllocator instance = ThrowingAllocator([](void * /*p*/) {});
+        return &instance;
+    }
+
+    static inline ThrowingAllocator *defaultOwning() {
+        static ThrowingAllocator instance = ThrowingAllocator([](void *p) { free(p); });
+        return &instance;
+    }
+};
+
 class IoBuffer {
 private:
-    static const bool   _alloc_optimisations = true;
-    mutable std::size_t _position            = 0;
-    std::size_t         _size                = 0;
-    std::size_t         _capacity            = 0;
-    uint8_t            *_buffer              = nullptr;
+    using Allocator               = std::pmr::polymorphic_allocator<uint8_t>;
+    mutable std::size_t _position = 0;
+    std::size_t         _size     = 0;
+    std::size_t         _capacity = 0;
+    uint8_t            *_buffer   = nullptr;
+    Allocator           _allocator{};
 
     constexpr void      reallocate(const std::size_t &size) noexcept {
-        if (_capacity == size && _buffer != nullptr) {
+        if (size == 0) {
+            freeInternalBuffer();
+            _capacity = size;
+            return;
+        } else if (_capacity == size && _buffer != nullptr) {
+            return;
+        } else if (_buffer == nullptr) {
+            _buffer   = _allocator.allocate(size);
+            _capacity = size;
             return;
         }
-        _capacity = size;
-        if constexpr (_alloc_optimisations) {
-            if (_capacity == 0) {
-                freeInternalBuffer();
-                return;
-            }
+        if (dynamic_cast<Reallocator *>(_allocator.resource())) {
             // N.B. 'realloc' is safe as long as the de-allocation is done via 'free'
-            _buffer = static_cast<uint8_t *>(realloc(_buffer, _capacity * sizeof(uint8_t)));
+            _buffer   = static_cast<uint8_t *>(realloc(_buffer, size * sizeof(uint8_t)));
+            _capacity = size;
         } else {
-            if (_buffer == nullptr) {
-                _buffer = new uint8_t[_capacity];
-            }
             // buffer already exists - copy existing content into newly allocated buffer N.B. maybe larger/smaller
-            auto *tBuffer = new uint8_t[_capacity];
+            auto *tBuffer = _allocator.allocate(size);
             // std::memmove(tBuffer, _buffer, std::min(_size, size) * sizeof(uint8_t));
             std::copy(_buffer, _buffer + std::min(_size, size) * sizeof(uint8_t), tBuffer);
-            delete[] _buffer;
-            _buffer = tBuffer;
+            _allocator.deallocate(_buffer, _capacity);
+            _buffer   = tBuffer;
+            _capacity = size;
         }
     }
 
     constexpr void freeInternalBuffer() {
         if (_buffer != nullptr) {
-            if constexpr (_alloc_optimisations) {
-                free(_buffer);
-            } else {
-                delete[] _buffer;
-            }
+            _allocator.deallocate(_buffer, _capacity);
         } else {
             // throw std::runtime_error("double free"); //TODO: reenable
         }
@@ -89,23 +146,38 @@ private:
     }
 
 public:
-    [[nodiscard]] constexpr explicit IoBuffer(const std::size_t &initialCapacity = 0) noexcept {
+    [[nodiscard]] explicit IoBuffer(const std::size_t &initialCapacity = 0, Allocator allocator = Allocator(Reallocator::defaultReallocator())) noexcept
+        : _allocator{ allocator } {
         if (initialCapacity > 0) {
             reallocate(initialCapacity);
         }
     }
 
-    [[nodiscard]] constexpr IoBuffer(const IoBuffer &other) noexcept
-        : IoBuffer(other._capacity) {
+    [[nodiscard]] explicit IoBuffer(std::span<uint8_t> data, Allocator allocator = ThrowingAllocator::defaultNonOwning())
+        : _size(data.size()), _capacity(data.size()), _buffer(data.data()), _allocator(allocator) {}
+
+    [[nodiscard]] explicit IoBuffer(std::span<uint8_t> data, bool owning)
+        : IoBuffer(data, Allocator(owning ? ThrowingAllocator::defaultOwning()
+                                          : ThrowingAllocator::defaultNonOwning())){};
+
+    [[nodiscard]] explicit IoBuffer(uint8_t *data, std::size_t size, Allocator allocator = ThrowingAllocator::defaultNonOwning())
+        : IoBuffer({ data, size }, allocator){};
+
+    [[nodiscard]] explicit IoBuffer(uint8_t *data, std::size_t size, bool owning)
+        : IoBuffer({ data, size }, Allocator(owning ? ThrowingAllocator::defaultOwning() : ThrowingAllocator::defaultNonOwning())){};
+
+    [[nodiscard]] IoBuffer(const IoBuffer &other) noexcept
+        : IoBuffer(other._capacity, other._allocator.select_on_container_copy_construction()) {
         resize(other._size);
         _position = other._position;
         std::memmove(_buffer, other._buffer, _size * sizeof(uint8_t));
     }
 
-    [[nodiscard]] constexpr IoBuffer(IoBuffer &&other) noexcept
-        : IoBuffer(other._capacity) {
+    [[nodiscard]] IoBuffer(IoBuffer &&other) noexcept
+        : _allocator(other._allocator.select_on_container_copy_construction()) {
         resize(other._size);
         _position     = other._position;
+        _capacity     = other.capacity();
         _buffer       = other._buffer;
         other._buffer = nullptr;
     }
@@ -121,13 +193,13 @@ public:
         std::swap(_buffer, other._buffer);
     }
 
-    [[nodiscard]] constexpr IoBuffer &operator=(const IoBuffer &other) {
+    [[nodiscard]] IoBuffer &operator=(const IoBuffer &other) {
         auto temp = other;
         swap(temp);
         return *this;
     }
 
-    [[nodiscard]] constexpr IoBuffer &operator=(IoBuffer &&other) noexcept {
+    [[nodiscard]] IoBuffer &operator=(IoBuffer &&other) noexcept {
         auto temp = std::move(other);
         swap(temp);
         return *this;
@@ -258,7 +330,7 @@ public:
             if (index > _size) {
                 throw std::out_of_range(fmt::format("requested index {} is out-of-range [0,{}]", index, _size));
             }
-            if (requestedSize >= 0 && unsigned_size >= (index + unsigned_size)) {
+            if (requestedSize >= 0 && (index + unsigned_size) > _size) {
                 throw std::out_of_range(fmt::format("requestedSize {} is out-of-range {} -> [0,{}]", requestedSize, index, index + unsigned_size, _size));
             }
         }

@@ -347,8 +347,81 @@ TEST_CASE("IoBuffer syntax - navigation", "[IoBuffer]") {
         REQUIRE(buffer.position() == 0);
         buffer.skip(10);
         REQUIRE(buffer.position() == 10);
+
+        buffer.shrink_to_fit();
+        REQUIRE(buffer.capacity() == 24);
+        buffer.reserve(20);
+        REQUIRE(buffer.capacity() == 24);
+        buffer.reserve_spare(10);
+        REQUIRE(buffer.capacity() == 136);
     }
     REQUIRE(opencmw::debug::alloc == opencmw::debug::dealloc); // a memory leak occurred
     opencmw::debug::resetStats();
+}
+
+TEST_CASE("IoBuffer custom buffer", "[IoBuffer, PMR]") {
+    using namespace std::literals;
+    {
+        opencmw::debug::Timer               timer("IoBuffer PMR", 30);
+        std::array<uint8_t, 1000>           bytebuffer{};
+        std::pmr::monotonic_buffer_resource memResource{ bytebuffer.data(), bytebuffer.size() };
+        opencmw::IoBuffer                   buffer{ 0, &memResource };
+        REQUIRE(buffer.capacity() == 0);
+        buffer.put(1.337);
+        buffer.put("Hello World!"sv);
+        buffer.shrink_to_fit();
+        REQUIRE(buffer.capacity() == 25);
+        buffer.put({ 1, 2, 3, 4, 5, 6, 7 });
+        buffer.shrink_to_fit();
+        REQUIRE(buffer.capacity() == 57);
+        buffer.reset();
+        REQUIRE(buffer.get<double>() == 1.337);
+        REQUIRE(buffer.get<std::string>() == "Hello World!");
+    }
+}
+
+TEST_CASE("IoBuffer test as String", "[IoBuffer, String]") {
+    using namespace std::literals;
+    using namespace std::string_literals;
+    {
+        opencmw::debug::Timer timer("IoBuffer PMR", 30);
+        opencmw::IoBuffer     buffer;
+        REQUIRE(buffer.asString() == ""sv);
+        buffer.put("asdf");
+        REQUIRE(buffer.asString() == "\05\00\00\00asdf\00"sv);
+        REQUIRE(buffer.asString(1) == "\00\00\00asdf\00"sv);
+        REQUIRE_THROWS_AS(buffer.asString(10), std::out_of_range);
+        REQUIRE_THROWS_AS(buffer.asString(4, 6), std::out_of_range);
+        buffer.put(42);
+        REQUIRE(buffer.asString(9, 4) == "\x2a\00\00\00"sv);
+    }
+}
+
+TEST_CASE("IoBuffer wrap", "[IoBuffer, PMR]") {
+    using namespace std::literals;
+    {
+        opencmw::debug::Timer   timer("IoBuffer PMR", 30);
+        std::array<uint8_t, 11> data{ 3, 0, 0, 0, 'a', 'b', 'c', 254, 0, 0, 0 };
+        opencmw::IoBuffer       buffer{ data };
+        REQUIRE(buffer.size() == 11);
+        REQUIRE(buffer.position() == 0);
+        REQUIRE(buffer.getArray<uint8_t>()[1] == 'b');
+        REQUIRE(buffer.position() == 7);
+        REQUIRE(buffer.get<int>() == 254);
+        REQUIRE(buffer.position() == 11);
+    }
+    {
+        opencmw::debug::Timer   timer("IoBuffer PMR", 30);
+        std::array<uint8_t, 11> dataArray{ 3, 0, 0, 0, 'a', 'b', 'c', 254, 0, 0, 0 };
+        auto                   *data = reinterpret_cast<uint8_t *>(malloc(11));
+        std::copy(dataArray.begin(), dataArray.end(), data);
+        opencmw::IoBuffer buffer{ data, 11, true };
+        REQUIRE(buffer.size() == 11);
+        REQUIRE(buffer.position() == 0);
+        REQUIRE(buffer.getArray<uint8_t>()[1] == 'b');
+        REQUIRE(buffer.position() == 7);
+        REQUIRE(buffer.get<int>() == 254);
+        REQUIRE(buffer.position() == 11);
+    }
 }
 #pragma clang diagnostic pop
