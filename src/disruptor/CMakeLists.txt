@@ -1,6 +1,6 @@
 # setup header only library
 add_library(disruptor INTERFACE)
-target_include_directories(disruptor INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include/>)
+target_include_directories(disruptor INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include/>)
 target_link_libraries(disruptor INTERFACE $<BUILD_INTERFACE:fmt::fmt-header-only> utils core rxcpp pthread)
 
 install(
