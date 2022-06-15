@@ -13,7 +13,7 @@ add_library(majordomo INTERFACE
     include/majordomo/Worker.hpp
     include/majordomo/ZmqPtr.hpp
 )
-target_include_directories(majordomo INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include/>)
+target_include_directories(majordomo INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include/>)
 target_link_libraries(majordomo
         INTERFACE
             utils
