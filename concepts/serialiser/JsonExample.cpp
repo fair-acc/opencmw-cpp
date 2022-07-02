@@ -14,8 +14,8 @@ struct DataY {
     std::string                   stringValue;
     std::array<double, 10>        doubleArray = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
     std::map<std::string, double> doubleMap{ std::pair<std::string, double>{ "Hello", 4 }, std::pair<std::string, double>{ "Map", 1.3 } };
-    std::vector<float>            floatVector      = { 0.1F, 1.1F, 2.1F, 3.1F, 4.1F, 5.1F, 6.1F, 8.1F, 9.1F, 9.1F };
-    std::shared_ptr<DataY> nested;
+    std::vector<float>            floatVector = { 0.1F, 1.1F, 2.1F, 3.1F, 4.1F, 5.1F, 6.1F, 8.1F, 9.1F, 9.1F };
+    std::shared_ptr<DataY>        nested;
 
     DataY()                              = default;
     bool operator==(const DataY &) const = default;
@@ -35,11 +35,11 @@ int main() {
     foo.nested.get()->stringValue = "asdf";
     opencmw::serialise<opencmw::Json>(buffer, foo);
 
-    DataY bar; // new object to serialise into
+    DataY bar;                              // new object to serialise into
     std::cout << opencmw::ClassInfoVerbose; // enables a more verbose tree-like class info output
     opencmw::diffView(std::cout, foo, bar); // foo and bar should be different here
 
-    auto  result = opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buffer, bar);
+    auto result = opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buffer, bar);
     opencmw::diffView(std::cout, foo, bar); // foo and bar should be the same here
 
     fmt::print(std::cout, "deserialisation finished: {}\n", result);
