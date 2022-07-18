@@ -19,23 +19,26 @@ using namespace std::chrono_literals;
 using opencmw::uri_check::STRICT;
 using timeUnit = std::chrono::milliseconds;
 
-struct RawMessage { // return object for received data
+/**
+ * @brief Domain object representation of the Majordomo Protocol (MDP) message
+ */
+struct MdpMessage { // return object for received data
     std::size_t                           id;
     std::string                           context; // use context type?
     std::unique_ptr<opencmw::URI<STRICT>> endpoint;
-    std::vector<std::byte>                data; // using vector here allows using non zmq transports... try to move data into here without copying or use zmq messages if that is not possible
+    IoBuffer                              data;      // request/reply body -- opaque binary, e.g. YaS-, CmwLight-, JSON-, or HTML-based
     timeUnit                              timestamp_received = 0s;
 };
 
 struct Request {
     URI<STRICT>                       uri;
-    std::function<void(RawMessage &)> callback;
+    std::function<void(MdpMessage &)> callback;
     timeUnit                          timestamp_received = 0s;
 };
 
 struct Subscription {
     URI<STRICT>                       uri;
-    std::function<void(RawMessage &)> callback;
+    std::function<void(MdpMessage &)> callback;
     timeUnit                          timestamp_received = 0s;
 };
 
@@ -49,8 +52,8 @@ struct Command {
     };
     Type                                    type = Type::Undefined;
     std::unique_ptr<URI<STRICT>>            uri;
-    std::function<void(const RawMessage &)> callback; // callback or target ring buffer
-    std::vector<std::byte>                  data;     // data for set, can also contain filters etc for other types
+    std::function<void(const MdpMessage &)> callback; // callback or target ring buffer
+    IoBuffer                                data;     // request/reply body -- opaque binary, e.g. YaS-, CmwLight-, JSON-, or HTML-based
     timeUnit                                timestamp_received = 0s;
 };
 
@@ -92,10 +95,10 @@ public:
     }
 
     // user interface: can be called from any thread and will return non-blocking after submitting the job to the job queue disruptor
-    void get(const URI<STRICT> &endpoint, std::function<void(const RawMessage &)> &&callback) { queueCommand(Command::Type::Get, endpoint, std::move(callback)); }
-    void set(const URI<STRICT> &endpoint, std::function<void(const RawMessage &)> &&callback, std::vector<std::byte> &&data) { queueCommand(Command::Type::Set, endpoint, std::move(callback), std::move(data)); }
+    void get(const URI<STRICT> &endpoint, std::function<void(const MdpMessage &)> &&callback) { queueCommand(Command::Type::Get, endpoint, std::move(callback)); }
+    void set(const URI<STRICT> &endpoint, std::function<void(const MdpMessage &)> &&callback, std::span<uint8_t> &&data) { queueCommand(Command::Type::Set, endpoint, std::move(callback), std::move(data)); }
     void subscribe(const URI<STRICT> &endpoint) { queueCommand(Command::Type::Subscribe, endpoint); }
-    void subscribe(const URI<STRICT> &endpoint, std::function<void(const RawMessage &)> &&callback) { queueCommand(Command::Type::Subscribe, endpoint, std::move(callback)); }
+    void subscribe(const URI<STRICT> &endpoint, std::function<void(const MdpMessage &)> &&callback) { queueCommand(Command::Type::Subscribe, endpoint, std::move(callback)); }
     void unsubscribe(const URI<STRICT> &endpoint) { queueCommand(Command::Type::Unsubscribe, endpoint); }
 
     /*
@@ -131,12 +134,12 @@ private:
         }
     };
 
-    void queueCommand(Command::Type cmd, const URI<STRICT> &endpoint, std::function<void(const RawMessage &)> &&callback = {}, std::vector<std::byte> &&data = {}) {
+    void queueCommand(Command::Type cmd, const URI<STRICT> &endpoint, std::function<void(const MdpMessage &)> &&callback = {}, std::span<uint8_t> &&data = {}) {
         bool published = _commandRingBuffer->tryPublishEvent([&endpoint, &cmd, cb = std::move(callback), d = std::move(data)](Command &&ev, long /*seq*/) mutable {
             ev.type     = cmd;
             ev.callback = std::move(cb);
             ev.uri      = std::make_unique<URI<STRICT>>(endpoint);
-            ev.data     = std::move(d);
+            ev.data     = std::move(IoBuffer(d, true));
         });
         if (!published) {
             fmt::print("failed to publish command\n");

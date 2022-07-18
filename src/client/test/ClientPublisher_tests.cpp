@@ -29,7 +29,7 @@ TEST_CASE("Basic get/set test", "[ClientContext]") {
     auto endpoint = URI<STRICT>::factory(URI<STRICT>(server.address())).scheme("mdp").path("/a.service").addQueryParameter("C", "2").build();
     fmt::print("issuing get request\n");
     std::atomic<int> received{ 0 };
-    clientContext.get(endpoint, [&received](const opencmw::client::RawMessage &message) {
+    clientContext.get(endpoint, [&received](const opencmw::client::MdpMessage &message) {
         REQUIRE(message.data.size() == 3); // == "100");
         REQUIRE(message.context == "test_ctx");
         received++;
@@ -43,7 +43,7 @@ TEST_CASE("Basic get/set test", "[ClientContext]") {
     std::this_thread::sleep_for(20ms); // hacky: this is needed because the requests are only identified using their uri, so we cannot have multiple requests with identical uris
     fmt::print("issuing set request\n");
     clientContext.set(
-            endpoint, [&received](const opencmw::client::RawMessage &message) {
+            endpoint, [&received](const opencmw::client::MdpMessage &message) {
                 REQUIRE(message.data.empty()); // == "100");
                 REQUIRE(message.context == "test_ctx");
                 received++;
@@ -71,7 +71,7 @@ TEST_CASE("Basic subscription test", "[ClientContext]") {
     auto endpoint = URI<STRICT>::factory(URI<STRICT>(server.addressSub())).scheme("mds").path("/a.service").addQueryParameter("C", "2").build();
     fmt::print("subscribing\n");
     std::atomic<int> received{ 0 };
-    clientContext.subscribe(endpoint, [&received](const opencmw::client::RawMessage &update) {
+    clientContext.subscribe(endpoint, [&received](const opencmw::client::MdpMessage &update) {
         if (update.data.size() == 7) {
             received++;
             fmt::print("v");

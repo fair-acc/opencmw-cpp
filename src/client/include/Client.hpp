@@ -42,7 +42,7 @@ struct Connection {
 class MDClientBase {
 public:
     virtual ~MDClientBase()                                                                                  = default;
-    virtual bool     receive(RawMessage &message)                                                            = 0;
+    virtual bool     receive(MdpMessage &message)                                                            = 0;
     virtual timeUnit housekeeping(const timeUnit &now)                                                       = 0;
     virtual void     get(const URI<STRICT> &, majordomo::MessageFrame &)                                     = 0;
     virtual void     set(const URI<STRICT> &, majordomo::MessageFrame &, const std::span<const std::byte> &) = 0;
@@ -125,7 +125,7 @@ public:
         return true;
     }
 
-    bool handleMessage(majordomo::MdpMessage &&message, RawMessage &output) {
+    bool handleMessage(majordomo::MdpMessage &&message, MdpMessage &output) {
         if (!message.isValid()) {
             return true;
         }
@@ -149,7 +149,7 @@ public:
         return true;
     }
 
-    bool receive(RawMessage &msg) override {
+    bool receive(MdpMessage &msg) override {
         for (auto &con : _connections) {
             if (con._connectionState != detail::ConnectionState::CONNECTED) {
                 continue;
@@ -265,7 +265,7 @@ public:
         return true;
     }
 
-    bool handleMessage(majordomo::BasicMdpMessage<MessageFormat::WithSourceId> &&message, RawMessage &output) {
+    bool handleMessage(majordomo::BasicMdpMessage<MessageFormat::WithSourceId> &&message, MdpMessage &output) {
         if (!message.isValid()) {
             return true;
         }
@@ -287,7 +287,7 @@ public:
         return true;
     }
 
-    bool receive(RawMessage &msg) override {
+    bool receive(MdpMessage &msg) override {
         for (detail::Connection &con : _connections) {
             if (con._connectionState != detail::ConnectionState::CONNECTED) {
                 continue;
@@ -402,7 +402,7 @@ public:
     }
 
 private:
-    void sendCmd(const URI<STRICT> &uri, Command::Type commandType, std::size_t req_id, const std::span<const std::byte> &data = {}) {
+    void sendCmd(const URI<STRICT> &uri, Command::Type commandType, std::size_t req_id, const IoBuffer &data = std::move(IoBuffer())) {
         majordomo::MessageFrame cmdType{ std::string{ static_cast<char>(commandType) }, majordomo::MessageFrame::dynamic_bytes_tag() };
         cmdType.send(_control_socket_send, ZMQ_DONTWAIT | ZMQ_SNDMORE).assertSuccess();
         majordomo::MessageFrame reqId{ std::to_string(req_id), majordomo::MessageFrame::dynamic_bytes_tag() };
@@ -457,7 +457,7 @@ private:
             handleRequests();
             for (auto &clientPair : _clients) {
                 auto      &client = clientPair.second;
-                RawMessage receivedEvent;
+                MdpMessage receivedEvent;
                 while (client->receive(receivedEvent)) {
                     if (_subscriptions.contains(receivedEvent.id)) {
                         _subscriptions.at(receivedEvent.id).callback(receivedEvent); // callback

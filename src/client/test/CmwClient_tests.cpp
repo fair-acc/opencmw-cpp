@@ -38,9 +38,9 @@ TEST_CASE("Basic Client Get/Set Test", "[Client]") {
             reply.setBody("42", MessageFrame::dynamic_bytes_tag{});
             reply.setTopic(URI<uri_check::STRICT>::factory(uri).addQueryParameter("ctx", "test_ctx1").build().str, MessageFrame::dynamic_bytes_tag{});
         });
-        opencmw::client::RawMessage result;
+        opencmw::client::MdpMessage result;
         REQUIRE(client.receive(result));
-        REQUIRE(result.data == std::vector<std::byte>{ std::byte{ '4' }, std::byte{ '2' } });
+        REQUIRE(result.data.asString() == "42");
         REQUIRE(result.context == "test_ctx1");
     }
 
@@ -56,9 +56,9 @@ TEST_CASE("Basic Client Get/Set Test", "[Client]") {
             reply.setTopic(URI<uri_check::STRICT>::factory(uri).addQueryParameter("ctx", "test_ctx2").build().str, MessageFrame::dynamic_bytes_tag{});
         });
 
-        opencmw::client::RawMessage result;
+        opencmw::client::MdpMessage result;
         REQUIRE(client.receive(result));
-        REQUIRE(result.data.empty());
+        REQUIRE(result.data.size() == 0);
         REQUIRE(result.context == "test_ctx2");
     }
 }
@@ -83,15 +83,15 @@ TEST_CASE("Basic Client Subscription Test", "[Client]") {
     server.notify("a.service", URI<uri_check::STRICT>::factory(endpoint).addQueryParameter("ctx", "test_ctx2").build().str, "102");
 
     {
-        opencmw::client::RawMessage result;
+        opencmw::client::MdpMessage result;
         REQUIRE(subscriptionClient.receive(result));
-        REQUIRE(result.data == std::vector<std::byte>{ std::byte{ '1' }, std::byte{ '0' }, std::byte{ '1' } });
+        REQUIRE(result.data.asString() == "101");
         REQUIRE(result.context == "test_ctx1");
     }
     {
-        opencmw::client::RawMessage result;
+        opencmw::client::MdpMessage result;
         REQUIRE(subscriptionClient.receive(result));
-        REQUIRE(result.data == std::vector<std::byte>{ std::byte{ '1' }, std::byte{ '0' }, std::byte{ '2' } });
+        REQUIRE(result.data.asString() == "102");
         REQUIRE(result.context == "test_ctx2");
     }
     {
