@@ -97,7 +97,7 @@ private:
                 if (cmd.command == mdp::Command::Invalid) {
                     return false;
                 }
-                auto &c = getClientCtx(*cmd.endpoint);
+                auto &c = getClientCtx(cmd.endpoint);
                 c.request(cmd);
                 return false;
             });
@@ -116,7 +116,7 @@ private:
         bool published = _commandRingBuffer->tryPublishEvent([&endpoint, &cmd, cb = std::move(callback), d = std::move(data)](Command &&ev, long /*seq*/) mutable {
             ev.command  = cmd;
             ev.callback = std::move(cb);
-            ev.endpoint = std::make_unique<URI<STRICT>>(endpoint);
+            ev.endpoint = FWD(endpoint);
             ev.data     = std::move(d);
         });
         if (!published) {

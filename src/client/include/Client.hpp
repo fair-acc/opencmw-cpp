@@ -43,7 +43,7 @@ struct Connection {
 class MDClientBase {
 public:
     virtual ~MDClientBase()                                                                                  = default;
-    virtual bool     receive(mdp::Message &message)                                                            = 0;
+    virtual bool     receive(mdp::Message &message)                                                          = 0;
     virtual timeUnit housekeeping(const timeUnit &now)                                                       = 0;
     virtual void     get(const URI<STRICT> &, majordomo::MessageFrame &)                                     = 0;
     virtual void     set(const URI<STRICT> &, majordomo::MessageFrame &, const std::span<const std::byte> &) = 0;
@@ -136,8 +136,8 @@ public:
             URI<uri_check::STRICT> uri{ std::string{ message.topic() } };
             // auto queryParamMap = uri.queryParamMap();
             std::memcpy(output.data.data(), message.body().begin(), message.body().size());
-            output.endpoint   = std::make_unique<URI<uri_check::STRICT>>(std::string{ message.topic() });
-            auto params       = output.endpoint->queryParamMap();
+            output.endpoint   = URI<uri_check::STRICT>(std::string{ message.topic() });
+            auto params       = output.endpoint.queryParamMap();
             output.context    = params.contains("ctx") ? params.at("ctx").value_or("") : "";
             auto requestId_sv = message.clientRequestId();
             auto result       = std::from_chars(requestId_sv.data(), requestId_sv.data() + requestId_sv.size(), output.id);
@@ -274,8 +274,8 @@ public:
         if (message.command() == majordomo::Command::Notify || message.command() == majordomo::Command::Final) {
             output.data.resize(message.body().size());
             std::memcpy(output.data.data(), message.body().begin(), message.body().size());
-            output.endpoint   = std::make_unique<URI<uri_check::STRICT>>(std::string{ message.topic() });
-            auto params       = output.endpoint->queryParamMap();
+            output.endpoint   = URI<uri_check::STRICT>(std::string{ message.topic() });
+            auto params       = output.endpoint.queryParamMap();
             output.context    = params.contains("ctx") ? params.at("ctx").value_or("") : "";
             auto requestId_sv = message.clientRequestId();
             auto result       = std::from_chars(requestId_sv.data(), requestId_sv.data() + requestId_sv.size(), output.id);
@@ -391,15 +391,15 @@ public:
         if (cmd.callback) {
             if (cmd.command == mdp::Command::Get || cmd.command == mdp::Command::Set) {
                 req_id = _request_id++;
-                _requests.insert({ req_id, Request{ .uri = *cmd.endpoint, .callback = std::move(cmd.callback), .timestamp_received = cmd.arrivalTime } });
+                _requests.insert({ req_id, Request{ .uri = cmd.endpoint, .callback = std::move(cmd.callback), .timestamp_received = cmd.arrivalTime } });
             } else if (cmd.command == mdp::Command::Subscribe) {
                 req_id = _request_id++;
-                _subscriptions.insert({ req_id, Subscription{ .uri = *cmd.endpoint, .callback = std::move(cmd.callback), .timestamp_received = cmd.arrivalTime } });
+                _subscriptions.insert({ req_id, Subscription{ .uri = cmd.endpoint, .callback = std::move(cmd.callback), .timestamp_received = cmd.arrivalTime } });
             } else if (cmd.command == mdp::Command::Unsubscribe) {
                 _requests.erase(0); // todo: lookup correct subscription
             }
         }
-        sendCmd(*cmd.endpoint, cmd.command, req_id, cmd.data);
+        sendCmd(cmd.endpoint, cmd.command, req_id, cmd.data);
     }
 
 private:
@@ -457,7 +457,7 @@ private:
             }
             handleRequests();
             for (auto &clientPair : _clients) {
-                auto      &client = clientPair.second;
+                auto        &client = clientPair.second;
                 mdp::Message receivedEvent;
                 while (client->receive(receivedEvent)) {
                     if (_subscriptions.contains(receivedEvent.id)) {
