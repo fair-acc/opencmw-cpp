@@ -1,5 +1,5 @@
 #include <catch2/catch.hpp>
-#define ENABLE_RESULT_CHECKS 1
+
 #include <Client.hpp>
 #include <MockServer.hpp>
 
@@ -27,7 +27,7 @@ TEST_CASE("Basic Client Get/Set Test", "[Client]") {
     opencmw::client::Client     client(context, pollitems);
     auto                        uri = URI<uri_check::STRICT>(server.address());
 
-    {
+    SECTION("Get") {
         auto reqId = MessageFrame("1", MessageFrame::dynamic_bytes_tag{});
         client.get(URI<uri_check::STRICT>::UriFactory(uri).path("services/test").build(), reqId);
 
@@ -38,13 +38,13 @@ TEST_CASE("Basic Client Get/Set Test", "[Client]") {
             reply.setBody("42", MessageFrame::dynamic_bytes_tag{});
             reply.setTopic(URI<uri_check::STRICT>::factory(uri).addQueryParameter("ctx", "test_ctx1").build().str, MessageFrame::dynamic_bytes_tag{});
         });
-        opencmw::client::MdpMessage result;
+        opencmw::mdp::Message result;
         REQUIRE(client.receive(result));
         REQUIRE(result.data.asString() == "42");
         REQUIRE(result.context == "test_ctx1");
     }
 
-    {
+    SECTION("Set") {
         auto reqId = MessageFrame("2", MessageFrame::dynamic_bytes_tag{});
         client.set(URI<uri_check::STRICT>::UriFactory(uri).path("services/test").build(), reqId, byte_array_from_string("100"));
 
@@ -56,7 +56,7 @@ TEST_CASE("Basic Client Get/Set Test", "[Client]") {
             reply.setTopic(URI<uri_check::STRICT>::factory(uri).addQueryParameter("ctx", "test_ctx2").build().str, MessageFrame::dynamic_bytes_tag{});
         });
 
-        opencmw::client::MdpMessage result;
+        opencmw::mdp::Message result;
         REQUIRE(client.receive(result));
         REQUIRE(result.data.size() == 0);
         REQUIRE(result.context == "test_ctx2");
@@ -82,23 +82,20 @@ TEST_CASE("Basic Client Subscription Test", "[Client]") {
     server.notify("a.service", URI<uri_check::STRICT>::factory(endpoint).addQueryParameter("ctx", "test_ctx1").build().str, "101");
     server.notify("a.service", URI<uri_check::STRICT>::factory(endpoint).addQueryParameter("ctx", "test_ctx2").build().str, "102");
 
-    {
-        opencmw::client::MdpMessage result;
-        REQUIRE(subscriptionClient.receive(result));
-        REQUIRE(result.data.asString() == "101");
-        REQUIRE(result.context == "test_ctx1");
-    }
-    {
-        opencmw::client::MdpMessage result;
-        REQUIRE(subscriptionClient.receive(result));
-        REQUIRE(result.data.asString() == "102");
-        REQUIRE(result.context == "test_ctx2");
-    }
-    {
-        auto reqId2 = MessageFrame("9", MessageFrame::dynamic_bytes_tag{});
-        REQUIRE_THROWS(subscriptionClient.get(endpoint, reqId2));
-        REQUIRE_THROWS(subscriptionClient.set(endpoint, reqId2, {}));
-    }
+    opencmw::mdp::Message resultOfNotify1;
+    REQUIRE(subscriptionClient.receive(resultOfNotify1));
+    REQUIRE(resultOfNotify1.data.asString() == "101");
+    REQUIRE(resultOfNotify1.context == "test_ctx1");
+
+    opencmw::mdp::Message resultOfNotifyTwo;
+    REQUIRE(subscriptionClient.receive(resultOfNotifyTwo));
+    REQUIRE(resultOfNotifyTwo.data.asString() == "102");
+    REQUIRE(resultOfNotifyTwo.context == "test_ctx2");
+
+    // receive expected exception
+    auto reqId2 = MessageFrame("9", MessageFrame::dynamic_bytes_tag{});
+    REQUIRE_THROWS(subscriptionClient.get(endpoint, reqId2));
+    REQUIRE_THROWS(subscriptionClient.set(endpoint, reqId2, {}));
 }
 
 } // namespace opencmw_client_test

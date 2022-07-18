@@ -7,6 +7,7 @@
 #include <ClientContext.hpp>
 #include <majordomo/Message.hpp>
 #include <majordomo/ZmqPtr.hpp>
+#include <MdpMessage.hpp>
 #include <opencmw.hpp>
 #include <URI.hpp>
 
@@ -42,7 +43,7 @@ struct Connection {
 class MDClientBase {
 public:
     virtual ~MDClientBase()                                                                                  = default;
-    virtual bool     receive(MdpMessage &message)                                                            = 0;
+    virtual bool     receive(mdp::Message &message)                                                            = 0;
     virtual timeUnit housekeeping(const timeUnit &now)                                                       = 0;
     virtual void     get(const URI<STRICT> &, majordomo::MessageFrame &)                                     = 0;
     virtual void     set(const URI<STRICT> &, majordomo::MessageFrame &, const std::span<const std::byte> &) = 0;
@@ -125,7 +126,7 @@ public:
         return true;
     }
 
-    bool handleMessage(majordomo::MdpMessage &&message, MdpMessage &output) {
+    bool handleMessage(majordomo::MdpMessage &&message, mdp::Message &output) {
         if (!message.isValid()) {
             return true;
         }
@@ -143,13 +144,13 @@ public:
             if (result.ec == std::errc::invalid_argument || result.ec == std::errc::result_out_of_range) {
                 output.id = 0;
             }
-            output.timestamp_received = 0ms;
+            output.arrivalTime = 0ms;
             return true;
         }
         return true;
     }
 
-    bool receive(MdpMessage &msg) override {
+    bool receive(mdp::Message &msg) override {
         for (auto &con : _connections) {
             if (con._connectionState != detail::ConnectionState::CONNECTED) {
                 continue;
@@ -265,7 +266,7 @@ public:
         return true;
     }
 
-    bool handleMessage(majordomo::BasicMdpMessage<MessageFormat::WithSourceId> &&message, MdpMessage &output) {
+    bool handleMessage(majordomo::BasicMdpMessage<MessageFormat::WithSourceId> &&message, mdp::Message &output) {
         if (!message.isValid()) {
             return true;
         }
@@ -281,13 +282,13 @@ public:
             if (result.ec == std::errc::invalid_argument || result.ec == std::errc::result_out_of_range) {
                 output.id = 0;
             }
-            output.timestamp_received = 0ms;
+            output.arrivalTime = 0ms;
             return true;
         }
         return true;
     }
 
-    bool receive(MdpMessage &msg) override {
+    bool receive(mdp::Message &msg) override {
         for (detail::Connection &con : _connections) {
             if (con._connectionState != detail::ConnectionState::CONNECTED) {
                 continue;
@@ -388,28 +389,28 @@ public:
     void request(Command &cmd) override {
         std::size_t req_id = 0;
         if (cmd.callback) {
-            if (cmd.type == Command::Type::Get || cmd.type == Command::Type::Set) {
+            if (cmd.command == mdp::Command::Get || cmd.command == mdp::Command::Set) {
                 req_id = _request_id++;
-                _requests.insert({ req_id, Request{ .uri = *cmd.uri, .callback = std::move(cmd.callback), .timestamp_received = cmd.timestamp_received } });
-            } else if (cmd.type == Command::Type::Subscribe) {
+                _requests.insert({ req_id, Request{ .uri = *cmd.endpoint, .callback = std::move(cmd.callback), .timestamp_received = cmd.arrivalTime } });
+            } else if (cmd.command == mdp::Command::Subscribe) {
                 req_id = _request_id++;
-                _subscriptions.insert({ req_id, Subscription{ .uri = *cmd.uri, .callback = std::move(cmd.callback), .timestamp_received = cmd.timestamp_received } });
-            } else if (cmd.type == Command::Type::Unsubscribe) {
+                _subscriptions.insert({ req_id, Subscription{ .uri = *cmd.endpoint, .callback = std::move(cmd.callback), .timestamp_received = cmd.arrivalTime } });
+            } else if (cmd.command == mdp::Command::Unsubscribe) {
                 _requests.erase(0); // todo: lookup correct subscription
             }
         }
-        sendCmd(*cmd.uri, cmd.type, req_id, cmd.data);
+        sendCmd(*cmd.endpoint, cmd.command, req_id, cmd.data);
     }
 
 private:
-    void sendCmd(const URI<STRICT> &uri, Command::Type commandType, std::size_t req_id, const IoBuffer &data = std::move(IoBuffer())) {
+    void sendCmd(const URI<STRICT> &uri, mdp::Command commandType, std::size_t req_id, const IoBuffer &data = std::move(IoBuffer())) {
         majordomo::MessageFrame cmdType{ std::string{ static_cast<char>(commandType) }, majordomo::MessageFrame::dynamic_bytes_tag() };
         cmdType.send(_control_socket_send, ZMQ_DONTWAIT | ZMQ_SNDMORE).assertSuccess();
         majordomo::MessageFrame reqId{ std::to_string(req_id), majordomo::MessageFrame::dynamic_bytes_tag() };
         reqId.send(_control_socket_send, ZMQ_DONTWAIT | ZMQ_SNDMORE).assertSuccess();
         majordomo::MessageFrame endpoint{ uri.str, majordomo::MessageFrame::dynamic_bytes_tag() };
         endpoint.send(_control_socket_send, ZMQ_DONTWAIT).assertSuccess();
-        if (commandType == Command::Type::Set) {
+        if (commandType == mdp::Command::Set) {
             majordomo::MessageFrame dataframe{ std::string_view{ reinterpret_cast<const char *>(data.data()), data.size() }, majordomo::MessageFrame::dynamic_bytes_tag() };
             dataframe.send(_control_socket_send, ZMQ_DONTWAIT).assertSuccess();
         }
@@ -428,17 +429,17 @@ private:
             auto       &client = getClient(uri);
             if (cmd.data().size() != 1) {
                 throw std::logic_error("invalid request received"); // messages always consist of 2 frames
-            } else if (cmd.data()[0] == static_cast<char>(Command::Type::Get)) {
+            } else if (cmd.data()[0] == static_cast<char>(mdp::Command::Get)) {
                 client->get(uri, reqId);
-            } else if (cmd.data()[0] == static_cast<char>(Command::Type::Set)) {
+            } else if (cmd.data()[0] == static_cast<char>(mdp::Command::Set)) {
                 majordomo::MessageFrame data;
                 if (!data.receive(_control_socket_recv, ZMQ_DONTWAIT).isValid()) {
                     throw std::logic_error("missing set data");
                 }
                 client->set(uri, reqId, as_bytes(std::span(data.data().data(), data.data().size())));
-            } else if (cmd.data()[0] == static_cast<char>(Command::Type::Subscribe)) {
+            } else if (cmd.data()[0] == static_cast<char>(mdp::Command::Subscribe)) {
                 client->subscribe(uri, reqId);
-            } else if (cmd.data()[0] == static_cast<char>(Command::Type::Unsubscribe)) {
+            } else if (cmd.data()[0] == static_cast<char>(mdp::Command::Unsubscribe)) {
                 client->unsubscribe(uri, reqId);
             } else {
                 throw std::logic_error("invalid request received"); // messages always consist of 2 frames
@@ -457,7 +458,7 @@ private:
             handleRequests();
             for (auto &clientPair : _clients) {
                 auto      &client = clientPair.second;
-                MdpMessage receivedEvent;
+                mdp::Message receivedEvent;
                 while (client->receive(receivedEvent)) {
                     if (_subscriptions.contains(receivedEvent.id)) {
                         _subscriptions.at(receivedEvent.id).callback(receivedEvent); // callback
