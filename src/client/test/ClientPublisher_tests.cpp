@@ -39,11 +39,11 @@ TEST_CASE("Basic get/set test", "[ClientContext]") {
     server.processRequest([&endpoint](auto &&req, auto &reply) {
         REQUIRE(req.command() == Command::Get);
         reply.setBody(std::to_string(100), MessageFrame::dynamic_bytes_tag{});
-        reply.setTopic(URI<STRICT>::factory(endpoint).addQueryParameter("ctx", "test_ctx").build().str, MessageFrame::dynamic_bytes_tag{});
+        reply.setTopic(URI<STRICT>::factory(endpoint).addQueryParameter("ctx", "test_ctx").build().str(), MessageFrame::dynamic_bytes_tag{});
     });
     std::this_thread::sleep_for(20ms); // hacky: this is needed because the requests are only identified using their uri, so we cannot have multiple requests with identical uris
     fmt::print("issuing set request\n");
-    auto testData = std::vector<std::byte>{ std::byte{ 'a' }, std::byte{ 'b' }, std::byte{ 'c' } };
+    auto              testData = std::vector<std::byte>{ std::byte{ 'a' }, std::byte{ 'b' }, std::byte{ 'c' } };
     opencmw::IoBuffer dataSetRequest;
     dataSetRequest.put('a');
     dataSetRequest.put('b');
@@ -53,13 +53,14 @@ TEST_CASE("Basic get/set test", "[ClientContext]") {
                 REQUIRE(message.data.size() == 0); // == "100");
                 REQUIRE(message.context == "test_ctx");
                 received++;
-            }, std::move(dataSetRequest));
+            },
+            std::move(dataSetRequest));
     std::this_thread::sleep_for(20ms); // allow the request to reach the server
     server.processRequest([&endpoint](auto &&req, auto &reply) {
         REQUIRE(req.command() == Command::Set);
         REQUIRE(req.body() == "abc");
         reply.setBody(std::string(), MessageFrame::dynamic_bytes_tag{});
-        reply.setTopic(URI<STRICT>::factory(endpoint).addQueryParameter("ctx", "test_ctx").build().str, MessageFrame::dynamic_bytes_tag{});
+        reply.setTopic(URI<STRICT>::factory(endpoint).addQueryParameter("ctx", "test_ctx").build().str(), MessageFrame::dynamic_bytes_tag{});
     });
     std::this_thread::sleep_for(10ms); // allow the reply to reach the client
     REQUIRE(received == 2);
@@ -88,7 +89,7 @@ TEST_CASE("Basic subscription test", "[ClientContext]") {
     std::this_thread::sleep_for(10ms); // allow for the subscription request to be processed
     // send notifications
     for (int i = 0; i < 100; i++) {
-        server.notify("a.service", endpoint.str, "bar-baz");
+        server.notify("a.service", endpoint.str(), "bar-baz");
         fmt::print("^");
     }
     std::this_thread::sleep_for(10ms); // allow for all the notifications to reach the client
@@ -98,7 +99,7 @@ TEST_CASE("Basic subscription test", "[ClientContext]") {
     std::this_thread::sleep_for(10ms); // allow for the unsubscription request to be processed
     // send notifications
     for (int i = 0; i < 100; i++) {
-        server.notify("a.service", endpoint.str, "bar-baz");
+        server.notify("a.service", endpoint.str(), "bar-baz");
         fmt::print("^");
     }
     std::this_thread::sleep_for(10ms); // allow for all the notifications to reach the client

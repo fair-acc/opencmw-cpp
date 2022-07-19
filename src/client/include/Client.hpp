@@ -372,9 +372,9 @@ public:
     }
 
     std::unique_ptr<MDClientBase> createClient(const URI<STRICT> &uri) {
-        if (uri.str.starts_with("mdp")) {
+        if (uri.str().starts_with("mdp")) {
             return std::make_unique<Client>(_zctx, _pollitems, _timeout, _clientId);
-        } else if (uri.str.starts_with("mds")) {
+        } else if (uri.str().starts_with("mds")) {
             return std::make_unique<SubscriptionClient>(_zctx, _pollitems, _timeout, _clientId);
         } else {
             throw std::logic_error("unsupported protocol");
@@ -408,7 +408,7 @@ private:
         cmdType.send(_control_socket_send, ZMQ_DONTWAIT | ZMQ_SNDMORE).assertSuccess();
         majordomo::MessageFrame reqId{ std::to_string(req_id), majordomo::MessageFrame::dynamic_bytes_tag() };
         reqId.send(_control_socket_send, ZMQ_DONTWAIT | ZMQ_SNDMORE).assertSuccess();
-        majordomo::MessageFrame endpoint{ uri.str, majordomo::MessageFrame::dynamic_bytes_tag() };
+        majordomo::MessageFrame endpoint{ uri.str(), majordomo::MessageFrame::dynamic_bytes_tag() };
         endpoint.send(_control_socket_send, ZMQ_DONTWAIT).assertSuccess();
         if (commandType == mdp::Command::Set) {
             majordomo::MessageFrame dataframe{ std::string_view{ reinterpret_cast<const char *>(data.data()), data.size() }, majordomo::MessageFrame::dynamic_bytes_tag() };
@@ -434,7 +434,7 @@ private:
             } else if (cmd.data()[0] == static_cast<char>(mdp::Command::Set)) {
                 majordomo::MessageFrame data;
                 if (!data.receive(_control_socket_recv, ZMQ_DONTWAIT).isValid()) {
-                    throw std::logic_error("missing set data");
+                    throw std::logic_error("missing set str");
                 }
                 client->set(uri, reqId, as_bytes(std::span(data.data().data(), data.data().size())));
             } else if (cmd.data()[0] == static_cast<char>(mdp::Command::Subscribe)) {

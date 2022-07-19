@@ -34,24 +34,19 @@ enum uri_check {
 // regex test: regexr.com/69hv8
 template<uri_check check = STRICT>
 class URI {
-    using string_view = std::string_view;
-
-public:
-    std::string str;
-
-private:
+    std::string _str; // raw URI string
     // need to keep a local, owning, and immutable copy of the source template
     // evaluate on demand and if available
-    string_view         _scheme;
-    string_view         _authority;
-    mutable bool        _parsedAuthority = false;
-    mutable string_view _userName;
-    mutable string_view _pwd;
-    mutable string_view _hostName;
-    mutable string_view _port;
-    string_view         _path;
-    string_view         _query;
-    string_view         _fragment;
+    std::string_view         _scheme;
+    std::string_view         _authority;
+    mutable bool             _parsedAuthority = false;
+    mutable std::string_view _userName;
+    mutable std::string_view _pwd;
+    mutable std::string_view _hostName;
+    mutable std::string_view _port;
+    std::string_view         _path;
+    std::string_view         _query;
+    std::string_view         _fragment;
 
     // computed on-demand
     mutable std::unordered_map<std::string, std::optional<std::string>> _queryMap;
@@ -59,21 +54,22 @@ private:
 public:
     URI() = delete;
     explicit URI(const std::string &src)
-        : str(src) { parseURI(); }
+        : _str(src) { parseURI(); }
     explicit URI(std::string &&src)
-        : str(std::move(src)) { parseURI(); }
+        : _str(std::move(src)) { parseURI(); }
     URI(const URI &other)
     noexcept { *this = other; }
     URI(const URI &&other)
     noexcept { *this = std::move(other); }
+    ~URI() = default;
 
     URI &operator=(const URI &other) noexcept {
         if (this == &other) {
             return *this;
         }
-        str               = other.str;
+        _str              = other.str();
         auto adjustedView = [this, &other](std::string_view otherView) {
-            return std::string_view(str.data() + std::distance(other.str.data(), otherView.data()), otherView.size());
+            return std::string_view(_str.data() + std::distance(other.str().data(), otherView.data()), otherView.size());
         };
         _scheme    = adjustedView(other._scheme);
         _authority = adjustedView(other._authority);
@@ -101,7 +97,7 @@ public:
         if (this == &other) {
             return *this;
         }
-        str        = std::move(other.str);
+        _str       = std::move(other.str());
         _scheme    = std::move(other._scheme);
         _authority = std::move(other._authority);
         _path      = std::move(other._path);
@@ -117,7 +113,9 @@ public:
         return *this;
     }
 
-    bool               empty() const { return str.empty(); }
+    const std::string &str() const noexcept { return _str; }
+    const std::string &operator()() const noexcept { return _str; }
+    bool               empty() const { return _str.empty(); }
 
     static std::string encode(const std::string_view &source) noexcept {
         std::ostringstream encoded;
@@ -163,15 +161,15 @@ public:
     }
 
     // clang-format off
-    inline const std::optional<std::string> scheme() const noexcept { return returnOpt(_scheme); }
-    inline const std::optional<std::string> authority() const noexcept { return returnOpt(_authority); }
-    inline const std::optional<std::string> user() const noexcept { parseAuthority(); return returnOpt(_userName); }
-    inline const std::optional<std::string> password() const noexcept { parseAuthority(); return returnOpt(_pwd); }
-    inline const std::optional<std::string> hostName() const noexcept { parseAuthority(); return returnOpt(_hostName); }
-    inline const std::optional<uint16_t> port() const noexcept { parseAuthority(); return _port.empty() ? std::nullopt : std::optional(std::stoi(std::string{ _port.begin(), _port.end() }));}
-    inline const std::optional<std::string> path() const noexcept { return returnOpt(_path); }
-    inline const std::optional<std::string> queryParam() const noexcept { return returnOpt(_query); }
-    inline const std::optional<std::string> fragment() const noexcept { return returnOpt(_fragment); }
+    inline std::optional<std::string> scheme() const noexcept { return returnOpt(_scheme); }
+    inline std::optional<std::string> authority() const noexcept { return returnOpt(_authority); }
+    inline std::optional<std::string> user() const noexcept { parseAuthority(); return returnOpt(_userName); }
+    inline std::optional<std::string> password() const noexcept { parseAuthority(); return returnOpt(_pwd); }
+    inline std::optional<std::string> hostName() const noexcept { parseAuthority(); return returnOpt(_hostName); }
+    inline std::optional<uint16_t> port() const noexcept { parseAuthority(); return _port.empty() ? std::nullopt : std::optional(std::stoi(std::string{ _port.begin(), _port.end() }));}
+    inline std::optional<std::string> path() const noexcept { return returnOpt(_path); }
+    inline std::optional<std::string> queryParam() const noexcept { return returnOpt(_query); }
+    inline std::optional<std::string> fragment() const noexcept { return returnOpt(_fragment); }
     // clang-format om
 
     // decompose map
@@ -180,14 +178,14 @@ public:
             return _queryMap;
         }
         if constexpr (check == STRICT) {
-            if (!std::all_of(_query.begin(), _query.end(), [](char c) { return isUnreserved(c) || c == '&' || c == ';' || c == '=' || c == '%' || c == ':' || c == '/'; })) {
+            if (!std::ranges::all_of(_query.begin(), _query.end(), [](char c) { return isUnreserved(c) || c == '&' || c == ';' || c == '=' || c == '%' || c == ':' || c == '/'; })) {
                 throw URISyntaxException(fmt::format("URI query contains illegal characters: {}", _query));
             }
         }
         size_t readPos = 0;
         while (readPos < _query.length()) {
             auto keyEnd = _query.find_first_of("=;&\0", readPos);
-            if (keyEnd != string_view::npos && keyEnd < _query.length()) {
+            if (keyEnd != std::string_view::npos && keyEnd < _query.length()) {
                 auto key = decode(_query.substr(readPos, keyEnd - readPos));
                 if (_query[keyEnd] != '=') {
                     _queryMap[key] = std::nullopt;
@@ -202,7 +200,7 @@ public:
                     break;
                 }
                 const auto valueEnd = _query.find_first_of(";&\0", readPos);
-                if (valueEnd != string_view::npos && valueEnd < _query.length()) {
+                if (valueEnd != std::string_view::npos && valueEnd < _query.length()) {
                     _queryMap[key] = std::optional(decode(_query.substr(readPos, valueEnd - readPos)));
                     readPos        = valueEnd + 1;
                     continue;
@@ -221,8 +219,8 @@ public:
     };
 
     // comparison operators
-    auto operator<=>(const URI &other) const noexcept { return str <=> other.str; }
-    bool operator==(const URI &other) const noexcept  { return str == other.str; }
+    auto operator<=>(const URI &other) const noexcept { return _str <=> other.str(); }
+    bool operator==(const URI &other) const noexcept  { return _str == other.str(); }
 
     class UriFactory {
         std::string             _authority;
@@ -297,15 +295,15 @@ public:
     static inline UriFactory factory(const URI &uri) noexcept { return UriFactory(uri); }
 
 private:
-    inline const std::optional<std::string> returnOpt(const string_view &src) const noexcept { // simple optional un-wrapper
+    inline std::optional<std::string> returnOpt(const std::string_view &src) const noexcept { // simple optional un-wrapper
         if (!src.empty()) {
-            assert(src.data() >= str.data() && src.data() < str.data() + str.size());
+            assert(src.data() >= _str.data() && src.data() < _str.data() + _str.size());
         }
         return src.empty() ? std::nullopt : std::optional<std::string>(src);
     };
 
     inline void parseURI() {
-        string_view source(str.c_str(), str.size());
+        std::string_view source(_str.c_str(), _str.size());
         if constexpr (check == STRICT) {
             constexpr auto validURICharacters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/?#[]@!$&'()*+,;=%";
             unsigned long  illegalChar        = source.find_first_not_of(validURICharacters);
@@ -366,7 +364,7 @@ private:
             return; // nothing more to parse
         }
         size_t queryEnd = std::min(source.find_first_of('#', pathEnd), source.length());
-        if (source[pathEnd] == '?' && queryEnd != string_view::npos && queryEnd <= source.length()) {
+        if (source[pathEnd] == '?' && queryEnd != std::string_view::npos && queryEnd <= source.length()) {
             _query = source.substr(pathEnd + 1, queryEnd - pathEnd - 1);
         } else {
             // no query present
@@ -376,7 +374,7 @@ private:
             return; // nothing more to parse
         }
         size_t fragStart = source.find_first_of('#', queryEnd);
-        if (fragStart != string_view::npos && fragStart < source.length()) {
+        if (fragStart != std::string_view::npos && fragStart < source.length()) {
             fragStart++;
             _fragment = source.substr(fragStart, source.length() - fragStart);
         }
@@ -402,7 +400,7 @@ private:
                    userSplit = 0;
         }
                size_t portSplit = std::min(_authority.find_first_of(':', userSplit), _authority.length());
-               if (portSplit != string_view::npos && portSplit < _authority.length()) {
+               if (portSplit != std::string_view::npos && portSplit < _authority.length()) {
                    // port defined
             _hostName = _authority.substr(userSplit, portSplit - userSplit);
             portSplit++;
@@ -416,7 +414,7 @@ private:
 
 template<opencmw::uri_check check>
 struct std::hash<opencmw::URI<check>> {
-    std::size_t operator()(const opencmw::URI<check> &uri) const noexcept { return std::hash<std::string>{}(uri.str); }
+    std::size_t operator()(const opencmw::URI<check> &uri) const noexcept { return std::hash<std::string>{}(uri.str()); }
 };
 
 // fmt::format and std::ostream helper output

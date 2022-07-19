@@ -169,7 +169,7 @@ void simpleTwoWorkerBenchmark(const URI &routerAddress, Get mode, int iterations
     const std::chrono::duration<double> diff  = after - before;
 
     std::cout << fmt::format("{}: {}. Alternating Payloads {}/{} bytes: {} iterations took {}s ({} messages/s)\n",
-            routerAddress.str,
+            routerAddress,
             mode == Get::Async ? "ASYNC" : "SYNC",
             payload1_size,
             payload2_size,
@@ -195,7 +195,7 @@ int main(int argc, char **argv) {
 
     for (const auto &result : results) {
         std::cout << fmt::format("{}: {}. Payload {} bytes: {} iterations took {}s ({} messages/s)\n",
-                result.routerAddress.str,
+                result.routerAddress,
                 result.mode == Get::Async ? "ASYNC" : "SYNC",
                 result.payloadSize,
                 result.iterations,

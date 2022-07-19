@@ -334,32 +334,32 @@ private:
     static constexpr auto _defaultPermission = _permissionsByRole.data.back().second;
 
     MdpMessage            processRequest(MdpMessage &&request) noexcept {
-        const auto clientRole = parse_rbac::role(request.rbacToken());
-        const auto permission = _permissionsByRole.at(clientRole, _defaultPermission);
+                   const auto clientRole = parse_rbac::role(request.rbacToken());
+                   const auto permission = _permissionsByRole.at(clientRole, _defaultPermission);
 
-        if (request.command() == Command::Get && !(permission == Permission::RW || permission == Permission::RO)) {
-            auto errorReply = replyFromRequest(request);
-            errorReply.setError(fmt::format("GET access denied to role '{}'", clientRole), MessageFrame::dynamic_bytes_tag{});
-            return errorReply;
+                   if (request.command() == Command::Get && !(permission == Permission::RW || permission == Permission::RO)) {
+                       auto errorReply = replyFromRequest(request);
+                       errorReply.setError(fmt::format("GET access denied to role '{}'", clientRole), MessageFrame::dynamic_bytes_tag{});
+                       return errorReply;
         } else if (request.command() == Command::Set && !(permission == Permission::RW || permission == Permission::WO)) {
-            auto errorReply = replyFromRequest(request);
-            errorReply.setError(fmt::format("SET access denied to role '{}'", clientRole), MessageFrame::dynamic_bytes_tag{});
-            return errorReply;
+                       auto errorReply = replyFromRequest(request);
+                       errorReply.setError(fmt::format("SET access denied to role '{}'", clientRole), MessageFrame::dynamic_bytes_tag{});
+                       return errorReply;
         }
 
-        RequestContext context{ .request = std::move(request), .reply = replyFromRequest(context.request) };
+                   RequestContext context{ .request = std::move(request), .reply = replyFromRequest(context.request) };
 
-        try {
-            std::invoke(_handler, context);
-            return std::move(context.reply);
+                   try {
+                       std::invoke(_handler, context);
+                       return std::move(context.reply);
         } catch (const std::exception &e) {
-            auto errorReply = replyFromRequest(context.request);
-            errorReply.setError(fmt::format("Caught exception for service '{}'\nrequest message: {}\nexception: {}", serviceName.data(), context.request.body(), e.what()), MessageFrame::dynamic_bytes_tag{});
-            return errorReply;
+                       auto errorReply = replyFromRequest(context.request);
+                       errorReply.setError(fmt::format("Caught exception for service '{}'\nrequest message: {}\nexception: {}", serviceName.data(), context.request.body(), e.what()), MessageFrame::dynamic_bytes_tag{});
+                       return errorReply;
         } catch (...) {
-            auto errorReply = replyFromRequest(context.request);
-            errorReply.setError(fmt::format("Caught unexpected exception for service '{}'\nrequest message: {}", serviceName.data(), context.request.body()), MessageFrame::dynamic_bytes_tag{});
-            return errorReply;
+                       auto errorReply = replyFromRequest(context.request);
+                       errorReply.setError(fmt::format("Caught unexpected exception for service '{}'\nrequest message: {}", serviceName.data(), context.request.body()), MessageFrame::dynamic_bytes_tag{});
+                       return errorReply;
         }
     }
 
@@ -448,7 +448,7 @@ inline void writeResult(std::string_view workerName, RequestContext &rawCtx, con
     const auto baseUri    = URI<RELAXED>(std::string(rawCtx.reply.topic().empty() ? rawCtx.request.topic() : rawCtx.reply.topic()));
     const auto topicUri   = URI<RELAXED>::factory(baseUri).setQuery(std::move(replyQuery)).build();
 
-    rawCtx.reply.setTopic(topicUri.str, MessageFrame::dynamic_bytes_tag{});
+    rawCtx.reply.setTopic(topicUri.str(), MessageFrame::dynamic_bytes_tag{});
     const auto replyMimetype = query::getMimeType(replyContext);
     const auto mimeType      = replyMimetype != MIME::UNKNOWN ? replyMimetype : rawCtx.mimeType;
     if (mimeType == MIME::JSON) {
@@ -478,7 +478,7 @@ inline void writeResultFull(std::string_view workerName, RequestContext &rawCtx,
     const auto baseUri    = URI<RELAXED>(std::string(rawCtx.reply.topic().empty() ? rawCtx.request.topic() : rawCtx.reply.topic()));
     const auto topicUri   = URI<RELAXED>::factory(baseUri).setQuery(std::move(replyQuery)).build();
 
-    rawCtx.reply.setTopic(topicUri.str, MessageFrame::dynamic_bytes_tag{});
+    rawCtx.reply.setTopic(topicUri.str(), MessageFrame::dynamic_bytes_tag{});
     const auto replyMimetype = query::getMimeType(replyContext);
     const auto mimeType      = replyMimetype != MIME::UNKNOWN ? replyMimetype : rawCtx.mimeType;
     if (mimeType == MIME::JSON) {
@@ -583,7 +583,7 @@ public:
         // TODO java does subscription handling here which BasicMdpWorker does in the sender thread. check what we need there.
 
         RequestContext rawCtx;
-        rawCtx.reply.setTopic(topicURI.str, MessageFrame::dynamic_bytes_tag{});
+        rawCtx.reply.setTopic(topicURI.str(), MessageFrame::dynamic_bytes_tag{});
         worker_detail::writeResult(Worker::name, rawCtx, context, reply);
         return BasicWorker<serviceName, Meta...>::notify(std::move(rawCtx.reply));
     }

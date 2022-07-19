@@ -36,7 +36,7 @@ TEST_CASE("Basic Client Get/Set Test", "[Client]") {
             REQUIRE(req.body() == "");
             REQUIRE(req.clientRequestId() == "1");
             reply.setBody("42", MessageFrame::dynamic_bytes_tag{});
-            reply.setTopic(URI<uri_check::STRICT>::factory(uri).addQueryParameter("ctx", "test_ctx1").build().str, MessageFrame::dynamic_bytes_tag{});
+            reply.setTopic(URI<uri_check::STRICT>::factory(uri).addQueryParameter("ctx", "test_ctx1").build().str(), MessageFrame::dynamic_bytes_tag{});
         });
         opencmw::mdp::Message result;
         REQUIRE(client.receive(result));
@@ -53,7 +53,7 @@ TEST_CASE("Basic Client Get/Set Test", "[Client]") {
             REQUIRE(req.body() == "100");
             REQUIRE(req.clientRequestId() == "2");
             reply.setBody("", MessageFrame::dynamic_bytes_tag{});
-            reply.setTopic(URI<uri_check::STRICT>::factory(uri).addQueryParameter("ctx", "test_ctx2").build().str, MessageFrame::dynamic_bytes_tag{});
+            reply.setTopic(URI<uri_check::STRICT>::factory(uri).addQueryParameter("ctx", "test_ctx2").build().str(), MessageFrame::dynamic_bytes_tag{});
         });
 
         opencmw::mdp::Message result;
@@ -79,8 +79,8 @@ TEST_CASE("Basic Client Subscription Test", "[Client]") {
     subscriptionClient.subscribe(endpoint, reqId);
     std::this_thread::sleep_for(50ms); // allow for subscription to be established
 
-    server.notify("a.service", URI<uri_check::STRICT>::factory(endpoint).addQueryParameter("ctx", "test_ctx1").build().str, "101");
-    server.notify("a.service", URI<uri_check::STRICT>::factory(endpoint).addQueryParameter("ctx", "test_ctx2").build().str, "102");
+    server.notify("a.service", URI<uri_check::STRICT>::factory(endpoint).addQueryParameter("ctx", "test_ctx1").build().str(), "101");
+    server.notify("a.service", URI<uri_check::STRICT>::factory(endpoint).addQueryParameter("ctx", "test_ctx2").build().str(), "102");
 
     opencmw::mdp::Message resultOfNotify1;
     REQUIRE(subscriptionClient.receive(resultOfNotify1));

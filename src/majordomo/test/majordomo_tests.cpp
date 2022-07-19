@@ -170,7 +170,7 @@ TEST_CASE("Test mmi.dns", "[broker][mmi][mmi_dns]") {
     const auto brokerAddress   = opencmw::URI<opencmw::STRICT>("mdp://127.0.0.1:22346");
     Broker     dnsBroker("dnsBroker", settings);
     REQUIRE(dnsBroker.bind(dnsAddress));
-    settings.dnsAddress = dnsAddress.str;
+    settings.dnsAddress = dnsAddress.str();
     Broker broker("testbroker", settings);
     REQUIRE(broker.bind(brokerAddress));
 
@@ -1111,7 +1111,7 @@ TEST_CASE("BasicWorker run loop quits when broker quits", "[worker]") {
     auto                     quitBroker = std::jthread([&broker]() {
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
         broker.shutdown();
-                        });
+    });
 
     worker.run(); // returns when broker disappears
     quitBroker.join();
