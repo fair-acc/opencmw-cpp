@@ -187,8 +187,8 @@ private:
         std::size_t                                    requestCount       = 0;
 
         auto                                          &queueForRole(const std::string_view role) {
-                                                     auto it = std::find_if(requestsByPriority.begin(), requestsByPriority.end(), [&role](const auto &v) { return v.first == role; });
-                                                     return it != requestsByPriority.end() ? it->second : requestsByPriority.back().second;
+            auto it = std::find_if(requestsByPriority.begin(), requestsByPriority.end(), [&role](const auto &v) { return v.first == role; });
+            return it != requestsByPriority.end() ? it->second : requestsByPriority.back().second;
         }
 
         explicit Service(std::string name_, std::string description_)
@@ -351,7 +351,7 @@ public:
         pollerItems[3].events = ZMQ_POLLIN;
     }
 
-    Broker(const Broker &)            = delete;
+    Broker(const Broker &) = delete;
     Broker &operator=(const Broker &) = delete;
 
     template<typename Filter>

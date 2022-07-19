@@ -121,23 +121,23 @@ struct HelloWorldHandler {
     std::string customFilter = "uninitialised";
 
     void        operator()(RequestContext &rawCtx, const TestContext &requestContext, const Request &in, TestContext &replyContext, Reply &out) {
-               using namespace std::chrono;
-               const auto now        = system_clock::now();
-               const auto sinceEpoch = system_clock::to_time_t(now);
-               out.name              = fmt::format("Hello World! The local time is: {}", std::put_time(std::localtime(&sinceEpoch), "%Y-%m-%d %H:%M:%S"));
-               out.byteArray         = in.name; // doesn't really make sense atm
-               out.byteReturnType    = 42;
+        using namespace std::chrono;
+        const auto now        = system_clock::now();
+        const auto sinceEpoch = system_clock::to_time_t(now);
+        out.name              = fmt::format("Hello World! The local time is: {}", std::put_time(std::localtime(&sinceEpoch), "%Y-%m-%d %H:%M:%S"));
+        out.byteArray         = in.name; // doesn't really make sense atm
+        out.byteReturnType    = 42;
 
-               out.timingCtx         = opencmw::TimingCtx(3, {}, {}, {}, duration_cast<microseconds>(now.time_since_epoch()));
-               if (rawCtx.request.command() == Command::Set) {
-                   customFilter = in.customFilter;
+        out.timingCtx         = opencmw::TimingCtx(3, {}, {}, {}, duration_cast<microseconds>(now.time_since_epoch()));
+        if (rawCtx.request.command() == Command::Set) {
+            customFilter = in.customFilter;
         }
-               out.lsaContext           = customFilter;
+        out.lsaContext           = customFilter;
 
-               replyContext.ctx         = out.timingCtx;
-               replyContext.ctx         = opencmw::TimingCtx(3, {}, {}, {}, duration_cast<microseconds>(now.time_since_epoch()));
-               replyContext.contentType = requestContext.contentType;
-               replyContext.testFilter  = fmt::format("HelloWorld - reply topic = {}", requestContext.testFilter);
+        replyContext.ctx         = out.timingCtx;
+        replyContext.ctx         = opencmw::TimingCtx(3, {}, {}, {}, duration_cast<microseconds>(now.time_since_epoch()));
+        replyContext.contentType = requestContext.contentType;
+        replyContext.testFilter  = fmt::format("HelloWorld - reply topic = {}", requestContext.testFilter);
     }
 };
 
@@ -260,11 +260,11 @@ int main() {
 
     std::jthread                                                                                      helloWorldThread([&helloWorldWorker] {
         helloWorldWorker.run();
-    });
+                                                                                         });
 
     std::jthread                                                                                      imageThread([&imageWorker] {
         imageWorker.run();
-    });
+                                                                                         });
 
     primaryBrokerThread.join();
 

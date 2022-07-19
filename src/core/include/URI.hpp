@@ -61,7 +61,7 @@ public:
     noexcept { *this = other; }
     URI(const URI &&other)
     noexcept { *this = std::move(other); }
-    ~URI() = default;
+    ~URI()       = default;
 
     URI &operator=(const URI &other) noexcept {
         if (this == &other) {
@@ -383,30 +383,30 @@ private:
     // returns tif only RFC 3986 section 2.3 Unreserved Characters
     static constexpr inline bool isUnreserved(const char c) noexcept { return std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~'; }
     constexpr inline void        parseAuthority() const {
-               if (_parsedAuthority || _authority.empty()) {
-                   _parsedAuthority = true;
-                   return;
+        if (_parsedAuthority || _authority.empty()) {
+            _parsedAuthority = true;
+            return;
         }
-               size_t userSplit = std::min(_authority.find_first_of('@'), _authority.length());
-               if (userSplit < _authority.length()) {
-                   // user isUnreserved defined via '[user]:[pwd]@'
+        size_t userSplit = std::min(_authority.find_first_of('@'), _authority.length());
+        if (userSplit < _authority.length()) {
+            // user isUnreserved defined via '[user]:[pwd]@'
             const size_t pwdSplit = std::min(_authority.find_first_of(':'), userSplit);
             _userName             = _authority.substr(0, pwdSplit);
             if (pwdSplit < userSplit) {
-                       _pwd = _authority.substr(pwdSplit + 1, userSplit - pwdSplit - 1);
+                _pwd = _authority.substr(pwdSplit + 1, userSplit - pwdSplit - 1);
             }
             userSplit++;
         } else {
-                   userSplit = 0;
+            userSplit = 0;
         }
-               size_t portSplit = std::min(_authority.find_first_of(':', userSplit), _authority.length());
-               if (portSplit != std::string_view::npos && portSplit < _authority.length()) {
-                   // port defined
+        size_t portSplit = std::min(_authority.find_first_of(':', userSplit), _authority.length());
+        if (portSplit != std::string_view::npos && portSplit < _authority.length()) {
+            // port defined
             _hostName = _authority.substr(userSplit, portSplit - userSplit);
             portSplit++;
             _port = _authority.substr(portSplit, _authority.length() - portSplit);
         } else {
-                   _hostName = _authority.substr(userSplit, _authority.length() - userSplit);
+            _hostName = _authority.substr(userSplit, _authority.length() - userSplit);
         }
     }
 };
