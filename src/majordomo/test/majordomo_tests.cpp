@@ -170,7 +170,7 @@ TEST_CASE("Test mmi.dns", "[broker][mmi][mmi_dns]") {
     const auto brokerAddress   = opencmw::URI<opencmw::STRICT>("mdp://127.0.0.1:22346");
     Broker     dnsBroker("dnsBroker", settings);
     REQUIRE(dnsBroker.bind(dnsAddress));
-    settings.dnsAddress = dnsAddress.str;
+    settings.dnsAddress = dnsAddress.str();
     Broker broker("testbroker", settings);
     REQUIRE(broker.bind(brokerAddress));
 

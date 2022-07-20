@@ -1,6 +1,7 @@
 #include <catch2/catch.hpp>
-#define ENABLE_RESULT_CHECKS 1
+
 #include <Client.hpp>
+#include <IoBuffer.hpp>
 #include <MockServer.hpp>
 
 namespace opencmw_client_publisher_test {
@@ -29,7 +30,7 @@ TEST_CASE("Basic get/set test", "[ClientContext]") {
     auto endpoint = URI<STRICT>::factory(URI<STRICT>(server.address())).scheme("mdp").path("/a.service").addQueryParameter("C", "2").build();
     fmt::print("issuing get request\n");
     std::atomic<int> received{ 0 };
-    clientContext.get(endpoint, [&received](const opencmw::client::RawMessage &message) {
+    clientContext.get(endpoint, [&received](const opencmw::mdp::Message &message) {
         REQUIRE(message.data.size() == 3); // == "100");
         REQUIRE(message.context == "test_ctx");
         received++;
@@ -38,23 +39,28 @@ TEST_CASE("Basic get/set test", "[ClientContext]") {
     server.processRequest([&endpoint](auto &&req, auto &reply) {
         REQUIRE(req.command() == Command::Get);
         reply.setBody(std::to_string(100), MessageFrame::dynamic_bytes_tag{});
-        reply.setTopic(URI<STRICT>::factory(endpoint).addQueryParameter("ctx", "test_ctx").build().str, MessageFrame::dynamic_bytes_tag{});
+        reply.setTopic(URI<STRICT>::factory(endpoint).addQueryParameter("ctx", "test_ctx").build().str(), MessageFrame::dynamic_bytes_tag{});
     });
     std::this_thread::sleep_for(20ms); // hacky: this is needed because the requests are only identified using their uri, so we cannot have multiple requests with identical uris
     fmt::print("issuing set request\n");
+    auto              testData = std::vector<std::byte>{ std::byte{ 'a' }, std::byte{ 'b' }, std::byte{ 'c' } };
+    opencmw::IoBuffer dataSetRequest;
+    dataSetRequest.put('a');
+    dataSetRequest.put('b');
+    dataSetRequest.put('c');
     clientContext.set(
-            endpoint, [&received](const opencmw::client::RawMessage &message) {
-                REQUIRE(message.data.empty()); // == "100");
+            endpoint, [&received](const opencmw::mdp::Message &message) {
+                REQUIRE(message.data.size() == 0); // == "100");
                 REQUIRE(message.context == "test_ctx");
                 received++;
             },
-            std::vector<std::byte>{ std::byte{ 'a' }, std::byte{ 'b' }, std::byte{ 'c' } });
+            std::move(dataSetRequest));
     std::this_thread::sleep_for(20ms); // allow the request to reach the server
     server.processRequest([&endpoint](auto &&req, auto &reply) {
         REQUIRE(req.command() == Command::Set);
         REQUIRE(req.body() == "abc");
         reply.setBody(std::string(), MessageFrame::dynamic_bytes_tag{});
-        reply.setTopic(URI<STRICT>::factory(endpoint).addQueryParameter("ctx", "test_ctx").build().str, MessageFrame::dynamic_bytes_tag{});
+        reply.setTopic(URI<STRICT>::factory(endpoint).addQueryParameter("ctx", "test_ctx").build().str(), MessageFrame::dynamic_bytes_tag{});
     });
     std::this_thread::sleep_for(10ms); // allow the reply to reach the client
     REQUIRE(received == 2);
@@ -71,7 +77,7 @@ TEST_CASE("Basic subscription test", "[ClientContext]") {
     auto endpoint = URI<STRICT>::factory(URI<STRICT>(server.addressSub())).scheme("mds").path("/a.service").addQueryParameter("C", "2").build();
     fmt::print("subscribing\n");
     std::atomic<int> received{ 0 };
-    clientContext.subscribe(endpoint, [&received](const opencmw::client::RawMessage &update) {
+    clientContext.subscribe(endpoint, [&received](const opencmw::mdp::Message &update) {
         if (update.data.size() == 7) {
             received++;
             fmt::print("v");
@@ -83,7 +89,7 @@ TEST_CASE("Basic subscription test", "[ClientContext]") {
     std::this_thread::sleep_for(10ms); // allow for the subscription request to be processed
     // send notifications
     for (int i = 0; i < 100; i++) {
-        server.notify("a.service", endpoint.str, "bar-baz");
+        server.notify("a.service", endpoint.str(), "bar-baz");
         fmt::print("^");
     }
     std::this_thread::sleep_for(10ms); // allow for all the notifications to reach the client
@@ -93,7 +99,7 @@ TEST_CASE("Basic subscription test", "[ClientContext]") {
     std::this_thread::sleep_for(10ms); // allow for the unsubscription request to be processed
     // send notifications
     for (int i = 0; i < 100; i++) {
-        server.notify("a.service", endpoint.str, "bar-baz");
+        server.notify("a.service", endpoint.str(), "bar-baz");
         fmt::print("^");
     }
     std::this_thread::sleep_for(10ms); // allow for all the notifications to reach the client

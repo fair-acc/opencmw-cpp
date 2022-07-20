@@ -13,7 +13,7 @@ inline std::string toZeroMQEndpoint(const opencmw::URI<> &uri) {
         return opencmw::URI<>::factory(uri).scheme("tcp").toString();
     }
 
-    return uri.str;
+    return uri.str();
 }
 
 inline Result<int> initializeZmqSocket(const majordomo::Socket &sock, const majordomo::Settings &settings = {}) {

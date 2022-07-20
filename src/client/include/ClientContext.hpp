@@ -10,48 +10,29 @@
 
 #include <disruptor/Disruptor.hpp>
 #include <majordomo/Broker.hpp>
+#include <MdpMessage.hpp>
 #include <URI.hpp>
 
 namespace opencmw::client {
 
-using namespace std::chrono_literals;
-
 using opencmw::uri_check::STRICT;
 using timeUnit = std::chrono::milliseconds;
-
-struct RawMessage { // return object for received data
-    std::size_t                           id;
-    std::string                           context; // use context type?
-    std::unique_ptr<opencmw::URI<STRICT>> endpoint;
-    std::vector<std::byte>                data; // using vector here allows using non zmq transports... try to move data into here without copying or use zmq messages if that is not possible
-    timeUnit                              timestamp_received = 0s;
-};
+using namespace std::chrono_literals;
 
 struct Request {
-    URI<STRICT>                       uri;
-    std::function<void(RawMessage &)> callback;
-    timeUnit                          timestamp_received = 0s;
+    URI<STRICT>                         uri;
+    std::function<void(mdp::Message &)> callback;
+    timeUnit                            timestamp_received = 0s;
 };
 
 struct Subscription {
-    URI<STRICT>                       uri;
-    std::function<void(RawMessage &)> callback;
-    timeUnit                          timestamp_received = 0s;
+    URI<STRICT>                         uri;
+    std::function<void(mdp::Message &)> callback;
+    timeUnit                            timestamp_received = 0s;
 };
 
-struct Command {
-    enum class Type {
-        Get,
-        Set,
-        Subscribe,
-        Unsubscribe,
-        Undefined
-    };
-    Type                                    type = Type::Undefined;
-    std::unique_ptr<URI<STRICT>>            uri;
-    std::function<void(const RawMessage &)> callback; // callback or target ring buffer
-    std::vector<std::byte>                  data;     // data for set, can also contain filters etc for other types
-    timeUnit                                timestamp_received = 0s;
+struct Command : public mdp::Message {
+    std::function<void(const mdp::Message &)> callback; // callback or target ring buffer
 };
 
 static constexpr std::size_t CMD_RB_SIZE = 32;
@@ -92,11 +73,11 @@ public:
     }
 
     // user interface: can be called from any thread and will return non-blocking after submitting the job to the job queue disruptor
-    void get(const URI<STRICT> &endpoint, std::function<void(const RawMessage &)> &&callback) { queueCommand(Command::Type::Get, endpoint, std::move(callback)); }
-    void set(const URI<STRICT> &endpoint, std::function<void(const RawMessage &)> &&callback, std::vector<std::byte> &&data) { queueCommand(Command::Type::Set, endpoint, std::move(callback), std::move(data)); }
-    void subscribe(const URI<STRICT> &endpoint) { queueCommand(Command::Type::Subscribe, endpoint); }
-    void subscribe(const URI<STRICT> &endpoint, std::function<void(const RawMessage &)> &&callback) { queueCommand(Command::Type::Subscribe, endpoint, std::move(callback)); }
-    void unsubscribe(const URI<STRICT> &endpoint) { queueCommand(Command::Type::Unsubscribe, endpoint); }
+    void get(const URI<STRICT> &endpoint, std::function<void(const mdp::Message &)> &&callback) { queueCommand(mdp::Command::Get, endpoint, std::move(callback)); }
+    void set(const URI<STRICT> &endpoint, std::function<void(const mdp::Message &)> &&callback, IoBuffer &&data) { queueCommand(mdp::Command::Set, endpoint, std::move(callback), std::move(data)); }
+    void subscribe(const URI<STRICT> &endpoint) { queueCommand(mdp::Command::Subscribe, endpoint); }
+    void subscribe(const URI<STRICT> &endpoint, std::function<void(const mdp::Message &)> &&callback) { queueCommand(mdp::Command::Subscribe, endpoint, std::move(callback)); }
+    void unsubscribe(const URI<STRICT> &endpoint) { queueCommand(mdp::Command::Unsubscribe, endpoint); }
 
     /*
      * Shutdown all contexts
@@ -113,10 +94,10 @@ private:
     void poll(const std::stop_token &stoken) {
         while (!stoken.stop_requested()) { // switch to event processor instead of busy spinning
             _cmdPoller->poll([this](Command &cmd, std::int64_t /*sequenceID*/, bool /*endOfBatch*/) -> bool {
-                if (cmd.type == Command::Type::Undefined) {
+                if (cmd.command == mdp::Command::Invalid) {
                     return false;
                 }
-                auto &c = getClientCtx(*cmd.uri);
+                auto &c = getClientCtx(cmd.endpoint);
                 c.request(cmd);
                 return false;
             });
@@ -131,11 +112,11 @@ private:
         }
     };
 
-    void queueCommand(Command::Type cmd, const URI<STRICT> &endpoint, std::function<void(const RawMessage &)> &&callback = {}, std::vector<std::byte> &&data = {}) {
+    void queueCommand(mdp::Command cmd, const URI<STRICT> &endpoint, std::function<void(const mdp::Message &)> &&callback = {}, IoBuffer &&data = IoBuffer{}) {
         bool published = _commandRingBuffer->tryPublishEvent([&endpoint, &cmd, cb = std::move(callback), d = std::move(data)](Command &&ev, long /*seq*/) mutable {
-            ev.type     = cmd;
+            ev.command  = cmd;
             ev.callback = std::move(cb);
-            ev.uri      = std::make_unique<URI<STRICT>>(endpoint);
+            ev.endpoint = FWD(endpoint);
             ev.data     = std::move(d);
         });
         if (!published) {

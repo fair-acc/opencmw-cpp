@@ -108,8 +108,8 @@ protected:
             , subscriber(broker.context, ZMQ_SUB) {
             pollItem.events = ZMQ_POLLIN;
 
-            zmq_invoke(zmq_connect, dealer, INTERNAL_ADDRESS_BROKER.str).onFailure<opencmw::startup_error>("Can not connect REST worker to Majordomo broker");
-            zmq_invoke(zmq_connect, subscriber, INTERNAL_ADDRESS_PUBLISHER.str).onFailure<opencmw::startup_error>("Can not connect REST worker to Majordomo broker");
+            zmq_invoke(zmq_connect, dealer, INTERNAL_ADDRESS_BROKER.str()).onFailure<opencmw::startup_error>("Can not connect REST worker to Majordomo broker");
+            zmq_invoke(zmq_connect, subscriber, INTERNAL_ADDRESS_PUBLISHER.str()).onFailure<opencmw::startup_error>("Can not connect REST worker to Majordomo broker");
         }
 
         RestWorker(RestWorker &&other) = default;
@@ -407,7 +407,7 @@ public:
         registerHandlers();
 
         if (!_restAddress.hostName() || !_restAddress.port()) {
-            throw opencmw::startup_error(fmt::format("REST server URI is not valid {}", _restAddress.str));
+            throw opencmw::startup_error(fmt::format("REST server URI is not valid {}", _restAddress.str()));
         }
 
         bool listening = _svr.listen(_restAddress.hostName().value().data(), _restAddress.port().value());

@@ -105,7 +105,7 @@ inline bool iequal(const Left &left, const Right &right) noexcept {
 }
 
 inline std::string uriAsString(const URI<RELAXED> &uri) {
-    return uri.str;
+    return uri.str();
 }
 
 inline std::string findDnsEntry(std::string_view brokerName, std::unordered_map<std::string, detail::DnsServiceItem> &dnsCache, std::string_view s) {
@@ -324,21 +324,21 @@ public:
         // socket.setHeartbeatContext(PROT_CLIENT.getData());
 
         initializeZmqSocket(_routerSocket, settings).assertSuccess();
-        zmq_invoke(zmq_bind, _routerSocket, INTERNAL_ADDRESS_BROKER.str.data()).assertSuccess();
+        zmq_invoke(zmq_bind, _routerSocket, INTERNAL_ADDRESS_BROKER.str().data()).assertSuccess();
 
         initializeZmqSocket(_subSocket, settings).assertSuccess();
-        zmq_invoke(zmq_bind, _subSocket, INTERNAL_ADDRESS_SUBSCRIBE.str.data()).assertSuccess();
+        zmq_invoke(zmq_bind, _subSocket, INTERNAL_ADDRESS_SUBSCRIBE.str().data()).assertSuccess();
 
         initializeZmqSocket(_pubSocket, settings).assertSuccess();
         int verbose = 1;
         zmq_invoke(zmq_setsockopt, _pubSocket, ZMQ_XPUB_VERBOSE, &verbose, sizeof(verbose)).assertSuccess();
-        zmq_invoke(zmq_bind, _pubSocket, INTERNAL_ADDRESS_PUBLISHER.str.data()).assertSuccess();
+        zmq_invoke(zmq_bind, _pubSocket, INTERNAL_ADDRESS_PUBLISHER.str().data()).assertSuccess();
 
         initializeZmqSocket(_dnsSocket, settings).assertSuccess();
         if (!settings.dnsAddress.empty()) {
             zmq_invoke(zmq_connect, _dnsSocket, toZeroMQEndpoint(URI<>(settings.dnsAddress)).data()).assertSuccess();
         } else {
-            zmq_invoke(zmq_connect, _dnsSocket, INTERNAL_ADDRESS_BROKER.str.data()).assertSuccess();
+            zmq_invoke(zmq_connect, _dnsSocket, INTERNAL_ADDRESS_BROKER.str().data()).assertSuccess();
         }
 
         pollerItems[0].socket = _routerSocket.zmq_ptr;
@@ -388,7 +388,7 @@ public:
                                                                               : URI<STRICT>::factory(endpoint).scheme(isRouterSocket ? SCHEME_MDP : SCHEME_MDS).build();
         const auto adjustedAddressPublic = endpointAdjusted; // TODO (java) resolveHost(endpointAdjusted, getLocalHostName());
 
-        _dnsAddresses.insert(adjustedAddressPublic.str);
+        _dnsAddresses.insert(adjustedAddressPublic.str());
         sendDnsHeartbeats(true);
         return adjustedAddressPublic;
     }
@@ -445,9 +445,9 @@ public:
 
     void registerDnsAddress(const opencmw::URI<> &address) {
         // worker registers a new address for this broker (used the REST interface)
-        _dnsAddresses.insert(address.str);
+        _dnsAddresses.insert(address.str());
         auto [iter, inserted] = _dnsCache.try_emplace(brokerName, std::string(), brokerName);
-        iter->second.uris.insert(URI<RELAXED>(address.str));
+        iter->second.uris.insert(URI<RELAXED>(address.str()));
         sendDnsHeartbeats(true);
     }
 
@@ -463,7 +463,7 @@ private:
         auto [it, inserted] = _subscribedTopics.try_emplace(topic, 0);
         it->second++;
         if (it->second == 1) {
-            zmq_invoke(zmq_setsockopt, _subSocket, ZMQ_SUBSCRIBE, topic.str.data(), topic.str.size()).assertSuccess();
+            zmq_invoke(zmq_setsockopt, _subSocket, ZMQ_SUBSCRIBE, topic.str().data(), topic.str().size()).assertSuccess();
         }
     }
 
@@ -472,7 +472,7 @@ private:
         if (it != _subscribedTopics.end()) {
             it->second--;
             if (it->second == 0) {
-                zmq_invoke(zmq_setsockopt, _subSocket, ZMQ_UNSUBSCRIBE, topic.str.data(), topic.str.size()).assertSuccess();
+                zmq_invoke(zmq_setsockopt, _subSocket, ZMQ_UNSUBSCRIBE, topic.str().data(), topic.str().size()).assertSuccess();
             }
         }
     }
@@ -636,7 +636,7 @@ private:
             if (_subscriptionMatcher(topicURI, topic)) {
                 // sends notification with the topic that is expected by the client for its subscription
                 auto copy = message.clone();
-                copy.setSourceId(topic.str, MessageFrame::dynamic_bytes_tag{});
+                copy.setSourceId(topic.str(), MessageFrame::dynamic_bytes_tag{});
                 copy.send(_pubSocket).assertSuccess();
             }
         }
@@ -701,7 +701,7 @@ private:
             constexpr auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
             constexpr auto static_tag  = MessageFrame::static_bytes_tag{};
             reply.setCommand(Command::Final);
-            reply.setTopic(INTERNAL_SERVICE_NAMES_URI.str, static_tag);
+            reply.setTopic(INTERNAL_SERVICE_NAMES_URI.str(), static_tag);
             reply.setBody("", static_tag);
             reply.setError(fmt::format("unknown service (error 501): '{}'", reply.serviceName()), dynamic_tag);
             reply.setRbacToken(_rbac, static_tag);
@@ -787,7 +787,7 @@ private:
             auto       notify      = BrokerMessage::createWorkerMessage(Command::Notify);
             const auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
             notify.setServiceName(INTERNAL_SERVICE_NAMES, dynamic_tag);
-            notify.setTopic(INTERNAL_SERVICE_NAMES_URI.str, dynamic_tag);
+            notify.setTopic(INTERNAL_SERVICE_NAMES_URI.str(), dynamic_tag);
             notify.setClientRequestId(brokerName, dynamic_tag);
             notify.setSourceId(INTERNAL_SERVICE_NAMES, dynamic_tag);
             notify.send(_pubSocket).assertSuccess();

@@ -448,7 +448,7 @@ inline void writeResult(std::string_view workerName, RequestContext &rawCtx, con
     const auto baseUri    = URI<RELAXED>(std::string(rawCtx.reply.topic().empty() ? rawCtx.request.topic() : rawCtx.reply.topic()));
     const auto topicUri   = URI<RELAXED>::factory(baseUri).setQuery(std::move(replyQuery)).build();
 
-    rawCtx.reply.setTopic(topicUri.str, MessageFrame::dynamic_bytes_tag{});
+    rawCtx.reply.setTopic(topicUri.str(), MessageFrame::dynamic_bytes_tag{});
     const auto replyMimetype = query::getMimeType(replyContext);
     const auto mimeType      = replyMimetype != MIME::UNKNOWN ? replyMimetype : rawCtx.mimeType;
     if (mimeType == MIME::JSON) {
@@ -478,7 +478,7 @@ inline void writeResultFull(std::string_view workerName, RequestContext &rawCtx,
     const auto baseUri    = URI<RELAXED>(std::string(rawCtx.reply.topic().empty() ? rawCtx.request.topic() : rawCtx.reply.topic()));
     const auto topicUri   = URI<RELAXED>::factory(baseUri).setQuery(std::move(replyQuery)).build();
 
-    rawCtx.reply.setTopic(topicUri.str, MessageFrame::dynamic_bytes_tag{});
+    rawCtx.reply.setTopic(topicUri.str(), MessageFrame::dynamic_bytes_tag{});
     const auto replyMimetype = query::getMimeType(replyContext);
     const auto mimeType      = replyMimetype != MIME::UNKNOWN ? replyMimetype : rawCtx.mimeType;
     if (mimeType == MIME::JSON) {
@@ -583,7 +583,7 @@ public:
         // TODO java does subscription handling here which BasicMdpWorker does in the sender thread. check what we need there.
 
         RequestContext rawCtx;
-        rawCtx.reply.setTopic(topicURI.str, MessageFrame::dynamic_bytes_tag{});
+        rawCtx.reply.setTopic(topicURI.str(), MessageFrame::dynamic_bytes_tag{});
         worker_detail::writeResult(Worker::name, rawCtx, context, reply);
         return BasicWorker<serviceName, Meta...>::notify(std::move(rawCtx.reply));
     }
