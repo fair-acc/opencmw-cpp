@@ -97,19 +97,19 @@ public:
         if (this == &other) {
             return *this;
         }
-        _str       = std::move(other.str());
-        _scheme    = std::move(other._scheme);
-        _authority = std::move(other._authority);
-        _path      = std::move(other._path);
-        _query     = std::move(other._query);
-        _fragment  = std::move(other._fragment);
+        std::swap(_str, other._str);
+        std::swap(_scheme, other._scheme);
+        std::swap(_authority, other._authority);
+        std::swap(_path, other._path);
+        std::swap(_query, other._query);
+        std::swap(_fragment, other._fragment);
         std::swap(_queryMap, other._queryMap);
 
         std::swap(_parsedAuthority, other._parsedAuthority);
-        _userName = std::move(other._userName);
-        _pwd      = std::move(other._pwd);
-        _hostName = std::move(other._hostName);
-        _port     = std::move(other._port);
+        std::swap(_userName, other._userName);
+        std::swap(_pwd, other._pwd);
+        std::swap(_hostName, other._hostName);
+        std::swap(_port, other._port);
         return *this;
     }
 
