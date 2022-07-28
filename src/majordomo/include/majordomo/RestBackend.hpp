@@ -357,6 +357,7 @@ public:
 
             response.set_header("X-OPENCMW-TOPIC", responseMessage->topic().data());
             response.set_header("X-OPENCMW-SERVICE-NAME", responseMessage->serviceName().data());
+            response.set_header("Access-Control-Allow-Origin", "*");
 
             if (request.method != "GET") {
                 response.set_content(responseMessage->body().data(), MIME::TEXT.typeName().data());
