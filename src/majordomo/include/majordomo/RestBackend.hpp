@@ -338,7 +338,7 @@ public:
             return defaultHandler(request, response, &content_reader);
         });
         _svr.Options(".*",
-                [](const httplib::Request &/*req*/, httplib::Response &res) {
+                [](const httplib::Request & /*req*/, httplib::Response &res) {
                     res.set_header("Allow", "GET, POST, PUT, OPTIONS");
                     res.set_header("Access-Control-Allow-Origin", "*");
                     res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
