@@ -337,6 +337,14 @@ public:
         _svr.Put(".*", [defaultHandler](const httplib::Request &request, httplib::Response &response, const httplib::ContentReader &content_reader) {
             return defaultHandler(request, response, &content_reader);
         });
+        _svr.Options(".*",
+                [](const httplib::Request & /*req*/, httplib::Response &res) {
+                    res.set_header("Allow", "GET, POST, PUT, OPTIONS");
+                    res.set_header("Access-Control-Allow-Origin", "*");
+                    res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
+                    res.set_header("Access-Control-Allow-Headers", "X-OPENCMW-METHOD");
+                    res.set_header("Access-Control-Max-Age", "86400");
+                });
     }
 
     void respondWithPubSub(auto &worker, auto &request, auto &response, auto &message) {
@@ -373,6 +381,7 @@ public:
 
         (void) service;
 
+        response.set_header("Access-Control-Allow-Origin", "*");
         response.set_chunked_content_provider(
                 "application/json",
                 [this, &worker, topic = topic, service = service, counter = std::size_t{ 0 }, maxCount](std::size_t /*offset*/, httplib::DataSink &sink) mutable {
