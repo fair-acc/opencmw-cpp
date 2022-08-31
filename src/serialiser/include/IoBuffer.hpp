@@ -10,12 +10,12 @@
 #include <array>
 #include <cassert>
 #ifdef __EMSCRIPTEN__
-#   include <experimental/memory_resource>
-    namespace std {
-        namespace pmr = ::std::experimental::pmr;
-    }
+#include <experimental/memory_resource>
+namespace std {
+namespace pmr = ::std::experimental::pmr;
+}
 #else
-#   include <memory_resource>
+#include <memory_resource>
 #endif
 #include <numeric>
 #include <span>

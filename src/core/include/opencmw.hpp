@@ -18,11 +18,11 @@
 // define __APPLE__ which causes refl-cpp to not forward-declare the classes.
 // Seems to work for now.
 #ifdef __EMSCRIPTEN__
-#   define __APPLE__
-#   include <refl.hpp>
-#   undef __APPLE__
+#define __APPLE__
+#include <refl.hpp>
+#undef __APPLE__
 #else
-#   include <refl.hpp>
+#include <refl.hpp>
 #endif
 
 #pragma GCC diagnostic push
@@ -30,12 +30,12 @@
 
 // Another little emscripten hack, this time for concepts.
 #ifdef __EMSCRIPTEN__
-#   define UNITS_COMP_GCC __GNUC__  // Fake GNUC compiler so mp-units does include concepts
-#   include <unordered_map>         // Otherwise missing below
-#   include <units/concepts.h>
-#   undef UNITS_COMP_GCC
+#define UNITS_COMP_GCC __GNUC__ // Fake GNUC compiler so mp-units does include concepts
+#include <units/concepts.h>
+#include <unordered_map> // Otherwise missing below
+#undef UNITS_COMP_GCC
 #else
-#   include <units/concepts.h>
+#include <units/concepts.h>
 #endif
 
 #include <units/quantity.h>
@@ -44,9 +44,9 @@
 
 // emscripten STL does not have C++20 std::ranges::find_if yet. Alias the namespace.
 #ifdef __EMSCRIPTEN__
-    namespace std::ranges {
-        using ::std::find_if;
-    }
+namespace std::ranges {
+using ::std::find_if;
+}
 #endif
 
 #define FWD(x) std::forward<decltype(x)>(x)               // short-hand notation
