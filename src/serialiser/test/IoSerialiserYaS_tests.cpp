@@ -256,8 +256,7 @@ TEST_CASE("IoClassSerialiser basic typeName tests", "[IoClassSerialiser]") {
         REQUIRE(typeName<int32_t const> == "int32_t const");
         REQUIRE(typeName<int64_t> == "int64_t");
         REQUIRE(typeName<int64_t const> == "int64_t const");
-        REQUIRE(typeName<long long> == "int128_t");
-        REQUIRE(typeName<long long const> == "int128_t const");
+
         // unsigned integer values
         REQUIRE(typeName<uint8_t> == "uint8_t");
         REQUIRE(typeName<uint8_t const> == "uint8_t const");
@@ -269,8 +268,6 @@ TEST_CASE("IoClassSerialiser basic typeName tests", "[IoClassSerialiser]") {
         REQUIRE(typeName<uint32_t const> == "uint32_t const");
         REQUIRE(typeName<uint64_t> == "uint64_t");
         REQUIRE(typeName<uint64_t const> == "uint64_t const");
-        REQUIRE(typeName<unsigned long long> == "uint128_t");
-        REQUIRE(typeName<unsigned long long const> == "uint128_t const");
 
         // floating point
         REQUIRE(typeName<float_t> == "float_t");
