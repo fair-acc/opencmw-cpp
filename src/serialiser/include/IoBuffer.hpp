@@ -9,7 +9,14 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
-#include <memory_resource>
+#ifdef __EMSCRIPTEN__
+#   include <experimental/memory_resource>
+    namespace std {
+        namespace pmr = ::std::experimental::pmr;
+    }
+#else
+#   include <memory_resource>
+#endif
 #include <numeric>
 #include <span>
 #include <stdexcept>

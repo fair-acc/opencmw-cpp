@@ -12,13 +12,42 @@
 #include <fmt/format.h>
 #include <fmt/ostream.h>
 #include <fmt/ranges.h>
-#include <refl.hpp>
+
+// refl-cpp uses forward declarations for smart-pointers that are incompatible
+// with current emscripten STL headers. The "fix" is a little hack to temporarily
+// define __APPLE__ which causes refl-cpp to not forward-declare the classes.
+// Seems to work for now.
+#ifdef __EMSCRIPTEN__
+#   define __APPLE__
+#   include <refl.hpp>
+#   undef __APPLE__
+#else
+#   include <refl.hpp>
+#endif
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wuseless-cast" // suppress warning caused by gsl-lite: https://github.com/gsl-lite/gsl-lite/issues/325
-#include <units/concepts.h>
+
+// Another little emscripten hack, this time for concepts.
+#ifdef __EMSCRIPTEN__
+#   define UNITS_COMP_GCC __GNUC__  // Fake GNUC compiler so mp-units does include concepts
+#   include <unordered_map>         // Otherwise missing below
+#   include <units/concepts.h>
+#   undef UNITS_COMP_GCC
+#else
+#   include <units/concepts.h>
+#endif
+
 #include <units/quantity.h>
 #include <units/quantity_io.h>
 #pragma GCC diagnostic pop
+
+// emscripten STL does not have C++20 std::ranges::find_if yet. Alias the namespace.
+#ifdef __EMSCRIPTEN__
+    namespace std::ranges {
+        using ::std::find_if;
+    }
+#endif
 
 #define FWD(x) std::forward<decltype(x)>(x)               // short-hand notation
 #define forceinline inline __attribute__((always_inline)) // use this for hot-spots only <-> may bloat code size, not fit into cache and consequently slow down execution
@@ -471,12 +500,10 @@ template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, int8_t>   
 template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, int16_t>   inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int16_t const" : "int16_t";
 template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, int32_t>   inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int32_t const" : "int32_t";
 template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, int64_t>   inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int64_t const" : "int64_t";
-template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, long long> inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int128_t const" : "int128_t";
 template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, uint8_t>    inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "uint8_t const" : "uint8_t";
 template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, uint16_t>   inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "uint16_t const" : "uint16_t";
 template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, uint32_t>   inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "uint32_t const" : "uint32_t";
 template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, uint64_t>   inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "uint64_t const" : "uint64_t";
-template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, unsigned long long> inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "uint128_t const" : "uint128_t";
 
 template<typename T> requires is_same_v<std::remove_const_t<T>, std::byte> inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int8_t const" : "int8_t";
 template<typename T> requires is_same_v<std::remove_const_t<T>, char>      inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "byte const" : "byte";
