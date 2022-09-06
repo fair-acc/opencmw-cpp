@@ -47,6 +47,7 @@ protected:
         bool_false,
         list_empty,
         list_non_empty,
+        multi_array,
         object
     };
     type _type;
@@ -124,13 +125,30 @@ public:
     explicit mustache_data(std::string value)
         : mustache_data_base(type::string)
         , _value(std::move(value)) {}
-    const std::string &string_value() const override {
+    [[nodiscard]] const std::string &string_value() const override {
         return _value;
     }
-    const mustache_data_base *get(const std::string & /*name*/) const override {
+    [[nodiscard]] const mustache_data_base *get(const std::string & /*name*/) const override {
         // We don't have name as we are a simple string, not a structure, returning ourselves
         return this;
     }
+};
+
+template<typename Type, std::size_t Dims>
+class mustache_data<MultiArray<Type, Dims>> : public mustache_data<std::string> {
+    using multi_array_type = MultiArray<Type, Dims>;
+public:
+    explicit mustache_data(multi_array_type val) : mustache_data<std::string>(std::to_string(val.dimensions()[0])) { }
+        // : mustache_data<std::string>([&val]() {
+        //     IoBuffer buffer;
+        //     return IoSerialiser<Json, MultiArray<Type, Dims>>::serialise(buffer, val);
+        //     return std::string(buffer.template asString());
+        // }()) {}
+
+    // [[nodiscard]] const mustache_data_base *get(const std::string & /*name*/) const override {
+    //     // We don't have name as we are a simple string, not a structure, returning ourselves
+    //     return nullptr;
+    // }
 };
 
 template<Number T>
@@ -309,8 +327,8 @@ auto serialiseWithFieldMetadata(T &&object) {
                         const auto      &objectValue = member(object);
                         std::string_view name(member.name.data);
                         std::string_view type(typeName<MemberType>);
-                        std::string_view unit        = "";
-                        std::string_view description = "";
+                        std::string_view unit;
+                        std::string_view description;
                         auto             value       = getStringValue(objectValue);
                         meta.fields.emplace_back(name, type, unit, description, std::move(value));
                     }
@@ -361,7 +379,7 @@ void serialise(const std::string &workerName, Stream &out, std::pair<std::string
         // Map of objects that we want mustache to see
         std::unordered_map<std::string, ObjectMetadata> meta;
 
-        // Each obejct is a pair { name, object }
+        // Each object is a pair { name, object }
         auto collectObject = [&](auto &&namedObject) {
             auto &name   = namedObject.first;
             auto &object = namedObject.second;

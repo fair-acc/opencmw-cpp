@@ -35,9 +35,11 @@ struct AddressEntry {
     int                                                  streetNumber;
     std::string                                          postalCode;
     std::string                                          city;
+    MultiArray<double, 2>                                 multiArray;
     bool                                                 isCurrent;
 };
-ENABLE_REFLECTION_FOR(AddressEntry, name, street, streetNumber, postalCode, city, isCurrent)
+ENABLE_REFLECTION_FOR(AddressEntry, name, street, streetNumber, postalCode, city, multiArray, isCurrent)
+//ENABLE_REFLECTION_FOR(AddressEntry, name, street, streetNumber, postalCode, city, isCurrent)
 
 TEST_CASE("MustacheSerialization: value with vector of strings", "[Mustache][MustacheValueSerialiser]") {
     std::stringstream str;
@@ -81,6 +83,7 @@ TEST_CASE("MustacheSerialization: value with fallback serialisation", "[Mustache
             .streetNumber = 221, // 221b
             .postalCode   = "",
             .city         = "London",
+            .multiArray   = {{1.337, 23.42, 42.23, 13.37}, {2,2}},
             .isCurrent    = true
         };
         std::stringstream str;

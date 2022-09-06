@@ -7,6 +7,8 @@
 using namespace opencmw;
 
 TEST_CASE("MultiArray.doubleSimple", "[MultiArray]") {
+    static_assert(!refl::trait::is_reflectable_v<MultiArray<float,2>>); // MultiArrays should not be reflectable
+    static_assert(!is_supported_number<MultiArray<float,2>>); // MultiArray should not be identified as a number
     MultiArray<double, 2> test({ 1, 2, 3, 4, 5, 6 }, { 2, 3 });
     // test that internal fields where computed correctly
     REQUIRE(2 == test.n(0));
