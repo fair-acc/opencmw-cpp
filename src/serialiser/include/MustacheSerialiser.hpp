@@ -38,6 +38,23 @@ class mustache_data;
 template<typename T>
 using mustache = kainjow::mustache_ns<std::string, mustache_data<T>>;
 
+template <typename T>
+constexpr bool is_instance_of_vector_v = units::is_derived_from_specialization_of<T, std::vector>;
+static_assert(!is_instance_of_vector_v<int>);
+static_assert(!is_instance_of_vector_v<MultiArray<double, 2>>);
+static_assert(is_instance_of_vector_v<std::vector<double>>);
+
+template <typename T>
+concept is_instance_of_multi_array_v = requires
+{
+    typename T::multi_array_type_tag;
+};
+static_assert(!is_instance_of_multi_array_v<int>);
+static_assert(is_instance_of_multi_array_v<MultiArray<double, 2>>);
+static_assert(!is_instance_of_multi_array_v<std::vector<double>>);
+
+
+
 // Type erase the data
 class mustache_data_base {
 protected:
@@ -134,23 +151,6 @@ public:
     }
 };
 
-template<typename Type, std::size_t Dims>
-class mustache_data<MultiArray<Type, Dims>> : public mustache_data<std::string> {
-    using multi_array_type = MultiArray<Type, Dims>;
-public:
-    explicit mustache_data(multi_array_type val) : mustache_data<std::string>(std::to_string(val.dimensions()[0])) { }
-        // : mustache_data<std::string>([&val]() {
-        //     IoBuffer buffer;
-        //     return IoSerialiser<Json, MultiArray<Type, Dims>>::serialise(buffer, val);
-        //     return std::string(buffer.template asString());
-        // }()) {}
-
-    // [[nodiscard]] const mustache_data_base *get(const std::string & /*name*/) const override {
-    //     // We don't have name as we are a simple string, not a structure, returning ourselves
-    //     return nullptr;
-    // }
-};
-
 template<Number T>
 class mustache_data<T> : public mustache_data<std::string> {
 public:
@@ -182,7 +182,7 @@ public:
 };
 
 template<typename T>
-requires units::is_derived_from_specialization_of<T, std::vector>
+requires is_instance_of_vector_v<T>
 class mustache_data<T> : public mustache_data_base {
 private:
     const T &_value;
@@ -208,6 +208,18 @@ public:
         return _current.get();
     }
 };
+
+template <typename T>
+    requires is_instance_of_multi_array_v<T>
+class mustache_data<T> : public mustache_data<std::vector<T>> {
+public:
+    template<typename TIn>
+    explicit mustache_data(TIn val)
+        : mustache_data<std::vector<T>>({}) {}
+};
+
+inline
+mustache_data<MultiArray<double, 2>> x{4.2};
 
 template<>
 class mustache_data<std::unordered_map<std::string, std::unique_ptr<mustache_data_base>>> : public mustache_data_base {
@@ -242,7 +254,7 @@ public:
                         return type::string;
                     } else if constexpr (std::is_same_v<T, bool>) {
                         return value ? type::bool_true : type::bool_false;
-                    } else if constexpr (units::is_derived_from_specialization_of<T, std::vector>) {
+                    } else if constexpr (is_instance_of_vector_v<T>) {
                         return value.empty() ? type::list_empty : type::list_non_empty;
                     }
                     return type::object;
