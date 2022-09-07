@@ -27,6 +27,8 @@ public:
     using value_type                 = T;
     static constexpr size_t_ n_dims_ = n_dims;
 
+    using multi_array_type_tag       = std::true_type;
+
 private:
     std::vector<value_type>     elements_;  // data
     size_t_                     n_element_; // number of valid entries in data
