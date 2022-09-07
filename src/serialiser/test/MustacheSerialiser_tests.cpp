@@ -73,7 +73,8 @@ TEST_CASE("MustacheSerialization: value with fallback serialisation", "[Mustache
         opencmw::mustache::serialise("Address", str,
                 std::pair<std::string, const AddressEntry &>{ "result"s, address });
 
-        REQUIRE(str.str() == "[name::][street::][streetNumber::0][postalCode::][city::][isCurrent::false]\n");
+        REQUIRE(str.str() == R"""([name::][street::][streetNumber::0][postalCode::][city::][multiArray::{"dims": [0, 0],"values": []}][isCurrent::false]
+)""");
     }
     {
         AddressEntry address{
@@ -90,7 +91,8 @@ TEST_CASE("MustacheSerialization: value with fallback serialisation", "[Mustache
         opencmw::mustache::serialise("Address", str,
                 std::pair<std::string, const AddressEntry &>{ "result"s, address });
 
-        REQUIRE(str.str() == "[name::Holmes, Sherlock][street::Baker Street][streetNumber::221][postalCode::][city::London][isCurrent::true]\n");
+        REQUIRE(str.str() == R"""([name::Holmes, Sherlock][street::Baker Street][streetNumber::221][postalCode::][city::London][multiArray::{"dims": [2, 2],"values": [1.337e+00, 2.342e+01, 4.223e+01, 1.337e+01]}][isCurrent::true]
+)""");
     }
 }
 

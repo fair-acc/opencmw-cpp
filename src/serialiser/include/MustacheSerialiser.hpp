@@ -36,9 +36,6 @@ template<typename T>
 class mustache_data;
 
 template<typename T>
-using mustache = kainjow::mustache_ns<std::string, mustache_data<T>>;
-
-template<typename T>
 constexpr bool is_instance_of_vector_v = units::is_derived_from_specialization_of<T, std::vector>;
 static_assert(!is_instance_of_vector_v<int>);
 static_assert(!is_instance_of_vector_v<MultiArray<double, 2>>);
@@ -74,51 +71,50 @@ protected:
     mustache_data_base(mustache_data_base &&)                 = delete;
     mustache_data_base &operator=(mustache_data_base &&)      = delete;
 
-public:
-    virtual ~mustache_data_base() = default;
+    virtual ~mustache_data_base()                             = default;
 
-    virtual const mustache_data_base *get([[maybe_unused]] const std::string &name) const {
+    [[nodiscard]] virtual const mustache_data_base *get([[maybe_unused]] const std::string &name) const {
         return nullptr;
     }
 
-    virtual const std::string &string_value() const {
+    [[nodiscard]] virtual const std::string &string_value() const {
         static std::string defaultString;
         return defaultString;
     }
 
-    virtual const mustache_data_base *next_list_item() const {
+    [[nodiscard]] virtual const mustache_data_base *next_list_item() const {
         return nullptr;
     }
 
-    bool is_string() const {
+    [[nodiscard]] bool is_string() const {
         return _type == type::string;
     }
 
-    bool is_false() const {
+    [[nodiscard]] bool is_false() const {
         return _type == type::bool_false;
     }
 
-    bool is_true() const {
+    [[nodiscard]] bool is_true() const {
         return _type == type::bool_true;
     }
 
-    bool is_empty_list() const {
+    [[nodiscard]] bool is_empty_list() const {
         return _type == type::list_empty;
     }
 
-    bool is_non_empty_list() const {
+    [[nodiscard]] bool is_non_empty_list() const {
         return _type == type::list_non_empty;
     }
 
-    bool is_partial() const {
+    [[nodiscard]] bool is_partial() const {
         return false;
     }
 
-    const mustache_data_base &partial_value() const {
+    [[nodiscard]] const mustache_data_base &partial_value() const {
         throw std::runtime_error("We don't support partial values in mustache");
     }
 
-    const std::string operator()() const {
+    std::string operator()() const {
         throw std::runtime_error("We don't support partial values in mustache");
     }
 };
@@ -126,7 +122,7 @@ public:
 template<typename Rep, units::Quantity Q, const basic_fixed_string description, const ExternalModifier modifier, const basic_fixed_string... groups>
 class mustache_data<Annotated<Rep, Q, description, modifier, groups...>> : public mustache_data<Rep> {
 public:
-    mustache_data(const auto &value)
+    explicit mustache_data(const auto &value)
         : mustache_data<Rep>(value.value()) {}
 };
 
@@ -194,7 +190,7 @@ public:
         , _value(std::move(value))
         , _it(_value.cbegin()) {}
 
-    const mustache_data_base *next_list_item() const {
+    const mustache_data_base *next_list_item() const override {
         _current.reset();
 
         if (_it == _value.cend()) return nullptr;
@@ -208,14 +204,11 @@ public:
 
 template<typename T>
 requires is_instance_of_multi_array_v<T>
-class mustache_data<T> : public mustache_data<std::vector<T>> {
+class mustache_data<T> : public mustache_data<std::vector<typename T::value_type>> {
 public:
-    template<typename TIn>
-    explicit mustache_data(TIn val)
-        : mustache_data<std::vector<T>>({}) {}
+    explicit mustache_data(T val)
+        : mustache_data<std::vector<typename T::value_type>>(val.elements()) {}
 };
-
-inline mustache_data<MultiArray<double, 2>> x{ 4.2 };
 
 template<>
 class mustache_data<std::unordered_map<std::string, std::unique_ptr<mustache_data_base>>> : public mustache_data_base {
@@ -242,7 +235,7 @@ private:
     mutable std::vector<std::shared_ptr<void>> _children;
 
 public:
-    mustache_data(const T &value)
+    explicit mustache_data(const T &value)
         : mustache_data_base(
                 [&value] {
                     (void) value;
@@ -252,6 +245,8 @@ public:
                         return value ? type::bool_true : type::bool_false;
                     } else if constexpr (is_instance_of_vector_v<T>) {
                         return value.empty() ? type::list_empty : type::list_non_empty;
+                    } else if constexpr (is_instance_of_multi_array_v<T>) {
+                        return type::multi_array;
                     }
                     return type::object;
                 }())
@@ -313,12 +308,13 @@ auto serialiseWithFieldMetadata(T &&object) {
                         } else {
                             opencmw::IoBuffer buffer;
                             if constexpr (ReflectableClass<ObjectMemberType>) {
-                                // IoSerialiser<opencmw::Json, ObjectMemberType>::serialise(buffer, FieldDescriptionShort{ .fieldName = member.name.c_str() }, objectMemberValue);
                                 opencmw::serialise<opencmw::Json>(buffer, objectMemberValue);
                             } else {
                                 IoSerialiser<opencmw::Json, ObjectMemberType>::serialise(buffer, FieldDescriptionShort{ .fieldName = member.name.c_str() }, objectMemberValue);
                             }
-                            return std::string(buffer.asString());
+                            auto str = std::string(buffer.asString());
+                            str.erase(std::remove(str.begin(), str.end(), '\n'), str.cend());
+                            return str;
                         }
                     };
 
@@ -357,10 +353,12 @@ void serialise(const std::string &workerName, Stream &out, std::pair<std::string
     // Structured bindings here break the linker...
     // Should be const auto [ customTemplateExists, mustache ]
     static auto pair = [&fs] {
-        const bool  customTemplateExists = fs.exists(fileName.data());
+        const bool  customTemplateExists = fs.exists(fileName);
         const auto  file                 = fs.open(customTemplateExists ? fileName.data() : "assets/mustache/default.mustache");
         std::string contents(file.cbegin(), file.cend());
-        return std::make_pair(customTemplateExists, mustache_ns::mustache(contents));
+        auto        renderer = mustache_ns::mustache(contents);
+        renderer.set_custom_escape([](const std::string &s) { return s; }); // disable escaping
+        return std::make_pair(customTemplateExists, renderer);
     }();
 
     const bool customTemplateExists = pair.first;
