@@ -55,7 +55,6 @@ using description = worker_detail::description_impl<worker_detail::to_type<Value
 
 template<units::basic_fixed_string serviceName, typename... Meta>
 class BasicWorker {
-private:
     static_assert(!serviceName.empty());
 
     using Clock        = std::chrono::steady_clock;
@@ -79,7 +78,6 @@ private:
         }
     };
 
-private:
     std::function<void(RequestContext &)>                    _handler;
     const Settings                                           _settings;
     const opencmw::URI<STRICT>                               _brokerAddress;
@@ -91,6 +89,7 @@ private:
     std::optional<Socket>                                    _pubSocket;
     std::array<zmq_pollitem_t, 3>                            _pollerItems;
     SubscriptionMatcher                                      _subscriptionMatcher;
+    mutable std::mutex                                       _activeSubscriptionsLock;
     std::set<URI<RELAXED>>                                   _activeSubscriptions;
     Socket                                                   _notifyListenerSocket;
     std::unordered_map<std::thread::id, NotificationHandler> _notificationHandlers;
@@ -122,6 +121,16 @@ public:
     template<typename Filter>
     void addFilter(const std::string &key) {
         _subscriptionMatcher.addFilter<Filter>(key);
+    }
+
+    std::set<URI<RELAXED>> activeSubscriptions() const noexcept {
+        std::lock_guard        lockGuard(_activeSubscriptionsLock);
+        std::set<URI<RELAXED>> ret;
+        for (auto topic : _activeSubscriptions) {
+            auto copy = topic;
+            ret.emplace(copy);
+        }
+        return ret;
     }
 
     void shutdown() {
@@ -251,8 +260,10 @@ private:
         // this assumes that the broker does the subscribe/unsubscribe counting
         // for multiple clients and sends us a single sub/unsub for each topic
         if (data[0] == '\x1') {
+            std::lock_guard lockGuard(_activeSubscriptionsLock);
             _activeSubscriptions.insert(topic);
         } else {
+            std::lock_guard lockGuard(_activeSubscriptionsLock);
             _activeSubscriptions.erase(topic);
         }
 
@@ -267,6 +278,7 @@ private:
             };
 
             // TODO what to do here if worker is disconnected?
+            std::lock_guard lockGuard(_activeSubscriptionsLock);
             if (_workerSocket && std::any_of(_activeSubscriptions.begin(), _activeSubscriptions.end(), matchesNotificationTopic)) {
                 message->send(*_workerSocket).assertSuccess();
             }
