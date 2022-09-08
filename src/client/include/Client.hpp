@@ -126,7 +126,7 @@ public:
         return true;
     }
 
-    bool handleMessage(majordomo::MdpMessage &&message, mdp::Message &output) {
+    static bool handleMessage(majordomo::MdpMessage &&message, mdp::Message &output) {
         if (!message.isValid()) {
             return true;
         }
@@ -187,7 +187,7 @@ public:
     }
 
 private:
-    majordomo::MdpMessage createRequestTemplate(majordomo::Command command, std::string_view serviceName, majordomo::MessageFrame &req_id) {
+    static majordomo::MdpMessage createRequestTemplate(majordomo::Command command, std::string_view serviceName, majordomo::MessageFrame &req_id) {
         auto req = majordomo::MdpMessage::createClientMessage(command);
         req.setServiceName(serviceName, majordomo::MessageFrame::dynamic_bytes_tag{});
         req.setClientRequestId(req_id.data(), majordomo::MessageFrame::dynamic_bytes_tag{});
@@ -224,7 +224,7 @@ public:
     }
 
     detail::Connection &findConnection(const URI<STRICT> &uri) {
-        // TODO: use a map for more efficient lookup? hdow to handle multiple uris which resolve to the same host?
+        // TODO: use a map for more efficient lookup? how to handle multiple uris which resolve to the same host?
         auto con = std::find_if(_connections.begin(), _connections.end(), [&uri](detail::Connection &c) { return c._authority == uri.authority().value(); });
         if (con == _connections.end()) {
             auto newCon = detail::Connection(_context, uri.authority().value(), ZMQ_SUB);
@@ -243,7 +243,7 @@ public:
         throw std::logic_error("get not implemented");
     }
 
-    void subscribe(const URI<STRICT> &uri, majordomo::MessageFrame &reqId) override {
+    void subscribe(const URI<STRICT> &uri, majordomo::MessageFrame & /*reqId*/) override {
         auto            &con         = findConnection(uri);
         std::string_view serviceName = uri.path().value();
         serviceName.remove_prefix(std::min(serviceName.find_first_not_of('/'), serviceName.size()));
@@ -251,7 +251,7 @@ public:
         opencmw::majordomo::zmq_invoke(zmq_setsockopt, con._socket, ZMQ_SUBSCRIBE, serviceName.data(), serviceName.size()).assertSuccess();
     }
 
-    void unsubscribe(const URI<STRICT> &uri, majordomo::MessageFrame &reqId) override {
+    void unsubscribe(const URI<STRICT> &uri, majordomo::MessageFrame & /*reqId*/) override {
         auto            &con         = findConnection(uri);
         std::string_view serviceName = uri.path().value();
         serviceName.remove_prefix(std::min(serviceName.find_first_not_of('/'), serviceName.size()));
@@ -266,7 +266,7 @@ public:
         return true;
     }
 
-    bool handleMessage(majordomo::BasicMdpMessage<MessageFormat::WithSourceId> &&message, mdp::Message &output) {
+    static bool handleMessage(majordomo::BasicMdpMessage<MessageFormat::WithSourceId> &&message, mdp::Message &output) {
         if (!message.isValid()) {
             return true;
         }
@@ -420,15 +420,15 @@ private:
         majordomo::MessageFrame cmd, reqId, endpoint;
         while (cmd.receive(_control_socket_recv, ZMQ_DONTWAIT).isValid()) {
             if (!reqId.receive(_control_socket_recv, ZMQ_DONTWAIT).isValid()) {
-                throw std::logic_error("invalid request received"); // messages always consist of 2 frames
+                throw std::logic_error("invalid request received: failure receiving message");
             }
             if (!endpoint.receive(_control_socket_recv, ZMQ_DONTWAIT).isValid()) {
-                throw std::logic_error("invalid request received"); // messages always consist of 2 frames
+                throw std::logic_error("invalid request received: invalid message contents");
             }
             URI<STRICT> uri{ std::string(endpoint.data()) };
             auto       &client = getClient(uri);
             if (cmd.data().size() != 1) {
-                throw std::logic_error("invalid request received"); // messages always consist of 2 frames
+                throw std::logic_error("invalid request received: wrong number of frames");
             } else if (cmd.data()[0] == static_cast<char>(mdp::Command::Get)) {
                 client->get(uri, reqId);
             } else if (cmd.data()[0] == static_cast<char>(mdp::Command::Set)) {
@@ -442,7 +442,7 @@ private:
             } else if (cmd.data()[0] == static_cast<char>(mdp::Command::Unsubscribe)) {
                 client->unsubscribe(uri, reqId);
             } else {
-                throw std::logic_error("invalid request received"); // messages always consist of 2 frames
+                throw std::logic_error("invalid request received: unsupported command type");
             }
         }
     }
