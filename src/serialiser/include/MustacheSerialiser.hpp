@@ -331,9 +331,9 @@ auto serialiseWithFieldMetadata(T &&object) {
                         const auto      &objectValue = member(object);
                         std::string_view name(member.name.data);
                         std::string_view type(typeName<MemberType>);
-                        std::string_view unit;
-                        std::string_view description;
-                        auto             value = getStringValue(objectValue);
+                        std::string_view unit        = ""; // NOLINT(readability-redundant-string-init) default initialized string_view has no valid .data()
+                        std::string_view description = ""; // NOLINT(readability-redundant-string-init) default initialized string_view has no valid .data()
+                        auto             value       = getStringValue(objectValue);
                         meta.fields.emplace_back(name, type, unit, description, std::move(value));
                     }
                 }
