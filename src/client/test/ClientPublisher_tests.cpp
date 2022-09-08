@@ -89,7 +89,7 @@ TEST_CASE("Basic subscription test", "[ClientContext]") {
     std::this_thread::sleep_for(10ms); // allow for the subscription request to be processed
     // send notifications
     for (int i = 0; i < 100; i++) {
-        server.notify("a.service", endpoint.str(), "bar-baz");
+        server.notify("a.service?C=2", "a.service?C=2", endpoint.str(), "bar-baz");
         fmt::print("^");
     }
     std::this_thread::sleep_for(10ms); // allow for all the notifications to reach the client
@@ -99,7 +99,7 @@ TEST_CASE("Basic subscription test", "[ClientContext]") {
     std::this_thread::sleep_for(10ms); // allow for the unsubscription request to be processed
     // send notifications
     for (int i = 0; i < 100; i++) {
-        server.notify("a.service", endpoint.str(), "bar-baz");
+        server.notify("a.service?C=2", "a.service", endpoint.str(), "bar-baz");
         fmt::print("^");
     }
     std::this_thread::sleep_for(10ms); // allow for all the notifications to reach the client

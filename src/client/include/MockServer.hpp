@@ -92,9 +92,8 @@ public:
         return true;
     }
 
-    void notify(std::string_view topic, std::string_view value) {
+    void notify(std::string_view serviceName, std::string_view topic, std::string_view value) {
         auto       brokerName  = "";
-        auto       serviceName = "a.service";
         const auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
         auto       notify      = BasicMdpMessage<MessageFormat::WithSourceId>::createClientMessage(Command::Final);
         notify.setServiceName(serviceName, dynamic_tag);
@@ -105,9 +104,8 @@ public:
         notify.send(_pubSocket.value()).assertSuccess();
     }
 
-    void notify(std::string_view topic, std::string_view uri, std::string_view value) {
+    void notify(std::string_view serviceName, std::string_view topic, std::string_view uri, std::string_view value) {
         auto       brokerName  = "";
-        auto       serviceName = "a.service";
         const auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
         auto       notify      = BasicMdpMessage<MessageFormat::WithSourceId>::createClientMessage(Command::Final);
         notify.setServiceName(serviceName, dynamic_tag);
