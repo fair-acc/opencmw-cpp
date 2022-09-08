@@ -66,6 +66,7 @@ protected:
     explicit mustache_data_base(type dataType)
         : _type(dataType) {}
 
+public:
     mustache_data_base(const mustache_data_base &)            = delete;
     mustache_data_base &operator=(const mustache_data_base &) = delete;
     mustache_data_base(mustache_data_base &&)                 = delete;
