@@ -441,8 +441,7 @@ inline I deserialiseRequest(const RequestContext &rawCtx) {
     } else if (rawCtx.mimeType == MIME::BINARY) {
         return deserialiseRequest<I, opencmw::YaS>(rawCtx.request);
     } else if (rawCtx.mimeType == MIME::CMWLIGHT) {
-        // TODO the following line does not compile
-        // return deserialiseRequest<I, opencmw::CmwLight>(rawCtx.request);
+        return deserialiseRequest<I, opencmw::CmwLight>(rawCtx.request);
     }
 
     throw std::runtime_error(fmt::format("MIME type '{}' not supported", rawCtx.mimeType.typeName()));
