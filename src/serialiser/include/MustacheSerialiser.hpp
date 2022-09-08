@@ -313,7 +313,7 @@ auto serialiseWithFieldMetadata(T &&object) {
                                 IoSerialiser<opencmw::Json, ObjectMemberType>::serialise(buffer, FieldDescriptionShort{ .fieldName = member.name.c_str() }, objectMemberValue);
                             }
                             auto str = std::string(buffer.asString());
-                            str.erase(std::remove(str.begin(), str.end(), '\n'), str.cend());
+                            str.erase(std::remove(str.begin(), str.end(), '\n'), str.cend()); // remove newlines from resulting string. Ideally this would be configurable in the json serialiser
                             return str;
                         }
                     };
@@ -357,7 +357,6 @@ void serialise(const std::string &workerName, Stream &out, std::pair<std::string
         const auto  file                 = fs.open(customTemplateExists ? fileName.data() : "assets/mustache/default.mustache");
         std::string contents(file.cbegin(), file.cend());
         auto        renderer = mustache_ns::mustache(contents);
-        renderer.set_custom_escape([](const std::string &s) { return s; }); // disable escaping
         return std::make_pair(customTemplateExists, renderer);
     }();
 
