@@ -194,7 +194,7 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
     TestNode<BrokerMessage> subClient(broker.context, ZMQ_SUB);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
     REQUIRE(subClient.connect(opencmw::majordomo::INTERNAL_ADDRESS_PUBLISHER));
-    const char* testSubscription = "/newAddress?ctx=FAIR.SELECTOR.C=1";
+    const char *testSubscription = "/newAddress?ctx=FAIR.SELECTOR.C=1";
     REQUIRE(subClient.subscribe(testSubscription));
 
     {
