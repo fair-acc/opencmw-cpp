@@ -22,6 +22,19 @@ struct URISyntaxException : public std::ios_base::failure {
         : std::ios_base::failure(errorMsg) {}
 };
 
+inline std::string_view merge_adjacent_string_views(std::string_view view1, std::string_view view2) {
+    if (view1.empty() && view2.empty()) {
+        return {};
+    } else if (!view1.empty() && view2.empty()) {
+        return view1;
+    } else if (view1.empty() && !view2.empty()) {
+        return view2;
+    } else {
+        assert(view1.end() == view2.begin());
+        return { view1.data(), view1.size() + view2.size() };
+    }
+}
+
 enum uri_check {
     STRICT, // checks for RFC-3986-restricted ascii-characters only and throws exception if violated
     RELAXED // checks for RFC-3986-restricted only
@@ -61,7 +74,7 @@ public:
     noexcept { *this = other; }
     URI(const URI &&other)
     noexcept { *this = std::move(other); }
-    ~URI()       = default;
+    ~URI() = default;
 
     URI &operator=(const URI &other) noexcept {
         if (this == &other) {
@@ -169,6 +182,7 @@ public:
     inline std::optional<uint16_t> port() const noexcept { parseAuthority(); return _port.empty() ? std::nullopt : std::optional(std::stoi(std::string{ _port.begin(), _port.end() }));}
     inline std::optional<std::string> path() const noexcept { return returnOpt(_path); }
     inline std::optional<std::string> queryParam() const noexcept { return returnOpt(_query); }
+    inline std::optional<std::string> localPart() const noexcept { return returnOpt(merge_adjacent_string_views({_path.data(), _path.size()+1}, _query)); } // path + query
     inline std::optional<std::string> fragment() const noexcept { return returnOpt(_fragment); }
     // clang-format om
 
@@ -383,30 +397,30 @@ private:
     // returns tif only RFC 3986 section 2.3 Unreserved Characters
     static constexpr inline bool isUnreserved(const char c) noexcept { return std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~'; }
     constexpr inline void        parseAuthority() const {
-        if (_parsedAuthority || _authority.empty()) {
-            _parsedAuthority = true;
-            return;
+               if (_parsedAuthority || _authority.empty()) {
+                   _parsedAuthority = true;
+                   return;
         }
-        size_t userSplit = std::min(_authority.find_first_of('@'), _authority.length());
-        if (userSplit < _authority.length()) {
-            // user isUnreserved defined via '[user]:[pwd]@'
+               size_t userSplit = std::min(_authority.find_first_of('@'), _authority.length());
+               if (userSplit < _authority.length()) {
+                   // user isUnreserved defined via '[user]:[pwd]@'
             const size_t pwdSplit = std::min(_authority.find_first_of(':'), userSplit);
             _userName             = _authority.substr(0, pwdSplit);
             if (pwdSplit < userSplit) {
-                _pwd = _authority.substr(pwdSplit + 1, userSplit - pwdSplit - 1);
+                       _pwd = _authority.substr(pwdSplit + 1, userSplit - pwdSplit - 1);
             }
             userSplit++;
         } else {
-            userSplit = 0;
+                   userSplit = 0;
         }
-        size_t portSplit = std::min(_authority.find_first_of(':', userSplit), _authority.length());
-        if (portSplit != std::string_view::npos && portSplit < _authority.length()) {
-            // port defined
+               size_t portSplit = std::min(_authority.find_first_of(':', userSplit), _authority.length());
+               if (portSplit != std::string_view::npos && portSplit < _authority.length()) {
+                   // port defined
             _hostName = _authority.substr(userSplit, portSplit - userSplit);
             portSplit++;
             _port = _authority.substr(portSplit, _authority.length() - portSplit);
         } else {
-            _hostName = _authority.substr(userSplit, _authority.length() - userSplit);
+                   _hostName = _authority.substr(userSplit, _authority.length() - userSplit);
         }
     }
 };
