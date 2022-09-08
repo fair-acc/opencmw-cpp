@@ -28,3 +28,6 @@ target_include_directories(MajordomoRest_example
         ${CMAKE_CURRENT_SOURCE_DIR}
     )
 target_link_libraries(MajordomoRest_example PRIVATE majordomo opencmw_project_options opencmw_project_warnings assets::rest assets::testImages)
+
+add_executable(FilterSubscription_example FilterSubscription_example.cpp)
+target_link_libraries(FilterSubscription_example PRIVATE majordomo client opencmw_project_options opencmw_project_warnings)
