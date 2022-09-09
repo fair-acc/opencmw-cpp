@@ -69,33 +69,33 @@ TEST_CASE("MockServer Subscription Test", "[mock-server][lambda_handler]") {
     client.subscribe("a.service");
     std::this_thread::sleep_for(10ms); // wait for the subscription to be set-up. todo: investigate more clever way
 
-    server.notify("a.service", "100");
-    server.notify("a.service", "23");
+    server.notify("a.service", "a.service?C=2", "100");
+    server.notify("a.service", "a.service?C=2", "23");
 
     {
         auto reply = client.tryReadOne();
-        fmt::print("{}\n", reply.has_value());
         REQUIRE(reply);
         REQUIRE(reply->body() == "100");
         REQUIRE(reply->command() == Command::Final);
-        REQUIRE(reply->topic() == "a.service");
+        REQUIRE(reply->serviceName() == "a.service");
+        REQUIRE(reply->topic() == "a.service?C=2");
     }
     {
         auto reply = client.tryReadOne();
-        fmt::print("{}\n", reply.has_value());
         REQUIRE(reply);
         REQUIRE(reply->body() == "23");
         REQUIRE(reply->command() == Command::Final);
-        REQUIRE(reply->topic() == "a.service");
+        REQUIRE(reply->serviceName() == "a.service");
+        REQUIRE(reply->topic() == "a.service?C=2");
     }
 
-    server.notify("a.service", "10");
+    server.notify("a.service", "a.service?C=5", "10");
     {
         auto reply = client.tryReadOne();
-        fmt::print("{}\n", reply.has_value());
         REQUIRE(reply);
         REQUIRE(reply->body() == "10");
         REQUIRE(reply->command() == Command::Final);
-        REQUIRE(reply->topic() == "a.service");
+        REQUIRE(reply->serviceName() == "a.service");
+        REQUIRE(reply->topic() == "a.service?C=5");
     }
 }

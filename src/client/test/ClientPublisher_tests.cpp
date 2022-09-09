@@ -74,8 +74,7 @@ TEST_CASE("Basic subscription test", "[ClientContext]") {
     clients.emplace_back(std::make_unique<MDClientCtx>(zctx, 20ms, ""));
     ClientContext clientContext{ std::move(clients) };
     // subscription
-    auto endpoint = URI<STRICT>::factory(URI<STRICT>(server.addressSub())).scheme("mds").path("/a.service").addQueryParameter("C", "2").build();
-    fmt::print("subscribing\n");
+    auto             endpoint = URI<STRICT>::factory(URI<STRICT>(server.addressSub())).scheme("mds").path("/a.service").addQueryParameter("C", "2").build();
     std::atomic<int> received{ 0 };
     clientContext.subscribe(endpoint, [&received](const opencmw::mdp::Message &update) {
         if (update.data.size() == 7) {
@@ -89,7 +88,7 @@ TEST_CASE("Basic subscription test", "[ClientContext]") {
     std::this_thread::sleep_for(10ms); // allow for the subscription request to be processed
     // send notifications
     for (int i = 0; i < 100; i++) {
-        server.notify("a.service?C=2", "a.service?C=2", endpoint.str(), "bar-baz");
+        server.notify(std::string_view(endpoint.path().value()).substr(1), std::string_view(endpoint.localPart().value()).substr(1), "bar-baz");
         fmt::print("^");
     }
     std::this_thread::sleep_for(10ms); // allow for all the notifications to reach the client
@@ -99,7 +98,7 @@ TEST_CASE("Basic subscription test", "[ClientContext]") {
     std::this_thread::sleep_for(10ms); // allow for the unsubscription request to be processed
     // send notifications
     for (int i = 0; i < 100; i++) {
-        server.notify("a.service?C=2", "a.service", endpoint.str(), "bar-baz");
+        server.notify(std::string_view(endpoint.path().value()).substr(1), std::string_view(endpoint.localPart().value()).substr(1), "bar-baz");
         fmt::print("^");
     }
     std::this_thread::sleep_for(10ms); // allow for all the notifications to reach the client

@@ -254,7 +254,7 @@ public:
         std::string_view serviceName       = serviceNameString;
         serviceName.remove_prefix(std::min(serviceName.find_first_not_of('/'), serviceName.size()));
         assert(!serviceName.empty());
-        opencmw::majordomo::zmq_invoke(zmq_setsockopt, con._socket, ZMQ_SUBSCRIBE, serviceName.data(), serviceName.size()).assertSuccess();
+        opencmw::majordomo::zmq_invoke(zmq_setsockopt, con._socket, ZMQ_SUBSCRIBE, serviceName.data(), serviceName.size() - 1).assertSuccess(); // string_view size includes termination byte
     }
 
     void unsubscribe(const URI<STRICT> &uri, majordomo::MessageFrame & /*reqId*/) override {
@@ -262,7 +262,7 @@ public:
         std::string_view serviceName = uri.localPart().value();
         serviceName.remove_prefix(std::min(serviceName.find_first_not_of('/'), serviceName.size()));
         assert(!serviceName.empty());
-        opencmw::majordomo::zmq_invoke(zmq_setsockopt, con._socket, ZMQ_UNSUBSCRIBE, serviceName.data(), serviceName.size()).assertSuccess();
+        opencmw::majordomo::zmq_invoke(zmq_setsockopt, con._socket, ZMQ_UNSUBSCRIBE, serviceName.data(), serviceName.size() - 1).assertSuccess();
     }
 
     bool disconnect(detail::Connection &con) {
@@ -280,7 +280,7 @@ public:
         if (message.command() == majordomo::Command::Notify || message.command() == majordomo::Command::Final) {
             output.data.resize(message.body().size());
             std::memcpy(output.data.data(), message.body().begin(), message.body().size());
-            output.endpoint   = URI<uri_check::STRICT>(std::string{ message.topic() });
+            output.endpoint   = URI<uri_check::STRICT>(std::string{ message.topic().data() });
             auto params       = output.endpoint.queryParamMap();
             output.context    = params.contains("ctx") ? params.at("ctx").value_or("") : "";
             auto requestId_sv = message.clientRequestId();

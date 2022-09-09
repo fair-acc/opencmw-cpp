@@ -104,18 +104,6 @@ public:
         notify.send(_pubSocket.value()).assertSuccess();
     }
 
-    void notify(std::string_view serviceName, std::string_view topic, std::string_view uri, std::string_view value) {
-        auto       brokerName  = "";
-        const auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
-        auto       notify      = BasicMdpMessage<MessageFormat::WithSourceId>::createClientMessage(Command::Final);
-        notify.setServiceName(serviceName, dynamic_tag);
-        notify.setTopic(uri, dynamic_tag);
-        notify.setSourceId(topic, dynamic_tag);
-        notify.setClientRequestId(brokerName, dynamic_tag);
-        notify.setBody(value, dynamic_tag);
-        notify.send(_pubSocket.value()).assertSuccess();
-    }
-
     static MdpMessage replyFromRequest(const MdpMessage &request) noexcept {
         MdpMessage reply;
         reply.setProtocol(request.protocol());

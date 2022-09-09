@@ -24,7 +24,8 @@ TEST_CASE("Basic Client Get/Set Test", "[Client]") {
     MockServer                  server(context);
 
     std::vector<zmq_pollitem_t> pollitems{};
-    opencmw::client::Client     client(context, pollitems);
+    std::mutex                  pollitems_mutex{};
+    opencmw::client::Client     client(context, pollitems, pollitems_mutex);
     auto                        uri = URI<uri_check::STRICT>(server.address());
 
     SECTION("Get") {
@@ -68,7 +69,8 @@ TEST_CASE("Basic Client Subscription Test", "[Client]") {
     MockServer                  server(context);
 
     std::vector<zmq_pollitem_t> pollitems{};
-    SubscriptionClient          subscriptionClient(context, pollitems, 100ms, "subscriptionClientID");
+    std::mutex                  pollitems_mutex{};
+    SubscriptionClient          subscriptionClient(context, pollitems, pollitems_mutex, 100ms, "subscriptionClientID");
     auto                        uri = URI<uri_check::STRICT>(server.addressSub());
     subscriptionClient.connect(uri);
     subscriptionClient.housekeeping(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()));
@@ -79,8 +81,8 @@ TEST_CASE("Basic Client Subscription Test", "[Client]") {
     subscriptionClient.subscribe(endpoint, reqId);
     std::this_thread::sleep_for(50ms); // allow for subscription to be established
 
-    server.notify("a.service", URI<uri_check::STRICT>::factory(endpoint).addQueryParameter("ctx", "test_ctx1").build().str(), "101");
-    server.notify("a.service", URI<uri_check::STRICT>::factory(endpoint).addQueryParameter("ctx", "test_ctx2").build().str(), "102");
+    server.notify("a.service", "a.service?ctx=test_ctx1", "101");
+    server.notify("a.service", "a.service?ctx=test_ctx2", "102");
 
     opencmw::mdp::Message resultOfNotify1;
     REQUIRE(subscriptionClient.receive(resultOfNotify1));
