@@ -86,23 +86,23 @@ private:
     Allocator           _allocator{};
 
     constexpr void      reallocate(const std::size_t &size) noexcept {
-             if (size == 0) {
-                 freeInternalBuffer();
-                 _capacity = size;
-                 return;
+        if (size == 0) {
+            freeInternalBuffer();
+            _capacity = size;
+            return;
         } else if (_capacity == size && _buffer != nullptr) {
-                 return;
+            return;
         } else if (_buffer == nullptr) {
-                 _buffer   = _allocator.allocate(size);
-                 _capacity = size;
-                 return;
+            _buffer   = _allocator.allocate(size);
+            _capacity = size;
+            return;
         }
-             if (dynamic_cast<Reallocator *>(_allocator.resource())) {
-                 // N.B. 'realloc' is safe as long as the de-allocation is done via 'free'
+        if (dynamic_cast<Reallocator *>(_allocator.resource())) {
+            // N.B. 'realloc' is safe as long as the de-allocation is done via 'free'
             _buffer   = static_cast<uint8_t *>(realloc(_buffer, size * sizeof(uint8_t)));
             _capacity = size;
         } else {
-                 // buffer already exists - copy existing content into newly allocated buffer N.B. maybe larger/smaller
+            // buffer already exists - copy existing content into newly allocated buffer N.B. maybe larger/smaller
             auto *tBuffer = _allocator.allocate(size);
             // std::memmove(tBuffer, _buffer, std::min(_size, size) * sizeof(uint8_t));
             std::copy(_buffer, _buffer + std::min(_size, size) * sizeof(uint8_t), tBuffer);
