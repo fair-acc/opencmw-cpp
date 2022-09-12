@@ -73,7 +73,7 @@ TEST_CASE("Basic subscription test", "[ClientContext]") {
     std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
     clients.emplace_back(std::make_unique<MDClientCtx>(zctx, 20ms, ""));
     ClientContext clientContext{ std::move(clients) };
-    std::this_thread::sleep_for(5ms); // allow the client's poller thread to connect to the control port. otherwise requests will fail. todo: implement proper logic for this
+    std::this_thread::sleep_for(100ms); // allow the client's poller thread to connect to the control port. otherwise requests will fail. todo: implement proper logic for this
     // subscription
     auto             endpoint = URI<STRICT>::factory(URI<STRICT>(server.addressSub())).scheme("mds").path("/a.service").addQueryParameter("C", "2").build();
     std::atomic<int> received{ 0 };
