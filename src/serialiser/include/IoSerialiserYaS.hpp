@@ -78,7 +78,7 @@ template<Number T> // catches all numbers
 struct IoSerialiser<YaS, T> {
     forceinline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); }
     forceinline constexpr static void    serialise(IoBuffer &buffer, FieldDescription auto const    &/*field*/, const T &value) noexcept {
-           buffer.put(value);
+        buffer.put(value);
     }
     forceinline constexpr static void deserialise(IoBuffer &buffer, FieldDescription auto const & /*field*/, T &value) noexcept {
         value = buffer.get<T>();
@@ -89,7 +89,7 @@ template<StringLike T>
 struct IoSerialiser<YaS, T> {
     forceinline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); }
     forceinline constexpr static void    serialise(IoBuffer &buffer, FieldDescription auto const    &/*field*/, const T &value) noexcept {
-           buffer.put<opencmw::IoBuffer::MetaInfo::WITH, T>(value); // N.B. ensure that the wrapped value and not the annotation itself is serialised
+        buffer.put<opencmw::IoBuffer::MetaInfo::WITH, T>(value); // N.B. ensure that the wrapped value and not the annotation itself is serialised
     }
     forceinline constexpr static void deserialise(IoBuffer &buffer, FieldDescription auto const & /*field*/, T &value) noexcept {
         value = buffer.get<std::string>();
@@ -100,8 +100,8 @@ template<ArrayOrVector T>
 struct IoSerialiser<YaS, T> {
     forceinline static constexpr uint8_t getDataTypeId() { return yas::getDataTypeId<T>(); }
     forceinline constexpr static void    serialise(IoBuffer &buffer, FieldDescription auto const    &/*field*/, const T &value) noexcept {
-           buffer.put(std::array<int32_t, 1>{ static_cast<int32_t>(value.size()) });
-           buffer.put(value);
+        buffer.put(std::array<int32_t, 1>{ static_cast<int32_t>(value.size()) });
+        buffer.put(value);
     }
     forceinline constexpr static void deserialise(IoBuffer &buffer, FieldDescription auto const & /*field*/, T &value) noexcept {
         buffer.getArray<int32_t, 1>();
@@ -143,19 +143,19 @@ template<MapLike T>
 struct IoSerialiser<YaS, T> {
     forceinline static constexpr uint8_t getDataTypeId() { return 203; }
     constexpr static void                serialise(IoBuffer &buffer, FieldDescription auto const &field, const T &value) noexcept {
-                       using K              = typename T::key_type;
-                       using V              = typename T::mapped_type;
-                       const auto nElements = static_cast<int32_t>(value.size());
-                       buffer.put(std::array<int32_t, 1>{ nElements }); // [ndims]{size}
-                       buffer.put(nElements);                           // nElements
+        using K              = typename T::key_type;
+        using V              = typename T::mapped_type;
+        const auto nElements = static_cast<int32_t>(value.size());
+        buffer.put(std::array<int32_t, 1>{ nElements }); // [ndims]{size}
+        buffer.put(nElements);                           // nElements
 
-                       if constexpr (is_supported_number<K> || is_stringlike<K>) {
-                           constexpr int entrySize = 17; // as an initial estimate
-                           buffer.reserve_spare(static_cast<size_t>(nElements * entrySize + 9));
-                           buffer.put(static_cast<uint8_t>(yas::getDataTypeId<K>())); // type-id
-                           buffer.put(nElements);                                     // nElements
-                           for (auto &entry : value) {
-                               buffer.put(entry.first);
+        if constexpr (is_supported_number<K> || is_stringlike<K>) {
+            constexpr int entrySize = 17; // as an initial estimate
+            buffer.reserve_spare(static_cast<size_t>(nElements * entrySize + 9));
+            buffer.put(static_cast<uint8_t>(yas::getDataTypeId<K>())); // type-id
+            buffer.put(nElements);                                     // nElements
+            for (auto &entry : value) {
+                buffer.put(entry.first);
             }
         } else {                                     // non-primitive or non-string-like types
             buffer.put(yas::getDataTypeId<OTHER>()); // type-id
@@ -163,17 +163,17 @@ struct IoSerialiser<YaS, T> {
             buffer.put("");                          // secondary type (if any) TODO: add appropriate
             buffer.put(nElements);
             for (auto &entry : value) {
-                               IoSerialiser<YaS, K>::serialise(buffer, field, entry.first);
+                IoSerialiser<YaS, K>::serialise(buffer, field, entry.first);
             }
         }
 
-                       if constexpr (is_supported_number<V> || is_stringlike<V>) {
-                           constexpr int entrySize = 17; // as an initial estimate
-                           buffer.reserve_spare(static_cast<size_t>(nElements * entrySize + 9));
-                           buffer.put(static_cast<uint8_t>(yas::getDataTypeId<V>()));
-                           buffer.put(nElements);
-                           for (auto &entry : value) {
-                               buffer.put(entry.second);
+        if constexpr (is_supported_number<V> || is_stringlike<V>) {
+            constexpr int entrySize = 17; // as an initial estimate
+            buffer.reserve_spare(static_cast<size_t>(nElements * entrySize + 9));
+            buffer.put(static_cast<uint8_t>(yas::getDataTypeId<V>()));
+            buffer.put(nElements);
+            for (auto &entry : value) {
+                buffer.put(entry.second);
             }
         } else {                                         // non-primitive or non-string-like types
             buffer.put(yas::getDataTypeId<OTHER>());     // type-id
@@ -181,7 +181,7 @@ struct IoSerialiser<YaS, T> {
             buffer.put("");                              // secondary type (if any) TODO: add appropriate
             buffer.put(static_cast<int32_t>(nElements)); // nElements
             for (auto &entry : value) {
-                               IoSerialiser<YaS, K>::serialise(buffer, field, entry.second);
+                IoSerialiser<YaS, K>::serialise(buffer, field, entry.second);
             }
         }
     }

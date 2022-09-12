@@ -53,12 +53,12 @@ protected:
         : _type(dataType) {}
 
 public:
-    mustache_data_base(const mustache_data_base &)            = delete;
+    mustache_data_base(const mustache_data_base &) = delete;
     mustache_data_base &operator=(const mustache_data_base &) = delete;
     mustache_data_base(mustache_data_base &&)                 = delete;
-    mustache_data_base &operator=(mustache_data_base &&)      = delete;
+    mustache_data_base &operator=(mustache_data_base &&) = delete;
 
-    virtual ~mustache_data_base()                             = default;
+    virtual ~mustache_data_base()                        = default;
 
     [[nodiscard]] virtual const mustache_data_base *get([[maybe_unused]] const std::string &name) const {
         return nullptr;
