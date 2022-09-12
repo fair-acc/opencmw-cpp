@@ -404,15 +404,16 @@ public:
 
 private:
     void sendCmd(const URI<STRICT> &uri, mdp::Command commandType, std::size_t req_id, const IoBuffer &data = std::move(IoBuffer())) {
+        const bool              isSet = commandType == mdp::Command::Set;
         majordomo::MessageFrame cmdType{ std::string{ static_cast<char>(commandType) }, majordomo::MessageFrame::dynamic_bytes_tag() };
-        cmdType.send(_control_socket_send, ZMQ_DONTWAIT | ZMQ_SNDMORE).assertSuccess();
+        cmdType.send(_control_socket_send, ZMQ_SNDMORE).assertSuccess();
         majordomo::MessageFrame reqId{ std::to_string(req_id), majordomo::MessageFrame::dynamic_bytes_tag() };
-        reqId.send(_control_socket_send, ZMQ_DONTWAIT | ZMQ_SNDMORE).assertSuccess();
+        reqId.send(_control_socket_send, ZMQ_SNDMORE).assertSuccess();
         majordomo::MessageFrame endpoint{ uri.str(), majordomo::MessageFrame::dynamic_bytes_tag() };
-        endpoint.send(_control_socket_send, ZMQ_DONTWAIT).assertSuccess();
-        if (commandType == mdp::Command::Set) {
+        endpoint.send(_control_socket_send, isSet ? ZMQ_SNDMORE : 0).assertSuccess();
+        if (isSet) {
             majordomo::MessageFrame dataframe{ std::string_view{ reinterpret_cast<const char *>(data.data()), data.size() }, majordomo::MessageFrame::dynamic_bytes_tag() };
-            dataframe.send(_control_socket_send, ZMQ_DONTWAIT).assertSuccess();
+            dataframe.send(_control_socket_send, 0).assertSuccess();
         }
     }
 
