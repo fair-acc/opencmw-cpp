@@ -89,7 +89,7 @@ TEST_CASE("Basic subscription test", "[ClientContext]") {
     std::this_thread::sleep_for(10ms); // allow for the subscription request to be processed
     // send notifications
     for (int i = 0; i < 100; i++) {
-        server.notify(std::string_view(endpoint.path().value()).substr(1), std::string_view(endpoint.localPart().value()).substr(1), "bar-baz");
+        server.notify(std::string_view(endpoint.path().value()).substr(1), std::string_view(endpoint.relativeRefNoFragment().value()).substr(1), "bar-baz");
         fmt::print("^");
     }
     std::this_thread::sleep_for(10ms); // allow for all the notifications to reach the client
@@ -99,7 +99,7 @@ TEST_CASE("Basic subscription test", "[ClientContext]") {
     std::this_thread::sleep_for(10ms); // allow for the unsubscription request to be processed
     // send notifications
     for (int i = 0; i < 100; i++) {
-        server.notify(std::string_view(endpoint.path().value()).substr(1), std::string_view(endpoint.localPart().value()).substr(1), "bar-baz");
+        server.notify(std::string_view(endpoint.path().value()).substr(1), std::string_view(endpoint.relativeRefNoFragment().value()).substr(1), "bar-baz");
         fmt::print("^");
     }
     std::this_thread::sleep_for(10ms); // allow for all the notifications to reach the client
