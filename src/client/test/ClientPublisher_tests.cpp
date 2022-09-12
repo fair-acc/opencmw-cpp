@@ -27,8 +27,7 @@ TEST_CASE("Basic get/set test", "[ClientContext]") {
     clients.emplace_back(std::make_unique<MDClientCtx>(zctx, 20ms, "testMajordomoClient"));
     ClientContext clientContext{ std::move(clients) };
     // send some requests
-    auto endpoint = URI<STRICT>::factory(URI<STRICT>(server.address())).scheme("mdp").path("/a.service").addQueryParameter("C", "2").build();
-    fmt::print("issuing get request\n");
+    auto             endpoint = URI<STRICT>::factory(URI<STRICT>(server.address())).scheme("mdp").path("/a.service").addQueryParameter("C", "2").build();
     std::atomic<int> received{ 0 };
     clientContext.get(endpoint, [&received](const opencmw::mdp::Message &message) {
         REQUIRE(message.data.size() == 3); // == "100");
@@ -42,7 +41,6 @@ TEST_CASE("Basic get/set test", "[ClientContext]") {
         reply.setTopic(URI<STRICT>::factory(endpoint).addQueryParameter("ctx", "test_ctx").build().str(), MessageFrame::dynamic_bytes_tag{});
     });
     std::this_thread::sleep_for(20ms); // hacky: this is needed because the requests are only identified using their uri, so we cannot have multiple requests with identical uris
-    fmt::print("issuing set request\n");
     auto              testData = std::vector<std::byte>{ std::byte{ 'a' }, std::byte{ 'b' }, std::byte{ 'c' } };
     opencmw::IoBuffer dataSetRequest;
     dataSetRequest.put('a');
@@ -68,39 +66,33 @@ TEST_CASE("Basic get/set test", "[ClientContext]") {
 }
 
 TEST_CASE("Basic subscription test", "[ClientContext]") {
+    constexpr std::string_view                                payload = "payload";
     const Context                                             zctx{};
     MockServer                                                server(zctx);
     std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
     clients.emplace_back(std::make_unique<MDClientCtx>(zctx, 20ms, ""));
     ClientContext clientContext{ std::move(clients) };
+    std::this_thread::sleep_for(100ms);
     // subscription
-    auto endpoint = URI<STRICT>::factory(URI<STRICT>(server.addressSub())).scheme("mds").path("/a.service").addQueryParameter("C", "2").build();
-    fmt::print("subscribing\n");
+    auto             endpoint = URI<STRICT>::factory(URI<STRICT>(server.addressSub())).scheme("mds").path("/a.service").addQueryParameter("C", "2").build();
     std::atomic<int> received{ 0 };
-    clientContext.subscribe(endpoint, [&received](const opencmw::mdp::Message &update) {
-        if (update.data.size() == 7) {
+    clientContext.subscribe(endpoint, [&received, &payload](const opencmw::mdp::Message &update) {
+        if (update.data.size() == payload.size()) {
             received++;
-            fmt::print("v");
-        } else {
-            fmt::print("\nError: message of wrong length: {}\n", update.data.size());
-            FAIL();
         }
     });
-    std::this_thread::sleep_for(10ms); // allow for the subscription request to be processed
+    std::this_thread::sleep_for(100ms); // allow for the subscription request to be processed
     // send notifications
     for (int i = 0; i < 100; i++) {
-        server.notify("a.service", endpoint.str(), "bar-baz");
-        fmt::print("^");
+        server.notify("a.service", endpoint.str(), payload);
     }
     std::this_thread::sleep_for(10ms); // allow for all the notifications to reach the client
     REQUIRE(received == 100);
     clientContext.unsubscribe(endpoint);
-    fmt::print("\n");
     std::this_thread::sleep_for(10ms); // allow for the unsubscription request to be processed
     // send notifications
     for (int i = 0; i < 100; i++) {
-        server.notify("a.service", endpoint.str(), "bar-baz");
-        fmt::print("^");
+        server.notify("a.service", endpoint.str(), payload);
     }
     std::this_thread::sleep_for(10ms); // allow for all the notifications to reach the client
     REQUIRE(received == 100);
