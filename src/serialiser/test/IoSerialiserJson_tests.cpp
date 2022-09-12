@@ -160,7 +160,7 @@ TEST_CASE("JsonArraySerialisation", "[JsonSerialiser]") {
         }
         buffer.set_position(0);
         {
-            std::array<int, 4> resultArray;
+            std::array<int, 4> resultArray{};
             opencmw::IoSerialiser<opencmw::Json, std::array<int, 4>>::deserialise(buffer, detail::newFieldHeader<opencmw::Json>(buffer, "test", 0, resultArray, 0), resultArray);
             REQUIRE(test == std::vector<int>(resultArray.begin(), resultArray.end()));
             REQUIRE(buffer.position() == 12);
