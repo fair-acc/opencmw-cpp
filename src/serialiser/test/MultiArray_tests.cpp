@@ -7,6 +7,9 @@
 using namespace opencmw;
 
 TEST_CASE("MultiArray.doubleSimple", "[MultiArray]") {
+    static_assert(!is_multi_array<int>);
+    static_assert(is_multi_array<MultiArray<double, 2>>);
+    static_assert(!is_multi_array<std::vector<double>>);
     static_assert(!refl::trait::is_reflectable_v<MultiArray<float, 2>>); // MultiArrays should not be reflectable
     static_assert(!is_supported_number<MultiArray<float, 2>>);           // MultiArray should not be identified as a number
     MultiArray<double, 2> test({ 1, 2, 3, 4, 5, 6 }, { 2, 3 });

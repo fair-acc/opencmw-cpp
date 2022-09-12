@@ -86,7 +86,7 @@ struct IoSerialiser<CmwLight, T> {
     inline static constexpr uint8_t getDataTypeId() { return 7; }
 
     constexpr static void           serialise(IoBuffer &buffer, FieldDescription auto const           &/*field*/, const T &value) noexcept {
-        buffer.put(value);
+                  buffer.put(value);
     }
 
     constexpr static void deserialise(IoBuffer &buffer, FieldDescription auto const & /*field*/, T &value) noexcept {
@@ -122,7 +122,7 @@ struct IoSerialiser<CmwLight, T> {
     }
 };
 
-template<MultiArrayType T>
+template<is_multi_array T>
 struct IoSerialiser<CmwLight, T> {
     inline static constexpr uint8_t getDataTypeId() {
         // clang-format off
@@ -188,7 +188,7 @@ struct IoSerialiser<CmwLight, START_MARKER> {
     inline static constexpr uint8_t getDataTypeId() { return 0xFC; }
 
     constexpr static void           serialise(IoBuffer &buffer, FieldDescription auto const &field, const START_MARKER           &/*value*/) noexcept {
-        buffer.put(static_cast<int32_t>(field.subfields));
+                  buffer.put(static_cast<int32_t>(field.subfields));
     }
 
     constexpr static void deserialise(IoBuffer & /*buffer*/, FieldDescription auto const & /*field*/, const START_MARKER &) {
@@ -201,7 +201,7 @@ struct IoSerialiser<CmwLight, END_MARKER> {
     inline static constexpr uint8_t getDataTypeId() { return 0xFE; }
 
     static void                     serialise(IoBuffer                     &/*buffer*/, FieldDescription auto const                     &/*field*/, const END_MARKER                     &/*value*/) noexcept {
-        // do not do anything, as the end marker is of size zero and only the type byte is important
+                            // do not do anything, as the end marker is of size zero and only the type byte is important
     }
 
     constexpr static void deserialise(IoBuffer & /*buffer*/, FieldDescription auto const & /*field*/, const END_MARKER &) {
@@ -214,7 +214,7 @@ struct IoSerialiser<CmwLight, OTHER> {
     inline static constexpr uint8_t getDataTypeId() { return 0xFD; }
 
     static void                     serialise(IoBuffer                     &/*buffer*/, FieldDescription auto const                     &/*field*/, const END_MARKER                     &/*value*/) noexcept {
-        // do not do anything, as the end marker is of size zero and only the type byte is important
+                            // do not do anything, as the end marker is of size zero and only the type byte is important
     }
 
     static void deserialise(IoBuffer &buffer, FieldDescription auto const &field, const OTHER &) {

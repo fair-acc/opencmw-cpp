@@ -297,13 +297,9 @@ constexpr std::ostream &operator<<(std::ostream &output, const MultiArray<T, n_d
 // iterators should be aware if they represent congruent memory to allow using memmove type copying if applicable
 
 template<typename T>
-inline constexpr bool is_multi_array = false;
-
-template<typename T, uint32_t n_dims>
-inline constexpr bool is_multi_array<MultiArray<T, n_dims>> = true;
-
-template<typename T>
-concept MultiArrayType = is_multi_array<T>;
+concept is_multi_array = requires {
+    typename T::multi_array_type_tag;
+};
 
 } // namespace opencmw
 

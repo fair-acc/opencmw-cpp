@@ -35,20 +35,6 @@ namespace opencmw::mustache {
 template<typename T>
 class mustache_data;
 
-template<typename T>
-constexpr bool is_instance_of_vector_v = units::is_derived_from_specialization_of<T, std::vector>;
-static_assert(!is_instance_of_vector_v<int>);
-static_assert(!is_instance_of_vector_v<MultiArray<double, 2>>);
-static_assert(is_instance_of_vector_v<std::vector<double>>);
-
-template<typename T>
-concept is_instance_of_multi_array_v = requires {
-    typename T::multi_array_type_tag;
-};
-static_assert(!is_instance_of_multi_array_v<int>);
-static_assert(is_instance_of_multi_array_v<MultiArray<double, 2>>);
-static_assert(!is_instance_of_multi_array_v<std::vector<double>>);
-
 // Type erase the data
 class mustache_data_base {
 protected:
@@ -67,12 +53,12 @@ protected:
         : _type(dataType) {}
 
 public:
-    mustache_data_base(const mustache_data_base &) = delete;
+    mustache_data_base(const mustache_data_base &)            = delete;
     mustache_data_base &operator=(const mustache_data_base &) = delete;
     mustache_data_base(mustache_data_base &&)                 = delete;
-    mustache_data_base &operator=(mustache_data_base &&) = delete;
+    mustache_data_base &operator=(mustache_data_base &&)      = delete;
 
-    virtual ~mustache_data_base()                        = default;
+    virtual ~mustache_data_base()                             = default;
 
     [[nodiscard]] virtual const mustache_data_base *get([[maybe_unused]] const std::string &name) const {
         return nullptr;
@@ -176,7 +162,7 @@ public:
 };
 
 template<typename T>
-requires is_instance_of_vector_v<T>
+requires is_vector<T>
 class mustache_data<T> : public mustache_data_base {
 private:
     const T &_value;
@@ -204,7 +190,7 @@ public:
 };
 
 template<typename T>
-requires is_instance_of_multi_array_v<T>
+requires is_multi_array<T>
 class mustache_data<T> : public mustache_data<std::vector<typename T::value_type>> {
 public:
     explicit mustache_data(T val)
@@ -244,9 +230,9 @@ public:
                         return type::string;
                     } else if constexpr (std::is_same_v<T, bool>) {
                         return value ? type::bool_true : type::bool_false;
-                    } else if constexpr (is_instance_of_vector_v<T>) {
+                    } else if constexpr (is_vector<T>) {
                         return value.empty() ? type::list_empty : type::list_non_empty;
-                    } else if constexpr (is_instance_of_multi_array_v<T>) {
+                    } else if constexpr (is_multi_array<T>) {
                         return type::multi_array;
                     }
                     return type::object;
