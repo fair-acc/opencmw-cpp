@@ -193,13 +193,13 @@ public:
         std::swap(_buffer, other._buffer);
     }
 
-    [[nodiscard]] IoBuffer &operator=(const IoBuffer &other) {
+    IoBuffer &operator=(const IoBuffer &other) {
         auto temp = other;
         swap(temp);
         return *this;
     }
 
-    [[nodiscard]] IoBuffer &operator=(IoBuffer &&other) noexcept {
+    IoBuffer &operator=(IoBuffer &&other) noexcept {
         auto temp = std::move(other);
         swap(temp);
         return *this;
