@@ -35,9 +35,11 @@ struct AddressEntry {
     int                                                  streetNumber;
     std::string                                          postalCode;
     std::string                                          city;
+    MultiArray<double, 2>                                multiArray;
     bool                                                 isCurrent;
 };
-ENABLE_REFLECTION_FOR(AddressEntry, name, street, streetNumber, postalCode, city, isCurrent)
+ENABLE_REFLECTION_FOR(AddressEntry, name, street, streetNumber, postalCode, city, multiArray, isCurrent)
+// ENABLE_REFLECTION_FOR(AddressEntry, name, street, streetNumber, postalCode, city, isCurrent)
 
 TEST_CASE("MustacheSerialization: value with vector of strings", "[Mustache][MustacheValueSerialiser]") {
     std::stringstream str;
@@ -71,7 +73,8 @@ TEST_CASE("MustacheSerialization: value with fallback serialisation", "[Mustache
         opencmw::mustache::serialise("Address", str,
                 std::pair<std::string, const AddressEntry &>{ "result"s, address });
 
-        REQUIRE(str.str() == "[name::][street::][streetNumber::0][postalCode::][city::][isCurrent::false]\n");
+        REQUIRE(str.str() == R"""([name::][street::][streetNumber::0][postalCode::][city::][multiArray::{"dims": [0, 0],"values": []}][isCurrent::false]
+)""");
     }
     {
         AddressEntry address{
@@ -81,13 +84,15 @@ TEST_CASE("MustacheSerialization: value with fallback serialisation", "[Mustache
             .streetNumber = 221, // 221b
             .postalCode   = "",
             .city         = "London",
+            .multiArray   = { { 1.337, 23.42, 42.23, 13.37 }, { 2, 2 } },
             .isCurrent    = true
         };
         std::stringstream str;
         opencmw::mustache::serialise("Address", str,
                 std::pair<std::string, const AddressEntry &>{ "result"s, address });
 
-        REQUIRE(str.str() == "[name::Holmes, Sherlock][street::Baker Street][streetNumber::221][postalCode::][city::London][isCurrent::true]\n");
+        REQUIRE(str.str() == R"""([name::Holmes, Sherlock][street::Baker Street][streetNumber::221][postalCode::][city::London][multiArray::{"dims": [2, 2],"values": [1.337e+00, 2.342e+01, 4.223e+01, 1.337e+01]}][isCurrent::true]
+)""");
     }
 }
 
