@@ -96,26 +96,26 @@ public:
 
     void get(const URI<STRICT> &uri, majordomo::MessageFrame &req_id) override {
         detail::Connection &con     = findConnection(uri);
-        auto                message = createRequestTemplate(majordomo::Command::Get, uri.path().value(), req_id);
+        auto                message = createRequestTemplate(majordomo::Command::Get, uri.relativeRefNoFragment().value(), req_id);
         message.send(con._socket).assertSuccess();
     }
 
     void set(const URI<STRICT> &uri, majordomo::MessageFrame &req_id, const std::span<const std::byte> &request) override {
         auto &con     = findConnection(uri);
-        auto  message = createRequestTemplate(majordomo::Command::Set, uri.path().value(), req_id);
+        auto  message = createRequestTemplate(majordomo::Command::Set, uri.relativeRefNoFragment().value(), req_id);
         message.setBody(std::string(reinterpret_cast<const char *>(request.data()), request.size()), majordomo::MessageFrame::dynamic_bytes_tag{});
         message.send(con._socket).assertSuccess();
     }
 
     void subscribe(const URI<STRICT> &uri, majordomo::MessageFrame &req_id) override {
         auto &con     = findConnection(uri);
-        auto  message = createRequestTemplate(majordomo::Command::Subscribe, uri.path().value(), req_id);
+        auto  message = createRequestTemplate(majordomo::Command::Subscribe, uri.relativeRefNoFragment().value(), req_id);
         message.send(con._socket).assertSuccess();
     }
 
     void unsubscribe(const URI<STRICT> &uri, majordomo::MessageFrame &req_id) override {
         auto &con     = findConnection(uri);
-        auto  message = createRequestTemplate(majordomo::Command::Unsubscribe, uri.path().value(), req_id);
+        auto  message = createRequestTemplate(majordomo::Command::Unsubscribe, uri.relativeRefNoFragment().value(), req_id);
         message.send(con._socket).assertSuccess();
     }
 
@@ -243,17 +243,19 @@ public:
         throw std::logic_error("get not implemented");
     }
 
-    void subscribe(const URI<STRICT> &uri, majordomo::MessageFrame &reqId) override {
-        auto            &con         = findConnection(uri);
-        std::string_view serviceName = uri.path().value();
+    void subscribe(const URI<STRICT> &uri, majordomo::MessageFrame & /*reqId*/) override {
+        auto            &con               = findConnection(uri);
+        std::string      serviceNameString = uri.relativeRefNoFragment().value();
+        std::string_view serviceName       = serviceNameString;
         serviceName.remove_prefix(std::min(serviceName.find_first_not_of('/'), serviceName.size()));
         assert(!serviceName.empty());
         opencmw::majordomo::zmq_invoke(zmq_setsockopt, con._socket, ZMQ_SUBSCRIBE, serviceName.data(), serviceName.size()).assertSuccess();
     }
 
-    void unsubscribe(const URI<STRICT> &uri, majordomo::MessageFrame &reqId) override {
-        auto            &con         = findConnection(uri);
-        std::string_view serviceName = uri.path().value();
+    void unsubscribe(const URI<STRICT> &uri, majordomo::MessageFrame & /*reqId*/) override {
+        auto            &con               = findConnection(uri);
+        std::string      serviceNameString = uri.relativeRefNoFragment().value();
+        std::string_view serviceName       = serviceNameString;
         serviceName.remove_prefix(std::min(serviceName.find_first_not_of('/'), serviceName.size()));
         assert(!serviceName.empty());
         opencmw::majordomo::zmq_invoke(zmq_setsockopt, con._socket, ZMQ_UNSUBSCRIBE, serviceName.data(), serviceName.size()).assertSuccess();
