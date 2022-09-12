@@ -42,6 +42,8 @@ TEST_CASE("basic constructor", "[URI]") {
     REQUIRE(test.path() == "/path1/path2/path3/file.ext");
     REQUIRE(test.queryParam() == "k0;k1=v1;k2=v2&k3&k4=");
     REQUIRE(test.fragment() == "cFrag");
+    REQUIRE(test.relativeRef() == "/path1/path2/path3/file.ext?k0;k1=v1;k2=v2&k3&k4=#cFrag");
+    REQUIRE(test.relativeRefNoFragment() == "/path1/path2/path3/file.ext?k0;k1=v1;k2=v2&k3&k4=");
     // test parameter map interface
     REQUIRE_NOTHROW(test.queryParamMap());
     auto parameterMap = test.queryParamMap();
@@ -69,6 +71,8 @@ TEST_CASE("basic constructor", "[URI]") {
     REQUIRE(copy.hostName() == test.hostName());
     REQUIRE(copy.port() == test.port());
     REQUIRE(copy.path() == test.path());
+    REQUIRE(copy.relativeRef() == test.relativeRef());
+    REQUIRE(copy.relativeRefNoFragment() == test.relativeRefNoFragment());
     REQUIRE(copy.fragment() == test.fragment());
     REQUIRE(copy.queryParam() == test.queryParam());
     REQUIRE(copy.queryParamMap() == test.queryParamMap());
