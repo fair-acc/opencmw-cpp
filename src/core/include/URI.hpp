@@ -170,6 +170,21 @@ public:
     inline std::optional<std::string> path() const noexcept { return returnOpt(_path); }
     inline std::optional<std::string> queryParam() const noexcept { return returnOpt(_query); }
     inline std::optional<std::string> fragment() const noexcept { return returnOpt(_fragment); }
+    inline std::optional<std::string> relativeRef() const noexcept { // path + query + fragment
+        using namespace fmt::literals;
+        if (_path.empty() && _query.empty() && _fragment.empty()) return {};
+        return fmt::format("{opt_path_slash}{path}{qMark}{query}{hashMark}{fragment}",
+                           "opt_path_slash"_a = (_path.empty() || _path.starts_with('/')) ? "" : "/", "path"_a = _path,                     // path
+                           "qMark"_a = (_query.empty() || _query.starts_with('?')) ? "" : "?", "query"_a = _query,                         // query
+                           "hashMark"_a = (_fragment.empty() || _fragment.starts_with('#')) ? "" : "#", "fragment"_a = encode(_fragment)); // fragment
+    }
+    inline std::optional<std::string> relativeRefNoFragment() const noexcept { // path + query
+        using namespace fmt::literals;
+        if (_path.empty() && _query.empty()) return {};
+        return fmt::format("{opt_path_slash}{path}{qMark}{query}",
+                           "opt_path_slash"_a = (_path.empty() || _path.starts_with('/')) ? "" : "/", "path"_a = _path,                     // path
+                           "qMark"_a = (_query.empty() || _query.starts_with('?')) ? "" : "?", "query"_a = _query);                        // query
+    }
     // clang-format om
 
     // decompose map
