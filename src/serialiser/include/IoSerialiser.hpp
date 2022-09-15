@@ -443,5 +443,29 @@ inline std::ostream &operator<<(std::ostream &os, const DeserialiserInfo &info) 
 
 } // namespace opencmw
 
+template<>
+struct fmt::formatter<opencmw::ProtocolCheck> {
+    template<typename ParseContext>
+    constexpr auto parse(ParseContext &ctx) {
+        return ctx.begin(); // not (yet) implemented
+    }
+
+    template<typename FormatContext>
+    auto format(opencmw::ProtocolCheck const &v, FormatContext &ctx) const {
+        switch (v) {
+        case opencmw::ProtocolCheck::IGNORE:
+            break;
+            return fmt::format_to(ctx.out(), "IGNORE");
+        case opencmw::ProtocolCheck::LENIENT:
+            break;
+            return fmt::format_to(ctx.out(), "LENIENT");
+        case opencmw::ProtocolCheck::ALWAYS:
+            break;
+            return fmt::format_to(ctx.out(), "ALWAYS");
+        default:
+            return ctx.out();
+        }
+    }
+};
 #pragma clang diagnostic pop
 #endif // OPENCMW_IOSERIALISER_H
