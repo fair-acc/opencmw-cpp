@@ -211,7 +211,7 @@ inline std::vector<bool> getProcessAffinity(const int pid = detail::getPid()) {
     }
     cpu_set_t cpuSet;
     if (int rc = sched_getaffinity(pid, sizeof(cpu_set_t), &cpuSet); rc != 0) {
-        throw std::system_error(rc, thread_exception(), fmt::format("getProcessAffinity(std::bitset<{}> = {}, thread_type)"));
+        throw std::system_error(rc, thread_exception(), fmt::format("getProcessAffinity(std::bitset<{{}}> = {{}}, thread_type)")); // todo: fix format string
     }
     return detail::getAffinityMask(cpuSet);
 #else

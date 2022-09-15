@@ -177,8 +177,8 @@ double testDisruptor(const std::uint64_t nLoop, const std::uint64_t nProducer, c
     return opsPerSecond;
 }
 
-template<typename T, size_t mRow, size_t nCol>
-void print_matrix(const std::array<std::array<T, mRow>, nCol> &M, const char *fmt = "{}", const bool align = true) {
+template<bool align = true, typename T, size_t mRow, size_t nCol>
+void print_matrix(const std::array<std::array<T, mRow>, nCol> &M, fmt::format_string<const T &> fmt = "{}") {
     size_t columWidth = 0;
     for (size_t j = 0; j < nCol; ++j) {
         size_t max_len{};
@@ -192,8 +192,8 @@ void print_matrix(const std::array<std::array<T, mRow>, nCol> &M, const char *fm
     fmt::print("┌{1:{0}}┐\n", nCol * (columWidth + 1) + 1, ' ');
     for (size_t i = 0; i < mRow; ++i) {
         for (size_t j = 0; j < nCol; ++j) {
-            fmt::print(align ? "{1:}{2:>{0}} {3:}" : "{1:}{2:^{0}} {3:}",
-                    columWidth, j == 0 ? "│ " : "", fmt::format(fmt, M[i][j]), j == nCol - 1 ? "│" : "");
+            constexpr auto cell_fmt = align ? "{1:}{2:>{0}} {3:}" : "{1:}{2:^{0}} {3:}";
+            fmt::print(cell_fmt, columWidth, j == 0 ? "│ " : "", fmt::format(fmt, M[i][j]), j == nCol - 1 ? "│" : "");
         }
         fmt::print("\n");
     }
