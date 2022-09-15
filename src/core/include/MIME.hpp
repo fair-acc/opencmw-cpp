@@ -261,7 +261,7 @@ struct fmt::formatter<opencmw::MIME::MimeType> {
     }
 
     template<typename FormatContext>
-    auto format(opencmw::MIME::MimeType const &v, FormatContext &ctx) {
+    auto format(opencmw::MIME::MimeType const &v, FormatContext &ctx) const {
         return fmt::format_to(ctx.out(), "{}", v.typeName());
     }
 };
