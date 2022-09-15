@@ -231,7 +231,7 @@ struct fmt::formatter<opencmw::TimingCtx> {
     }
 
     template<typename FormatContext>
-    auto format(const opencmw::TimingCtx &v, FormatContext &ctx) {
+    auto format(const opencmw::TimingCtx &v, FormatContext &ctx) const {
         return fmt::format_to(ctx.out(), "{}", v.toString());
     }
 };
