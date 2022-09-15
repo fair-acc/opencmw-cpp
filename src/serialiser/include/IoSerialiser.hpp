@@ -35,8 +35,9 @@ public:
         : errorMsg(std::move(errorMessage)) {}
     explicit ProtocolException(const char *errorMessage) noexcept
         : errorMsg(errorMessage) {}
-    explicit ProtocolException(const char *fmt, const auto &...errorArgs) noexcept
-        : errorMsg(fmt::format(fmt, errorArgs...)) {}
+    template<typename... ErrorArgs>
+    explicit ProtocolException(fmt::format_string<ErrorArgs...> fmt, ErrorArgs &&...errorArgs) noexcept
+        : errorMsg(fmt::format(fmt, std::forward<ErrorArgs>(errorArgs)...)) {}
 
     [[nodiscard]] const char *what() const noexcept override { return errorMsg.data(); }
 };
@@ -235,22 +236,22 @@ forceinline void moveToFieldEndBufferPosition(IoBuffer &buffer, const FieldDescr
     }
 }
 
-template<ProtocolCheck check>
-neverinline constexpr void handleDeserialisationError(DeserialiserInfo &info, const char *errorFormat, const auto &...errorArgs) noexcept(check != ProtocolCheck::ALWAYS) {
-    const auto text = fmt::format(errorFormat, errorArgs...);
+template<ProtocolCheck check, typename... ErrorArgs>
+neverinline constexpr void handleDeserialisationError(DeserialiserInfo &info, fmt::format_string<ErrorArgs...> errorFormat, ErrorArgs &&...errorArgs) noexcept(check != ProtocolCheck::ALWAYS) {
+    const auto text = fmt::format(errorFormat, std::forward<ErrorArgs>(errorArgs)...);
     if constexpr (check == ProtocolCheck::ALWAYS) {
         throw ProtocolException(text);
     }
     info.exceptions.emplace_back(ProtocolException(text));
 }
 
-template<ProtocolCheck check>
-neverinline constexpr bool handleDeserialisationErrorAndSkipToNextField(IoBuffer &buffer, const FieldDescriptionLong &field, DeserialiserInfo &info, const char *errorFormat, const auto &...errorArgs) noexcept(check != ProtocolCheck::ALWAYS) {
+template<ProtocolCheck check, typename... ErrorArgs>
+neverinline constexpr bool handleDeserialisationErrorAndSkipToNextField(IoBuffer &buffer, const FieldDescriptionLong &field, DeserialiserInfo &info, fmt::format_string<ErrorArgs...> errorFormat, ErrorArgs &&...errorArgs) noexcept(check != ProtocolCheck::ALWAYS) {
     moveToFieldEndBufferPosition(buffer, field);
     if constexpr (check == ProtocolCheck::IGNORE) {
         return true; // should return into outer context
     }
-    handleDeserialisationError<check>(info, errorFormat, errorArgs...);
+    handleDeserialisationError<check>(info, errorFormat, std::forward<ErrorArgs>(errorArgs)...);
     return false; // may continue
 }
 

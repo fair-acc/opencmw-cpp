@@ -18,7 +18,7 @@ FetchContent_Declare(
 FetchContent_Declare(
         fmt
         GIT_REPOSITORY https://github.com/fmtlib/fmt.git
-        GIT_TAG        7.1.3 # newest: 8.1.1
+        GIT_TAG        8.1.1 # newest: 8.1.1
 )
 
 # dependency of mp-units, building examples, tests, etc is off by default
