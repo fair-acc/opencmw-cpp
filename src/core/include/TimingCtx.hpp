@@ -233,8 +233,8 @@ struct fmt::formatter<opencmw::TimingCtx> {
 };
 
 namespace opencmw {
-inline std::ostream          &operator<<(std::ostream &os, const opencmw::TimingCtx &v) {
+inline std::ostream &operator<<(std::ostream &os, const opencmw::TimingCtx &v) {
     return os << fmt::format("{}", v);
 }
-}
+} // namespace opencmw
 #endif
