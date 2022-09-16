@@ -8,6 +8,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 #include <cassert>
 
@@ -443,7 +444,7 @@ struct fmt::formatter<std::optional<T>> {
     }
 
     template<typename FormatContext>
-    auto format(std::optional<T> const &v, FormatContext &ctx) {
+    auto format(std::optional<T> const &v, FormatContext &ctx) const {
         return v ? fmt::format_to(ctx.out(), "{}", v.value()) : fmt::format_to(ctx.out(), "<std::nullopt>");
     }
 };
@@ -461,7 +462,7 @@ struct fmt::formatter<opencmw::URI<check>> {
     }
 
     template<typename FormatContext>
-    auto format(opencmw::URI<check> const &v, FormatContext &ctx) {
+    auto format(opencmw::URI<check> const &v, FormatContext &ctx) const {
         return fmt::format_to(ctx.out(), "{{scheme: '{}', authority: '{}', user: '{}', pwd: '{}', host: '{}', port: '{}', path: '{}', query: '{}', fragment: '{}'}}", //
                 v.scheme(), v.authority(), v.user(), v.password(), v.hostName(), v.port(), v.path(), v.queryParam(), v.fragment());
     }

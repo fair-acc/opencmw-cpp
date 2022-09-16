@@ -77,12 +77,12 @@ constexpr void addSpace(IoBuffer &buffer, const uint8_t hierarchyDepth, const ui
     return buffer.asString(start, static_cast<int>(firstWhiteCharacterAfterData - start));
 }
 
-template<ProtocolCheck protocolCheckVariant>
-neverinline constexpr void handleDeserialisationError(DeserialiserInfo &info, const char *errorFormat, const auto &...errorArgs) noexcept(protocolCheckVariant != ProtocolCheck::ALWAYS) {
+template<ProtocolCheck protocolCheckVariant, typename... ErrorArgs>
+neverinline constexpr void handleDeserialisationError(DeserialiserInfo &info, fmt::format_string<ErrorArgs...> errorFormat, ErrorArgs &&...errorArgs) noexcept(protocolCheckVariant != ProtocolCheck::ALWAYS) {
     if constexpr (protocolCheckVariant == ProtocolCheck::ALWAYS) {
         throw ProtocolException(errorFormat, errorArgs...);
     }
-    info.exceptions.emplace_back(ProtocolException(errorFormat, errorArgs...));
+    info.exceptions.emplace_back(ProtocolException(errorFormat, std::forward<ErrorArgs>(errorArgs)...));
 }
 
 inline std::string_view readKey(IoBuffer &buffer) {
@@ -342,7 +342,8 @@ inline DeserialiserInfo checkHeaderInfo<YAML>(IoBuffer &buffer, DeserialiserInfo
     const auto line     = yaml::detail::peekLine(buffer);
     if ((line.size() < 3) || buffer.at<char>(position) != '-' || buffer.at<char>(position + 1) != '-' || buffer.at<char>(position + 2) != '-') {
         if (check == ProtocolCheck::LENIENT) {
-            info.exceptions.emplace_back("YAML: buffer too small or missing (`---') line: '{}' pos: {}  size: {}", line, position, buffer.size());
+            // info.exceptions.emplace_back(fmt::format_string<std::size_t, std::size_t, std::size_t>("YAML: buffer too small or missing (`---') line: '{}' pos: {}  size: {}"), line, position, buffer.size());
+            info.exceptions.push_back(ProtocolException{ "YAML: buffer too small or missing (`---') line: '{}' pos: {}  size: {}", line, position, buffer.size() });
         }
         if (check == ProtocolCheck::ALWAYS) {
             throw ProtocolException("YAML: buffer too small or missing (`---') line: '{}' pos: {}  size: {}", line, position, buffer.size());
@@ -353,7 +354,8 @@ inline DeserialiserInfo checkHeaderInfo<YAML>(IoBuffer &buffer, DeserialiserInfo
     [[maybe_unused]] const auto nTillEnd     = static_cast<std::size_t>(yaml::detail::moveToEndOfLine(buffer));
     if (nTillEnd > 1 || buffer.at<uint8_t>(buffer.position() - 1) != '\n') {
         if (check == ProtocolCheck::LENIENT) {
-            info.exceptions.emplace_back("YAML: non-white-space characters after (`---') line: '{}' pos: {}  size: {}", line, position, buffer.size());
+            // info.exceptions.emplace_back("YAML: non-white-space characters after (`---') line: '{}' pos: {}  size: {}", line, position, buffer.size());
+            info.exceptions.push_back(ProtocolException{ "YAML: non-white-space characters after (`---') line: '{}' pos: {}  size: {}", line, position, buffer.size() });
         }
         if (check == ProtocolCheck::ALWAYS) {
             throw ProtocolException("YAML: non-white-space characters after (`---') line: '{}' pos: {}  size: {}", line, position, buffer.size());

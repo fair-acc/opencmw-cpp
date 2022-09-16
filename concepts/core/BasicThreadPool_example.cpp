@@ -20,9 +20,11 @@ int main() {
 
     // enqueue and add task to list -- w/o return type
     poolWork.execute([] { fmt::print("Hello World from thread '{}'!\n", getThreadName()); });
-    poolWork.execute([](const auto &...args) { fmt::print("Hello World from thread '{}'!\n", args...); }, getThreadName());
+    // poolWork.execute([]<typename... T>(T&&...args) { fmt::print(fmt::format_string<T...>("Hello World from thread '{}'!\n"), std::forward<T>(args)...); }, getThreadName());
+    poolWork.execute([](const auto &...args) { fmt::print(fmt::runtime("Hello World from thread '{}'!\n"), args...); }, getThreadName());
 
-    constexpr auto           func1  = [](const auto &...args) { return fmt::format("thread '{1}' scheduled task '{0}'!\n", getThreadName(), args...); };
+    // constexpr auto           func1  = []<typename... T>(T&&...args) { return fmt::format(fmt::format_string<std::string, T...>("thread '{1}' scheduled task '{0}'!\n"), getThreadName(), args...); };
+    constexpr auto           func1  = [](const auto &...args) { return fmt::format(fmt::runtime("thread '{1}' scheduled task '{0}'!\n"), getThreadName(), args...); };
     std::future<std::string> result = poolIO.execute<"customTaskName">(func1, getThreadName());
     // do something else ... get result, wait if necessary
     std::cout << result.get() << std::endl;

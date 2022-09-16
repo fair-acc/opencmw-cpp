@@ -353,7 +353,7 @@ struct IoSerialiser<Json, T> {
             result = std::to_chars(data + start, data + size, value);
         }
         if (result.ec != std::errc()) {
-            throw ProtocolException("error({}) serialising number at buffer position: {}", result.ec, start);
+            throw ProtocolException("error({}) serialising number at buffer position: {}", static_cast<int>(result.ec), start);
         }
         buffer.resize(static_cast<size_t>(result.ptr - data)); // new position
     }
@@ -373,7 +373,7 @@ struct IoSerialiser<Json, T> {
         if constexpr (std::is_floating_point_v<T>) {
             const auto result = fast_float::from_chars(data + start, data + stop, value);
             if (result.ec != std::errc()) {
-                throw ProtocolException("error({}) parsing number at buffer position: {}", result.ec, start);
+                throw ProtocolException("error({}) parsing number at buffer position: {}", static_cast<int>(result.ec), start);
             }
             buffer.set_position(static_cast<size_t>(result.ptr - data)); // new position
             return;
@@ -381,7 +381,7 @@ struct IoSerialiser<Json, T> {
         // fall-back
         const auto result = std::from_chars(data + start, data + stop, value);
         if (result.ec != std::errc()) {
-            throw ProtocolException("error({}) parsing number at buffer position: {}", result.ec, start);
+            throw ProtocolException("error({}) parsing number at buffer position: {}", static_cast<int>(result.ec), start);
         }
         buffer.set_position(static_cast<size_t>(result.ptr - data)); // new position
     }

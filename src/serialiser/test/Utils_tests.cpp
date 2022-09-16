@@ -197,13 +197,13 @@ TEST_CASE("Annotated stdout", "[Utils]") {
         std::ostringstream                        os;
         Annotated<std::array<double, 10>, NoUnit> annDoubleArray = std::array<double, 10>{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
         os << ClassInfoVerbose << annDoubleArray;
-        REQUIRE(os.str() == "{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}  // [] - ");
+        REQUIRE(os.str() == "[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]  // [] - ");
     }
     {
         std::ostringstream                    os;
         Annotated<std::vector<float>, NoUnit> annFloatVector = std::vector{ 0.1f, 1.1f, 2.1f, 3.1f, 4.1f, 5.1f, 6.1f, 8.1f, 9.1f, 9.1f };
         os << ClassInfoVerbose << annFloatVector;
-        REQUIRE(os.str() == "{0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 8.1, 9.1, 9.1}  // [] - ");
+        REQUIRE(os.str() == "[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 8.1, 9.1, 9.1]  // [] - ");
     }
     REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
     debug::resetStats();

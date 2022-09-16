@@ -305,7 +305,7 @@ struct fmt::formatter<opencmw::ExternalModifier> {
     template<typename ParseContext>
     constexpr auto parse(ParseContext &ctx) { return ctx.begin(); }
     template<typename FormatContext>
-    constexpr auto format(const opencmw::ExternalModifier &state, FormatContext &ctx) {
+    constexpr auto format(const opencmw::ExternalModifier &state, FormatContext &ctx) const {
         using namespace opencmw;
         switch (state) {
         case RW: return fmt::format_to(ctx.out(), "RW");
@@ -749,7 +749,7 @@ struct fmt::formatter<T> {
     }
 
     template<typename FormatContext>
-    auto format(T const &value, FormatContext &ctx) {
+    auto format(T const &value, FormatContext &ctx) const {
         using namespace opencmw; // for operator<< overloading
         std::stringstream ss;    // N.B. std::stringstream construct to avoid recursion with 'operator<<' definition
         ss << value << std::flush;
