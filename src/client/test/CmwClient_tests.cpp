@@ -41,7 +41,6 @@ TEST_CASE("Basic Client Get/Set Test", "[Client]") {
         opencmw::mdp::Message result;
         REQUIRE(client.receive(result));
         REQUIRE(result.data.asString() == "42");
-        REQUIRE(result.context == "test_ctx1");
     }
 
     SECTION("Set") {
@@ -59,7 +58,6 @@ TEST_CASE("Basic Client Get/Set Test", "[Client]") {
         opencmw::mdp::Message result;
         REQUIRE(client.receive(result));
         REQUIRE(result.data.size() == 0);
-        REQUIRE(result.context == "test_ctx2");
     }
 }
 
@@ -71,7 +69,7 @@ TEST_CASE("Basic Client Subscription Test", "[Client]") {
     SubscriptionClient          subscriptionClient(context, pollitems, 100ms, "subscriptionClientID");
     auto                        uri = URI<uri_check::STRICT>(server.addressSub());
     subscriptionClient.connect(uri);
-    subscriptionClient.housekeeping(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()));
+    subscriptionClient.housekeeping(std::chrono::system_clock::now());
 
     auto endpoint = URI<uri_check::STRICT>::UriFactory(uri).path("a.service").build();
 
@@ -79,18 +77,16 @@ TEST_CASE("Basic Client Subscription Test", "[Client]") {
     subscriptionClient.subscribe(endpoint, reqId);
     std::this_thread::sleep_for(50ms); // allow for subscription to be established
 
-    server.notify("a.service", URI<uri_check::STRICT>::factory(endpoint).addQueryParameter("ctx", "test_ctx1").build().str(), "101");
-    server.notify("a.service", URI<uri_check::STRICT>::factory(endpoint).addQueryParameter("ctx", "test_ctx2").build().str(), "102");
+    server.notify("/a.service", URI<uri_check::STRICT>::factory(endpoint).addQueryParameter("ctx", "test_ctx1").build().str(), "101");
+    server.notify("/a.service", URI<uri_check::STRICT>::factory(endpoint).addQueryParameter("ctx", "test_ctx2").build().str(), "102");
 
     opencmw::mdp::Message resultOfNotify1;
     REQUIRE(subscriptionClient.receive(resultOfNotify1));
     REQUIRE(resultOfNotify1.data.asString() == "101");
-    REQUIRE(resultOfNotify1.context == "test_ctx1");
 
     opencmw::mdp::Message resultOfNotifyTwo;
     REQUIRE(subscriptionClient.receive(resultOfNotifyTwo));
     REQUIRE(resultOfNotifyTwo.data.asString() == "102");
-    REQUIRE(resultOfNotifyTwo.context == "test_ctx2");
 
     // receive expected exception
     auto reqId2 = MessageFrame("9", MessageFrame::dynamic_bytes_tag{});

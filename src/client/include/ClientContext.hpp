@@ -16,19 +16,19 @@
 namespace opencmw::client {
 
 using opencmw::uri_check::STRICT;
-using timeUnit = std::chrono::milliseconds;
+using timePoint = std::chrono::time_point<std::chrono::system_clock>;
 using namespace std::chrono_literals;
 
 struct Request {
     URI<STRICT>                         uri;
     std::function<void(mdp::Message &)> callback;
-    timeUnit                            timestamp_received = 0s;
+    timePoint                           timestamp_received = std::chrono::system_clock::now();
 };
 
 struct Subscription {
     URI<STRICT>                         uri;
     std::function<void(mdp::Message &)> callback;
-    timeUnit                            timestamp_received = 0s;
+    timePoint                           timestamp_received = std::chrono::system_clock::now();
 };
 
 struct Command : public mdp::Message {
