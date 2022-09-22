@@ -9,9 +9,9 @@ FetchContent_Declare(
 
 # fetch content support
 FetchContent_Declare(
-        catch2
+        Catch2
         GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-        GIT_TAG v2.13.8 # latest: v2.13.8 or v3.0.0-preview4
+        GIT_TAG v2.13.9 # latest: v2.13.9 or v3.1.0
 )
 
 # fetch content support
