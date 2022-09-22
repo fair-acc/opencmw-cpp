@@ -4,21 +4,21 @@ include(FetchContent)
 FetchContent_Declare(
         refl-cpp
         GIT_REPOSITORY https://github.com/veselink1/refl-cpp.git
-        GIT_TAG        v0.12.3
+        GIT_TAG v0.12.3
 )
 
 # fetch content support
 FetchContent_Declare(
         catch2
-        GIT_REPOSITORY  https://github.com/catchorg/Catch2.git
-        GIT_TAG         v2.13.8 # latest: v2.13.8 or v3.0.0-preview4
+        GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+        GIT_TAG v2.13.8 # latest: v2.13.8 or v3.0.0-preview4
 )
 
 # fetch content support
 FetchContent_Declare(
         fmt
         GIT_REPOSITORY https://github.com/fmtlib/fmt.git
-        GIT_TAG        8.1.1 # newest: 9.1.0
+        GIT_TAG 8.1.1 # newest: 9.1.0
 )
 
 # dependency of mp-units, building examples, tests, etc is off by default
@@ -26,7 +26,7 @@ FetchContent_Declare(
         gsl-lite
         GIT_REPOSITORY https://github.com/gsl-lite/gsl-lite.git
         GIT_TAG v0.40.0
-        )
+)
 
 # prefers usage via conan, but cmake should work, but doesn't find gsl-lite in targets
 FetchContent_Declare(
@@ -54,7 +54,7 @@ FetchContent_Declare(
 FetchContent_Declare(
         zeromq
         GIT_REPOSITORY https://github.com/zeromq/libzmq.git
-        GIT_TAG v4.3.4
+        GIT_TAG v4.3.4 # latest v4.3.4
 )
 set(ZMQ_BUILD_TESTS OFF CACHE BOOL "Build the tests for ZeroMQ")
 option(WITH_PERF_TOOL "Build with perf-tools" OFF)
@@ -62,17 +62,22 @@ option(WITH_PERF_TOOL "Build with perf-tools" OFF)
 FetchContent_Declare(
         cpp-httplib
         GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
-        GIT_TAG v0.9.9 # latest v0.10.3
+        GIT_TAG v0.11.2 # latest v0.11.2
 )
 
 # zlib: optional httplib dependency
+FetchContent_Declare(
+        zlib
+        GIT_REPOSITORY https://github.com/madler/zlib.git
+        GIT_TAG v1.2.12 # latest v1.2.12
+)
 
 # optional dependency of httplib
-# FetchContent_Declare(
-#         openssl
-#         GIT_REPOSITORY https://github.com/openssl/openssl.git
-#         GIT_TAG OpenSSL_1_1_1l
-# )
+FetchContent_Declare(
+        openssl
+        GIT_REPOSITORY https://github.com/openssl/openssl.git
+        GIT_TAG openssl-3.0.5 # latest openssl-3.0.5
+)
 
 # mustache is forked into 3rd_party/
 # FetchContent_Declare(
@@ -84,11 +89,11 @@ add_library(mustache INTERFACE)
 target_include_directories(mustache INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/3rd_party/kainjow)
 add_library(mustache::mustache ALIAS mustache)
 
-set (RXCPP_DISABLE_TESTS_AND_EXAMPLES 1)
+set(RXCPP_DISABLE_TESTS_AND_EXAMPLES 1)
 FetchContent_Declare(
-    rxcpp
-    GIT_REPOSITORY https://github.com/ReactiveX/RxCpp
-    GIT_TAG        7f97aa901701343593869acad1ee5a02292f39cf # TODO Change to the latest tested release of RxCpp before making a release of OpenCMW
+        rxcpp
+        GIT_REPOSITORY https://github.com/ReactiveX/RxCpp
+        GIT_TAG 7f97aa901701343593869acad1ee5a02292f39cf # TODO Change to the latest tested release of RxCpp before making a release of OpenCMW
 )
 FetchContent_MakeAvailable(rxcpp)
 
