@@ -153,6 +153,15 @@ public:
         }
     }
 
+    [[nodiscard]] explicit IoBuffer(const char *data)
+        : IoBuffer(data, sizeof(data)) {}
+
+    [[nodiscard]] explicit IoBuffer(const char *data, const std::size_t size, Allocator allocator = Allocator(Reallocator::defaultReallocator()))
+        : IoBuffer(size, allocator) {
+        resize(size);
+        std::memmove(_buffer, data, _size);
+    }
+
     [[nodiscard]] explicit IoBuffer(std::span<uint8_t> data, Allocator allocator = ThrowingAllocator::defaultNonOwning())
         : _size(data.size()), _capacity(data.size()), _buffer(data.data()), _allocator(allocator) {}
 
@@ -338,6 +347,23 @@ public:
             return { reinterpret_cast<char *>(data() + index), _size - index };
         }
         return { reinterpret_cast<char *>(data() + index), std::min(_size - index, unsigned_size) };
+    }
+
+    template<bool checkRange = true>
+    [[nodiscard]] forceinline constexpr std::string_view asString(const size_t index = 0U, const int requestedSize = -1) const noexcept(!checkRange) {
+        const auto unsigned_size = static_cast<std::size_t>(requestedSize);
+        if constexpr (checkRange) {
+            if (index > _size) {
+                throw std::out_of_range(fmt::format("requested index {} is out-of-range [0,{}]", index, _size));
+            }
+            if (requestedSize >= 0 && (index + unsigned_size) > _size) {
+                throw std::out_of_range(fmt::format("requestedSize {} is out-of-range {} -> [0,{}]", requestedSize, index, index + unsigned_size, _size));
+            }
+        }
+        if (requestedSize < 0) {
+            return { reinterpret_cast<const char *>(data() + index), _size - index };
+        }
+        return { reinterpret_cast<const char *>(data() + index), std::min(_size - index, unsigned_size) };
     }
 
     template<Number R>
