@@ -16,6 +16,6 @@ install(
 )
 
 # setup tests
-if(ENABLE_TESTING)
+if(ENABLE_TESTING OR EMSCRIPTEN)
   add_subdirectory(test)
 endif()

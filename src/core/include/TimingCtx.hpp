@@ -198,7 +198,7 @@ private:
     static inline std::string           toUpper(const std::string_view &mixedCase) noexcept {
         std::string retval;
         retval.resize(mixedCase.size());
-        std::ranges::transform(mixedCase, retval.begin(), [](char c) noexcept { return (c >= 'a' && c <= 'z') ? c - ('a' - 'A') : c; });
+        std::transform(mixedCase.begin(), mixedCase.end(), retval.begin(), [](char c) noexcept { return (c >= 'a' && c <= 'z') ? c - ('a' - 'A') : c; });
         return retval;
     }
 };

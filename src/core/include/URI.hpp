@@ -194,7 +194,7 @@ public:
             return _queryMap;
         }
         if constexpr (check == STRICT) {
-            if (!std::ranges::all_of(_query.begin(), _query.end(), [](char c) { return isUnreserved(c) || c == '&' || c == ';' || c == '=' || c == '%' || c == ':' || c == '/'; })) {
+            if (!std::all_of(_query.begin(), _query.end(), [](char c) { return isUnreserved(c) || c == '&' || c == ';' || c == '=' || c == '%' || c == ':' || c == '/'; })) {
                 throw URISyntaxException(fmt::format("URI query contains illegal characters: {}", _query));
             }
         }

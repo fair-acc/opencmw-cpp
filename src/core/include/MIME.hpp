@@ -31,8 +31,10 @@ public:
     constexpr std::string_view                  description() const noexcept { return _description; }
     constexpr std::span<const std::string_view> fileExtensions() const noexcept { return std::span(_fileExtensions.data(), _N); };
 
-    constexpr auto                              operator<=>(const MimeType &rhs) const noexcept { return _typeName <=> rhs._typeName; }
-    constexpr bool                              operator==(const MimeType &rhs) const noexcept { return _typeName == rhs._typeName; }
+#ifndef __EMSCRIPTEN__
+    constexpr auto operator<=>(const MimeType &rhs) const noexcept { return _typeName <=> rhs._typeName; }
+#endif
+    constexpr bool operator==(const MimeType &rhs) const noexcept { return _typeName == rhs._typeName; }
 };
 
 /**

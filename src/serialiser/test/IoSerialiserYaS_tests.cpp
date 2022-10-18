@@ -203,7 +203,7 @@ TEST_CASE("IoClassSerialiser protocol mismatch", "[IoClassSerialiser]") {
         REQUIRE(1 == info.additionalFields.size());
         REQUIRE(1 == info.setFields.size());
         REQUIRE(9 == (info.setFields["root"].size()));
-        REQUIRE(5 == std::ranges::count_if(info.setFields["root"], [](bool bit) { return bit == true; }));
+        REQUIRE(5 == std::count_if(info.setFields["root"].begin(), info.setFields["root"].end(), [](bool bit) { return bit == true; }));
     }
     REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
     debug::resetStats();

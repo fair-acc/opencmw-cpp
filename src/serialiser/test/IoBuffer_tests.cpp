@@ -359,6 +359,7 @@ TEST_CASE("IoBuffer syntax - navigation", "[IoBuffer]") {
     opencmw::debug::resetStats();
 }
 
+#ifndef __EMSCRIPTEN__
 TEST_CASE("IoBuffer custom buffer", "[IoBuffer, PMR]") {
     using namespace std::literals;
     {
@@ -379,6 +380,7 @@ TEST_CASE("IoBuffer custom buffer", "[IoBuffer, PMR]") {
         REQUIRE(buffer.get<std::string>() == "Hello World!");
     }
 }
+#endif //__EMSCRIPTEN__
 
 TEST_CASE("IoBuffer test as String", "[IoBuffer, String]") {
     using namespace std::literals;
