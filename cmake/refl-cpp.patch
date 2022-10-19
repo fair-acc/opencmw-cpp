@@ -1,0 +1,13 @@
+diff --git a/include/refl.hpp b/include/refl.hpp
+index fd51739..453a04b 100644
+--- a/include/refl.hpp
++++ b/include/refl.hpp
+@@ -34,7 +34,7 @@
+ #include <sstream>
+ #include <iomanip> // std::quoted
+ 
+-#if defined(__APPLE__)
++#if defined(__APPLE__) || defined(__EMSCRIPTEN__)
+ 
+ #include <memory>
+ #include <complex>

@@ -5,6 +5,10 @@ FetchContent_Declare(
         refl-cpp
         GIT_REPOSITORY https://github.com/veselink1/refl-cpp.git
         GIT_TAG v0.12.3
+        # PATCH_COMMAND patch -p1 -f -d <SOURCE_DIR> -i ${CMAKE_CURRENT_SOURCE_DIR}/cmake/refl-cpp.patch
+        PATCH_COMMAND git config user.name 'Anonymous'
+        COMMAND git config user.email '<>'
+        COMMAND git am --keep-cr < ${CMAKE_CURRENT_SOURCE_DIR}/cmake/0001-refl-cpp-add-emscripten-support.patch
 )
 
 # fetch content support
@@ -34,12 +38,11 @@ FetchContent_Declare(
         GIT_REPOSITORY https://github.com/mpusz/units.git
         GIT_TAG v0.7.0
         SOURCE_SUBDIR src/
-        # comment out find_package for gsl-lite and fmt since we use cmakeFetch for them
-        PATCH_COMMAND sed -e "s%find_package(gsl-lite CONFIG REQUIRED)%#find_package (gsl-lite CONFIG REQUIRED)%" -i src/core/CMakeLists.txt
-        COMMAND sed -e "s%find_package(fmt CONFIG REQUIRED)%#find_package (gsl-lite CONFIG REQUIRED)%" -i src/core-fmt/CMakeLists.txt
-        # make fmt use the header only library and only reference it in the build interface
-        COMMAND sed -e "s% fmt::fmt% $--foo--BUILD_INTERFACE:fmt::fmt-header-only>%" -i src/core-fmt/CMakeLists.txt
-        COMMAND sed -e "s%--foo--%<%" -i src/core-fmt/CMakeLists.txt # hack to ensure that the Generator expression is not evaluated for COMMAND but in the resulting context
+        # comment out find_package for gsl-lite and fmt since we use cmakeFetch for them/cmake/0001-refl-cpp-add-emscripten-support.patch
+        PATCH_COMMAND git config user.name 'Anonymous'
+        COMMAND git config user.email '<>'
+        COMMAND git am < ${CMAKE_CURRENT_SOURCE_DIR}/cmake/0001-make-buildable-as-subproject.patch
+        COMMAND git am < ${CMAKE_CURRENT_SOURCE_DIR}/cmake/0002-make-buildable-with-emscripten.patch
 )
 
 # gnutls: optional zeromq dependency for WSS (secure websockets)

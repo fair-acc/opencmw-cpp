@@ -1,0 +1,39 @@
+diff --git a/src/core-fmt/CMakeLists.txt b/src/core-fmt/CMakeLists.txt
+index 49389d5c..aa4c78a1 100644
+--- a/src/core-fmt/CMakeLists.txt
++++ b/src/core-fmt/CMakeLists.txt
+@@ -23,6 +23,6 @@
+ cmake_minimum_required(VERSION 3.15)
+ 
+ # find dependencies
+-find_package(fmt CONFIG REQUIRED)
++#find_package (gsl-lite CONFIG REQUIRED)
+ 
+-add_units_module(core-fmt mp-units::core fmt::fmt)
++add_units_module(core-fmt mp-units::core $<BUILD_INTERFACE:fmt::fmt-header-only>)
+diff --git a/src/core/CMakeLists.txt b/src/core/CMakeLists.txt
+index d4f4f06c..4e946f95 100644
+--- a/src/core/CMakeLists.txt
++++ b/src/core/CMakeLists.txt
+@@ -27,7 +27,7 @@ set(UNITS_DOWNCAST_MODE ON CACHE STRING "Select downcasting mode")
+ set_property(CACHE UNITS_DOWNCAST_MODE PROPERTY STRINGS AUTO ON OFF)
+ 
+ # find dependencies
+-find_package(gsl-lite CONFIG REQUIRED)
++#find_package (gsl-lite CONFIG REQUIRED)
+ 
+ # check if libc++ is being used
+ include(CheckLibcxxInUse)
+diff --git a/src/core/include/units/bits/external/hacks.h b/src/core/include/units/bits/external/hacks.h
+index 847293f5..f6395376 100644
+--- a/src/core/include/units/bits/external/hacks.h
++++ b/src/core/include/units/bits/external/hacks.h
+@@ -99,7 +99,7 @@ namespace std {
+ template<class T>
+ concept default_constructible = constructible_from<T>;
+ 
+-#elif UNITS_COMP_CLANG && UNITS_LIBCXX
++#elif UNITS_COMP_CLANG && UNITS_LIBCXX < 13000
+ 
+ // concepts
+ using concepts::common_with;

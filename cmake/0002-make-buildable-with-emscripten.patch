@@ -1,0 +1,25 @@
+From 308ff4bb7d2b63b453c1115548fa7de1a2519296 Mon Sep 17 00:00:00 2001
+From: Alexander Busse <alex@busse.earth>
+Date: Wed, 19 Oct 2022 12:23:43 +0200
+Subject: [PATCH 2/2] make buildable with emscripten
+
+---
+ src/core/include/units/bits/external/hacks.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/core/include/units/bits/external/hacks.h b/src/core/include/units/bits/external/hacks.h
+index 847293f5..f6395376 100644
+--- a/src/core/include/units/bits/external/hacks.h
++++ b/src/core/include/units/bits/external/hacks.h
+@@ -99,7 +99,7 @@ namespace std {
+ template<class T>
+ concept default_constructible = constructible_from<T>;
+ 
+-#elif UNITS_COMP_CLANG && UNITS_LIBCXX
++#elif UNITS_COMP_CLANG && UNITS_LIBCXX < 13000
+ 
+ // concepts
+ using concepts::common_with;
+-- 
+2.38.0
+

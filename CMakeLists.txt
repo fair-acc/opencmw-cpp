@@ -1,7 +1,10 @@
 cmake_minimum_required(VERSION 3.19)
 set(CMAKE_CXX_STANDARD 20)
 
+
+
 include(cmake/Dependencies.cmake)
+# prefers usage via conan, but cmake should work, but doesn't find gsl-lite in targets
 
 project(opencmw-cpp CXX)
 include(cmake/StandardProjectSettings.cmake)
