@@ -35,11 +35,11 @@ public:
 } // namespace detail
 
 int main() {
-    opencmw::client::RestClient              client;
+    opencmw::client::RestClient client;
 
-    std::atomic<int>        updateCounter{ 0 };
-    detail::EventDispatcher eventDispatcher;
-    httplib::Server         server;
+    std::atomic<int>            updateCounter{ 0 };
+    detail::EventDispatcher     eventDispatcher;
+    httplib::Server             server;
     server.Get("/event", [&eventDispatcher, &updateCounter](const httplib::Request &req, httplib::Response &res) {
         auto acceptType = req.headers.find("accept");
         if (acceptType == req.headers.end() || opencmw::MIME::EVENT_STREAM.typeName() != acceptType->second) { // non-SSE request -> return default response
@@ -63,8 +63,8 @@ int main() {
     }
     assert(server.is_running());
 
-    std::atomic<int> received(false);
-    opencmw::IoBuffer         data;
+    std::atomic<int>  received(false);
+    opencmw::IoBuffer data;
     data.put('A');
     data.put('B');
     data.put('C');

@@ -85,7 +85,7 @@ constexpr auto find_type_helper(Item &item) {
 }
 
 template<bool exactMatch = false, typename RequiredType, typename Func, typename... Items>
-    requires std::is_invocable_r_v<RequiredType, Func>
+requires std::is_invocable_r_v<RequiredType, Func>
 constexpr RequiredType find_type(Func defaultGenerator, Items... args) {
     auto ret = std::tuple_cat(find_type_helper<exactMatch, RequiredType>(args)...);
     if constexpr (std::tuple_size_v<decltype(ret)> == 0) {
@@ -127,8 +127,8 @@ int readCertificateBundleFromBuffer(X509_STORE &cert_store, const std::string_vi
 }
 
 X509_STORE *createCertificateStore(const std::string_view &X509_ca_bundle) {
-    X509_STORE *cert_store    = X509_STORE_new();
-    if (const auto  nCertificates = detail::readCertificateBundleFromBuffer(*cert_store, X509_ca_bundle); nCertificates <= 0) {
+    X509_STORE *cert_store = X509_STORE_new();
+    if (const auto nCertificates = detail::readCertificateBundleFromBuffer(*cert_store, X509_ca_bundle); nCertificates <= 0) {
         X509_STORE_free(cert_store);
         throw std::invalid_argument(fmt::format("failed to read certificate bundle from buffer:\n#---start---\n{}\n#---end---\n", X509_ca_bundle));
     }

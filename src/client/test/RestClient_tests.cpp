@@ -110,7 +110,7 @@ TEST_CASE("Basic Rest Client Get/Set Test - HTTP", "[Client]") {
     command.command  = mdp::Command::Get;
     command.endpoint = URI<STRICT>("http://localhost:8080/endPoint");
     command.data     = std::move(data);
-    command.callback = [&done](const mdp::Message &/*rep*/) {
+    command.callback = [&done](const mdp::Message & /*rep*/) {
         done.store(true, std::memory_order_release);
         done.notify_all();
     };
@@ -132,8 +132,8 @@ TEST_CASE("Basic Rest Client Get/Set Test - HTTPS", "[Client]") {
     REQUIRE(client.defaultMimeType() == MIME::JSON);
 
     // HTTP
-    X509       *cert     = opencmw::client::detail::readServerCertificateFromFile(testServerCertificates.serverCertificate);
-    EVP_PKEY   *pkey     = opencmw::client::detail::readServerPrivateKeyFromFile(testServerCertificates.serverKey);
+    X509     *cert = opencmw::client::detail::readServerCertificateFromFile(testServerCertificates.serverCertificate);
+    EVP_PKEY *pkey = opencmw::client::detail::readServerPrivateKeyFromFile(testServerCertificates.serverKey);
     if (const X509_STORE *ca_store = opencmw::client::detail::createCertificateStore(testServerCertificates.caCertificate); !cert || !pkey || !ca_store) {
         FAIL(fmt::format("Failed to load certificate: {}", ERR_error_string(ERR_get_error(), nullptr)));
     }
@@ -164,7 +164,7 @@ TEST_CASE("Basic Rest Client Get/Set Test - HTTPS", "[Client]") {
     command.command  = mdp::Command::Get;
     command.endpoint = URI<STRICT>("https://localhost:8080/endPoint");
     command.data     = std::move(data);
-    command.callback = [&done](const mdp::Message &/*rep*/) {
+    command.callback = [&done](const mdp::Message & /*rep*/) {
         done.store(true, std::memory_order_release);
         done.notify_all();
     };

@@ -11,6 +11,7 @@ namespace opencmw::client::rest {
  */
 class DefaultCertificate {
     std::string _concatenated_certificates;
+
 public:
     DefaultCertificate() noexcept {
         _concatenated_certificates += root_certificates[0];
@@ -24,11 +25,12 @@ public:
     explicit(false) operator std::string() const noexcept {
         return _concatenated_certificates;
     }
-    explicit(false) operator const char*() const noexcept {
+    explicit(false) operator const char *() const noexcept {
         return _concatenated_certificates.c_str();
     }
+
 private:
-    constexpr static std::array<const char*, 4> root_certificates = {R"(##
+    constexpr static std::array<const char *, 4> root_certificates = { R"(##
 ## Bundle of CA Root Certificates
 ##
 ## Certificate data from Mozilla as of: Tue Jan 22 14:14:40 2019 GMT
@@ -841,7 +843,8 @@ CDpOGR86p1hcF895P4vkp9MmI50mD1hp/Ed+stCNi5O/KU9DaXR2Z0vPB4zmAve14bRDtUstFJ/5
 3CYNv6ZHdAbYiNE6KTCEztI5gGIbqMdXSbxqVVFnFUq+NQfk1XWYN3kwFNspnWzFacxHVaIw98xc
 f8LDmBxrThaA63p4ZUWiABqvDA1VZDRIuJK58bRQKfJPIx/abKwfROHdI3hRW8cW
 -----END CERTIFICATE-----
-)", R"(
+)",
+        R"(
 COMODO Certification Authority
 ==============================
 -----BEGIN CERTIFICATE-----
@@ -1728,7 +1731,8 @@ TqBTnbI6nOulnJEWtk2C4AwFSKls9cz4y51JtPACpf1wA+2KIaWuE4ZJwzNzvoc7dIsXRSZMFpGD
 /md9zU1jZ/rzAxKWeAaNsWftjj++n08C9bMJL/NMh98qy5V8AcysNnq/onN694/BtZqhFLKPM58N
 7yLcZnuEvUUXBj08yrl3NI/K6s8/MT7jiOOASSXIl7WdmplNsDz4SgCbZN2fOUvRJ9e4
 -----END CERTIFICATE-----
-)", R"(
+)",
+        R"(
 Actalis Authentication Root CA
 ==============================
 -----BEGIN CERTIFICATE-----
@@ -2593,7 +2597,8 @@ nWyTmsQ9v4IbZT+mD12q/OWyFcq1rca8PdCE6OoGcrBNOTJ4vz4RnAuknZoh8/CbCzB428Hch0P+
 vGOaysXCHMnHjf87ElgI5rY97HosTvuDls4MPGmHVHOkc8KT/1EQrBVUAdj8BbGJoX90g5pJ19xO
 e4pIb4tF9g==
 -----END CERTIFICATE-----
-)", R"(
+)",
+        R"(
 Entrust Root Certification Authority - EC1
 ==========================================
 -----BEGIN CERTIFICATE-----
@@ -3429,9 +3434,8 @@ tlu3zM63Nwf9JtmYhST/WSMDmu2dnajkXjjO11INb9I/bbEFa0nOipFGc/T2L/Coc3cOZayhjWZS
 aX5LaAzHHjcng6WMxwLkFM1JAbBzs/3GkDpv0mztO+7skb6iQ12LAEpmJURw3kAP+HwV96LOPNde
 E4yBFxgX0b3xdxA61GU5wSesVywlVP+i2k+KYTlerj1KjL0=
 -----END CERTIFICATE-----
-)"};
+)" };
 };
-
 
 } // namespace opencmw::client::rest
 
