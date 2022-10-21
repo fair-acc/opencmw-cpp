@@ -17,8 +17,8 @@ class EventDispatcher {
 public:
     void wait_event(httplib::DataSink &sink) {
         std::unique_lock lk(_mutex);
-        int              id = _id;
-        _condition.wait(lk, [&id, this] { return _cid == id; });
+        int              id = std::atomic_load_explicit(&_id, std::memory_order_acquire);
+        _condition.wait(lk, [id, this] { return _cid == id; });
         if (sink.is_writable()) {
             sink.write(_message.data(), _message.size());
         }
@@ -34,6 +34,7 @@ public:
 } // namespace detail
 
 int main() {
+    using namespace std::chrono_literals;
     opencmw::client::RestClient client;
 
     std::atomic<int>            updateCounter{ 0 };
@@ -57,10 +58,16 @@ int main() {
         res.set_content("Hello World!", "text/plain");
     });
     client.threadPool()->execute<"RestServer">([&server] { server.listen("localhost", 8080); });
-    while (!server.is_running()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    int timeOut = 0;
+    while (!server.is_running() && timeOut < 10'000) {
+        std::this_thread::sleep_for(1ms);
+        timeOut += 1;
     }
     assert(server.is_running());
+    if (!server.is_running()) {
+        fmt::print("couldn't start server\n");
+        std::terminate();
+    }
 
     std::atomic<int>  received(false);
     opencmw::IoBuffer data;
@@ -81,25 +88,24 @@ int main() {
     client.request(command);
 
     std::cout << "client request launched" << std::endl;
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::this_thread::sleep_for(100ms);
     eventDispatcher.send_event("test-event meta data");
-    std::jthread dispatcher([&] {
+    std::jthread([&updateCounter, &eventDispatcher] {
         while (updateCounter < 5) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            std::this_thread::sleep_for(500ms);
             eventDispatcher.send_event(fmt::format("test-event {}", updateCounter++));
         }
-    });
-    dispatcher.join();
+    }).join();
 
     while (received.load(std::memory_order_relaxed) < 5) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(100ms);
     }
     std::cout << "done waiting" << std::endl;
     assert(received.load(std::memory_order_acquire) >= 5);
 
     command.command = opencmw::mdp::Command::Unsubscribe;
     client.request(command);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::this_thread::sleep_for(100ms);
     std::cout << "done Unsubscribe" << std::endl;
     client.stop();
     std::cout << "client stopped" << std::endl;
@@ -107,7 +113,7 @@ int main() {
     server.stop();
     eventDispatcher.send_event(fmt::format("test-event {}", updateCounter++));
     std::cout << "server stopped" << std::endl;
-    std::this_thread::sleep_for(std::chrono::seconds(5));
+    std::this_thread::sleep_for(5s);
 
     return 0;
 }

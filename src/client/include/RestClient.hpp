@@ -1,6 +1,7 @@
 #ifndef OPENCMW_CPP_RESTCLIENT_HPP
 #define OPENCMW_CPP_RESTCLIENT_HPP
 
+#include <algorithm>
 #include <memory>
 #include <ranges>
 
@@ -35,9 +36,9 @@ class DefaultContentTypeHeader {
 
 public:
     DefaultContentTypeHeader(const MIME::MimeType &type) noexcept
-        : _mimeType(FWD(type)){};
+        : _mimeType(type){};
     DefaultContentTypeHeader(const std::string_view type_str) noexcept
-        : _mimeType(FWD(MIME::getType(type_str))){};
+        : _mimeType(MIME::getType(type_str)){};
     constexpr operator const MIME::MimeType() const noexcept { return _mimeType; };
 };
 
@@ -62,7 +63,7 @@ public:
 };
 
 struct ClientCertificates {
-    const std::string _certificates;
+    std::string _certificates;
 
     ClientCertificates() = default;
     ClientCertificates(const char *X509_ca_bundle) noexcept
@@ -84,7 +85,7 @@ constexpr auto find_type_helper(Item &item) {
     }
 }
 
-template<bool exactMatch = false, typename RequiredType, typename Func, typename... Items>
+template<bool exactMatch, typename RequiredType, typename Func, typename... Items>
 requires std::is_invocable_r_v<RequiredType, Func>
 constexpr RequiredType find_type(Func defaultGenerator, Items... args) {
     auto ret = std::tuple_cat(find_type_helper<exactMatch, RequiredType>(args)...);
@@ -128,7 +129,7 @@ int readCertificateBundleFromBuffer(X509_STORE &cert_store, const std::string_vi
 
 X509_STORE *createCertificateStore(const std::string_view &X509_ca_bundle) {
     X509_STORE *cert_store = X509_STORE_new();
-    if (const auto nCertificates = detail::readCertificateBundleFromBuffer(*cert_store, X509_ca_bundle); nCertificates <= 0) {
+    if (detail::readCertificateBundleFromBuffer(*cert_store, X509_ca_bundle) <= 0) {
         X509_STORE_free(cert_store);
         throw std::invalid_argument(fmt::format("failed to read certificate bundle from buffer:\n#---start---\n{}\n#---end---\n", X509_ca_bundle));
     }
@@ -186,6 +187,16 @@ class RestClient : public ClientBase {
 
 public:
     static bool CHECK_CERTIFICATES;
+
+    /**
+     * Initialises a basic RestClient
+     *
+     * usage example:
+     * RestClient client("clientName", DefaultContentTypeHeader(MIME::HTML), MinIoThreads(2), MaxIoThreads(5), ClientCertificates(testCertificate))
+     *
+     * @tparam Args see argument example above. Order is arbitrary.
+     * @param initArgs
+     */
     template<typename... Args>
     explicit(false) RestClient(Args... initArgs)
         : _name(detail::find_type<false, std::string>([] { return "RestClient"; }, initArgs...)), //
@@ -311,15 +322,7 @@ private:
     }
 
     bool start_with_case_ignore(const std::string &a, const std::string &b) const {
-        if (a.size() < b.size()) {
-            return false;
-        }
-        for (size_t i = 0; i < b.size(); i++) {
-            if (::tolower(a[i]) != ::tolower(b[i])) {
-                return false;
-            }
-        }
-        return true;
+        return std::ranges::equal(a, b, [](const char ca, const char cb) noexcept { return ::tolower(ca) == ::tolower(cb); });
     }
 
     void startSubscription(Command &&cmd) {
