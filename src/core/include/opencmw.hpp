@@ -30,16 +30,6 @@
     REFL_DETAIL_FOR_EACH(REFL_DETAIL_EX_1_field __VA_OPT__(, ) __VA_ARGS__) \
     REFL_END
 
-namespace units::detail { // TODO: temporary -> remove with next mp-units release
-template<typename T>
-requires units::is_derived_from_specialization_of<T, units::quantity> && requires {
-    typename T::dimension;
-    typename T::unit;
-    typename T::rep;
-}
-inline constexpr const bool is_quantity<T> = true;
-} // namespace units::detail
-
 template<class T, class U>
 struct is_same_template : std::is_same<T, U> {};
 

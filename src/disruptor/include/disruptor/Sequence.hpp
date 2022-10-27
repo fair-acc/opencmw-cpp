@@ -61,7 +61,18 @@ inline std::int64_t getMinimumSequence(const std::vector<std::shared_ptr<Sequenc
     if (sequences.empty()) {
         return minimum;
     }
+#if not defined(_LIBCPP_VERSION)
     return std::min(minimum, std::ranges::min(sequences, std::less{}, [](const auto &sequence) noexcept { return sequence->value(); })->value());
+#else
+    std::vector<int64_t> v;
+    v.reserve(sequences.size());
+    for (auto &sequence : sequences) {
+        v.push_back(sequence->value());
+    }
+    // std::for_each(sequences.begin(), sequences.end(), [v](const auto &sequence) noexcept { v.push_back(8); });
+    auto min = std::min(v.begin(), v.end());
+    return (*min < minimum) ? *min : minimum;
+#endif
 }
 
 inline void addSequences(std::shared_ptr<std::vector<std::shared_ptr<Sequence>>> &sequences, const Sequence &cursor, const std::vector<std::shared_ptr<Sequence>> &sequencesToAdd) {
@@ -73,7 +84,11 @@ inline void addSequences(std::shared_ptr<std::vector<std::shared_ptr<Sequence>>>
         currentSequences = std::atomic_load_explicit(&sequences, std::memory_order_acquire);
         updatedSequences = std::make_shared<std::vector<std::shared_ptr<Sequence>>>(currentSequences->size() + sequencesToAdd.size());
 
+#if not defined(_LIBCPP_VERSION)
         std::ranges::copy(currentSequences->begin(), currentSequences->end(), updatedSequences->begin());
+#else
+        std::copy(currentSequences->begin(), currentSequences->end(), updatedSequences->begin());
+#endif
 
         cursorSequence = cursor.value();
 
@@ -99,7 +114,11 @@ inline bool removeSequence(std::shared_ptr<std::vector<std::shared_ptr<Sequence>
 
     do {
         oldSequences = std::atomic_load_explicit(&sequences, std::memory_order_acquire);
+#if not defined(_LIBCPP_VERSION)
         numToRemove  = static_cast<std::uint32_t>(std::ranges::count_if(*oldSequences, [&sequence](const auto &value) { return value == sequence; })); // specifically uses identity
+#else
+        numToRemove  = static_cast<std::uint32_t>(std::count_if((*oldSequences).begin(),(*oldSequences).end(), [&sequence](const auto &value) { return value == sequence; })); // specifically uses identity
+#endif
         if (numToRemove == 0) {
             break;
         }

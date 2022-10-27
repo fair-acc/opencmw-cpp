@@ -4,11 +4,10 @@ include(FetchContent)
 FetchContent_Declare(
         refl-cpp
         GIT_REPOSITORY https://github.com/veselink1/refl-cpp.git
-        GIT_TAG v0.12.3
-        # PATCH_COMMAND patch -p1 -f -d <SOURCE_DIR> -i ${CMAKE_CURRENT_SOURCE_DIR}/cmake/refl-cpp.patch
+        GIT_TAG ca4d31cb2d0286f1abc53fe5ea731e734d950905
         PATCH_COMMAND git config user.name 'Anonymous'
         COMMAND git config user.email '<>'
-        COMMAND git am --keep-cr < ${CMAKE_CURRENT_SOURCE_DIR}/cmake/0001-refl-cpp-add-emscripten-support.patch
+        COMMAND git am --keep-cr < ${CMAKE_CURRENT_SOURCE_DIR}/cmake/0001-refl-make-compile-with-clang.patch
 )
 
 # fetch content support
@@ -22,7 +21,8 @@ FetchContent_Declare(
 FetchContent_Declare(
         fmt
         GIT_REPOSITORY https://github.com/fmtlib/fmt.git
-        GIT_TAG 8.1.1 # newest: 9.1.0
+        GIT_TAG 8.1.1 # newest 9.1.0
+        PATCH_COMMAND git cherry-pick 90b68783fff695d6ad26a56550272edd43c57b44
 )
 
 # dependency of mp-units, building examples, tests, etc is off by default
@@ -32,17 +32,17 @@ FetchContent_Declare(
         GIT_TAG v0.40.0
 )
 
-# prefers usage via conan, but cmake should work, but doesn't find gsl-lite in targets
+set(FMT_INSTALL True)
+FetchContent_MakeAvailable(gsl-lite fmt)
+
+set(gsl-lite_DIR ${gsl-lite_BINARY_DIR})
+set(fmt_DIR ${fmt_BINARY_DIR})
+
 FetchContent_Declare(
         mp-units
         GIT_REPOSITORY https://github.com/mpusz/units.git
-        GIT_TAG v0.7.0
+        GIT_TAG 3c890fb6d942cbd684e4e3651d06562de4fb8fc6
         SOURCE_SUBDIR src/
-        # comment out find_package for gsl-lite and fmt since we use cmakeFetch for them/cmake/0001-refl-cpp-add-emscripten-support.patch
-        PATCH_COMMAND git config user.name 'Anonymous'
-        COMMAND git config user.email '<>'
-        COMMAND git am < ${CMAKE_CURRENT_SOURCE_DIR}/cmake/0001-make-buildable-as-subproject.patch
-        COMMAND git am < ${CMAKE_CURRENT_SOURCE_DIR}/cmake/0002-make-buildable-with-emscripten.patch
 )
 
 # gnutls: optional zeromq dependency for WSS (secure websockets)

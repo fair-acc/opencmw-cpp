@@ -1,17 +1,17 @@
 cmake_minimum_required(VERSION 3.19)
 set(CMAKE_CXX_STANDARD 20)
 
-
+project(opencmw-cpp CXX)
 
 include(cmake/Dependencies.cmake)
 # prefers usage via conan, but cmake should work, but doesn't find gsl-lite in targets
-
-project(opencmw-cpp CXX)
 include(cmake/StandardProjectSettings.cmake)
 include(cmake/PreventInSourceBuilds.cmake)
 include(GNUInstallDirs)
 
 include(cmake/CMakeRC.cmake)
+
+set(USE_LIBCPP)
 
 # Check for supported compiler versions
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
@@ -22,10 +22,20 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 13.0.0)
         message(FATAL_ERROR "Clang>=13.0.0 required, but clang ${CMAKE_CXX_COMPILER_VERSION} detected.")
     endif ()
+    set(USE_LIBCPP 1)
+    add_compile_options(-stdlib=libc++) # clang does not work with stdlib++ ranges
+    message(WARN "You are building with Clang. Be advised that support is limited to working in conjunction with"
+            " libc++ and certain modules. libc++ has been enabled.")
 else ()
     message(WARN "No version check for your compiler (${CMAKE_CXX_COMPILER_ID}) implemented, "
             "in case of build problems consider updating your compiler or check if you can switch to gcc or clang")
 endif ()
+
+if (EMSCRIPTEN)
+    add_compile_options(-Wno-shorten-64-to-32 -fwasm-exceptions)
+    add_link_options(-fwasm-exceptions)
+    set(USE_LIBCPP 1)
+endif()
 
 # Determine if OpenCMW is built as a subproject (using add_subdirectory) or if it is the master project.
 set(opencmw_MASTER_PROJECT OFF)

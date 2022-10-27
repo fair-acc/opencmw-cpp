@@ -90,12 +90,12 @@ static_assert(is_array<std::array<int, 2>>);
 static_assert(!is_array<std::vector<int>>);
 static_assert(!is_vector<std::array<int, 2>>);
 
-const std::array<int, 0> testArray;
+const std::array<int, 0> testArray{};
 const std::vector<int>   testVector;
 static_assert([](ArrayOrVector auto &) { return true; }(testArray));
 static_assert([](ArrayOrVector auto &) { return true; }(testVector));
 
-const std::array<std::string, 0> testStringArray;
+const std::array<std::string, 0> testStringArray{};
 const std::vector<std::string>   testStringVector;
 static_assert([](StringArray auto &) { return true; }(testStringArray));
 static_assert([](StringArray auto &) { return true; }(testStringVector));

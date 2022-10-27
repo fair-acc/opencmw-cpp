@@ -2,8 +2,12 @@ add_subdirectory(core)
 add_subdirectory(utils)
 add_subdirectory(serialiser)
 add_subdirectory(disruptor)
-add_subdirectory(majordomo)
-add_subdirectory(client)
+
+if (NOT USE_LIBCPP)
+        # does not work, because <source_location> is missing
+        add_subdirectory(majordomo)
+        add_subdirectory(client)
+endif()
 
 # installation
 include(CMakePackageConfigHelpers)

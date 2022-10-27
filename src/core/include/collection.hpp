@@ -69,13 +69,13 @@ public:
     requires std::disjunction_v<std::is_same<std::decay_t<T>, Ts>...>
     void remove(T &&e) noexcept {
         auto &vec = std::get<std::vector<std::decay_t<T>>>(_items);
-        vec.erase(std::ranges::remove(vec, std::forward<T>(e)).begin(), vec.end());
+        vec.erase(std::remove(vec.begin(), vec.end(), std::forward<T>(e)), vec.end());
     }
 
     template<typename... F>
     requires(sizeof...(F) > 0) void visit(F &&...visitors) {
-        overloaded visitor{ std::forward<F>(visitors)... };
-        (..., std::ranges::for_each(std::get<std::vector<Ts>>(_items), visitor));
+        overloaded<F...> visitor{ std::forward<F>(visitors)... };
+        (..., std::for_each(std::get<std::vector<Ts>>(_items).begin(), std::get<std::vector<Ts>>(_items).end(), visitor));
     }
 
     constexpr auto operator<=>(const collection &) const = default;

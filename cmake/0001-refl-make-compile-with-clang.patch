@@ -1,0 +1,26 @@
+From e54d62d6a18246e06d51d7fa35f59bf08e4cca55 Mon Sep 17 00:00:00 2001
+From: Anonymous <>
+Date: Wed, 26 Oct 2022 16:55:57 +0200
+Subject: [PATCH] refl make compile with clang
+
+---
+ include/refl.hpp | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/include/refl.hpp b/include/refl.hpp
+index 7ef740a..01994e2 100644
+--- a/include/refl.hpp
++++ b/include/refl.hpp
+@@ -34,7 +34,8 @@
+ #include <sstream>
+ #include <iomanip> // std::quoted
+ 
+-#if defined(__APPLE__)
++#include <version>
++#if defined(__APPLE__) || defined(_LIBCPP_VERSION)
+ 
+ #include <memory>
+ #include <complex>
+-- 
+2.38.1
+
