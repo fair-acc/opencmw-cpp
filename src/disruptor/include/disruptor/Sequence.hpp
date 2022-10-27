@@ -115,9 +115,9 @@ inline bool removeSequence(std::shared_ptr<std::vector<std::shared_ptr<Sequence>
     do {
         oldSequences = std::atomic_load_explicit(&sequences, std::memory_order_acquire);
 #if not defined(_LIBCPP_VERSION)
-        numToRemove  = static_cast<std::uint32_t>(std::ranges::count_if(*oldSequences, [&sequence](const auto &value) { return value == sequence; })); // specifically uses identity
+        numToRemove = static_cast<std::uint32_t>(std::ranges::count_if(*oldSequences, [&sequence](const auto &value) { return value == sequence; })); // specifically uses identity
 #else
-        numToRemove  = static_cast<std::uint32_t>(std::count_if((*oldSequences).begin(),(*oldSequences).end(), [&sequence](const auto &value) { return value == sequence; })); // specifically uses identity
+        numToRemove = static_cast<std::uint32_t>(std::count_if((*oldSequences).begin(), (*oldSequences).end(), [&sequence](const auto &value) { return value == sequence; })); // specifically uses identity
 #endif
         if (numToRemove == 0) {
             break;

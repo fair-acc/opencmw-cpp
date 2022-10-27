@@ -1,10 +1,10 @@
 #pragma clang diagnostic push
+#include <array>
 #include <catch2/catch.hpp>
 #include <Debug.hpp>
 #include <iostream>
 #include <string_view>
 #include <URI.hpp>
-#include <array>
 
 opencmw::URI<> getUri() {
     return opencmw::URI<>(std::string{ "mdp://User:notSoSecret@localhost.com:20/path/file.ext?queryString#cFrag" });

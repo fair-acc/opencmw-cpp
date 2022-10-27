@@ -185,7 +185,7 @@ public:
             }
             return false;
         });
-        const auto last = _transactionList.end();
+        const auto last  = _transactionList.end();
 #endif
 
         _transactionList.erase(first, last);
@@ -272,7 +272,7 @@ public:
             }
             return false;
         });
-        auto last = _transactionList.end();
+        auto last  = _transactionList.end();
 #endif
         _transactionList.erase(first, last);
         std::atomic_store_explicit(&_transactionListLock, false, std::memory_order_release);
@@ -290,7 +290,7 @@ public:
             const auto [first, last] = std::ranges::remove_if(_transactionList, [&now, this](const auto &setting) { return setting.second.lastAccess - now + TimeDiff{ timeOutTransactions } < TimeDiff{ 0 }; });
 #else
             const auto first = std::remove_if(_transactionList.begin(), _transactionList.end(), [&now, this](const auto &setting) { return setting.second.lastAccess - now + TimeDiff{ timeOutTransactions } < TimeDiff{ 0 }; });
-            const auto last = _transactionList.end();
+            const auto last  = _transactionList.end();
 #endif
             _transactionList.erase(first, last);
             std::atomic_store_explicit(&_transactionListLock, false, std::memory_order_release);

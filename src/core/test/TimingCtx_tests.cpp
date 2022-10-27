@@ -149,7 +149,7 @@ TEST_CASE("TimingCtx benchmark", "[TimingCtx][benchmark]") {
         "FAIR.SELECTOR.C=0:S=ALL:P=2:T=3"s,
     };
 
-    unsigned int           matchCount      = 0;
+    unsigned int   matchCount      = 0;
     constexpr auto outerIterations = 10000;
     constexpr auto totalIterations = outerIterations * selectors.size() * selectors.size();
 
