@@ -26,6 +26,8 @@ jobs:
           - name: Ubuntu Latest clang
             os: ubuntu-22.04 # pre-release, ubuntu-latest still points to ubuntu-2004
             compiler: clang
+          - name: Ubuntu Latest emscripten
+            compiler: emscripten
           # - name: MacOS Latest # deactivated because mp-units is not compatible with clangApple
           #   os: macos-latest
           # - name: Windows Latest # deactivated because msvc fails because of clang pragmas
@@ -61,6 +63,20 @@ jobs:
         sudo apt install -y clang-14 libc++-14-dev libc++abi-14-dev
         sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++-14 110
 
+    - name: Install clang-15
+      if: matrix.configurations.compiler == 'clang'
+      run: |
+        wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
+        sudo add-apt-repository 'deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-14 main'
+        sudo apt update
+        sudo apt install -y clang-15 libc++-15-dev libc++abi-15-dev
+        sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++-15 110
+    - name: Install emscripten
+      if: matrix.configurations.compiler == 'emscripten'
+      run: |
+        sudo apt update
+        sudo apt install -y emscripten
+
     - name: Install gcovr
       shell: bash
       if: matrix.configurations.name == env.REFERENCE_CONFIG && matrix.cmake-build-type == 'Debug'
@@ -73,10 +89,24 @@ jobs:
       shell: bash
       run: cmake -S . -B ../build -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DENABLE_COVERAGE=${{ matrix.configurations.name == env.REFERENCE_CONFIG &&  matrix.cmake-build-type == 'Debug'}}
 
+    - name: Configure CMake for Emscripten
+      if: matrix.configurations.compiler == 'emscripten'
+      # Use a bash shell, so we can use the same syntax for environment variable access regardless of the host operating system
+      shell: bash
+      run: |
+        source /etc/profile.d/emscripten.sh
+        emcmake cmake -S . -B ../build -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DENABLE_COVERAGE=${{ matrix.configurations.name == env.REFERENCE_CONFIG &&  matrix.cmake-build-type == 'Debug'}}
+
     - name: Build
       shell: bash
       # Execute the build.  You can specify a specific target with "--target <NAME>"
       run: cmake --build ../build --config ${{ matrix.cmake-build-type }}
+
+    - name: Build Emscripten
+      if: matrix.configurations.compiler == 'emscripten'
+      shell: bash
+      # Execute the build.  You can specify a specific target with "--target <NAME>"
+      run: emcmake cmake --build ../build --config ${{ matrix.cmake-build-type }}
 
     - name: Run tests
       if: matrix.configurations.name != env.REFERENCE_CONFIG || matrix.cmake-build-type != 'Debug'
