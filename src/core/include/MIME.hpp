@@ -37,7 +37,7 @@ public:
 #endif
     constexpr explicit(false) operator std::string_view() const noexcept { return _typeName; }
 
-#ifndef __EMSCRIPTEN__
+#if defined(_LIBCPP_VERSION) and _LIBCPP_VERSION < 16000
     constexpr auto operator<=>(const MimeType &rhs) const noexcept { return _typeName <=> rhs._typeName; }
 #endif
     constexpr bool operator==(const MimeType &rhs) const noexcept { return _typeName == rhs._typeName; }
