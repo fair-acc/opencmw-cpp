@@ -5,6 +5,7 @@
 
 #include <iostream>
 #include <string_view>
+#include <version>
 
 #include <Debug.hpp>
 #include <IoBuffer.hpp>
@@ -359,7 +360,8 @@ TEST_CASE("IoBuffer syntax - navigation", "[IoBuffer]") {
     opencmw::debug::resetStats();
 }
 
-#ifndef __EMSCRIPTEN__
+// libc++ does not implement monotonic_buffer_resource until somewhere between 15 and 16
+#if not (defined(_LIBCPP_VERSION) and _LIBCPP_VERSION < 16000)
 TEST_CASE("IoBuffer custom buffer", "[IoBuffer, PMR]") {
     using namespace std::literals;
     {
@@ -380,7 +382,7 @@ TEST_CASE("IoBuffer custom buffer", "[IoBuffer, PMR]") {
         REQUIRE(buffer.get<std::string>() == "Hello World!");
     }
 }
-#endif //__EMSCRIPTEN__
+#endif //_LIBCPP_VERSION
 
 TEST_CASE("IoBuffer test as String", "[IoBuffer, String]") {
     using namespace std::literals;

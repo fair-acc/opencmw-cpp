@@ -9,7 +9,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
-#ifdef __EMSCRIPTEN__
+#if defined(_LIBCPP_VERSION) and _LIBCPP_VERSION < 16000
 #include <experimental/memory_resource>
 namespace std {
 namespace pmr {
