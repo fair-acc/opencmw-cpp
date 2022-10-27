@@ -26,7 +26,11 @@ jobs:
           - name: Ubuntu Latest clang
             os: ubuntu-22.04 # pre-release, ubuntu-latest still points to ubuntu-2004
             compiler: clang
+          - name: Ubuntu Latest clang15
+            os: ubuntu-22.04 # pre-release, ubuntu-latest still points to ubuntu-2004
+            compiler: clang15
           - name: Ubuntu Latest emscripten
+            os: ubuntu-22.04 # pre-release, ubuntu-latest still points to ubuntu-2004
             compiler: emscripten
           # - name: MacOS Latest # deactivated because mp-units is not compatible with clangApple
           #   os: macos-latest
@@ -64,7 +68,7 @@ jobs:
         sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++-14 110
 
     - name: Install clang-15
-      if: matrix.configurations.compiler == 'clang'
+      if: matrix.configurations.compiler == 'clang15'
       run: |
         wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
         sudo add-apt-repository 'deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-14 main'
