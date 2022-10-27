@@ -8,6 +8,7 @@
 #include <span>
 #include <string_view>
 #include <vector>
+#include <version>
 
 #include <fmt/format.h>
 
@@ -31,7 +32,9 @@ public:
     constexpr std::string_view                  description() const noexcept { return _description; }
     constexpr std::span<const std::string_view> fileExtensions() const noexcept { return std::span(_fileExtensions.data(), _N); };
     constexpr explicit(false)                   operator const char *() const noexcept { return _typeName.data(); }
+#if not defined(_LIBCPP_VERSION)
     constexpr explicit(false)                   operator std::string() const noexcept { return _typeName.data(); }
+#endif
     constexpr explicit(false)                   operator std::string_view() const noexcept { return _typeName; }
 
 #ifndef __EMSCRIPTEN__
