@@ -98,7 +98,6 @@ jobs:
       # Use a bash shell, so we can use the same syntax for environment variable access regardless of the host operating system
       shell: bash
       run: |
-        source /etc/profile.d/emscripten.sh
         emcmake cmake -S . -B ../build -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DENABLE_COVERAGE=${{ matrix.configurations.name == env.REFERENCE_CONFIG &&  matrix.cmake-build-type == 'Debug'}}
 
     - name: Build
