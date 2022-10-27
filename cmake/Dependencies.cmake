@@ -22,7 +22,9 @@ FetchContent_Declare(
         fmt
         GIT_REPOSITORY https://github.com/fmtlib/fmt.git
         GIT_TAG 8.1.1 # newest 9.1.0
-        PATCH_COMMAND git cherry-pick 90b68783fff695d6ad26a56550272edd43c57b44
+        PATCH_COMMAND git config user.name 'Anonymous'
+        COMMAND git config user.email '<>'
+        COMMAND git cherry-pick 90b68783fff695d6ad26a56550272edd43c57b44
 )
 
 # dependency of mp-units, building examples, tests, etc is off by default
