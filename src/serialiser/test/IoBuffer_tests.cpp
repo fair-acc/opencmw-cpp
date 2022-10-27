@@ -361,7 +361,7 @@ TEST_CASE("IoBuffer syntax - navigation", "[IoBuffer]") {
 }
 
 // libc++ does not implement monotonic_buffer_resource until somewhere between 15 and 16
-#if not (defined(_LIBCPP_VERSION) and _LIBCPP_VERSION < 16000)
+#if not(defined(_LIBCPP_VERSION) and _LIBCPP_VERSION < 16000)
 TEST_CASE("IoBuffer custom buffer", "[IoBuffer, PMR]") {
     using namespace std::literals;
     {
