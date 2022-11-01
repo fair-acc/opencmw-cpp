@@ -29,6 +29,9 @@ jobs:
           - name: Ubuntu Latest clang15
             os: ubuntu-22.04 # pre-release, ubuntu-latest still points to ubuntu-2004
             compiler: clang15
+          - name: Ubuntu Latest clang16
+            os: ubuntu-22.04 # pre-release, ubuntu-latest still points to ubuntu-2004
+            compiler: clang16
           - name: Ubuntu Latest emscripten
             os: ubuntu-22.04 # pre-release, ubuntu-latest still points to ubuntu-2004
             compiler: emscripten
@@ -75,6 +78,16 @@ jobs:
         sudo apt update
         sudo apt install -y clang-15 libc++-15-dev libc++abi-15-dev
         sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++-15 110
+
+    - name: Install clang-16
+      if: matrix.configurations.compiler == 'clang16'
+      run: |
+        wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
+        sudo add-apt-repository 'deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy main'
+        sudo apt update
+        sudo apt install -y clang-16 libc++-16-dev libc++abi-16-dev
+        sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++-16 110
+
     - name: Install emscripten
       if: matrix.configurations.compiler == 'emscripten'
       run: |
@@ -122,7 +135,6 @@ jobs:
         source ~/emsdk/emsdk_env.sh
         cd ../build
         emmake make
-      # Execute the build.  You can specify a specific target with "--target <NAME>"
 
     - name: Run tests
       if: matrix.configurations.name != env.REFERENCE_CONFIG || matrix.cmake-build-type != 'Debug'
