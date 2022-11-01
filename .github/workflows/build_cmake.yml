@@ -78,8 +78,14 @@ jobs:
     - name: Install emscripten
       if: matrix.configurations.compiler == 'emscripten'
       run: |
-        sudo apt update
-        sudo apt install -y emscripten
+        git clone https://github.com/emscripten-core/emsdk.git
+        cd emsdk
+        # Download and install the latest SDK tools.
+        ./emsdk install latest
+        # Make the "latest" SDK "active" for the current user. (writes .emscripten file)
+        ./emsdk activate latest
+        # Activate PATH and other environment variables in the current terminal
+        source ./emsdk_env.sh
 
     - name: Install gcovr
       shell: bash
