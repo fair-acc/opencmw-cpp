@@ -78,6 +78,7 @@ jobs:
     - name: Install emscripten
       if: matrix.configurations.compiler == 'emscripten'
       run: |
+        cd
         git clone https://github.com/emscripten-core/emsdk.git
         cd emsdk
         # Download and install the latest SDK tools.
@@ -104,6 +105,7 @@ jobs:
       # Use a bash shell, so we can use the same syntax for environment variable access regardless of the host operating system
       shell: bash
       run: |
+        source ~/emsdk/emsdk_env.sh
         emcmake cmake -S . -B ../build -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DENABLE_COVERAGE=${{ matrix.configurations.name == env.REFERENCE_CONFIG &&  matrix.cmake-build-type == 'Debug'}}
 
     - name: Build
