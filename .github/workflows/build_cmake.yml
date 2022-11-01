@@ -96,11 +96,12 @@ jobs:
         gcovr --version
 
     - name: Configure CMake
+      if: matrix.configurations.compiler != 'emscripten'
       # Use a bash shell, so we can use the same syntax for environment variable access regardless of the host operating system
       shell: bash
       run: cmake -S . -B ../build -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DENABLE_COVERAGE=${{ matrix.configurations.name == env.REFERENCE_CONFIG &&  matrix.cmake-build-type == 'Debug'}}
 
-    - name: Configure CMake for Emscripten
+    - name: Configure CMake
       if: matrix.configurations.compiler == 'emscripten'
       # Use a bash shell, so we can use the same syntax for environment variable access regardless of the host operating system
       shell: bash
@@ -109,9 +110,12 @@ jobs:
         emcmake cmake -S . -B ../build -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DENABLE_COVERAGE=${{ matrix.configurations.name == env.REFERENCE_CONFIG &&  matrix.cmake-build-type == 'Debug'}}
 
     - name: Build
+      if: matrix.configurations.compiler != 'emscripten'
       shell: bash
       # Execute the build.  You can specify a specific target with "--target <NAME>"
-      run: cmake --build ../build --config ${{ matrix.cmake-build-type }}
+      run: |
+        source ~/emsdk/emsdk_env.sh
+        emcmake cmake --build ../build --config ${{ matrix.cmake-build-type }}
 
     - name: Build Emscripten
       if: matrix.configurations.compiler == 'emscripten'
