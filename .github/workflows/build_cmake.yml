@@ -120,7 +120,7 @@ jobs:
       shell: bash
       run: |
         source ~/emsdk/emsdk_env.sh
-        emcmake cmake --build ../build --config ${{ matrix.cmake-build-type }}
+        emmake make
       # Execute the build.  You can specify a specific target with "--target <NAME>"
 
     - name: Run tests
