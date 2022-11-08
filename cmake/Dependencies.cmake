@@ -4,10 +4,7 @@ include(FetchContent)
 FetchContent_Declare(
         refl-cpp
         GIT_REPOSITORY https://github.com/veselink1/refl-cpp.git
-        GIT_TAG ca4d31cb2d0286f1abc53fe5ea731e734d950905
-        PATCH_COMMAND git config user.name 'Anonymous'
-        COMMAND git config user.email '<>'
-        COMMAND git am --keep-cr < ${CMAKE_CURRENT_SOURCE_DIR}/cmake/0001-refl-make-compile-with-clang.patch
+        GIT_TAG 27fbd7d2e6d86bc135b87beef6b5f7ce53afd4fc
 )
 
 # fetch content support
