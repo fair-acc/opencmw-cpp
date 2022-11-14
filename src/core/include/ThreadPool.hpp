@@ -212,6 +212,34 @@ concept ThreadPool = requires(T t, std::function<void()> &&func) {
  *  <li> <code>setAffinityMask(std::vector&lt;bool&gt; threadAffinityMask);</code> </li>
  *  <li> <code>setThreadSchedulingPolicy(const thread::Policy schedulingPolicy, const int schedulingPriority)</code> </li>
  * </ul>
+ * Some user-level examples: <br>
+ * @code
+ *
+ * // pool for CPU-bound tasks with exactly 1 thread
+ * opencmw::BasicThreadPool&lt;opencmw::CPU_BOUND&gt; poolWork("CustomCpuPool", 1, 1);
+ * // enqueue and add task to list -- w/o return type
+ * poolWork.execute([] { fmt::print("Hello World from thread '{}'!\n", getThreadName()); }); // here: caller thread-name
+ * poolWork.execute([](const auto &...args) { fmt::print(fmt::runtime("Hello World from thread '{}'!\n"), args...); }, getThreadName()); // here: executor thread-name
+ * // [..]
+ *
+ * // pool for IO-bound (potentially blocking) tasks with at least 1 and a max of 1000 threads
+ * opencmw::BasicThreadPool&lt;opencmw::IO_BOUND&gt;  poolIO("CustomIOPool", 1, 1000);
+ * poolIO.keepAliveDuration() = seconds(10);            // keeps idling threads alive for 10 seconds (optional)
+ * poolIO.waitUntilInitialised();                       // wait until the pool is initialised (optional)
+ * poolIO.setAffinityMask({ true, true, true, false }); // allows executor threads to run on the first four CPU cores
+ *
+ * constexpr auto           func1  = [](const auto &...args) { return fmt::format(fmt::runtime("thread '{1}' scheduled task '{0}'!\n"), getThreadName(), args...); };
+ * std::future&lt;std::string&gt; result = poolIO.execute&lt;"customTaskName"&gt;(func1, getThreadName()); // N.B. the calling thread is owner of the std::future
+ *
+ * // execute a task with a name, a priority and single-core affinity (here: 2)
+ * poolIO.execute&lt;"task name", 20U, 2&gt;([]() { fmt::print("Hello World from custom thread '{}'!\n", getThreadName()); });
+ *
+ * try {
+ *     poolIO.execute&lt;"customName", 20U, 3&gt;([]() {  [..] this potentially long-running task is trackable via it's 'customName' thread name [..] });
+ * } catch (const std::invalid_argument &e) {
+ *     fmt::print("caught exception: {}\n", e.what());
+ * }
+ * @endcode
  */
 template<TaskType taskType>
 class BasicThreadPool {
