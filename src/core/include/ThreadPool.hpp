@@ -44,13 +44,11 @@ public:
     constexpr function() = default;
 
     template<typename F>
-        requires(!std::is_reference_v<F>)
-    constexpr function(F &&fun)
+    requires(!std::is_reference_v<F>) constexpr function(F &&fun)
         : _erased_fun(new F(std::forward<F>(fun)), [](void *ptr) { delete static_cast<F *>(ptr); }), _call([](void *ptr) { (*static_cast<F *>(ptr))(); }) {}
 
     template<typename F>
-        requires(!std::is_reference_v<F>)
-    constexpr function &operator=(F &&fun) {
+    requires(!std::is_reference_v<F>) constexpr function &operator=(F &&fun) {
         _erased_fun = FunPtr(new F(std::forward<F>(fun)), [](void *ptr) { delete static_cast<F *>(ptr); });
         _call       = [](void *ptr) { (*static_cast<F *>(ptr))(); };
         return *this;
@@ -94,8 +92,8 @@ class TaskQueue {
     uint32_t              _size = 0;
 
 public:
-    TaskQueue()                                  = default;
-    TaskQueue(const TaskQueue &queue)            = delete;
+    TaskQueue()                       = default;
+    TaskQueue(const TaskQueue &queue) = delete;
     TaskQueue &operator=(const TaskQueue &queue) = delete;
     ~TaskQueue() { clear(); }
 
@@ -193,8 +191,8 @@ enum TaskType {
 
 template<typename T>
 concept ThreadPool = requires(T t, std::function<void()> &&func) {
-                         { t.execute(std::move(func)) } -> std::same_as<void>;
-                     };
+    { t.execute(std::move(func)) } -> std::same_as<void>;
+};
 
 /**
  * <h2>Basic thread pool that uses a fixed-number or optionally grow/shrink between a [min, max] number of threads.</h2>
@@ -296,10 +294,10 @@ public:
         [[maybe_unused]] const auto queueSize = _taskQueue.clear();
         assert(queueSize == 0 && "task queue not empty");
     }
-    BasicThreadPool(const BasicThreadPool &)                      = delete;
-    BasicThreadPool(BasicThreadPool &&)                           = delete;
+    BasicThreadPool(const BasicThreadPool &) = delete;
+    BasicThreadPool(BasicThreadPool &&)      = delete;
     BasicThreadPool           &operator=(const BasicThreadPool &) = delete;
-    BasicThreadPool           &operator=(BasicThreadPool &&)      = delete;
+    BasicThreadPool           &operator=(BasicThreadPool &&) = delete;
 
     [[nodiscard]] std::string  poolName() const noexcept { return _poolName; }
     [[nodiscard]] uint32_t     minThreads() const noexcept { return _minThreads; };
@@ -342,8 +340,7 @@ public:
     }
 
     template<const basic_fixed_string taskName = "", uint32_t priority = 0, int32_t cpuID = -1, std::invocable Callable, typename... Args, typename R = std::result_of_t<Callable(Args...)>>
-        requires(std::is_same_v<R, void>)
-    void execute(Callable &&func, Args &&...args) {
+    requires(std::is_same_v<R, void>) void execute(Callable &&func, Args &&...args) {
         static thread_local SpinWait spinWait;
         if constexpr (cpuID >= 0) {
             if (cpuID >= _affinityMask.size() || (cpuID >= 0 && !_affinityMask[cpuID])) {
@@ -370,8 +367,8 @@ public:
     }
 
     template<const basic_fixed_string taskName = "", uint32_t priority = 0, int32_t cpuID = -1, std::invocable Callable, typename... Args, typename R = std::result_of_t<Callable(Args...)>>
-        requires(!std::is_same_v<R, void>)
-    [[nodiscard]] std::future<R> execute(Callable &&func, Args &&...funcArgs) {
+    requires(!std::is_same_v<R, void>)
+            [[nodiscard]] std::future<R> execute(Callable &&func, Args &&...funcArgs) {
         if constexpr (cpuID >= 0) {
             if (cpuID >= _affinityMask.size() || (cpuID >= 0 && !_affinityMask[cpuID])) {
                 throw std::invalid_argument(fmt::format("cpuID {} is out of range [0,{}] or incompatible with set affinity mask [{}]",
