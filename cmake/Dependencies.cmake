@@ -4,7 +4,7 @@ include(FetchContent)
 FetchContent_Declare(
         refl-cpp
         GIT_REPOSITORY https://github.com/veselink1/refl-cpp.git
-        GIT_TAG 27fbd7d2e6d86bc135b87beef6b5f7ce53afd4fc
+        GIT_TAG 27fbd7d2e6d86bc135b87beef6b5f7ce53afd4fc # v0.12.3+4 11/2022
 )
 
 # fetch content support
