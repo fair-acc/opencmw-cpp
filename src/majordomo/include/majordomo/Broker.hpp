@@ -910,7 +910,7 @@ struct fmt::formatter<opencmw::majordomo::detail::DnsServiceItem> {
     }
 
     template<typename FormatContext>
-    auto format(const opencmw::majordomo::detail::DnsServiceItem &v, FormatContext &ctx) {
+    auto format(const opencmw::majordomo::detail::DnsServiceItem &v, FormatContext &ctx) const {
         return fmt::format_to(ctx.out(), "[{}: {}]", v.serviceName, fmt::join(v.uris | std::views::transform(opencmw::majordomo::detail::uriAsString), ","));
     }
 };
