@@ -22,8 +22,9 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 14.0.0)
         message(FATAL_ERROR "Clang>=14.0.0 required, but clang ${CMAKE_CXX_COMPILER_VERSION} detected.")
     endif ()
+    # clang does not work with stdlib++ ranges, we have to use libc++
     set(USE_LIBCPP 1)
-    # clang does not work with stdlib++ ranges
+
     add_compile_options(-stdlib=libc++)
     add_link_options(-stdlib=libc++ -lc++abi)
     message(WARN "You are building with Clang. Be advised that support is limited to working in conjunction with"
