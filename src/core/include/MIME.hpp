@@ -8,6 +8,7 @@
 #include <span>
 #include <string_view>
 #include <vector>
+#include <version>
 
 #include <fmt/format.h>
 
@@ -31,11 +32,15 @@ public:
     constexpr std::string_view                  description() const noexcept { return _description; }
     constexpr std::span<const std::string_view> fileExtensions() const noexcept { return std::span(_fileExtensions.data(), _N); };
     constexpr explicit(false)                   operator const char *() const noexcept { return _typeName.data(); }
-    constexpr explicit(false)                   operator std::string() const noexcept { return _typeName.data(); }
-    constexpr explicit(false)                   operator std::string_view() const noexcept { return _typeName; }
+#if not defined(_LIBCPP_VERSION)
+    constexpr explicit(false) operator std::string() const noexcept { return _typeName.data(); }
+#endif
+    constexpr explicit(false) operator std::string_view() const noexcept { return _typeName; }
 
-    constexpr auto                              operator<=>(const MimeType &rhs) const noexcept { return _typeName <=> rhs._typeName; }
-    constexpr bool                              operator==(const MimeType &rhs) const noexcept { return _typeName == rhs._typeName; }
+#if defined(_LIBCPP_VERSION) and not(_LIBCPP_VERSION < 16000)
+    constexpr auto operator<=>(const MimeType &rhs) const noexcept { return _typeName <=> rhs._typeName; }
+#endif
+    constexpr bool operator==(const MimeType &rhs) const noexcept { return _typeName == rhs._typeName; }
 };
 
 /**

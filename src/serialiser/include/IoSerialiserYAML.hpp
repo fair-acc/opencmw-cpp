@@ -130,7 +130,7 @@ constexpr std::string_view stringTokenizer(std::string_view &input, const char d
 }
 
 template<typename T>
-inline std::string fieldFormatter(const T &value, int nIndentation) noexcept {
+inline std::string fieldFormatter(const T &value, const int nIndentation) noexcept {
     return nIndentation == 0 ? fmt::format("\"{}\"", value) : fmt::format("{:<{}}\"{}\"\n", ' ', nIndentation, value);
 }
 

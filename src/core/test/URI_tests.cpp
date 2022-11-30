@@ -1,4 +1,5 @@
 #pragma clang diagnostic push
+#include <array>
 #include <catch2/catch.hpp>
 #include <Debug.hpp>
 #include <iostream>

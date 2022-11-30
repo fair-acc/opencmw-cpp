@@ -29,7 +29,11 @@ class SpinWait {
             yieldProcessor();
         }
     }
+#ifndef __EMSCRIPTEN__
     static void yieldProcessor() noexcept { asm volatile("rep\nnop"); }
+#else
+    static void yieldProcessor() noexcept { asm volatile("nop"); }
+#endif
 
 public:
     SpinWait() = default;

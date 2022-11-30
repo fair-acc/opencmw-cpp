@@ -9,7 +9,18 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#if defined(_LIBCPP_VERSION) and _LIBCPP_VERSION < 16000
+#include <experimental/memory_resource>
+namespace std {
+namespace pmr {
+using memory_resource = std::experimental::pmr::memory_resource;
+template<typename T>
+using polymorphic_allocator = std::experimental::pmr::polymorphic_allocator<T>;
+}
+} // namespace std::pmr
+#else
 #include <memory_resource>
+#endif
 #include <numeric>
 #include <span>
 #include <stdexcept>

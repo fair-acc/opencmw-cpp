@@ -6,7 +6,9 @@
 #include <concepts>
 #include <map>
 #include <set>
+#include <unordered_map>
 #include <vector>
+#include <version>
 
 #include <fmt/color.h>
 #include <fmt/format.h>
@@ -28,16 +30,6 @@
     REFL_TYPE(TypeName __VA_OPT__(, )) \
     REFL_DETAIL_FOR_EACH(REFL_DETAIL_EX_1_field __VA_OPT__(, ) __VA_ARGS__) \
     REFL_END
-
-namespace units::detail { // TODO: temporary -> remove with next mp-units release
-template<typename T>
-requires units::is_derived_from_specialization_of<T, units::quantity> && requires {
-    typename T::dimension;
-    typename T::unit;
-    typename T::rep;
-}
-inline constexpr const bool is_quantity<T> = true;
-} // namespace units::detail
 
 template<class T, class U>
 struct is_same_template : std::is_same<T, U> {};
@@ -470,12 +462,16 @@ template<ReflectableClass T> inline constexpr const std::string_view typeName<T>
 template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, int8_t>    inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int8_t const" : "int8_t";
 template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, int16_t>   inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int16_t const" : "int16_t";
 template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, int32_t>   inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int32_t const" : "int32_t";
+#ifndef __EMSCRIPTEN__
 template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, int64_t>   inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int64_t const" : "int64_t";
+#endif
 template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, long long> inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int128_t const" : "int128_t";
 template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, uint8_t>    inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "uint8_t const" : "uint8_t";
 template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, uint16_t>   inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "uint16_t const" : "uint16_t";
 template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, uint32_t>   inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "uint32_t const" : "uint32_t";
+#ifndef __EMSCRIPTEN__
 template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, uint64_t>   inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "uint64_t const" : "uint64_t";
+#endif
 template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, unsigned long long> inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "uint128_t const" : "uint128_t";
 
 template<typename T> requires is_same_v<std::remove_const_t<T>, std::byte> inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int8_t const" : "int8_t";
@@ -514,12 +510,12 @@ struct ConstExprMap {
     const std::array<std::pair<Key, Value>, size> data;
 
     [[nodiscard]] constexpr Value           at(const Key &key) const {
-        const auto itr = std::ranges::find_if(begin(data), end(data), [&key](const auto &v) { return v.first == key; });
+        const auto itr = std::find_if(begin(data), end(data), [&key](const auto &v) { return v.first == key; });
         return (itr != end(data)) ? itr->second : throw std::out_of_range(fmt::format("key '{}' not found", key));
     }
 
     [[nodiscard]] constexpr Value           at(const Key &key, const Value &defaultValue) const noexcept {
-        auto itr = std::ranges::find_if(begin(data), end(data), [&key](const auto &v) { return v.first == key; });
+        auto itr = std::find_if(begin(data), end(data), [&key](const auto &v) { return v.first == key; });
         return (itr != end(data)) ? itr->second : defaultValue;
     }
 };

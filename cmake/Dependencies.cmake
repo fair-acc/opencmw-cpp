@@ -4,7 +4,7 @@ include(FetchContent)
 FetchContent_Declare(
         refl-cpp
         GIT_REPOSITORY https://github.com/veselink1/refl-cpp.git
-        GIT_TAG v0.12.3
+        GIT_TAG 27fbd7d2e6d86bc135b87beef6b5f7ce53afd4fc # v0.12.3+4 11/2022
 )
 
 # fetch content support
@@ -18,7 +18,10 @@ FetchContent_Declare(
 FetchContent_Declare(
         fmt
         GIT_REPOSITORY https://github.com/fmtlib/fmt.git
-        GIT_TAG 8.1.1 # newest: 9.1.0
+        GIT_TAG 8a21e328b8dcb62a2901c499598366a0f5f3f4a5 # magic, working version
+        PATCH_COMMAND git config user.name 'Anonymous'
+        COMMAND git config user.email '<>'
+        COMMAND git cherry-pick 90b68783fff695d6ad26a56550272edd43c57b44
 )
 
 # dependency of mp-units, building examples, tests, etc is off by default
@@ -28,18 +31,17 @@ FetchContent_Declare(
         GIT_TAG v0.40.0
 )
 
-# prefers usage via conan, but cmake should work, but doesn't find gsl-lite in targets
+set(FMT_INSTALL True)
+FetchContent_MakeAvailable(gsl-lite fmt)
+
+set(gsl-lite_DIR ${gsl-lite_BINARY_DIR})
+set(fmt_DIR ${fmt_BINARY_DIR})
+
 FetchContent_Declare(
         mp-units
         GIT_REPOSITORY https://github.com/mpusz/units.git
-        GIT_TAG v0.7.0
+        GIT_TAG 3c890fb6d942cbd684e4e3651d06562de4fb8fc6
         SOURCE_SUBDIR src/
-        # comment out find_package for gsl-lite and fmt since we use cmakeFetch for them
-        PATCH_COMMAND sed -e "s%find_package(gsl-lite CONFIG REQUIRED)%#find_package (gsl-lite CONFIG REQUIRED)%" -i src/core/CMakeLists.txt
-        COMMAND sed -e "s%find_package(fmt CONFIG REQUIRED)%#find_package (gsl-lite CONFIG REQUIRED)%" -i src/core-fmt/CMakeLists.txt
-        # make fmt use the header only library and only reference it in the build interface
-        COMMAND sed -e "s% fmt::fmt% $--foo--BUILD_INTERFACE:fmt::fmt-header-only>%" -i src/core-fmt/CMakeLists.txt
-        COMMAND sed -e "s%--foo--%<%" -i src/core-fmt/CMakeLists.txt # hack to ensure that the Generator expression is not evaluated for COMMAND but in the resulting context
 )
 
 # gnutls: optional zeromq dependency for WSS (secure websockets)

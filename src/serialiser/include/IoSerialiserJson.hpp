@@ -379,11 +379,15 @@ struct IoSerialiser<Json, T> {
             return;
         }
         // fall-back
-        const auto result = std::from_chars(data + start, data + stop, value);
-        if (result.ec != std::errc()) {
-            throw ProtocolException("error({}) parsing number at buffer position: {}", static_cast<int>(result.ec), start);
+        else if constexpr (std::is_integral_v<T>) {
+            const auto result = std::from_chars(data + start, data + stop, value);
+            if (result.ec != std::errc()) {
+                throw ProtocolException("error({}) parsing number at buffer position: {}", static_cast<int>(result.ec), start);
+            }
+            buffer.set_position(static_cast<size_t>(result.ptr - data)); // new position
+        } else {
+            throw std::exception{};
         }
-        buffer.set_position(static_cast<size_t>(result.ptr - data)); // new position
     }
 };
 
