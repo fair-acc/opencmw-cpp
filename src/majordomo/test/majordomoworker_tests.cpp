@@ -173,7 +173,7 @@ TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][major
         REQUIRE(reply->clientRequestId() == "1");
         REQUIRE(reply->error() == "");
         REQUIRE(reply->topic() == "/addresses?contentType=application%2Fjson&ctx=FAIR.SELECTOR.ALL");
-        REQUIRE(reply->body() == "\"AddressEntry\": {\n\"name\": \"Santa Claus\",\n\"street\": \"Elf Road\",\n\"streetNumber\": 123,\n\"postalCode\": \"88888\",\n\"city\": \"North Pole\"\n}");
+        REQUIRE(reply->body() == "{\n\"name\": \"Santa Claus\",\n\"street\": \"Elf Road\",\n\"streetNumber\": 123,\n\"postalCode\": \"88888\",\n\"city\": \"North Pole\"\n}");
     }
 }
 
@@ -214,7 +214,7 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
         REQUIRE(reply->clientRequestId() == "1");
         REQUIRE(reply->error() == "");
         REQUIRE(reply->topic() == "/addresses?contentType=application%2Fjson&ctx=FAIR.SELECTOR.ALL");
-        REQUIRE(reply->body() == "\"AddressEntry\": {\n\"name\": \"Santa Claus\",\n\"street\": \"Elf Road\",\n\"streetNumber\": 123,\n\"postalCode\": \"88888\",\n\"city\": \"North Pole\"\n}");
+        REQUIRE(reply->body() == "{\n\"name\": \"Santa Claus\",\n\"street\": \"Elf Road\",\n\"streetNumber\": 123,\n\"postalCode\": \"88888\",\n\"city\": \"North Pole\"\n}");
     }
 
     // GET with unknown role or empty role fails
@@ -336,6 +336,6 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
         REQUIRE(notify->sourceId() == "/newAddress?ctx=FAIR.SELECTOR.C=1");
         REQUIRE(notify->topic() == "/newAddress?contentType=application%2Fjson&ctx=FAIR.SELECTOR.C%3D1");
         REQUIRE(notify->error().empty());
-        REQUIRE(notify->body() == "\"AddressEntry\": {\n\"name\": \"Easter Bunny\",\n\"street\": \"Carrot Road\",\n\"streetNumber\": 123,\n\"postalCode\": \"88888\",\n\"city\": \"Easter Island\"\n}");
+        REQUIRE(notify->body() == "{\n\"name\": \"Easter Bunny\",\n\"street\": \"Carrot Road\",\n\"streetNumber\": 123,\n\"postalCode\": \"88888\",\n\"city\": \"Easter Island\"\n}");
     }
 }
