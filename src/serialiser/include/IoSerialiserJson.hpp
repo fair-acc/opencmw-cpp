@@ -232,7 +232,7 @@ struct FieldHeaderWriter<Json> {
         using namespace std::string_view_literals;
         constexpr auto WITHOUT = opencmw::IoBuffer::MetaInfo::WITHOUT;
         if constexpr (std::is_same_v<DataType, START_MARKER>) {
-            if (field.fieldName.size() > 0) {
+            if (field.fieldName.size() > 0 && field.hierarchyDepth > 0) {
                 buffer.put<WITHOUT>("\""sv);
                 buffer.put<WITHOUT>(field.fieldName);
                 buffer.put<WITHOUT>("\": "sv);
@@ -503,7 +503,8 @@ struct IoSerialiser<Json, T> {
 };
 
 template<MapLike T>
-requires(is_stringlike<typename T::key_type>) struct IoSerialiser<Json, T> {
+    requires(is_stringlike<typename T::key_type>)
+struct IoSerialiser<Json, T> {
     using K = typename T::key_type;
     using V = typename T::mapped_type;
     inline static constexpr uint8_t getDataTypeId() { return IoSerialiser<Json, START_MARKER>::getDataTypeId(); } // because the object is serialised as a subobject, we have to emmit START_MARKER
