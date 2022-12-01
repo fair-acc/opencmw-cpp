@@ -70,7 +70,7 @@ TEST_CASE("JsonSerialiserRegressions", "[JsonSerialiser]") {
     opencmw::IoBuffer buffer;
     auto              foo = ReproduceMissingCommaAfterNestedObject{ SimpleInner{ 2.3, "test", { 4, 2 } }, "bar", "baz" };
     opencmw::serialise<opencmw::Json>(buffer, foo);
-    auto expected = R"""("opencmw::ioserialiser_json_tests::ReproduceMissingCommaAfterNestedObject": {
+    auto expected = R"""({
 "a": {
 "val1": 2.3e+00,
 "val2": "test",

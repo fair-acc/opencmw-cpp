@@ -232,7 +232,7 @@ struct FieldHeaderWriter<Json> {
         using namespace std::string_view_literals;
         constexpr auto WITHOUT = opencmw::IoBuffer::MetaInfo::WITHOUT;
         if constexpr (std::is_same_v<DataType, START_MARKER>) {
-            if (field.fieldName.size() > 0) {
+            if (field.fieldName.size() > 0 && field.hierarchyDepth > 0) {
                 buffer.put<WITHOUT>("\""sv);
                 buffer.put<WITHOUT>(field.fieldName);
                 buffer.put<WITHOUT>("\": "sv);
