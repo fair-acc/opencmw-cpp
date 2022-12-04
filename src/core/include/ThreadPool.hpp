@@ -32,23 +32,25 @@ namespace thread_pool::detail {
 
 /**
  * @brief a move-only implementation of std::function by Matthias Kretz, GSI
- * to be replaced once C++23's STL version is out/available:
+ * TODO(C++23): to be replaced once C++23's STL version is out/available:
  * https://en.cppreference.com/w/cpp/utility/functional/move_only_function/move_only_function
  */
-class function {
+class move_only_function {
     using FunPtr          = std::unique_ptr<void, void (*)(void *)>;
     FunPtr _erased_fun    = { nullptr, [](void *) {} };
     void (*_call)(void *) = nullptr;
 
 public:
-    constexpr function() = default;
+    constexpr move_only_function() = default;
 
     template<typename F>
-    requires(!std::is_reference_v<F>) constexpr function(F &&fun)
+        requires(!std::is_reference_v<F>)
+    constexpr move_only_function(F &&fun)
         : _erased_fun(new F(std::forward<F>(fun)), [](void *ptr) { delete static_cast<F *>(ptr); }), _call([](void *ptr) { (*static_cast<F *>(ptr))(); }) {}
 
     template<typename F>
-    requires(!std::is_reference_v<F>) constexpr function &operator=(F &&fun) {
+        requires(!std::is_reference_v<F>)
+    constexpr move_only_function &operator=(F &&fun) {
         _erased_fun = FunPtr(new F(std::forward<F>(fun)), [](void *ptr) { delete static_cast<F *>(ptr); });
         _call       = [](void *ptr) { (*static_cast<F *>(ptr))(); };
         return *this;
@@ -67,118 +69,90 @@ public:
 };
 
 struct Task {
-    uint64_t            id;
-    function            func;
-    std::string         name     = "";
-    int32_t             priority = 0;
-    int32_t             cpuID    = -1;
-    Task               *next     = nullptr;
-    Task               *self     = this;
-    auto                operator<=>(const Task &other) const noexcept { return priority <=> other.priority; }
+    uint64_t           id;
+    move_only_function func;
+    std::string        name{}; // Default value provided to avoid warnings on construction with {.id = ..., .func = ...}
+    int32_t            priority = 0;
+    int32_t            cpuID    = -1;
+    std::weak_ordering operator<=>(const Task &other) const noexcept { return priority <=> other.priority; }
 
-    [[nodiscard]] Task *init() noexcept {
-        priority = 0;
-        cpuID    = -1;
-        name.resize(0);
-        next = nullptr;
-        return this;
+    // We want to reuse objects to avoid reallocations
+    void reset() noexcept {
+        *this = Task();
     }
 };
 
+template<bool lock, typename... Args>
+struct conditional_lock : public std::scoped_lock<Args...> {
+    using std::scoped_lock<Args...>::scoped_lock;
+};
+
+template<typename... Args>
+struct conditional_lock<false, Args...> {
+    conditional_lock(const Args &...){};
+};
+
 class TaskQueue {
-    mutable AtomicMutex<> _lock;
-    Task                 *_head = nullptr;
-    Task                 *_tail = nullptr;
-    uint32_t              _size = 0;
+public:
+    using TaskContainer = std::list<Task>;
+
+private:
+    mutable AtomicMutex<> _mutex;
+
+    TaskContainer         _tasks;
+
+    template<bool shouldLock>
+    using conditional_lock = conditional_lock<shouldLock, AtomicMutex<>>;
 
 public:
-    TaskQueue()                       = default;
-    TaskQueue(const TaskQueue &queue) = delete;
+    TaskQueue()                                  = default;
+    TaskQueue(const TaskQueue &queue)            = delete;
     TaskQueue &operator=(const TaskQueue &queue) = delete;
-    ~TaskQueue() { clear(); }
-
-    template<bool lock = true>
-    uint32_t clear() {
-        if constexpr (lock) {
-            _lock.lock();
-        }
-        const uint32_t res = _size;
-        for (Task *job = pop<false>(); job != nullptr; job = pop<false>()) {
-            delete job;
-        }
-        assert(_size == 0 && "TaskQueue::clear() failed");
-        if constexpr (lock) {
-            _lock.unlock();
-        }
-        return res;
+    ~TaskQueue() {
+        clear();
     }
 
-    uint32_t size() const {
-        std::scoped_lock lock(_lock);
-        return _size;
+    template<bool shouldLock = true>
+    void clear() {
+        conditional_lock<shouldLock> lock(_mutex);
+        _tasks.clear();
     }
 
-    template<bool lock = true>
-    void push(Task *job) {
-        if constexpr (lock) {
-            _lock.lock();
-        }
-        job->next           = nullptr;
-        const auto priority = job->priority;
-        if (_head == nullptr) { // add task to the start/end of the empty queue
-            _head = job;
-            _tail = job;
-            _size++;
-            if constexpr (lock) {
-                _lock.unlock();
-            }
-            return;
-        }
+    template<bool shouldLock = true>
+    std::size_t size() const {
+        conditional_lock<shouldLock> lock(_mutex);
+        return _tasks.size();
+    }
 
-        if (priority >= 0) { // sort-in task by priority
-            Task *head = _head;
-            Task *prev;
-            while (head != nullptr && head->priority >= priority) {
-                prev = head;
-                head = head->next;
-            }
-            if (head == nullptr) {
-                prev->next = job;
+    template<bool shouldLock = true>
+    void push(TaskContainer jobContainer) {
+        conditional_lock<shouldLock> lock(_mutex);
+        assert(!jobContainer.empty());
+        auto      &job                = jobContainer.front();
+        const auto currentJobPriority = job.priority;
+
+        const auto insertPosition     = [&] {
+            if (currentJobPriority == 0) {
+                return _tasks.end();
             } else {
-                job->next = head->next;
-                head      = job;
+                return std::find_if(_tasks.begin(), _tasks.end(),
+                            [currentJobPriority](const auto &task) {
+                            return task.priority < currentJobPriority;
+                        });
             }
-        } else { // add task to the end of the queue
-            if (_tail == nullptr) {
-                _tail = job;
-            } else {
-                _tail->next = job;
-                _tail       = job;
-            }
-        }
-        _size++;
-        if constexpr (lock) {
-            _lock.unlock();
-        }
+        }();
+
+        _tasks.splice(insertPosition, jobContainer, jobContainer.begin(), jobContainer.end());
     }
 
-    template<bool lock = true>
-    Task *pop() {
-        if constexpr (lock) {
-            _lock.lock();
+    template<bool shouldLock = true>
+    TaskContainer pop() {
+        conditional_lock<shouldLock> lock(_mutex);
+        TaskContainer                result;
+        if (!_tasks.empty()) {
+            result.splice(result.begin(), _tasks, _tasks.begin(), std::next(_tasks.begin()));
         }
-        Task *head = _head;
-        if (head != nullptr) {
-            _head = head->next;
-            _size--;
-            if (head == _tail) {
-                _tail = nullptr;
-            }
-        }
-        if constexpr (lock) {
-            _lock.unlock();
-        }
-        return head;
+        return result;
     }
 };
 
@@ -191,8 +165,8 @@ enum TaskType {
 
 template<typename T>
 concept ThreadPool = requires(T t, std::function<void()> &&func) {
-    { t.execute(std::move(func)) } -> std::same_as<void>;
-};
+                         { t.execute(std::move(func)) } -> std::same_as<void>;
+                     };
 
 /**
  * <h2>Basic thread pool that uses a fixed-number or optionally grow/shrink between a [min, max] number of threads.</h2>
@@ -247,35 +221,34 @@ class BasicThreadPool {
     using TaskQueue = thread_pool::detail::TaskQueue;
     static std::atomic<uint64_t> _globalPoolId;
     static std::atomic<uint64_t> _taskID;
-    static std::string           getName() { return fmt::format("BasicThreadPool#{}", _globalPoolId.fetch_add(1)); }
+    static std::string           generateName() { return fmt::format("BasicThreadPool#{}", _globalPoolId.fetch_add(1)); }
 
     std::atomic<bool>            _initialised = ATOMIC_FLAG_INIT;
-    bool                         _shutdown    = { false };
+    bool                         _shutdown    = false;
 
     std::condition_variable      _condition;
+    std::atomic<std::size_t>     _numTaskedQueued = 0U; // cache for _taskQueue.size()
+    std::atomic<std::size_t>     _numTasksRunning = 0U;
     TaskQueue                    _taskQueue;
-    std::atomic<std::size_t>     _numTaskedQueued{ 0U };
-    std::atomic<std::size_t>     _numTasksRunning{ 0U };
     TaskQueue                    _recycledTasks;
 
-    std::mutex                   _threadListMutex{};
-    std::atomic<std::size_t>     _numThreads{ 0U };
+    std::mutex                   _threadListMutex;
+    std::atomic<std::size_t>     _numThreads = 0U;
     std::list<std::jthread>      _threads;
 
-    std::vector<bool>            _affinityMask{};
+    std::vector<bool>            _affinityMask;
     thread::Policy               _schedulingPolicy   = thread::Policy::OTHER;
     int                          _schedulingPriority = 0;
 
     const std::string            _poolName;
     const uint32_t               _minThreads;
     const uint32_t               _maxThreads;
+
     std::chrono::microseconds    _sleepDuration       = std::chrono::milliseconds(1);
     std::chrono::seconds         _keepAliveDurationIO = std::chrono::seconds(10);
 
 public:
-    BasicThreadPool()
-        : BasicThreadPool(getName(), std::thread::hardware_concurrency(), std::thread::hardware_concurrency()) {}
-    BasicThreadPool(std::string_view name, uint32_t min, uint32_t max)
+    BasicThreadPool(const std::string_view &name = generateName(), uint32_t min = std::thread::hardware_concurrency(), uint32_t max = std::thread::hardware_concurrency())
         : _poolName(name), _minThreads(min), _maxThreads(max) {
         assert(min > 0 && "minimum number of threads must be > 0");
         assert(min <= max && "minimum number of threads must be <= maximum number of threads");
@@ -287,17 +260,12 @@ public:
     ~BasicThreadPool() {
         _shutdown = true;
         _condition.notify_all();
-        while (_numThreads > 0) {
-            std::this_thread::sleep_for(_sleepDuration);
-        }
-        _recycledTasks.clear();
-        [[maybe_unused]] const auto queueSize = _taskQueue.clear();
-        assert(queueSize == 0 && "task queue not empty");
     }
-    BasicThreadPool(const BasicThreadPool &) = delete;
-    BasicThreadPool(BasicThreadPool &&)      = delete;
+
+    BasicThreadPool(const BasicThreadPool &)                      = delete;
+    BasicThreadPool(BasicThreadPool &&)                           = delete;
     BasicThreadPool           &operator=(const BasicThreadPool &) = delete;
-    BasicThreadPool           &operator=(BasicThreadPool &&) = delete;
+    BasicThreadPool           &operator=(BasicThreadPool &&)      = delete;
 
     [[nodiscard]] std::string  poolName() const noexcept { return _poolName; }
     [[nodiscard]] uint32_t     minThreads() const noexcept { return _minThreads; };
@@ -339,8 +307,10 @@ public:
         updateThreadConstraints();
     }
 
-    template<const basic_fixed_string taskName = "", uint32_t priority = 0, int32_t cpuID = -1, std::invocable Callable, typename... Args, typename R = std::result_of_t<Callable(Args...)>>
-    requires(std::is_same_v<R, void>) void execute(Callable &&func, Args &&...args) {
+    // TODO: Do we need support for cancellation?
+    template<const basic_fixed_string taskName = "", uint32_t priority = 0, int32_t cpuID = -1, std::invocable Callable, typename... Args, typename R = std::invoke_result_t<Callable, Args...>>
+        requires(std::is_same_v<R, void>)
+    void execute(Callable &&func, Args &&...args) {
         static thread_local SpinWait spinWait;
         if constexpr (cpuID >= 0) {
             if (cpuID >= _affinityMask.size() || (cpuID >= 0 && !_affinityMask[cpuID])) {
@@ -348,7 +318,8 @@ public:
                         cpuID, _affinityMask.size(), fmt::join(_affinityMask, ", ")));
             }
         }
-        std::atomic_fetch_add(&_numTaskedQueued, 1U);
+        _numTaskedQueued.fetch_add(1U);
+
         _taskQueue.push(createTask<taskName, priority, cpuID>(FWD(func), FWD(args)...));
         _condition.notify_one();
         if constexpr (taskType == TaskType::IO_BOUND) {
@@ -366,9 +337,9 @@ public:
         }
     }
 
-    template<const basic_fixed_string taskName = "", uint32_t priority = 0, int32_t cpuID = -1, std::invocable Callable, typename... Args, typename R = std::result_of_t<Callable(Args...)>>
-    requires(!std::is_same_v<R, void>)
-            [[nodiscard]] std::future<R> execute(Callable &&func, Args &&...funcArgs) {
+    template<const basic_fixed_string taskName = "", uint32_t priority = 0, int32_t cpuID = -1, std::invocable Callable, typename... Args, typename R = std::invoke_result_t<Callable, Args...>>
+        requires(!std::is_same_v<R, void>)
+    [[nodiscard]] std::future<R> execute(Callable &&func, Args &&...funcArgs) {
         if constexpr (cpuID >= 0) {
             if (cpuID >= _affinityMask.size() || (cpuID >= 0 && !_affinityMask[cpuID])) {
                 throw std::invalid_argument(fmt::format("cpuID {} is out of range [0,{}] or incompatible with set affinity mask [{}]",
@@ -391,14 +362,18 @@ public:
 private:
     void cleanupFinishedThreads() {
         std::scoped_lock lock(_threadListMutex);
-        std::erase_if(_threads, [](auto &thread) { return !thread.joinable(); });
+        // TODO:
+        // (C++Ref) A thread that has finished executing code, but has not yet been
+        // joined is still considered an active thread of execution and is
+        // therefore joinable.
+        // std::erase_if(_threads, [](auto &thread) { return !thread.joinable(); });
     }
 
     void updateThreadConstraints() {
-        std::size_t      threadID = 0;
         std::scoped_lock lock(_threadListMutex);
-        std::erase_if(_threads, [](auto &thread) { return !thread.joinable(); });
-        std::ranges::for_each(_threads, [&](auto &thread) { updateThreadConstraints(threadID++, thread); });
+        // std::erase_if(_threads, [](auto &thread) { return !thread.joinable(); });
+
+        std::ranges::for_each(_threads, [this, threadID = std::size_t{ 0 }](auto &thread) mutable { updateThreadConstraints(threadID++, thread); });
     }
 
     void updateThreadConstraints(const std::size_t threadID, std::jthread &thread) const {
@@ -439,69 +414,76 @@ private:
     }
 
     template<const basic_fixed_string taskName = "", uint32_t priority = 0, int32_t cpuID = -1, std::invocable Callable, typename... Args>
-    Task *createTask(Callable &&func, Args &&...funcArgs) {
-        const auto getTask = [&recycledTasks = _recycledTasks](Callable &&f, Args &&...args) -> Task * {
-            Task *task = recycledTasks.pop();
-            if (task == nullptr) {
+    auto createTask(Callable &&func, Args &&...funcArgs) {
+        const auto getTask = [&recycledTasks = _recycledTasks](Callable &&f, Args &&...args) {
+            auto extracted = recycledTasks.pop();
+            if (extracted.empty()) {
                 if constexpr (sizeof...(Args) == 0) {
-                    task = new Task{ .id = std::atomic_fetch_add(&_taskID, 1U) + 1U, .func = std::move(f) };
+                    extracted.push_front(Task{ .id = _taskID.fetch_add(1U) + 1U, .func = std::move(f) });
                 } else {
-                    task = new Task{ .id = std::atomic_fetch_add(&_taskID, 1U) + 1U, .func = std::move(std::bind_front(FWD(f), FWD(args)...)) };
+                    extracted.push_front(Task{ .id = _taskID.fetch_add(1U) + 1U, .func = std::move(std::bind_front(FWD(f), FWD(args)...)) });
                 }
             } else {
-                task->id = std::atomic_fetch_add(&_taskID, 1U) + 1U;
+                auto &task = extracted.front();
+                task.id    = _taskID.fetch_add(1U) + 1U;
                 if constexpr (sizeof...(Args) == 0) {
-                    task->func = std::move(f);
+                    task.func = std::move(f);
                 } else {
-                    task->func = std::move(std::bind_front(FWD(f), FWD(args)...));
+                    task.func = std::move(std::bind_front(FWD(f), FWD(args)...));
                 }
             }
-            return task;
+            return extracted;
         };
-        Task *task = getTask(FWD(func), FWD(funcArgs)...);
-        if constexpr (!taskName.empty()) {
-            task->name = taskName.c_str();
-        }
-        task->priority = priority;
-        task->cpuID    = cpuID;
 
-        return task;
+        auto  taskContainer = getTask(FWD(func), FWD(funcArgs)...);
+        auto &task          = taskContainer.front();
+
+        if constexpr (!taskName.empty()) {
+            task.name = taskName.c_str();
+        }
+        task.priority = priority;
+        task.cpuID    = cpuID;
+
+        return taskContainer;
     }
 
-    bool popTask(Task *&task) {
-        task = _taskQueue.pop();
-        if (task == nullptr) {
-            return false;
+    TaskQueue::TaskContainer popTask() {
+        auto result = _taskQueue.pop();
+        if (!result.empty()) {
+            _numTaskedQueued.fetch_sub(1U);
         }
-        std::atomic_fetch_sub(&_numTaskedQueued, 1U);
-        return true;
+        return result;
     }
 
     void worker() {
         constexpr uint32_t N_SPIN       = 1 << 8;
         uint32_t           noop_counter = 0;
-        const auto         threadID     = std::atomic_fetch_add(&_numThreads, 1);
+        const auto         threadID     = _numThreads.fetch_add(1);
         std::mutex         mutex;
         std::unique_lock   lock(mutex);
         auto               lastUsed              = std::chrono::steady_clock::now();
         auto               timeDiffSinceLastUsed = std::chrono::steady_clock::now() - lastUsed;
-        Task              *currentTask           = nullptr;
         if (numThreads() >= _minThreads) {
             std::atomic_store_explicit(&_initialised, true, std::memory_order_release);
             _initialised.notify_all();
         }
         _numThreads.notify_one();
         do {
-            if (popTask(currentTask)) {
-                std::atomic_fetch_add(&_numTasksRunning, 1);
-                if (!currentTask->name.empty()) {
-                    thread::setThreadName(currentTask->name);
+            TaskQueue::TaskContainer currentTaskContainer = popTask();
+            if (!currentTaskContainer.empty()) {
+                assert(!currentTaskContainer.empty());
+                auto &currentTask = currentTaskContainer.front();
+                _numTasksRunning.fetch_add(1);
+                bool nameSet = !(currentTask.name.empty());
+                if (nameSet) {
+                    thread::setThreadName(currentTask.name);
                 }
-                currentTask->func();
+                currentTask.func();
                 // execute dependent children
-                _recycledTasks.push(currentTask->init());
-                std::atomic_fetch_sub(&_numTasksRunning, 1);
-                if (!currentTask->name.empty()) {
+                currentTask.reset();
+                _recycledTasks.push(std::move(currentTaskContainer));
+                _numTasksRunning.fetch_sub(1);
+                if (nameSet) {
                     thread::setThreadName(fmt::format("{}#{}", _poolName, threadID));
                 }
                 lastUsed     = std::chrono::steady_clock::now();
@@ -515,14 +497,13 @@ private:
             }
             timeDiffSinceLastUsed = std::chrono::steady_clock::now() - lastUsed;
         } while (!isShutdown() && (numThreads() <= _minThreads || timeDiffSinceLastUsed < _keepAliveDurationIO));
-        auto nThread = std::atomic_fetch_sub(&_numThreads, 1);
+        auto nThread = _numThreads.fetch_sub(1);
         _numThreads.notify_all();
 
         if (nThread == 1) {
             // cleanup
             _recycledTasks.clear();
-            [[maybe_unused]] const auto queueSize = _taskQueue.clear();
-            assert(queueSize == 0 && "task queue not empty");
+            _taskQueue.clear();
         }
     }
 };
