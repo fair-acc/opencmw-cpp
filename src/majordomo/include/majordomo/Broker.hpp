@@ -351,7 +351,7 @@ public:
         pollerItems[3].events = ZMQ_POLLIN;
     }
 
-    Broker(const Broker &) = delete;
+    Broker(const Broker &)            = delete;
     Broker &operator=(const Broker &) = delete;
 
     template<typename Filter>
@@ -588,28 +588,24 @@ private:
 
     Service *bestMatchingService(std::string_view serviceName) {
         // TODO use some smart reactive filtering once available, maybe optimize or cache
-        std::vector<Service *> services;
-        services.reserve(_services.size());
+        std::string bestServiceName;
+        Service    *bestService  = nullptr;
+
+        auto        lessByLength = [](auto lhs, auto rhs) {
+            return lhs.size() == rhs.size()
+                                ? lhs < rhs
+                                : lhs.size() < rhs.size();
+        };
+
         for (auto &[name, service] : _services) {
-            services.push_back(&service);
+            if (!name.starts_with(serviceName)) continue;
+            if (!bestService || lessByLength(name, bestServiceName)) {
+                bestServiceName = name;
+                bestService     = std::addressof(service);
+            }
         }
 
-        auto doesNotStartWith = [&serviceName](auto service) {
-            return !service->name.starts_with(serviceName);
-        };
-
-        services.erase(std::remove_if(services.begin(), services.end(), doesNotStartWith), services.end());
-
-        if (services.empty())
-            return nullptr;
-
-        auto lessByLength = [](auto lhs, auto rhs) {
-            if (lhs->name.size() == rhs->name.size())
-                return lhs->name < rhs->name;
-            return lhs->name.size() < rhs->name.size();
-        };
-
-        return *std::min_element(services.begin(), services.end(), lessByLength);
+        return bestService;
     }
 
     void dispatch(Service &service) {
