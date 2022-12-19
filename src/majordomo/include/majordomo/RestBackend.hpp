@@ -78,7 +78,7 @@ const char *getEnvFilenameOr(const char *field, const char *defaultValue) {
     }
     return result;
 }
-}
+} // namespace detail
 
 struct HTTPS {
     constexpr static std::string_view DEFAULT_REST_SCHEME = "https";
@@ -94,10 +94,10 @@ struct PLAIN_HTTP {
 };
 
 namespace detail {
-using PollingIndex                                        = std::uint64_t;
+using PollingIndex = std::uint64_t;
 
-using ReadLock                                            = std::shared_lock<std::shared_mutex>;
-using WriteLock                                           = std::unique_lock<std::shared_mutex>;
+using ReadLock     = std::shared_lock<std::shared_mutex>;
+using WriteLock    = std::unique_lock<std::shared_mutex>;
 
 enum class RestMethod {
     Get,
@@ -241,9 +241,9 @@ public:
         : notificationSubscriptionSocket(context, ZMQ_DEALER)
         , requestResponseSocket(context, ZMQ_SUB) {}
 
-    Connection(const Connection &other)       = delete;
+    Connection(const Connection &other) = delete;
     Connection &operator=(const Connection &) = delete;
-    Connection &operator=(Connection &&)      = delete;
+    Connection &operator=(Connection &&) = delete;
 
     // Here be dragons! This is not to be used after
     // the connection was involved in any threading code
@@ -317,8 +317,8 @@ protected:
     URI<>             _restAddress;
 
 private:
-    std::jthread                                            _connectionUpdaterThread;
-    std::shared_mutex                                       _connectionsMutex;
+    std::jthread                                                            _connectionUpdaterThread;
+    std::shared_mutex                                                       _connectionsMutex;
 
     std::map<detail::SubscriptionInfo, std::unique_ptr<detail::Connection>> _connectionForService;
 
@@ -368,7 +368,7 @@ public:
                 {
                     // This is a long lock, alternatively, message reading
                     // could have separate locks per connection
-                detail::WriteLock lock(_connectionsMutex);
+                    detail::WriteLock lock(_connectionsMutex);
 
                     // Expired subscriptions cleanup
                     std::vector<const detail::SubscriptionInfo *> expiredSubscriptions;
@@ -395,7 +395,7 @@ public:
                     if (connectionCount != 0) {
                         std::vector<detail::SubscriptionInfo> subscriptions;
                         std::vector<detail::Connection *>     connections;
-                        std::vector<zmq_pollitem_t>   pollItems;
+                        std::vector<zmq_pollitem_t>           pollItems;
                         subscriptions.resize(connectionCount);
                         connections.resize(connectionCount);
                         pollItems.resize(connectionCount);
@@ -691,13 +691,13 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
 
     bool respondWithSubscription(httplib::Response &response, const std::string_view &_service) {
         // TODO: After the URIs are formalized, rethink service and topic
-        auto             split = std::ranges::find(_service, '/');
-        std::string_view service(_service.begin(), split);
-        std::string_view topic(split, _service.end());
+        auto                     split = std::ranges::find(_service, '/');
+        std::string_view         service(_service.begin(), split);
+        std::string_view         topic(split, _service.end());
 
         detail::SubscriptionInfo subscriptionInfo{ std::string(service), std::string(topic) };
 
-        auto            *connection = restBackend.notificationSubscriptionConnectionFor(subscriptionInfo);
+        auto                    *connection = restBackend.notificationSubscriptionConnectionFor(subscriptionInfo);
         assert(connection);
 
         response.set_header("Access-Control-Allow-Origin", "*");
@@ -736,13 +736,13 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
 
     bool respondWithLongPoll(const httplib::Request &request, httplib::Response &response, const std::string_view &_service) {
         // TODO: After the URIs are formalized, rethink service and topic
-        auto             split = std::ranges::find(_service, '/');
-        std::string_view service(_service.begin(), split);
-        std::string_view topic(split, _service.end());
+        auto                     split = std::ranges::find(_service, '/');
+        std::string_view         service(_service.begin(), split);
+        std::string_view         topic(split, _service.end());
 
         detail::SubscriptionInfo subscriptionInfo{ std::string(service), std::string(topic) };
 
-        const auto       longPollingIdxIt = request.params.find("LongPollingIdx");
+        const auto               longPollingIdxIt = request.params.find("LongPollingIdx");
         if (longPollingIdxIt == request.params.end()) {
             return detail::respondWithError(response, "Error: LongPollingIdx parameter not specified");
         }
@@ -758,9 +758,9 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
             std::shared_lock lock(restBackend._connectionsMutex);
             auto            &recycledConnectionForService = restBackend._connectionForService;
             if (auto it = recycledConnectionForService.find(subscriptionInfo); it != recycledConnectionForService.cend()) {
-                auto                 *connectionCache = it->second.get();
+                auto                         *connectionCache = it->second.get();
                 detail::Connection::KeepAlive keep(connectionCache);
-                auto                  connectionCacheLock = connectionCache->readLock();
+                auto                          connectionCacheLock = connectionCache->readLock();
                 return CacheInfo{
                     .firstCachedIndex = connectionCache->nextPollingIndex(connectionCacheLock) - connectionCache->cachedRepliesSize(connectionCacheLock),
                     .nextPollingIndex = connectionCache->nextPollingIndex(connectionCacheLock),

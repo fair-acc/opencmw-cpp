@@ -62,7 +62,7 @@ public:
     noexcept { *this = other; }
     URI(const URI &&other)
     noexcept { *this = std::move(other); }
-    ~URI() = default;
+    ~URI()       = default;
 
     URI &operator=(const URI &other) noexcept {
         if (this == &other) {
