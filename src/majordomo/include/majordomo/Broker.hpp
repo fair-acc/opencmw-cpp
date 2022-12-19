@@ -351,7 +351,7 @@ public:
         pollerItems[3].events = ZMQ_POLLIN;
     }
 
-    Broker(const Broker &)            = delete;
+    Broker(const Broker &) = delete;
     Broker &operator=(const Broker &) = delete;
 
     template<typename Filter>
