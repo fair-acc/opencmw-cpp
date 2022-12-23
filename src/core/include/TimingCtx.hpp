@@ -61,7 +61,12 @@ public:
 
     // these are not commutative, and must not be confused with operator==
     [[nodiscard]] bool matches(const TimingCtx &other) const { parse(); return wildcardMatch(_cid, other._cid) && wildcardMatch(_sid, other._sid) && wildcardMatch(_pid, other._pid) && wildcardMatch(_gid, other._gid); }
-    [[nodiscard]] bool matchesWithBpcts(const TimingCtx &other) const { parse(); return bpcTimeStampMatch(bpcts, other.bpcts) && matches(other); }
+
+    [[nodiscard]] bool matchesWithBpcts(const TimingCtx &other) const {
+        auto match = [](units::isq::Time auto lhs, units::isq::Time auto rhs) { return rhs == 0 || lhs == rhs; };
+        parse();
+        return match(bpcts, other.bpcts) && matches(other);
+    }
     // clang-format on
 
     [[nodiscard]] auto operator<=>(const TimingCtx &other) const {
@@ -194,7 +199,6 @@ public:
 private:
     [[nodiscard]] static constexpr bool isWildcard(int x) noexcept { return x == -1; }
     [[nodiscard]] static constexpr bool wildcardMatch(int lhs, int rhs) { return isWildcard(rhs) || lhs == rhs; }
-    [[nodiscard]] static constexpr bool bpcTimeStampMatch(units::isq::Time auto lhs, units::isq::Time auto rhs) { return rhs == 0 || lhs == rhs; }
     static inline std::string           toUpper(const std::string_view &mixedCase) noexcept {
         std::string retval;
         retval.resize(mixedCase.size());
