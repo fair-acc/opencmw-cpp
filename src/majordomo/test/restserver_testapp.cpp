@@ -140,7 +140,14 @@ int main(int argc, char **argv) {
 
     std::cerr << "Starting server for " << rootPath << "\n";
 
-    std::cerr << "Open up https://localhost:8080/addressbook/addresses?contentType=text/html&ctx=FAIR.SELECTOR.ALL in your web browser\n";
+    std::cerr << "Open up https://localhost:8080/addressbook?contentType=text/html&ctx=FAIR.SELECTOR.ALL in your web browser\n";
+    std::cerr << "Or curl -v -k one of the following:\n";
+    std::cerr
+            << "'https://localhost:8080/addressbook?contentType=application/json&ctx=FAIR.SELECTOR.ALL'\n"
+            << "'https://localhost:8080/addressbook?contentType=application/json&ctx=FAIR.SELECTOR.ALL'\n"
+            << "'https://localhost:8080/addressbook/addresses?LongPollingId=Next'\n"
+            << "'https://localhost:8080/addressbook/addresses?LongPollingId=0'\n"
+            << "'https://localhost:8080/beverages/wine?LongPollingIdx=Subscription'\n";
 
     // Majordomo broker
     Broker broker("testbroker", testSettings());
@@ -159,6 +166,8 @@ int main(int argc, char **argv) {
         rest.emplace<FileServerRestBackend<HTTPS, decltype(fs)>>(broker, fs, rootPath);
     }
 
+    BasicWorker<"beverages"> beveragesWorker(broker, TestIntHandler(10));
+
     // Majordomo Workers
     Worker<"addressbook", TestContext, AddressRequest, AddressEntry>  workerA(broker, TestAddressHandler());
     Worker<"addressbookB", TestContext, AddressRequest, AddressEntry> workerB(broker, TestAddressHandler());
@@ -167,6 +176,7 @@ int main(int argc, char **argv) {
     RunInThread brokerRun(broker);
     RunInThread workerARun(workerA);
     RunInThread workerBRun(workerB);
+    RunInThread beveragesWorkerRun(beveragesWorker);
 
     waitUntilServiceAvailable(broker.context, "addressbook");
 
@@ -175,18 +185,12 @@ int main(int argc, char **argv) {
     publisher.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER);
 
     for (int i = 0; true; ++i) {
-        std::cerr << "Sending new address (step " << i << ")\n";
+        std::cerr << "Sending new number (step " << i << ")\n";
+        MdpMessage notifyMessage;
+        notifyMessage.setTopic("/wine", static_tag);
+        notifyMessage.setBody(std::to_string(i), dynamic_tag);
 
-        const auto entry = AddressEntry{
-            .name         = "Easter Bunny",
-            .street       = "Carrot Road",
-            .streetNumber = i,
-            .postalCode   = "88888",
-            .city         = "Easter Island",
-            .isCurrent    = false
-        };
-        workerA.notify("/addresses", TestContext{ .ctx = opencmw::TimingCtx(1), .contentType = opencmw::MIME::JSON }, entry);
-
-        std::this_thread::sleep_for(5s);
+        beveragesWorker.notify(std::move(notifyMessage));
+        std::this_thread::sleep_for(3s);
     }
 }

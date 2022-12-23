@@ -239,20 +239,27 @@ public:
     bool operator==(const URI &other) const noexcept  { return _str == other.str(); }
 
     class UriFactory {
-        std::string             _authority;
+        mutable std::string     _authority;
         std::string             _scheme;
         std::string             _userName;
         std::string             _pwd;
         std::string             _host;
         std::optional<uint16_t> _port;
         std::string             _path;
-        std::string             _query;
+        mutable std::string     _query;
         std::string             _fragment;
         // local map to overwrite _query parameter if set
         std::unordered_map<std::string, std::optional<std::string>> _queryMap;
 
     public:
         UriFactory() = default;
+        UriFactory(const UriFactory &) = default;
+        UriFactory& operator=(const UriFactory &) = default;
+
+        UriFactory copy() const {
+            return UriFactory(*this);
+        }
+
         // clang-format off
         explicit UriFactory(const URI &uri) {
             if (!uri._scheme.empty())    { _scheme = uri._scheme; }
@@ -266,20 +273,20 @@ public:
             if (!uri._fragment.empty())  { _fragment = uri._fragment; }
         }
         inline UriFactory&& scheme(const std::string_view &scheme)        && noexcept { _scheme = scheme; return std::move(*this); }
-        inline UriFactory&& authority(const std::string_view &authority)  && noexcept { _authority = { authority.begin(), authority.end() }; return std::move(*this); }
-        inline UriFactory&& user(const std::string_view &userName)        && noexcept { _userName = { userName.begin(), userName.end() }; return std::move(*this); }
-        inline UriFactory&& password(const std::string_view &pwd)         && noexcept { _pwd = { pwd.begin(), pwd.end() }; return std::move(*this); }
-        inline UriFactory&& hostName(const std::string_view &hostName)    && noexcept { _host = { hostName.begin(), hostName.end() }; return std::move(*this); }
+        inline UriFactory&& authority(const std::string_view &authority)  && noexcept { _authority = authority; return std::move(*this); }
+        inline UriFactory&& user(const std::string_view &userName)        && noexcept { _userName = userName; return std::move(*this); }
+        inline UriFactory&& password(const std::string_view &pwd)         && noexcept { _pwd = pwd; return std::move(*this); }
+        inline UriFactory&& hostName(const std::string_view &hostName)    && noexcept { _host = hostName; return std::move(*this); }
         inline UriFactory&& port(const uint16_t port)                     && noexcept { _port = std::optional<uint16_t>(port); return std::move(*this); }
-        inline UriFactory&& path(const std::string_view &path)            && noexcept { _path = { path.begin(), path.end() }; return std::move(*this); }
-        inline UriFactory&& queryParam(const std::string_view &query)     && noexcept { _query = { query.begin(), query.end() }; return std::move(*this); }
-        inline UriFactory&& fragment(const std::string_view &fragment)    && noexcept { _fragment = { fragment.begin(), fragment.end() }; return std::move(*this); }
+        inline UriFactory&& path(const std::string_view &path)            && noexcept { _path = path; return std::move(*this); }
+        inline UriFactory&& queryParam(const std::string_view &query)     && noexcept { _query = query; return std::move(*this); }
+        inline UriFactory&& fragment(const std::string_view &fragment)    && noexcept { _fragment = fragment; return std::move(*this); }
         inline UriFactory&& addQueryParameter(const std::string &key)     && noexcept { _queryMap[key] = std::nullopt; return std::move(*this); }
         inline UriFactory&& addQueryParameter(const std::string &key, const std::string &value) && noexcept { _queryMap[key] = std::optional(value); return std::move(*this); }
         inline UriFactory&& setQuery(std::unordered_map<std::string, std::optional<std::string>> queryMap) && noexcept { _query.clear(); _queryMap = std::move(queryMap); return std::move(*this); }
         // clang-format on
 
-        std::string toString() {
+        std::string toString() const {
             using namespace fmt::literals;
             if (_authority.empty()) {
                 _authority = fmt::format("{user}{opt_colon1}{pwd}{at}{host}{opt_colon2}{port}",                //
@@ -288,6 +295,7 @@ public:
                         "host"_a = _host, "opt_colon2"_a = _port ? ":" : "", "port"_a = _port ? std::to_string(_port.value()) : "");
             }
 
+            // TODO: Calling toString multiple times appends parameters over and over again
             for (const auto &[key, value] : _queryMap) {
                 _query += fmt::format("{opt_ampersand}{key}{opt_equal}{value}",               // N.B. 'key=value' percent-encoding according to RFC 3986
                         "opt_ampersand"_a = _query.empty() ? "" : "&", "key"_a = encode(key), //

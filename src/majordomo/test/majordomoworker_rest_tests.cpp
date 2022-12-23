@@ -150,7 +150,7 @@ TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][major
 
     REQUIRE(waitUntilServiceAvailable(broker.context, "addressbook"));
 
-    auto httpThreadJSON = makeGetRequestResponseCheckerThread("/addressbook/addresses?ctx=FAIR.SELECTOR.ALL&contentType=application%2Fjavascript", "Santa Claus");
+    auto httpThreadJSON = makeGetRequestResponseCheckerThread("/addressbook?ctx=FAIR.SELECTOR.ALL&contentType=application%2Fjavascript", "Santa Claus");
 
-    auto httpThreadHTML = makeGetRequestResponseCheckerThread("/addressbook/addresses?ctx=FAIR.SELECTOR.ALL&contentType=text%2Fhtml", "<td class=\"propTable-fValue\">Elf Road</td>");
+    auto httpThreadHTML = makeGetRequestResponseCheckerThread("/addressbook?ctx=FAIR.SELECTOR.ALL&contentType=text%2Fhtml", "<td class=\"propTable-fValue\">Elf Road</td>");
 }

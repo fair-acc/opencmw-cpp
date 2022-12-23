@@ -75,7 +75,7 @@ struct ClientCertificates {
 
 namespace detail {
 template<bool exactMatch, typename RequiredType, typename Item>
-constexpr auto find_type_helper(Item &item) {
+constexpr auto find_argument_value_helper(Item &item) {
     if constexpr (std::is_same_v<Item, RequiredType>) {
         return std::tuple<RequiredType>(item);
     } else if constexpr (std::is_convertible_v<Item, RequiredType> && !exactMatch) {
@@ -87,8 +87,8 @@ constexpr auto find_type_helper(Item &item) {
 
 template<bool exactMatch, typename RequiredType, typename Func, typename... Items>
 requires std::is_invocable_r_v<RequiredType, Func>
-constexpr RequiredType find_type(Func defaultGenerator, Items... args) {
-    auto ret = std::tuple_cat(find_type_helper<exactMatch, RequiredType>(args)...);
+constexpr RequiredType find_argument_value(Func defaultGenerator, Items... args) {
+    auto ret = std::tuple_cat(find_argument_value_helper<exactMatch, RequiredType>(args)...);
     if constexpr (std::tuple_size_v<decltype(ret)> == 0) {
         return defaultGenerator();
     } else {
@@ -199,12 +199,12 @@ public:
      */
     template<typename... Args>
     explicit(false) RestClient(Args... initArgs)
-        : _name(detail::find_type<false, std::string>([] { return "RestClient"; }, initArgs...)), //
-        _mimeType(detail::find_type<true, DefaultContentTypeHeader>([this] { return MIME::JSON; }, initArgs...))
-        , _minIoThreads(detail::find_type<true, MinIoThreads>([] { return MinIoThreads(); }, initArgs...))
-        , _maxIoThreads(detail::find_type<true, MaxIoThreads>([] { return MaxIoThreads(); }, initArgs...))
-        , _thread_pool(detail::find_type<true, ThreadPoolType>([this] { return std::make_shared<BasicThreadPool<IO_BOUND>>(_name, _minIoThreads, _maxIoThreads); }, initArgs...))
-        , _caCertificate(detail::find_type<true, ClientCertificates>([] { return rest::DefaultCertificate().get(); }, initArgs...)) {
+        : _name(detail::find_argument_value<false, std::string>([] { return "RestClient"; }, initArgs...)), //
+        _mimeType(detail::find_argument_value<true, DefaultContentTypeHeader>([this] { return MIME::JSON; }, initArgs...))
+        , _minIoThreads(detail::find_argument_value<true, MinIoThreads>([] { return MinIoThreads(); }, initArgs...))
+        , _maxIoThreads(detail::find_argument_value<true, MaxIoThreads>([] { return MaxIoThreads(); }, initArgs...))
+        , _thread_pool(detail::find_argument_value<true, ThreadPoolType>([this] { return std::make_shared<BasicThreadPool<IO_BOUND>>(_name, _minIoThreads, _maxIoThreads); }, initArgs...))
+        , _caCertificate(detail::find_argument_value<true, ClientCertificates>([] { return rest::DefaultCertificate().get(); }, initArgs...)) {
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
         if (_client_cert_store != nullptr) {
             X509_STORE_free(_client_cert_store);
