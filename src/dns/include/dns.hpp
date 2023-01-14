@@ -1,10 +1,25 @@
 #ifndef OPENCMW_CPP_DNS_H
 #define OPENCMW_CPP_DNS_H
 
+#include <fmt/core.h>
+
+#include <Client.hpp>
+#include <IoSerialiserJson.hpp>
+#include <QuerySerialiser.hpp>
 #include <array>
 #include <atomic>
 #include <chrono>
 #include <deque>
+#include <iomanip>
+#include <majordomo/Broker.hpp>
+#include <majordomo/Constants.hpp>
+#include <majordomo/Message.hpp>
+#include <majordomo/Settings.hpp>
+#include <majordomo/SubscriptionMatcher.hpp>
+#include <majordomo/Utils.hpp>
+#include <majordomo/Worker.hpp>
+#include <majordomo/ZmqPtr.hpp>
+#include <opencmw.hpp>
 #include <optional>
 #include <ranges>
 #include <set>
@@ -13,245 +28,217 @@
 #include <unordered_map>
 #include <utility>
 
-#include <fmt/core.h>
-
 #include "URI.hpp"
 
-#include <opencmw.hpp>
-
-#include <IoSerialiserJson.hpp>
-
-#include <majordomo/Constants.hpp>
-#include <majordomo/Message.hpp>
-#include <majordomo/Settings.hpp>
-#include <majordomo/SubscriptionMatcher.hpp>
-#include <majordomo/Utils.hpp>
-#include <majordomo/ZmqPtr.hpp>
-#include <QuerySerialiser.hpp>
-
 using namespace std::string_literals;
-using namespace opencmw::majordomo;
+// using namespace opencmw::majordomo;
 using namespace std::chrono_literals;
 
 struct Request {
-    std::string brokerName;
-    std::string address;
-    std::string service;
-    std::string signalName;
+  std::string brokerName;
+  std::string serviceName;
+  std::string signalName;
+  std::unordered_map<std::string, std::string> meta;
 };
-ENABLE_REFLECTION_FOR(Request, brokerName, address, service)
+ENABLE_REFLECTION_FOR(Request, brokerName, serviceName, signalName, meta)
 
 struct Reply {
-    std::vector<std::string> signalNames;
-    std::vector<float> signalValues;
-    std::string address;
-    std::set<URI<RELAXED>> uris;
-    std::chrono::time_point<std::chrono::steady_clock> expiry;
+  // std::set<opencmw::URI<opencmw::RELAXED>> uris;
+  std::set<std::string> uris;
+  std::vector<std::unordered_map<std::string, std::string>> meta;
 };
-ENABLE_REFLECTION_FOR(Reply, signalNames, signalValues, address, uris, expiry)
+ENABLE_REFLECTION_FOR(Reply, uris, meta)
 
 struct DnsContext {
-    opencmw::TimingCtx ctx;
-    std::string signalFilter;
-    opencmw::MIME::MimeType contentType = opencmw::MIME::JSON;
+  opencmw::TimingCtx ctx;
+  std::string signalFilter;
+  opencmw::MIME::MimeType contentType = opencmw::MIME::JSON;
 };
 ENABLE_REFLECTION_FOR(DnsContext, signalFilter, contentType)
 
-namespace opencmw::Dns {
-    using BrokerMessage = BasicMdpMessage<MessageFormat::WithSourceId>;
+namespace opencmw::DNS {
+using opencmw::majordomo::Broker;
+using BrokerMessage = opencmw::majordomo::BasicMdpMessage<
+    opencmw::majordomo::MessageFormat::WithSourceId>;
 
-    namespace detail {
-        struct DnsServiceItem {
-            std::optional<std::string> address;
-            std::optional<std::string> serviceName;
-            std::optional<std::string> signalName;
-            std::set<URI<RELAXED>> uris;
-            std::chrono::time_point<std::chrono::steady_clock> expiry;
+namespace detail {
+struct DnsServiceInfo {
+  std::set<std::string> uris;
+  std::set<std::string> signalNames;
+  std::unordered_map<std::string, std::string> meta;
+  DnsServiceInfo() = default;
+};
 
-            explicit DnsServiceItem(std::string address_, std::string serviceName_)
-              : address { std::move(address_) }
-              , serviceName { std::move(serviceName_) } {}
-        };
+struct DnsServiceItem {
+  std::string brokerName;
+  std::unordered_map<std::string, DnsServiceInfo> services;
+  std::chrono::time_point<std::chrono::steady_clock> expiry;
+  DnsServiceItem() = default;
+  DnsServiceItem(const std::string &broker) : brokerName(broker) {}
+};
 
-   /*inline std::string findDnsEntry(std::string_view brokerName, std::unordered_map<std::string, detail::DnsServiceItem> &dnsCache, std::string_view s) {
-        const auto query = URI<RELAXED>(std::string(s));
+}  // namespace detail
 
-        const auto queryScheme = query.scheme();
-        const auto queryPath = query.path().value_or("");
-        const auto strippedQueryPath = stripStart(queryPath, "/");
-        const stripStartFromSearchPath = strippedQueryPath.starts_with("dns.") ? fmt::format("/{}", brokerName) : "/";
+struct Storage {
+  std::set<std::string> _dnsAddress;
+  std::map<std::string, detail::DnsServiceItem> _dnsCache;
+  std::unordered_map<std::string, std::string>
+      m_brokers;  // signalName -> brokerAddress
+  std::unordered_map<std::string, std::string>
+      m_services;  // serviceName -> brokerAddress
+};
 
-        const auto entryMatches = [&queryScheme, &strippedQueryPath, &stripStartFromSearchPath](const auto &dnsEntry) {
-            if (queryScheme && !iequal(dnsEntry.scheme().value_or(""), *queryScheme)) {
-                return false;
-            }
+template <units::basic_fixed_string serviceName_, typename... Meta_>
+class Dns;
 
-            const auto entryPath = dnsEntry.path().value_or("");
-            return stripStart(entryPath, stripStartFromSearchPath).starts_with(strippedQueryPath);
-        };
+template <units::basic_fixed_string serviceName_, typename... Meta_>
+class RequestBrokerName;
 
-        std::vector<std::string> results;
-        for (const auto &[cachedQuery, cacheEntry] : dnsCache) {
-            using namespace std::views;
-            auto matching = cacheEntry.uris | filter(entryMatches) | transform(uriAsString);
-            results.insert(results.end(), matching.begin(), matching.end());
-        }
-    } */
-    } // namespace detail
+template <units::basic_fixed_string serviceName_, typename... Meta_>
+class RequestSignalName;
 
-/*
- template<units::basic_fixed_string serviceName, typename... Meta>
- class RequestSignalName : public Worker<serivceName, DnsContext, Request, Reply, Meta...> {
-   public: 
-      using super_t = Worker<serviceName, DnsContext, Request, Reply, Meta...>; 
-      std::unordered_map<std::string, >
- };
- */
- template<units::basic_fixed_string serviceName, typename... Meta>
- class Dns : public Worker<serviceName, DnsContext, Request, Reply, Meta...> ;
+template <units::basic_fixed_string serviceName_, typename... Meta_>
+class RequestServiceName;
 
- template<units::basic_fixed_string serviceName, typename... Meta>
- class RequestBrokerName : public Worker<serviceName. DnsContext, Request, Reply, Meta...> , public Dns<serviceName, Meta...> ;
+template <units::basic_fixed_string serviceName_, typename... Meta_>
+class Dns : public opencmw::majordomo::Worker<serviceName_, DnsContext, Request,
+                                              Reply, Meta_...> {
+  using super_t = opencmw::majordomo::Worker<serviceName_, DnsContext, Request,
+                                             Reply, Meta_...>;
 
- template<units::basic_fixed_string serviceName, typename... Meta>
- class Dns : public Worker<serviceName, DnsContext, Request, Reply, Meta...> {
-  
-  public: 
-    using super_t = Worker<serviceName, DnsContext, Request, Reply, Meta...>;
-    std::set<std::string> _dnsAddress;
-    std::unordered_map<std::string, detail::DnsServiceItem> _dnsCache;
-    using opencmw::majordomo::Broker;
-    Broker broker;
-
-    template<typename BrokerType>
-    explicit Dns(const BrokerType &broker) 
-      : super_t(broker, {}) {
-        super_t::setCallback([this](const RequestContext &rawCtx, const DnsContext &dnsIn, Request &In, DnsContext &dnsOut, Reply &Out) {
-            if (rawCtx.request.command() == Command::Get) {
-                fmt::print("worker recieved 'get' request\n");
-                handleGetRequest(dnsIn, In, Out);
-            }
-            else if (rawCtx.request.command() == Command::Set) {
-                fmt::print("worker received 'set' request\n");
-                handleSetRequest(dnsIn, dnsOut, Out);
-            }
-        });
+ public:
+  const std::string brokerName;
+  template <typename BrokerType>
+  explicit Dns(const BrokerType &broker)
+      : super_t(broker, {}), brokerName(std::move(broker.brokerName)) {
+    super_t::setCallback([this](
+                             const opencmw::majordomo::RequestContext &rawCtx,
+                             const DnsContext &dnsIn, const Request &In,
+                             DnsContext &dnsOut, Reply &Out) {
+      if (rawCtx.request.command() == opencmw::majordomo::Command::Get) {
+        fmt::print("worker recieved 'get' request\n");
+        handleGetRequest(dnsIn, In, Out);
+      } else if (rawCtx.request.command() == opencmw::majordomo::Command::Set) {
+        fmt::print("worker received 'set' request\n");
+        // handleSetRequest(dnsIn, dnsOut, Out);
       }
+    });
+  }
 
-      void registerDnsAddress(const opencmw::URI<> &address) {
-        _dnsAddress.emplace(address.str());
-        auto [iter, inserted] = _dnsCache.try_emplace(broker.brokerName, std::string(), broker.brokerName);
-        iter->second.uris.insert(URI<RELAXED>(address.str()));
-        iter->second.address = address.authority();
-        iter->second.serviceName = address.path();
-        iter->second.signalName = address.queryParam();
-        sendDnsHeartBeats(true);
+  void registerDnsAddress(const opencmw::URI<> &address) {
+    access._dnsAddress.emplace(address.str());
+    auto [iter, inserted] =
+        access._dnsCache.try_emplace(brokerName, detail::DnsServiceItem());
+    auto &Item = iter->second;
+    std::string service_name = serviceName_.c_str();
+    Item.services.try_emplace(service_name, detail::DnsServiceInfo());
+    Item.services[service_name].uris.insert(address.str() + "/" + service_name);
+  }
+
+ private:
+  Storage access;
+  using RequestBrokerName_t = RequestBrokerName<serviceName_, Meta_...>;
+  using RequestSignalName_t = RequestSignalName<serviceName_, Meta_...>;
+  using RequestServiceName_t = RequestServiceName<serviceName_, Meta_...>;
+
+  void handleGetRequest(const DnsContext &dnsIn, const Request &In,
+                        Reply &Out) {
+    if (!In.brokerName.empty() && In.serviceName.empty() &&
+        In.signalName.empty()) {
+      RequestBrokerName_t worker(In, Out);
+    } else if (!In.serviceName.empty() && !In.brokerName.empty() &&
+               In.signalName.empty()) {
+      RequestServiceName_t worker(In, Out);
+    } else if (!In.signalName.empty() && !In.serviceName.empty() &&
+               !In.brokerName.empty()) {
+      RequestSignalName_t worker(In, Out);
+    }
+  }
+};
+
+template <units::basic_fixed_string serviceName_, typename... Meta_>
+class RequestBrokerName {
+ public:
+  explicit RequestBrokerName(const Request &In, Reply &Out)
+      : In_(In), Out_(Out) {
+    processRequest(In_, Out_);
+  }
+
+ private:
+  DnsContext dnsIn_;
+  Request In_;
+  Reply Out_;
+  Storage access;
+  void processRequest(const Request &In, Reply &Out) {
+    const auto iter = access._dnsCache.find(In.brokerName);
+    if (iter == access._dnsCache.end()) {
+      throw std::invalid_argument(
+          fmt::format("Inavlid Broker Name {}", In.brokerName));
+    }
+    detail::DnsServiceItem Item = iter->second;
+    for (auto const &[serviceName, serviceInfo] : Item.services) {
+      Out.uris.insert(serviceInfo.uris.begin(), serviceInfo.uris.end());
+      Out.meta.push_back(serviceInfo.meta);
+    }
+  }
+};
+
+template <units::basic_fixed_string serviceName_, typename... Meta_>
+class RequestServiceName {
+ public:
+  explicit RequestServiceName(const Request &In, Reply &Out)
+      : In_(In), Out_(Out) {
+    processRequest(In_, Out_);
+  }
+
+ private:
+  DnsContext dnsIn_;
+  Request In_;
+  Reply Out_;
+  Storage access;
+
+  void processRequest(const Request &In, Reply &Out) {
+    auto [iter, inserted] =
+        access._dnsCache.try_emplace(In.brokerName, detail::DnsServiceItem());
+    //  auto iter = access._dnsCache;
+    auto &Item = iter->second;
+    if (Item.services.find(In.serviceName) == Item.services.end()) {
+      throw std::invalid_argument(
+          fmt::format("Inavlid Service Name {}", In.serviceName));
+    }
+    Out.uris.insert(Item.services[In.serviceName].uris.begin(),
+                    Item.services[In.serviceName].uris.end());
+  }
+};
+
+template <units::basic_fixed_string serviceName_, typename... Meta_>
+class RequestSignalName {
+ public:
+  explicit RequestSignalName(const Request &In, Reply &Out)
+      : In_(In), Out_(Out) {
+    processRequest(In_, Out_);
+  }
+
+ private:
+  DnsContext dnsIn_;
+  Request In_;
+  Reply Out_;
+  Storage access;
+
+  void processRequest(const Request &In, Reply &Out) {
+    auto broker = access._dnsCache.find(In.brokerName);
+    if (broker != access._dnsCache.end()) {
+      auto service = broker->second.services.find(In.serviceName);
+      if (service != broker->second.services.end()) {
+        auto signal = service->second.signalNames.find(In.signalName);
+        if (signal != service->second.signalNames.end()) {
+          Out.uris.insert(broker->second.services[In.serviceName].uris.begin(),
+                          broker->second.services[In.serviceName].uris.end());
+          Out.meta.push_back(broker->second.services[In.serviceName].meta);
+        }
       }
-
-      private: 
-        Timestamp _dnsHearBeatAt;
-        const Socket _dnsSocket;
-         MdpMessage createDnsReadyMessage() {
-              auto ready = MdpMessage::createClientMessage(Command::Ready);
-              ready.setServiceName(broker.brokerName, Message::dynamic_bytes_tag{});
-              ready.setClientRequestId("clientID", Message::static_bytes_tag{});
-              ready.setRbacToken(_rbac, MessageFrame::dynamic_bytes_tag{});
-              return ready;
-         }
-         
-         void sendDnsHeartBeats(bool force) {
-            if(Clock::now() > _dnsHeartBeatAt || force) {
-                const auto ready = createDnsReadyMessage();
-                for(const auto &dnsAddress : _dnsAddress) {
-                    auto toSend = ready.clone();
-                    toSend.setTopic(dnsAddress, MessageFrame::dynamic_bytes_tag{});
-                    registerWithDnsServices(std::move(toSend));
-                }
-
-                for(const auto &[name, service] : _services) {
-                    registerNewService(name);
-                }
-            }
-         }
-
-         void registerNewService(std::string_view serivceName) {
-            for(const auto &dnsAddress : _dnsAddress) {
-                auto ready = createDnsReadyMessage();
-                const auto address = fmt::format("{}/{}", dnsAddress, detail::stripStart(serviceName, "/"));
-                ready.setTopic(address, MessageFrame::dynamic_bytes_tag{});
-                registerWithDnsServices(std::move(ready));
-            }
-         }
-
-         void registerWithDnsServices(MdpMessage &&readyMessage) {
-            auto [it, inserted] = _dnsCache.try_emplace(broker.brokerName, std::string(), broker.brokerName);
-            it->second.uris.insert(URI<RELAXED>(std::string(readyMessage.topic())));
-            it->second.expiry = updateDnsExpiry();
-            readyMessage.send(_dnsSocket).ignoreResult();
-         }
-        void handleGetRequest(const DnsContext &dnsIn, Request &In, Reply &Out) {
-            auto signals = std::string_view(dnsIn.signalFilter) | std::ranges::views::split(',');
-            for (const auto &signal : signals) {
-                Out.signalNames.emplace_back(std::string_view(signal.begin(), signal.end()));
-            }
-            std::vector<std::string> results(signals.size());
-            if (!In.brokerName.empty()) {
-               RequestBrokerName<"/dns.service"> RequestbyBrokerName(broker);
-            }
-            /*std::transform(signals.begin(), signals.end(), results.begin(), [this](const auto &v) {
-                return detail::findDnsEntry(broker.brokerName, _dnsCache, detail::trimmed(v));
-            })*/
-        }
- };
-
-  template<units::basic_fixed_string serviceName, typename... Meta>
- class RequestBrokerName : public Worker<serviceName, DnsContext, Request, Reply, Meta...> , public Dns<serviceName, Meta...>{
-    public: 
-     using super_t = Worker<serviceName, DnsContext, Request, Reply, Meta...>;
-
-     template<typename BrokerType> 
-     explicit RequestBrokerName(const BrokerType &broker)
-       : super_t::setCallback([this](const RequestContext &rawCtx, const DnsContext &dnsIn, Request &In, DnsContext &dnsOut, Reply &Out) {
-        if (rawCtx.request.command() == Command::Get) {
-            handleGetRequest(dnsIn, In, Out);
-        } else if (rawCtx.request.command() == Command::Set) {
-            handleSetRequest(dnsIn, dnsOut, Out);
-        }
-       });
-
-    private: 
-      void handleGetRequest(const DnsContext &dnsIn, Request &In, Reply &Out) {
-        const auto it = _dnsCache.find(In.brokerName);
-        if (it == _dnsCache.end()) {
-            throw std::invalid_argument(fmt::format("Inavlid Broker Name {}", In.brokerName));
-        }
-        Out.uris.insert(it->second.uris);
-      }
- };
-
- template<units::basic_fixed_string serviceName, typename... Meta>
- class RequestSignalName : public Worker<serviceName, DnsContext, Request, Reply, Meta...>, public Dns<serviceName, Meta...>{
-    public: 
-      using super_t = Worker<serviceName, DnsContext, Request, Reply, Meta...>;
-
-      template<typename BrokerType>
-      explicit RequestSignalName(const BrokerType &broker) 
-      : super_t::setCallback([this](const RequestContext &rawCtx, const DnsContext &dnsIn, Request &In, DnsContext &dnsOut, Reply &Out){
-        if(rawCtx.request.command() == Command::Get) {
-            handleGetRequest(dnsIn, In, Out);
-        } else if (rawCtx.request.command() == Command::Set) {
-            handleSetRequest(dnsIn, dnsOut, Out);
-        }
-      });
-
-    private: 
-     void handleGetRequest(const DnsContext &dnsIn, Request &In, Reply &Out) {
-           for(const auto& [name, record] : _dnsCache) {
-            if(record.signalName.find(In.signalName) != std::string::npos) {
-                Out.signalNames.emplace_back(record.signalName);
-            }
-           }
-     }
- }
-} // namespace dns
-#endif 
+    }
+  }
+};
+}  // namespace opencmw::DNS
+#endif
