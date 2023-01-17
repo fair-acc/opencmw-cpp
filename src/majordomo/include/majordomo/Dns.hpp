@@ -96,7 +96,7 @@ public:
 
 private:
     // Prevent copy constructor and assignment operator
-    DnsStorage(DnsStorage const &)            = delete;
+    DnsStorage(DnsStorage const &) = delete;
     DnsStorage &operator=(DnsStorage const &) = delete;
 };
 
@@ -114,15 +114,15 @@ private:
     Reply         &Out_;
     DnsStorage    &storage = DnsStorage::getInstance();
     void           processRequest(const Request &In, Reply &Out) {
-                  const auto iter = storage._dnsCache.find(In.brokerName);
-                  if (iter == storage._dnsCache.end()) {
-                      throw std::invalid_argument(
+        const auto iter = storage._dnsCache.find(In.brokerName);
+        if (iter == storage._dnsCache.end()) {
+            throw std::invalid_argument(
                               fmt::format("Inavlid Broker Name {}", In.brokerName));
         }
-                  detail::DnsServiceItem Item = iter->second;
-                  for (auto const &[serviceName, serviceInfo] : Item.services) {
-                      Out.uris.insert(Out.uris.end(), serviceInfo.uris.begin(), serviceInfo.uris.end());
-                      // Out.meta[serviceInfo.meta.first].push_back(serviceInfo.meta.second);
+        detail::DnsServiceItem Item = iter->second;
+        for (auto const &[serviceName, serviceInfo] : Item.services) {
+            Out.uris.insert(Out.uris.end(), serviceInfo.uris.begin(), serviceInfo.uris.end());
+            // Out.meta[serviceInfo.meta.first].push_back(serviceInfo.meta.second);
         }
     }
 };
@@ -142,15 +142,15 @@ private:
     DnsStorage    &storage = DnsStorage::getInstance();
 
     void           processRequest(const Request &In, Reply &Out) {
-                  auto [iter, inserted] = storage._dnsCache.try_emplace(In.brokerName, detail::DnsServiceItem());
-                  //  auto iter = access._dnsCache;
-                  // const auto iter = access._dnsCache.find(In.serviceName);
-                  auto &Item = iter->second;
-                  if (Item.services.find(In.serviceName) == Item.services.end()) {
-                      throw std::invalid_argument(
+        auto [iter, inserted] = storage._dnsCache.try_emplace(In.brokerName, detail::DnsServiceItem());
+        //  auto iter = access._dnsCache;
+        // const auto iter = access._dnsCache.find(In.serviceName);
+        auto &Item = iter->second;
+        if (Item.services.find(In.serviceName) == Item.services.end()) {
+            throw std::invalid_argument(
                               fmt::format("Inavlid Service Name {}", In.serviceName));
         }
-                  Out.uris.insert(Out.uris.end(), Item.services[In.serviceName].uris.begin(),
+        Out.uris.insert(Out.uris.end(), Item.services[In.serviceName].uris.begin(),
                           Item.services[In.serviceName].uris.end());
     }
 };
@@ -170,15 +170,15 @@ private:
     DnsStorage    &storage = DnsStorage::getInstance();
 
     void           processRequest(const Request &In, Reply &Out) {
-                  auto broker = storage._dnsCache.find(In.brokerName);
-                  if (broker != storage._dnsCache.end()) {
-                      auto service = broker->second.services.find(In.serviceName);
-                      if (service != broker->second.services.end()) {
-                          auto signal = service->second.signalNames.find(In.signalName);
-                          if (signal != service->second.signalNames.end()) {
-                              Out.uris.insert(Out.uris.end(), broker->second.services[In.serviceName].uris.begin(),
+        auto broker = storage._dnsCache.find(In.brokerName);
+        if (broker != storage._dnsCache.end()) {
+            auto service = broker->second.services.find(In.serviceName);
+            if (service != broker->second.services.end()) {
+                auto signal = service->second.signalNames.find(In.signalName);
+                if (signal != service->second.signalNames.end()) {
+                    Out.uris.insert(Out.uris.end(), broker->second.services[In.serviceName].uris.begin(),
                                       broker->second.services[In.serviceName].uris.end());
-                              // Out.meta[broker->second.services[In.serviceName].meta.first].push_back(broker->second.services[In.serviceName].meta.second);
+                    // Out.meta[broker->second.services[In.serviceName].meta.first].push_back(broker->second.services[In.serviceName].meta.second);
                 }
             }
         }
@@ -229,12 +229,12 @@ private:
 
     void        handleGetRequest(const DnsContext &dnsIn, const Request &In,
                    Reply &Out) {
-               if (!In.brokerName.empty() && In.serviceName.empty() && In.signalName.empty()) {
-                   RequestBrokerName_t worker(In, Out);
+        if (!In.brokerName.empty() && In.serviceName.empty() && In.signalName.empty()) {
+            RequestBrokerName_t worker(In, Out);
         } else if (!In.serviceName.empty() && !In.brokerName.empty() && In.signalName.empty()) {
-                   RequestServiceName_t worker(In, Out);
+            RequestServiceName_t worker(In, Out);
         } else if (!In.signalName.empty() && !In.serviceName.empty() && !In.brokerName.empty()) {
-                   RequestSignalName_t worker(In, Out);
+            RequestSignalName_t worker(In, Out);
         }
     }
 };
