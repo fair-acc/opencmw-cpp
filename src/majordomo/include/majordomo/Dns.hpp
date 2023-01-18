@@ -37,15 +37,15 @@ struct Request {
     std::string brokerName;
     std::string serviceName;
     std::string signalName;
-    //std::unordered_map<std::string, std::string> meta;
+    // std::unordered_map<std::string, std::string> meta;
 };
 ENABLE_REFLECTION_FOR(Request, brokerName, serviceName, signalName)
 
 struct Reply {
     // std::set<opencmw::URI<opencmw::RELAXED>> uris;
     std::vector<std::string> uris;
-    //std::vector<KeyValue> meta;
-    // std::unordered_map<std::string, std::vector<std::string>> meta;
+    // std::vector<KeyValue> meta;
+    //  std::unordered_map<std::string, std::vector<std::string>> meta;
 };
 ENABLE_REFLECTION_FOR(Reply, uris)
 
@@ -70,11 +70,11 @@ struct DnsServiceInfo {
 };
 
 struct DnsServiceItem {
-   std::string serviceName;
-   std::unordered_map<std::string, DnsServiceInfo>    brokers;
+    std::string                                        serviceName;
+    std::unordered_map<std::string, DnsServiceInfo>    brokers;
     std::chrono::time_point<std::chrono::steady_clock> expiry;
     DnsServiceItem() = default;
-        DnsServiceItem(const std::string &service)
+    DnsServiceItem(const std::string &service)
         : serviceName(service) {}
 };
 
@@ -113,15 +113,15 @@ private:
     Reply         &Out_;
     DnsStorage    &storage = DnsStorage::getInstance();
     void           processRequest(const Request &In, Reply &Out) {
-                  const auto iter = storage._dnsCache.find(In.serviceName);
-                  if (iter == storage._dnsCache.end()) {
-                      throw std::invalid_argument(
+        const auto iter = storage._dnsCache.find(In.serviceName);
+        if (iter == storage._dnsCache.end()) {
+            throw std::invalid_argument(
                               fmt::format("Inavlid Service Name {}", In.serviceName));
         }
-                  detail::DnsServiceItem Item = iter->second;
-                  for (auto const &[brokerName, brokerInfo] : Item.brokers) {
-                      Out.uris.insert(Out.uris.end(), brokerInfo.uris.begin(), brokerInfo.uris.end());
-                      // Out.meta[serviceInfo.meta.first].push_back(serviceInfo.meta.second);
+        detail::DnsServiceItem Item = iter->second;
+        for (auto const &[brokerName, brokerInfo] : Item.brokers) {
+            Out.uris.insert(Out.uris.end(), brokerInfo.uris.begin(), brokerInfo.uris.end());
+            // Out.meta[serviceInfo.meta.first].push_back(serviceInfo.meta.second);
         }
     }
 };
@@ -141,13 +141,13 @@ private:
     DnsStorage    &storage = DnsStorage::getInstance();
 
     void           processRequest(const Request &In, Reply &Out) {
-                  auto [iter, inserted] = storage._dnsCache.try_emplace(In.serviceName, detail::DnsServiceItem());
-                  auto &Item = iter->second;
-                  if (Item.brokers.find(In.brokerName) == Item.brokers.end()) {
-                      throw std::invalid_argument(
+        auto [iter, inserted] = storage._dnsCache.try_emplace(In.serviceName, detail::DnsServiceItem());
+        auto &Item            = iter->second;
+        if (Item.brokers.find(In.brokerName) == Item.brokers.end()) {
+            throw std::invalid_argument(
                               fmt::format("Inavlid broker Name {}", In.serviceName));
         }
-                  Out.uris.insert(Out.uris.end(), Item.brokers[In.brokerName].uris.begin(),
+        Out.uris.insert(Out.uris.end(), Item.brokers[In.brokerName].uris.begin(),
                           Item.brokers[In.brokerName].uris.end());
     }
 };
@@ -167,19 +167,19 @@ private:
     DnsStorage    &storage = DnsStorage::getInstance();
 
     void           processRequest(const Request &In, Reply &Out) {
-                  auto service = storage._dnsCache.find(In.serviceName);
-                  if (service != storage._dnsCache.end()) {
-                      auto broker = service->second.brokers.find(In.brokerName);
-                      if (broker != service->second.brokers.end()) {
-                          //auto signal = broker->second.signalNames.find(In.signalName);
-                          //if (signal != broker->second.signalNames.end()) {
-                              Out.uris.insert(Out.uris.end(), service->second.brokers[In.brokerName].uris.begin(),
-                                      service->second.brokers[In.brokerName].uris.end());
-                            std::string signalName = In.signalName;
-                            std::for_each(Out.uris.begin(), Out.uris.end(), [signalName](std::string &uri) {
-    uri = uri + "?" + "signal_name" + "=" + signalName;
-    });
-                              // Out.meta[broker->second.services[In.serviceName].meta.first].push_back(broker->second.services[In.serviceName].meta.second);
+        auto service = storage._dnsCache.find(In.serviceName);
+        if (service != storage._dnsCache.end()) {
+            auto broker = service->second.brokers.find(In.brokerName);
+            if (broker != service->second.brokers.end()) {
+                // auto signal = broker->second.signalNames.find(In.signalName);
+                // if (signal != broker->second.signalNames.end()) {
+                Out.uris.insert(Out.uris.end(), service->second.brokers[In.brokerName].uris.begin(),
+                                  service->second.brokers[In.brokerName].uris.end());
+                std::string signalName = In.signalName;
+                std::for_each(Out.uris.begin(), Out.uris.end(), [signalName](std::string &uri) {
+                    uri = uri + "?" + "signal_name" + "=" + signalName;
+                          });
+                // Out.meta[broker->second.services[In.serviceName].meta.first].push_back(broker->second.services[In.serviceName].meta.second);
                 //}
             }
         }
@@ -215,11 +215,11 @@ public:
     void registerDnsAddress(const opencmw::URI<> &address) {
         fmt::print("register dns address get called");
         storage._dnsAddress.emplace(address.str());
-     auto [iter, inserted] = storage._dnsCache.try_emplace(serviceName_.c_str(), detail::DnsServiceItem());
+        auto [iter, inserted]    = storage._dnsCache.try_emplace(serviceName_.c_str(), detail::DnsServiceItem());
         auto       &Item         = iter->second;
         std::string service_name = serviceName_.c_str();
-       Item.brokers.try_emplace(brokerName, detail::DnsServiceInfo());
-       Item.brokers[brokerName].uris.insert(address.str() + "/" + service_name);
+        Item.brokers.try_emplace(brokerName, detail::DnsServiceInfo());
+        Item.brokers[brokerName].uris.insert(address.str() + "/" + service_name);
     }
 
 private:
@@ -230,10 +230,10 @@ private:
 
     void        handleGetRequest(const DnsContext &dnsIn, const Request &In,
                    Reply &Out) {
-               if (!In.serviceName.empty() && In.brokerName.empty() && In.signalName.empty()) {
-                   RequestServiceName_t worker(In, Out);
+        if (!In.serviceName.empty() && In.brokerName.empty() && In.signalName.empty()) {
+            RequestServiceName_t worker(In, Out);
         } else if (!In.serviceName.empty() && !In.brokerName.empty() && In.signalName.empty()) {
-                   RequestBrokerName_t worker(In, Out);
+            RequestBrokerName_t worker(In, Out);
         } else if (!In.signalName.empty() && !In.serviceName.empty() && !In.brokerName.empty()) {
             RequestSignalName_t worker(In, Out);
         }
