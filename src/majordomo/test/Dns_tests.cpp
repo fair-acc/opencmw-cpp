@@ -24,31 +24,36 @@ TEST_CASE("Test dns", "DNS") {
     auto settings              = testSettings();
     settings.heartbeatInterval = std::chrono::seconds(1);
 
-    const auto brokerAddress   = opencmw::URI<opencmw::STRICT>("mdp://127.0.0.1:22346");
+    const auto brokerAddress   = opencmw::URI<opencmw::STRICT>("inproc://testbroker");
     Broker     broker("testbroker", settings);
     REQUIRE(broker.bind(brokerAddress));
-    Dns<"DnsService"> DnsWorker(broker);
-    DnsWorker.registerDnsAddress(opencmw::URI<>("https://127.0.0.1:8080"));
+    Dns<"DnsService">     DnsWorker(broker);
+    Dns<"AnotherService"> worker(broker);
+    // DnsWorker.registerDnsAddress(opencmw::URI<>("https://127.0.0.1:8080"));
+    DnsWorker.registerDnsAddress(opencmw::URI<>("inproc://any_ip:port"));
+    worker.registerDnsAddress(opencmw::URI<>("inproc://any_other_ip:port1"));
 
     RunInThread dnsWorkerRun(DnsWorker);
+    RunInThread workerRun(worker);
     RunInThread brokerRun(broker);
     REQUIRE(waitUntilServiceAvailable(broker.context, "DnsService"));
+    REQUIRE(waitUntilServiceAvailable(broker.context, "AnotherService"));
     TestNode<MdpMessage> client(broker.context);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
     {
         using opencmw::majordomo::Command;
         auto request = MdpMessage::createClientMessage(Command::Get);
-        request.setServiceName("DnsService", static_tag);
+        request.setServiceName("AnotherService", static_tag);
 
-        request.setBody("{ \"brokerName\": \"testbroker\" }", static_tag);
+        request.setBody("{ \"serviceName\": \"AnotherService\" }", static_tag);
         client.send(request);
 
         const auto reply = client.tryReadOne();
         REQUIRE(reply.has_value());
         REQUIRE(reply->isValid());
         REQUIRE(reply->command() == Command::Final);
-        REQUIRE(reply->serviceName() == "DnsService");
-        REQUIRE(reply->body() == "{\n\"uris\": [\"https://127.0.0.1:8080/DnsService\"]\n}");
+        REQUIRE(reply->serviceName() == "AnotherService");
+        REQUIRE(reply->body() == "{\n\"uris\": [\"inproc://any_other_ip:port1/AnotherService\"]\n}");
         // REQUIRE(reply->body().empty());
     }
     {
@@ -56,7 +61,7 @@ TEST_CASE("Test dns", "DNS") {
         auto request = MdpMessage::createClientMessage(Command::Get);
         request.setServiceName("DnsService", static_tag);
 
-        request.setBody("{ \"brokerName\": \"testbroker\", \"serviceName\": \"DnsService\" }", static_tag);
+        request.setBody("{ \"brokerName\": \"testbroker\", \"serviceName\": \"DnsService\", \"signalName\": \"A\" }", static_tag);
         client.send(request);
 
         const auto reply = client.tryReadOne();
@@ -64,7 +69,7 @@ TEST_CASE("Test dns", "DNS") {
         REQUIRE(reply->isValid());
         REQUIRE(reply->command() == Command::Final);
         REQUIRE(reply->serviceName() == "DnsService");
-        REQUIRE(reply->body() == "{\n\"uris\": [\"https://127.0.0.1:8080/DnsService\"]\n}");
+        REQUIRE(reply->body() == "{\n\"uris\": [\"inproc://any_ip:port/DnsService?signal_name=A\"]\n}");
         // REQUIRE(reply->body().empty());
     }
 }
