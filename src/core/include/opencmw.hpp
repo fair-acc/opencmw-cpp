@@ -644,6 +644,12 @@ inline std::ostream &operator<<(std::ostream &os, const T &map) {
     return os;
 }
 
+template<typename T>
+inline std::ostream &operator<<(std::ostream &os, const std::set<T> &set) {
+    os << fmt::format("{{{}}}", fmt::join(set, ", "));
+    return os;
+}
+
 template<ReflectableClass T>
 inline std::ostream &operator<<(std::ostream &os, const T &value) {
     const bool    verbose    = os.iword(getClassInfoVerbose());
