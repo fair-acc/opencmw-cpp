@@ -4,6 +4,8 @@
 #include "fast_float.h"
 #include "IoSerialiser.hpp"
 #include <charconv>
+#include <ranges>
+#include <set>
 
 #ifndef IOSERIALISER_YAML_INDENTATION
 #define IOSERIALISER_YAML_INDENTATION 2 // NOSONAR -- allow users to redefine if other preference are requested
@@ -256,6 +258,74 @@ inline void fieldParser(const std::string_view &data, ContainerType &value) {
             value.resize(value.size() + 1);
         }
         fieldParser<true>(token.substr(2), value[tokenSize++]);
+    }
+    if (value.size() != tokenSize) {
+        throw ProtocolException("error parsing array from string '{}' -- size mismatch have {} need {} ", data, value.size(), tokenSize);
+    }
+}
+
+template<typename V>
+inline std::string fieldFormatter(std::set<V> const &value, const int nIndentation = 0) noexcept {
+    if (nIndentation == 0) {
+        if constexpr (is_stringlike<V>) {
+#if __cpp_lib_ranges >= 202106L
+            return fmt::format("[{}]", fmt::join(std::ranges::views::transform(value, [](const auto &v) { return "\"" + v + "\""; }), ", "));
+#else
+            std::vector<V> quoted{ value.size() };
+            std::transform(value.begin(), value.end(), quoted.begin(), [](const auto &v) { return "\"" + v + "\""; });
+            return fmt::format("[{}]", fmt::join(quoted.begin(), quoted.end(), ", "));
+#endif
+        } else {
+            return fmt::format("[{}]", fmt::join(value, ", "));
+        }
+    }
+    const auto joinDelimiter = fmt::format("\n{:<{}}- ", ' ', nIndentation);
+    if constexpr (is_stringlike<V>) {
+#if __cpp_lib_ranges >= 202106L
+        return fmt::format("{:<{}}- {}\n", ' ', nIndentation, fmt::join(std::ranges::views::transform(value, [](const auto &v) { return "\"" + v + "\""; }), joinDelimiter));
+#else
+        std::vector<V> quoted{ value.size() };
+        std::transform(value.begin(), value.end(), quoted.begin(), [](const auto &v) { return "\"" + v + "\""; });
+        return fmt::format("{:<{}}- {}\n", ' ', nIndentation, fmt::join(quoted.begin(), quoted.end(), joinDelimiter));
+#endif
+    } else {
+        return fmt::format("{:<{}}- {}\n", ' ', nIndentation, fmt::join(value, joinDelimiter));
+    }
+}
+
+template<bool SingleLineParameter, typename V>
+inline void fieldParser(const std::string_view &data, std::set<V> &value) {
+    if constexpr (requires { value.clear(); }) {
+        value.clear();
+    }
+    if constexpr (SingleLineParameter) { // single-line JSON-style array
+        if (!data.starts_with('[') || !data.ends_with(']')) {
+            throw ProtocolException("error parsing array from string '{}' -- missing brackets '[]' for single-line representation", data);
+        }
+        std::string_view parse     = data.substr(1, data.size() - 2);
+        unsigned         tokenSize = 0;
+        std::string_view token;
+        while (!(token = stringTokenizer(parse, ',')).empty()) {
+            ++tokenSize;
+            V newval;
+            fieldParser<true>(token, newval);
+            value.insert(newval);
+        }
+        if (value.size() != tokenSize) {
+            throw ProtocolException("error parsing array from string '{}' -- size mismatch have {} need {} ", data, value.size(), tokenSize);
+        }
+        return;
+    }
+    std::string_view parse     = data.substr(data.find_first_of('\n') + 1);
+    unsigned         tokenSize = 0;
+    std::string_view token;
+    while (!(token = stringTokenizer(parse, '\n')).empty()) {
+        if (token.starts_with('#') || token.starts_with('\n')) {
+            continue; // skip commented or empty lines
+        }
+        V newval;
+        fieldParser<true>(token.substr(2), newval);
+        value.insert(newval);
     }
     if (value.size() != tokenSize) {
         throw ProtocolException("error parsing array from string '{}' -- size mismatch have {} need {} ", data, value.size(), tokenSize);

@@ -58,7 +58,6 @@ template<> forceinline constexpr uint8_t getDataTypeId<std::string_view[]>() { r
 // template<> forceinline constexpr uint8_t getDataTypeId<enum>()          { return 201; }
 // template<typename T> forceinline constexpr uint8_t getDataTypeId<std::list<T>>()     { return 202; }
 // template<> forceinline constexpr uint8_t getDataTypeId<std::queue>()    { return 204; }
-// template<> forceinline constexpr uint8_t getDataTypeId<std::set>()      { return 205; }
 
 template<>
 inline constexpr uint8_t getDataTypeId<OTHER>() { return 0xFD; }
@@ -136,6 +135,27 @@ struct IoSerialiser<YaS, T> {
             value.offset(i - 1) = 0;
         }
         buffer.getArray(value.elements());
+    }
+};
+
+template<typename V> // set
+struct IoSerialiser<YaS, std::set<V>> {
+    forceinline static constexpr uint8_t getDataTypeId() {
+        return yas::ARRAY_TYPE_OFFSET + yas::getDataTypeId<V>();
+    }
+    constexpr static void serialise(IoBuffer &buffer, FieldDescription auto const & /*field*/, const std::set<V> &value) noexcept {
+        buffer.put(std::array<int32_t, 1>{ static_cast<int32_t>(value.size()) }); // dimensions, for set always n=1 and n_1 = nElems
+        buffer.put(static_cast<int32_t>(value.size()));                           // size of vector
+        for (const V &v : value) {
+            buffer.put(v);
+        }
+    }
+    constexpr static void deserialise(IoBuffer &buffer, FieldDescription auto const & /*field*/, std::set<V> &value) noexcept {
+        auto           size = buffer.getArray<int32_t, 1>();
+        std::vector<V> data{ size[0] };
+        buffer.getArray(data, static_cast<size_t>(size[0]));
+        value.clear();
+        std::copy(data.begin(), data.end(), std::inserter(value, value.begin()));
     }
 };
 

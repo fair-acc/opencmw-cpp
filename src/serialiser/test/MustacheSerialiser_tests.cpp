@@ -96,4 +96,19 @@ TEST_CASE("MustacheSerialization: value with fallback serialisation", "[Mustache
     }
 }
 
+struct MustacheDataWithSet {
+    std::set<std::string> strings;
+    std::set<float>       floats;
+};
+ENABLE_REFLECTION_FOR(MustacheDataWithSet, strings, floats)
+
+TEST_CASE("MustacheSerialization: value with set of strings and set of floats", "[Mustache][MustacheValueSerialiser]") {
+    std::stringstream   str;
+    MustacheDataWithSet data{ .strings = { "Set", "of", "Strings" }, .floats = { 1.337f, 4.2f, 2.3f } };
+    opencmw::mustache::serialise("", str, std::pair<std::string, const MustacheDataWithSet &>{ "result"s, data });
+
+    REQUIRE(str.str() == R"""([strings::["Set", "Strings", "of"]][floats::[1.337e+00, 2.3e+00, 4.2e+00]]
+)""");
+}
+
 #pragma clang diagnostic pop
