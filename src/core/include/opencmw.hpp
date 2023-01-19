@@ -599,7 +599,7 @@ inline std::ostream &operator<<(std::ostream &os, const T &v) {
 template<typename Rep, units::Quantity Q, const basic_fixed_string description, const ExternalModifier modifier, const basic_fixed_string... groups>
 inline std::ostream &operator<<(std::ostream &os, const Annotated<Rep, Q, description, modifier, groups...> &annotatedValue) {
     if (os.iword(getClassInfoVerbose())) {
-        if constexpr (!is_array<Rep> && !is_vector<Rep>) {
+        if constexpr (!is_array<Rep> && !is_vector<Rep> && !units::is_derived_from_specialization_of<Rep, std::set>) {
             os << fmt::format("{:<5}  // [{}] - {}", annotatedValue.value(), annotatedValue.getUnit(), annotatedValue.getDescription()); // print as number
         } else {
             os << fmt::format("{}  // [{}] - {}", annotatedValue.value(), annotatedValue.getUnit(), annotatedValue.getDescription()); // print as array

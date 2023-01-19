@@ -45,13 +45,14 @@ struct NestedData {
     Annotated<std::string, NoUnit, "custom description for string">            annStringValue = std::string("nested string");
     Annotated<std::array<double, 10>, NoUnit>                                  annDoubleArray = std::array<double, 10>{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
     Annotated<std::vector<float>, NoUnit>                                      annFloatVector = std::vector{ 0.1f, 1.1f, 2.1f, 3.1f, 4.1f, 5.1f, 6.1f, 8.1f, 9.1f, 9.1f };
+    Annotated<std::set<int>, NoUnit, "Let's not forget about sets!">           annIntSet      = { 1, 2, 3, 5, 7, 11 };
 
     // some default operator
     auto operator<=>(const NestedData &) const = default;
     bool operator==(const NestedData &) const  = default;
 };
 // following is the visitor-pattern-macro that allows the compile-time reflections via refl-cpp
-ENABLE_REFLECTION_FOR(NestedData, annByteValue, annShortValue, annIntValue, annLongValue, annFloatValue, annDoubleValue, annStringValue, annDoubleArray, annFloatVector)
+ENABLE_REFLECTION_FOR(NestedData, annByteValue, annShortValue, annIntValue, annLongValue, annFloatValue, annDoubleValue, annStringValue, annDoubleArray, annFloatVector, annIntSet)
 
 struct Data {
     int8_t                             byteValue        = 1;
@@ -122,6 +123,7 @@ TEST_CASE("IoClassSerialiser basic syntax", "[IoClassSerialiser]") {
         data2.nestedData.annDoubleArray[3] = 99;
         data2.doubleMatrix(0U, 0U)         = 42;
         data2.nestedData.annFloatVector.clear();
+        data2.nestedData.annIntSet.clear();
         REQUIRE(data != data2);
 
         opencmw::serialise<opencmw::YaS>(buffer, data);
@@ -155,14 +157,15 @@ struct NestedDataWithDifferences {
     Annotated<std::string, NoUnit, "deprecation notice", RW_DEPRECATED>           annStringValue = std::string("nested string"); // <- extra deprecation specifier
     Annotated<std::array<double, 10>, NoUnit, "private field notice", RW_PRIVATE> annDoubleArray = std::array<double, 10>{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
     // Annotated<std::vector<float>, NoUnit>                                                annFloatVector; // <- missing field
-    Annotated<std::string, NoUnit, "custom description for string"> annExtraValue = std::string("nested string"); // <- extra value
+    Annotated<std::set<int>, NoUnit, "Let's not forget about sets!"> annIntSet     = { 1, 2, 3, 5, 7, 11 };
+    Annotated<std::string, NoUnit, "custom description for string">  annExtraValue = std::string("nested string"); // <- extra value
 
     // some default operator
     auto operator<=>(const NestedDataWithDifferences &) const = default;
     bool operator==(const NestedDataWithDifferences &) const  = default;
 };
 // following is the visitor-pattern-macro that allows the compile-time reflections via refl-cpp
-ENABLE_REFLECTION_FOR(NestedDataWithDifferences, annByteValue, annShortValue, annIntValue, annLongValue, annFloatValue, annDoubleValue, annStringValue, annDoubleArray, annExtraValue)
+ENABLE_REFLECTION_FOR(NestedDataWithDifferences, annByteValue, annShortValue, annIntValue, annLongValue, annFloatValue, annDoubleValue, annStringValue, annDoubleArray, annIntSet, annExtraValue)
 
 TEST_CASE("IoClassSerialiser protocol mismatch", "[IoClassSerialiser]") {
     std::cout << std::unitbuf;
@@ -202,8 +205,8 @@ TEST_CASE("IoClassSerialiser protocol mismatch", "[IoClassSerialiser]") {
         REQUIRE(7 == info.exceptions.size());
         REQUIRE(1 == info.additionalFields.size());
         REQUIRE(1 == info.setFields.size());
-        REQUIRE(9 == (info.setFields["root"].size()));
-        REQUIRE(5 == std::count_if(info.setFields["root"].begin(), info.setFields["root"].end(), [](bool bit) { return bit == true; }));
+        REQUIRE(10 == (info.setFields["root"].size()));
+        REQUIRE(6 == std::count_if(info.setFields["root"].begin(), info.setFields["root"].end(), [](bool bit) { return bit == true; }));
     }
     REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
     debug::resetStats();
