@@ -1,6 +1,5 @@
 #include <catch2/catch.hpp>
 
-#include <algorithm>
 #include <iostream>
 #include <string_view>
 
@@ -65,16 +64,17 @@ struct DataY {
     std::vector<float>                              floatVector      = { 0.1F, 1.1F, 2.1F, 3.1F, 4.1F, 5.1F, 6.1F, 8.1F, 9.1F, 9.1F };
     opencmw::MultiArray<double, 2>                  doubleMatrix{ { 1, 3, 7, 4, 2, 3 }, { 2, 3 } };
     NestedDataY                                     nestedData;
-    Annotated<double, resistance<ohm>>              annotatedValue                  = 0.1;
+    Annotated<double, resistance<ohm>>              annotatedValue = 0.1;
 
-    std::map<std::string, std::string, std::less<>> map                             = { { "key1", "value1" }, { "key2", "value2" }, { "key3", "value3" }, { "key4", "value4" }, { "key5", "value5" }, { "key6", "value6" } };
-    std::map<std::string, std::string, std::less<>> smallMap                        = { { "key1", "value1" } };
+    std::map<std::string, std::string, std::less<>> map            = { { "key1", "value1" }, { "key2", "value2" }, { "key3", "value3" }, { "key4", "value4" }, { "key5", "value5" }, { "key6", "value6" } };
+    std::map<std::string, std::string, std::less<>> smallMap       = { { "key1", "value1" } };
+    std::set<std::string>                           stringSet{ "foo", "bar", "baz" };
 
     bool                                            operator==(const DataY &) const = default;
 };
 } // namespace io_serialiser_yaml_test
 // following is the visitor-pattern-macro that allows the compile-time reflections via refl-cpp
-ENABLE_REFLECTION_FOR(io_serialiser_yaml_test::DataY, boolValue, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, constStringValue, doubleArray, floatVector, /*doubleMatrix,*/ nestedData, annotatedValue, map, smallMap)
+ENABLE_REFLECTION_FOR(io_serialiser_yaml_test::DataY, boolValue, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, constStringValue, doubleArray, floatVector, /*doubleMatrix,*/ nestedData, annotatedValue, map, smallMap, stringSet)
 
 template<opencmw::SerialiserProtocol protocol, opencmw::ReflectableClass T>
 void checkSerialiserIdentity(opencmw::IoBuffer &buffer, const T &a, T &b) {
@@ -127,6 +127,7 @@ TEST_CASE("basic YAML serialisation", "[IoClassSerialiserYAML]") {
         data2.nestedData.annBoolArray[2] = false;
         data2.map["key7"]                = "value7";
         data2.smallMap.clear();
+        data2.stringSet.clear();
         REQUIRE(data != data2);
 
         opencmw::serialise<opencmw::YAML>(buffer, data);
