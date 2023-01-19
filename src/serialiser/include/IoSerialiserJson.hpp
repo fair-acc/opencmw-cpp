@@ -502,6 +502,48 @@ struct IoSerialiser<Json, T> {
     }
 };
 
+template<typename V>
+struct IoSerialiser<Json, std::set<V>> {
+    // todo: arrays of objects
+    inline static constexpr uint8_t getDataTypeId() { return IoSerialiser<Json, OTHER>::getDataTypeId(); }
+    inline constexpr static void    serialise(IoBuffer &buffer, FieldDescription auto const &field, const std::set<V> &values) noexcept {
+        buffer.put('[');
+        bool first = true;
+        for (auto &value : values) {
+            if (!first) {
+                buffer.put(',');
+                buffer.put(' ');
+            }
+            IoSerialiser<Json, V>::serialise(buffer, field, value);
+            first = false;
+        }
+        buffer.put(']');
+    }
+    constexpr static void deserialise(IoBuffer &buffer, FieldDescription auto const &field, std::set<V> &value) {
+        if (buffer.get<uint8_t>() != '[') {
+            throw ProtocolException("expected [");
+        }
+        value.clear();
+        json::consumeWhitespace(buffer);
+        if (buffer.get<uint8_t>() != ']') { // empty array
+            buffer.skip<false>(-1);
+            while (true) {
+                V entry;
+                IoSerialiser<Json, V>::deserialise(buffer, field, entry);
+                value.insert(entry);
+                json::consumeWhitespace(buffer);
+                const auto next = buffer.template get<uint8_t>();
+                if (next == ']') {
+                    break;
+                }
+                if (next != ',') {
+                    throw ProtocolException("expected comma or end of array");
+                }
+                json::consumeWhitespace(buffer);
+            }
+        }
+    }
+};
 template<MapLike T>
 requires(is_stringlike<typename T::key_type>) struct IoSerialiser<Json, T> {
     using K = typename T::key_type;
