@@ -422,7 +422,7 @@ public:
     }
 
     template<SupportedType R>
-    forceinline constexpr std::vector<R> &getArray(std::vector<R> &&input = std::vector<R>(), const std::size_t &requestedSize = SIZE_MAX) noexcept { return getArray<R>(input, requestedSize); }
+    forceinline constexpr std::vector<R> getArray(std::vector<R> &&input = std::vector<R>(), const std::size_t &requestedSize = SIZE_MAX) noexcept { return getArray<R>(input, requestedSize); }
 
     template<SupportedType R, std::size_t size>
     forceinline constexpr std::array<R, size> &getArray(std::array<R, size> &input, const std::size_t &requestedSize = SIZE_MAX) noexcept {
@@ -441,16 +441,16 @@ public:
     }
 
     template<SupportedType R, std::size_t size>
-    [[maybe_unused]] forceinline constexpr std::array<R, size> &getArray(std::array<R, size> &&input = std::array<R, size>(), const std::size_t &requestedSize = size) noexcept { return getArray<R, size>(input, requestedSize); }
+    [[maybe_unused]] forceinline constexpr std::array<R, size> getArray(std::array<R, size> &&input = std::array<R, size>(), const std::size_t &requestedSize = size) noexcept { return getArray<R, size>(input, requestedSize); }
 
     template<StringArray R, typename T = typename R::value_type>
     [[nodiscard]] forceinline constexpr R &get(R &input, const std::size_t &requestedSize = SIZE_MAX) noexcept { return getArray<T>(input, requestedSize); }
     template<StringArray R, typename T = typename R::value_type>
-    [[nodiscard]] forceinline constexpr R &get(R &&input = R(), const std::size_t &requestedSize = SIZE_MAX) noexcept { return getArray<T>(input, requestedSize); }
+    [[nodiscard]] forceinline constexpr R get(R &&input = R(), const std::size_t &requestedSize = SIZE_MAX) noexcept { return getArray<T>(input, requestedSize); }
     template<StringArray R, typename T = typename R::value_type, std::size_t size>
     [[nodiscard]] forceinline constexpr R &get(R &input, const std::size_t &requestedSize = size) noexcept { return getArray<T, size>(input, requestedSize); }
     template<StringArray R, typename T = typename R::value_type, std::size_t size>
-    [[nodiscard]] forceinline constexpr R &get(R &&input = R(), const std::size_t &requestedSize = size) noexcept { return getArray<T, size>(input, requestedSize); }
+    [[nodiscard]] forceinline constexpr R get(R &&input = R(), const std::size_t &requestedSize = size) noexcept { return getArray<T, size>(input, requestedSize); }
 };
 
 } // namespace opencmw
