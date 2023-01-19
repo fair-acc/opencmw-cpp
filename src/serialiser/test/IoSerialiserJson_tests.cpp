@@ -34,14 +34,15 @@ struct DataX {
     std::vector<float>             floatVector = { 0.1F, 1.1F, 2.1F, 3.1F, 4.1F, 5.1F, 6.1F, 8.1F, 9.1F, 9.1F };
     opencmw::MultiArray<double, 2> doubleMatrix{ { 1, 3, 7, 4, 2, 3 }, { 2, 3 } };
     std::map<std::string, double>  doubleMap{ std::pair<std::string, double>{ "hello", 42.23 }, std::pair<std::string, double>{ "map", 1.337 } };
+    std::set<std::string>          stringSet{ "foo", "bar", "baz" };
     std::shared_ptr<DataX>         nested;
 
     DataX() = default;
     bool operator==(const DataX &other) const { // deep comparison function
-        return boolValue == other.boolValue && byteValue == other.byteValue && shortValue == other.shortValue && intValue == other.intValue && longValue == other.longValue && floatValue == other.floatValue && doubleValue == other.doubleValue && stringValue == other.stringValue && doubleArray == other.doubleArray && floatVector == other.floatVector && doubleMatrix == other.doubleMatrix && ((!nested && !other.nested) || *nested == *(other.nested));
+        return boolValue == other.boolValue && byteValue == other.byteValue && shortValue == other.shortValue && intValue == other.intValue && longValue == other.longValue && floatValue == other.floatValue && doubleValue == other.doubleValue && stringValue == other.stringValue && doubleArray == other.doubleArray && floatVector == other.floatVector && doubleMatrix == other.doubleMatrix && stringSet == other.stringSet && ((!nested && !other.nested) || *nested == *(other.nested));
     }
 };
-ENABLE_REFLECTION_FOR(DataX, boolValue, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, doubleArray, floatVector, doubleMatrix, doubleMap, nested)
+ENABLE_REFLECTION_FOR(DataX, boolValue, byteValue, shortValue, intValue, longValue, floatValue, doubleValue, stringValue, doubleArray, floatVector, doubleMatrix, doubleMap, stringSet, nested)
 
 struct SimpleInner {
     double           val1;

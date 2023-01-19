@@ -183,6 +183,49 @@ struct IoSerialiser<CmwLight, T> {
     }
 };
 
+template<typename MemberType>
+struct IoSerialiser<CmwLight, std::set<MemberType>> {
+    inline static constexpr uint8_t getDataTypeId() {
+        // clang-format off
+        if      constexpr (std::is_same_v<bool   , MemberType>) { return  9; }
+        else if constexpr (std::is_same_v<int8_t , MemberType>) { return 10; }
+        else if constexpr (std::is_same_v<int16_t, MemberType>) { return 11; }
+        else if constexpr (std::is_same_v<int32_t, MemberType>) { return 12; }
+        else if constexpr (std::is_same_v<int64_t, MemberType>) { return 13; }
+        else if constexpr (std::is_same_v<float  , MemberType>) { return 14; }
+        else if constexpr (std::is_same_v<double , MemberType>) { return 15; }
+        else if constexpr (std::is_same_v<char   , MemberType>) { return 202; }
+        else if constexpr (opencmw::is_stringlike<MemberType> ) { return 16; }
+        else { static_assert(opencmw::always_false<MemberType>); }
+        // clang-format on
+    }
+
+    constexpr static void serialise(IoBuffer &buffer, FieldDescription auto const & /*field*/, const std::set<MemberType> &value) noexcept {
+        buffer.put(static_cast<int32_t>(value.size()));
+        for (const auto v : value) {
+            buffer.put(v);
+        }
+    }
+
+    constexpr static void deserialise(IoBuffer &buffer, FieldDescription auto const &field, std::set<MemberType> &value) noexcept {
+        value.clear();
+        auto n_elems = buffer.get<int32_t>();
+        for (int i = 0; i < n_elems; i++) {
+            MemberType            v;
+            FieldDescriptionShort subfield{
+                .headerStart       = buffer.position(),
+                .dataStartPosition = buffer.position(),
+                .dataEndPosition   = 0U,
+                .subfields         = 0,
+                .fieldName         = fmt::format("{}[{}]", field.fieldName, i),
+                .intDataType       = IoSerialiser<CmwLight, MemberType>::getDataTypeId(),
+                .hierarchyDepth    = static_cast<uint8_t>(field.hierarchyDepth + 1),
+            };
+            IoSerialiser<CmwLight, MemberType>::deserialise(buffer, subfield, v);
+            value.insert(v);
+        }
+    }
+};
 template<>
 struct IoSerialiser<CmwLight, START_MARKER> {
     inline static constexpr uint8_t getDataTypeId() { return 0xFC; }
@@ -222,7 +265,7 @@ struct IoSerialiser<CmwLight, OTHER> {
         auto typeId = field.intDataType;
         // clang-format off
         // primitives
-             if (typeId == getTypeId<bool       >()) { buffer.skip(sizeof(bool   )); }
+        if      (typeId == getTypeId<bool       >()) { buffer.skip(sizeof(bool   )); }
         else if (typeId == getTypeId<int8_t     >()) { buffer.skip(sizeof(int8_t )); }
         else if (typeId == getTypeId<int16_t    >()) { buffer.skip(sizeof(int16_t)); }
         else if (typeId == getTypeId<int32_t    >()) { buffer.skip(sizeof(int32_t)); }

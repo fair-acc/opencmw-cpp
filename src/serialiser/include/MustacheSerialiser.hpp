@@ -189,6 +189,33 @@ public:
     }
 };
 
+template<typename MemberType>
+class mustache_data<std::set<MemberType>> : public mustache_data_base {
+private:
+    const std::set<MemberType> &_value;
+
+    // Allowing single iteration over the list
+    mutable typename std::set<MemberType>::const_iterator _it;
+    mutable std::unique_ptr<mustache_data_base>           _current;
+
+public:
+    explicit mustache_data(const std::set<MemberType> &value)
+        : mustache_data_base(value.empty() ? type::list_empty : type::list_non_empty)
+        , _value(std::move(value))
+        , _it(_value.cbegin()) {}
+
+    const mustache_data_base *next_list_item() const override {
+        _current.reset();
+
+        if (_it == _value.cend()) return nullptr;
+
+        _current = std::make_unique<mustache_data<MemberType>>(*_it);
+        ++_it;
+
+        return _current.get();
+    }
+};
+
 template<MultiArrayType T>
 class mustache_data<T> : public mustache_data<std::vector<typename T::value_type>> {
 public:
