@@ -25,7 +25,7 @@ Field names that are not listed are implicitly considered `private` and not take
 The following types and (nested) class structures are supported:
 Beside common primitive and STL container types, 
  * primitives `T`: `uint8_t` `int8_t`, `int16_t`, `int32_t`, `int64_t`, `float`, `double`, `std::string` and `std::string_view`
- * stl-container: `std::array<T,N>`, `std::vector<T,N>`, `std::list<T>`, `std::unsorted_map<T>`, `std::queue<T>`, `std::set<T>`
+ * stl-container: `std::array<T,N>`, `std::vector<T,N>`, `std::list<T>`, `std::unsorted_map<T>`, `std::set<T>` (not yet implemented: `std::queue<T>`)
  * common opencmw container: `opencmw:MultiArray<T, N_DIM>`
 
 N.B. regarding support/extensions for `unsigned` arithmetic types see [here](###-unsigned-data-types). Based on this reflection pattern, there are some
