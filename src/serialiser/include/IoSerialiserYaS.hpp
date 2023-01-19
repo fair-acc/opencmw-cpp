@@ -146,8 +146,7 @@ struct IoSerialiser<YaS, T> {
         using K              = typename T::key_type;
         using V              = typename T::mapped_type;
         const auto nElements = static_cast<int32_t>(value.size());
-        buffer.put(std::array<int32_t, 1>{ nElements }); // [ndims]{size}
-        buffer.put(nElements);                           // nElements
+        buffer.put(nElements); // nElements
 
         if constexpr (is_supported_number<K> || is_stringlike<K>) {
             constexpr int entrySize = 17; // as an initial estimate
@@ -188,7 +187,6 @@ struct IoSerialiser<YaS, T> {
     static void deserialise(IoBuffer &buffer, FieldDescription auto const &field, T &value) {
         using K                  = typename T::key_type;
         using V                  = typename T::mapped_type;
-        const auto     dimWire   = buffer.getArray<int32_t>(); // [ndims]{size}
         const auto     nElements = static_cast<uint32_t>(buffer.get<int32_t>());
 
         const auto     keyType   = buffer.get<uint8_t>();
