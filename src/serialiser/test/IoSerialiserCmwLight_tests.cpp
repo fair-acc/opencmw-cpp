@@ -30,12 +30,13 @@ struct SimpleTestData {
     std::vector<std::string>        ce{ "hello", "world" };
     opencmw::MultiArray<double, 2>  d{ { 1, 2, 3, 4, 5, 6 }, { 2, 3 } };
     std::unique_ptr<SimpleTestData> e = nullptr;
+    std::set<std::string>           f{ "one", "two", "three" };
     bool                            operator==(const ioserialiser_cmwlight_test::SimpleTestData &other) const { // deep comparison function
-        return a == other.a && ab == other.ab && abc == other.abc && b == other.b && c == other.c && cd == other.cd && d == other.d && ((!e && !other.e) || *e == *(other.e));
+        return a == other.a && ab == other.ab && abc == other.abc && b == other.b && c == other.c && cd == other.cd && d == other.d && ((!e && !other.e) || *e == *(other.e)) && f == other.f;
     }
 };
 } // namespace ioserialiser_cmwlight_test
-ENABLE_REFLECTION_FOR(ioserialiser_cmwlight_test::SimpleTestData, a, ab, abc, b, c, cd, ce, d, e)
+ENABLE_REFLECTION_FOR(ioserialiser_cmwlight_test::SimpleTestData, a, ab, abc, b, c, cd, ce, d, e, f)
 
 TEST_CASE("IoClassSerialiserCmwLight simple test", "[IoClassSerialiser]") {
     using namespace opencmw;
@@ -65,7 +66,8 @@ TEST_CASE("IoClassSerialiserCmwLight simple test", "[IoClassSerialiser]") {
                       .cd  = { 3.1, 1.2 },
                       .ce  = { "ei", "gude" },
                       .d   = { { 6, 5, 4, 3, 2, 1 }, { 3, 2 } },
-                      .e   = nullptr })
+                      .e   = nullptr }),
+            .f   = { "four", "five" }
         };
 
         // check that empty buffer cannot be deserialised
@@ -115,9 +117,10 @@ struct SimpleTestDataMoreFields {
     opencmw::MultiArray<double, 2>  d{ { 1, 2, 3, 4, 5, 6 }, { 2, 3 } };
     bool                            operator==(const SimpleTestDataMoreFields &) const = default;
     std::unique_ptr<SimpleTestData> e                                                  = nullptr;
+    std::set<std::string>           f{ "one", "two", "three" };
 };
 } // namespace ioserialiser_cmwlight_test
-ENABLE_REFLECTION_FOR(ioserialiser_cmwlight_test::SimpleTestDataMoreFields, a2, ab2, abc2, b2, c2, cd2, ce2, d2, e2, a, ab, abc, b, c, cd, ce, d, e)
+ENABLE_REFLECTION_FOR(ioserialiser_cmwlight_test::SimpleTestDataMoreFields, a2, ab2, abc2, b2, c2, cd2, ce2, d2, e2, a, ab, abc, b, c, cd, ce, d, e, f)
 
 #pragma clang diagnostic pop
 TEST_CASE("IoClassSerialiserCmwLight missing field", "[IoClassSerialiser]") {
@@ -138,7 +141,8 @@ TEST_CASE("IoClassSerialiserCmwLight missing field", "[IoClassSerialiser]") {
             .c   = { 5, 4, 3 },
             .cd  = { 2.1, 4.2 },
             .ce  = { "hallo", "welt" },
-            .d   = { { 6, 5, 4, 3, 2, 1 }, { 3, 2 } }
+            .d   = { { 6, 5, 4, 3, 2, 1 }, { 3, 2 } },
+            .f   = { "four", "six" }
         };
         SimpleTestDataMoreFields data2;
         std::cout << fmt::format("object (fmt): {}\n", data);
@@ -147,7 +151,7 @@ TEST_CASE("IoClassSerialiserCmwLight missing field", "[IoClassSerialiser]") {
         auto result = opencmw::deserialise<opencmw::CmwLight, ProtocolCheck::LENIENT>(buffer, data2);
         std::cout << fmt::format("deserialised object (fmt): {}\n", data2);
         std::cout << "deserialisation messages: " << result << std::endl;
-        REQUIRE(result.setFields["root"] == std::vector<bool>{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0 });
+        REQUIRE(result.setFields["root"] == std::vector<bool>{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1 });
         REQUIRE(result.additionalFields.empty());
         REQUIRE(result.exceptions.empty());
 
@@ -158,7 +162,7 @@ TEST_CASE("IoClassSerialiserCmwLight missing field", "[IoClassSerialiser]") {
         auto result_back = opencmw::deserialise<opencmw::CmwLight, ProtocolCheck::LENIENT>(buffer, data);
         std::cout << fmt::format("deserialised object (fmt): {}\n", data);
         std::cout << "deserialisation messages: " << result_back << std::endl;
-        REQUIRE(result_back.setFields["root"] == std::vector<bool>{ 1, 1, 1, 1, 1, 1, 1, 1, 0 });
+        REQUIRE(result_back.setFields["root"] == std::vector<bool>{ 1, 1, 1, 1, 1, 1, 1, 1, 0, 1 });
         REQUIRE(result_back.additionalFields.size() == 8);
         REQUIRE(result_back.exceptions.size() == 8);
     }
