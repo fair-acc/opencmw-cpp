@@ -268,14 +268,27 @@ template<typename V>
 inline std::string fieldFormatter(std::set<V> const &value, const int nIndentation = 0) noexcept {
     if (nIndentation == 0) {
         if constexpr (is_stringlike<V>) {
+#if __cpp_lib_ranges >= 202106L
             return fmt::format("[{}]", fmt::join(std::ranges::views::transform(value, [](const auto &v) { return "\"" + v + "\""; }), ", "));
+#else
+        } else if (is_stringlike<V>) { // version for clang without ranges
+            std::vector<V> vals{ value.size() };
+            std::transform(value.begin(), value.end(), vals.begin(), [](const auto &v) { return "\"" + v + "\""; });
+            return fmt::format("[{}]", fmt::join(vals.begin(), vals.end(), ", "));
+#endif
         } else {
             return fmt::format("[{}]", fmt::join(value, ", "));
         }
     }
     const auto joinDelimiter = fmt::format("\n{:<{}}- ", ' ', nIndentation);
     if constexpr (is_stringlike<V>) {
+#if __cpp_lib_ranges >= 202106L
         return fmt::format("{:<{}}- {}\n", ' ', nIndentation, fmt::join(std::ranges::views::transform(value, [](const auto &v) { return "\"" + v + "\""; }), joinDelimiter));
+#else
+        std::vector<V> vals{ value.size() };
+        std::transform(value.begin(), value.end(), vals.begin(), [](const auto &v) { return "\"" + v + "\""; });
+        return fmt::format("{:<{}}- {}\n", ' ', nIndentation, fmt::join(vals.begin(), vals.end(), joinDelimiter));
+#endif
     } else {
         return fmt::format("{:<{}}- {}\n", ' ', nIndentation, fmt::join(value, joinDelimiter));
     }
