@@ -64,7 +64,7 @@ using BrokerMessage = opencmw::majordomo::BasicMdpMessage<
 namespace detail {
 struct DnsServiceInfo {
     std::set<std::string> uris;
-    std::set<std::string> signalNames;
+   //std::set<std::string> signalNames;
     // std::unordered_map<std::string, std::vector<std::string>> meta;
     DnsServiceInfo() = default;
 };
@@ -171,14 +171,17 @@ private:
         if (service != storage._dnsCache.end()) {
             auto broker = service->second.brokers.find(In.brokerName);
             if (broker != service->second.brokers.end()) {
-                // auto signal = broker->second.signalNames.find(In.signalName);
+              /*  if(broker->second.signalNames.find(In.signalName) != broker->second.signalNames.end()){
+                    broker->second.signalNames.insert(In.signalName);
+                }*/
                 // if (signal != broker->second.signalNames.end()) {
                 Out.uris.insert(Out.uris.end(), service->second.brokers[In.brokerName].uris.begin(),
                                   service->second.brokers[In.brokerName].uris.end());
                 std::string signalName = In.signalName;
-                std::for_each(Out.uris.begin(), Out.uris.end(), [signalName](std::string &uri) {
-                    uri = uri + "?" + "signal_name" + "=" + signalName;
-                          });
+                          std::transform(Out.uris.begin(), Out.uris.end(), Out.uris.begin(),
+               [signalName](const std::string &uri) {
+                 return uri + "?" + "signal_name" + "=" + signalName;
+               });
                 // Out.meta[broker->second.services[In.serviceName].meta.first].push_back(broker->second.services[In.serviceName].meta.second);
                 //}
             }
