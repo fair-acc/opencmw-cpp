@@ -180,7 +180,7 @@ TEST_CASE("IoClassSerialiser protocol mismatch", "[IoClassSerialiser]") {
 
         buffer.reset();
         const auto infoNoExceptions = opencmw::deserialise<YaS, ProtocolCheck::IGNORE>(buffer, data2);
-        REQUIRE(0 == infoNoExceptions.exceptions.size());
+        REQUIRE(infoNoExceptions.exceptions.empty());
 
         buffer.reset();
         bool caughtRequiredException = false;
@@ -297,7 +297,7 @@ struct SmartPointerClass {
     std::unique_ptr<SmartPointerClass>           nested;
 
     template<opencmw::SmartPointerType A, opencmw::SmartPointerType B>
-    constexpr bool equalValues(const A &a, const B &b) const noexcept {
+    [[nodiscard]] constexpr bool equalValues(const A &a, const B &b) const noexcept {
         if (a.get() == nullptr && b.get() == nullptr) return true;
         if (a.get() == nullptr && b.get() != nullptr) return false;
         if (a.get() != nullptr && b.get() == nullptr) return false;
@@ -318,7 +318,7 @@ struct SmartPointerClass {
         if ((nested && !other.nested) || (!nested && other.nested)) {
             return false;
         }
-        if (*nested.get() != *other.nested.get()) return false;
+        if (*nested != *other.nested) return false;
         return true;
     }
 };
@@ -362,9 +362,9 @@ TEST_CASE("IoClassSerialiser smart pointer", "[IoClassSerialiser]") {
         //        std::cout << "Rep   " << typeName<Rep> << std::endl;
         //        std::cout << "quantity " << typeName<units::detail::common_quantity_impl<TypeA, TypeB, Rep>::type> << std::endl;
         // data.e1        = data.e1 + data.e1;
-        *data.e2.get() = *data.e2.get() + 10;
-        *data.e3.get() = *data.e3.get() + 10;
-        *data.e4.get() = *data.e4.get() + 10;
+        *data.e2 = *data.e2 + 10;
+        *data.e3 = *data.e3 + 10;
+        *data.e4 = *data.e4 + 10;
 
         diffView(std::cout, data, data2);
         REQUIRE(data != data2);
@@ -380,7 +380,7 @@ TEST_CASE("IoClassSerialiser smart pointer", "[IoClassSerialiser]") {
         // test nested class identity
         data.nested = std::make_unique<SmartPointerClass>();
         REQUIRE(data != data2);
-        data.nested.get()->e0 = 10;
+        data.nested->e0 = 10;
         diffView(std::cout, data, data2);
 
         REQUIRE(data != data2);
@@ -395,7 +395,7 @@ struct TestData {
     opencmw::Annotated<double, si::speed<metre_per_second>, "custom description", RW, "groupA"> value;
     // bla blaa
 
-    TestData(double val = 0)
+    explicit TestData(double val = 0)
         : value(val){};
 };
 
@@ -432,7 +432,7 @@ TEST_CASE("IoSerialiser basic syntax", "[IoSerialiser]") {
         REQUIRE(opencmw::is_annotated<decltype(data.value)> == true);
         std::cout << fmt::format("buffer size (before): {} bytes\n", buffer.size());
 
-        opencmw::FieldHeaderWriter<opencmw::YaS>::template put<true>(buffer, unmove(FieldDescriptionShort{ .fieldName = "fieldNameA" }), std::move(43.0));
+        opencmw::FieldHeaderWriter<opencmw::YaS>::template put<true>(buffer, unmove(FieldDescriptionShort{ .fieldName = "fieldNameA" }), 43.0);
         opencmw::FieldHeaderWriter<opencmw::YaS>::template put<true>(buffer, unmove(FieldDescriptionShort{ .fieldName = "fieldNameB" }), data.value.value());
         std::cout << fmt::format("buffer size (after): {} bytes\n", buffer.size());
     }
@@ -517,7 +517,7 @@ TEST_CASE("IoClassSerialiser protocol error tests", "[IoClassSerialiser]") {
     {
         buffer.reset();
         auto info = opencmw::deserialise<YaS, ProtocolCheck::LENIENT>(buffer, data2);
-        REQUIRE(info.exceptions.size() == 0);
+        REQUIRE(info.exceptions.empty());
     }
 
     buffer.clear();
@@ -562,10 +562,40 @@ TEST_CASE("IoClassSerialiser map & Co.", "[IoClassSerialiser]") {
                   << info << std::endl;
         std::cout << " info2: {}\n"
                   << ClassInfoVerbose << info << std::endl;
-        REQUIRE(info.exceptions.size() == 0);
+        REQUIRE(info.exceptions.empty());
     }
     //    diffView(std::cout, data, data2);
     //    REQUIRE(data == data2);
 }
 
+struct NestedMapData {
+    std::unordered_map<int, std::map<std::string, std::string>> map1;
+    std::map<std::string, std::vector<int>>                     mapOfVector;
+    bool                                                        operator==(const NestedMapData &) const = default;
+};
+ENABLE_REFLECTION_FOR(NestedMapData, map1, mapOfVector)
+
+TEST_CASE("IoClassSerialiser nested maps", "[IoClassSerialiser]") {
+    using namespace opencmw;
+    IoBuffer      buffer;
+    NestedMapData data;
+    NestedMapData data2;
+    REQUIRE(data == data2);
+    data.map1.insert({ 1337, std::map<std::string, std::string>{} });
+    data.map1[1337].insert({ "foo", "bar" });
+    data.mapOfVector.insert({ "primes", { 1, 2, 3, 5, 7 } });
+    REQUIRE(data != data2);
+
+    opencmw::serialise<opencmw::YaS>(buffer, data);
+
+    {
+        buffer.reset();
+        auto info = opencmw::deserialise<YaS, ProtocolCheck::LENIENT>(buffer, data2);
+        std::cout << " info1: {}\n"
+                  << info << std::endl;
+        std::cout << " info2: {}\n"
+                  << ClassInfoVerbose << info << std::endl;
+        REQUIRE(info.exceptions.empty());
+    }
+}
 #pragma clang diagnostic pop
