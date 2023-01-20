@@ -178,7 +178,7 @@ struct IoSerialiser<YaS, T> {
             }
         } else {                                     // non-primitive or non-string-like types
             buffer.put(yas::getDataTypeId<OTHER>()); // type-id
-            buffer.put(typeName<K>());               // primary type
+            buffer.put(typeName<K>);                 // primary type
             buffer.put("");                          // secondary type (if any) TODO: add appropriate
             buffer.put(nElements);
             for (auto &entry : value) {
@@ -196,11 +196,11 @@ struct IoSerialiser<YaS, T> {
             }
         } else {                                         // non-primitive or non-string-like types
             buffer.put(yas::getDataTypeId<OTHER>());     // type-id
-            buffer.put(typeName<V>());                   // primary type
+            buffer.put(typeName<V>);                     // primary type
             buffer.put("");                              // secondary type (if any) TODO: add appropriate
             buffer.put(static_cast<int32_t>(nElements)); // nElements
             for (auto &entry : value) {
-                IoSerialiser<YaS, K>::serialise(buffer, field, entry.second);
+                IoSerialiser<YaS, V>::serialise(buffer, field, entry.second);
             }
         }
     }
@@ -231,7 +231,7 @@ struct IoSerialiser<YaS, T> {
 
         const auto valueType = buffer.get<uint8_t>();
         if constexpr (is_supported_number<V> || is_stringlike<V>) {
-            if (yas::getDataTypeId<K>() != keyType) {
+            if (yas::getDataTypeId<V>() != valueType) {
                 throw ProtocolException("value type mismatch for field {} - required {} ({}) vs. have {}", field.fieldName, yas::getDataTypeId<V>(), typeid(V).name(), valueType);
             }
             const auto nElementsCheck = static_cast<uint32_t>(buffer.get<int32_t>());
@@ -243,8 +243,24 @@ struct IoSerialiser<YaS, T> {
                 auto v         = buffer.get<V>();
                 value[keys[i]] = v;
             }
-        } else if (keyType == yas::getDataTypeId<OTHER>()) {
-            throw ProtocolException("value type OTHER for field {} not yet implemented", field.fieldName);
+        } else if (valueType == yas::getDataTypeId<OTHER>()) {
+            std::string value_type_name           = buffer.get<std::string>();
+            std::string value_type_name_secondary = buffer.get<std::string>();
+            auto        value_elements            = static_cast<std::size_t>(buffer.get<int32_t>());
+            for (std::size_t i = 0; i < value_elements; i++) {
+                FieldDescriptionShort subfield{
+                    .headerStart       = buffer.position(),
+                    .dataStartPosition = buffer.position(),
+                    .dataEndPosition   = 0U,
+                    .subfields         = 0,
+                    .fieldName         = fmt::format("{}[{}]", field.fieldName, i),
+                    .intDataType       = IoSerialiser<YaS, V>::getDataTypeId(),
+                    .hierarchyDepth    = static_cast<uint8_t>(field.hierarchyDepth + 1),
+                };
+                V v;
+                IoSerialiser<YaS, V>::deserialise(buffer, subfield, v);
+                value[keys[i]] = v;
+            }
         } else {
             throw ProtocolException("unsupported key type {} for field {}", keyType, field.fieldName);
         }
