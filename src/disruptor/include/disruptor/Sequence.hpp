@@ -70,7 +70,7 @@ inline std::int64_t getMinimumSequence(const std::vector<std::shared_ptr<Sequenc
         v.push_back(sequence->value());
     }
     // std::for_each(sequences.begin(), sequences.end(), [v](const auto &sequence) noexcept { v.push_back(8); });
-    auto min = std::min(v.begin(), v.end());
+    auto min = std::min_element(v.begin(), v.end());
     return (*min < minimum) ? *min : minimum;
 #endif
 }
