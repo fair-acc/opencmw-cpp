@@ -9,7 +9,7 @@ on:
     types: [ created ]
 
 env:
-  REFERENCE_CONFIG: 'Ubuntu Latest gcc' # configuration used for coverage etc
+  REFERENCE_CONFIG: 'Ubuntu Latest gcc12' # configuration used for coverage etc
 
 jobs:
   build:
@@ -20,20 +20,20 @@ jobs:
       fail-fast: false
       matrix:
         configurations:
-          - name: Ubuntu Latest gcc
-            os: ubuntu-22.04 # pre-release, ubuntu-latest still points to ubuntu-2004
+          - name: Ubuntu Latest gcc12
+            os: ubuntu-22.04
             compiler: gcc
-          - name: Ubuntu Latest clang
-            os: ubuntu-22.04 # pre-release, ubuntu-latest still points to ubuntu-2004
-            compiler: clang
-          - name: Ubuntu Latest clang15
-            os: ubuntu-22.04 # pre-release, ubuntu-latest still points to ubuntu-2004
+          - name: Ubuntu Latest clang14
+            os: ubuntu-22.04
+            compiler: clang14
+          - name: ubuntu-22.04 clang15
+            os: ubuntu-22.04
             compiler: clang15
-          - name: Ubuntu Latest clang16
-            os: ubuntu-22.04 # pre-release, ubuntu-latest still points to ubuntu-2004
+          - name: ubuntu Latest clang16
+            os: ubuntu-22.04
             compiler: clang16
-          - name: Ubuntu Latest emscripten
-            os: ubuntu-22.04 # pre-release, ubuntu-latest still points to ubuntu-2004
+          - name: ubuntu-22.04 emscripten
+            os: ubuntu-22.04
             compiler: emscripten
           # - name: MacOS Latest # deactivated because mp-units is not compatible with clangApple
           #   os: macos-latest
@@ -58,11 +58,12 @@ jobs:
     - name: Install gcc-12
       if: matrix.configurations.compiler == 'gcc'
       run: |
+        sudo add-apt-repository ppa:ubuntu-toolchain-r/ppa # provides newer gcc 12.2.0 instead of 12.1.0
         sudo apt-get install -y gcc-12 g++-12
         sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 110 --slave /usr/bin/g++ g++ /usr/bin/g++-12 --slave /usr/bin/gcov gcov /usr/bin/gcov-12
 
     - name: Install clang-14
-      if: matrix.configurations.compiler == 'clang'
+      if: matrix.configurations.compiler == 'clang14'
       run: |
         wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
         sudo add-apt-repository 'deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-14 main'
