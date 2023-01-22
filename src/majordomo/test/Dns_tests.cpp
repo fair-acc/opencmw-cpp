@@ -31,6 +31,7 @@ TEST_CASE("Test dns", "DNS") {
     Dns<"AnotherService"> worker(broker);
     // DnsWorker.registerDnsAddress(opencmw::URI<>("https://127.0.0.1:8080"));
     DnsWorker.registerDnsAddress(opencmw::URI<>("inproc://port1"));
+    DnsWorker.registerDnsAddress(opencmw::URI<>("inproc://port1:1"));
     worker.registerDnsAddress(opencmw::URI<>("inproc://port2"));
 
     RunInThread dnsWorkerRun(DnsWorker);
@@ -41,6 +42,7 @@ TEST_CASE("Test dns", "DNS") {
     TestNode<MdpMessage> client(broker.context);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
+    // Request with the Service Name
     {
         using opencmw::majordomo::Command;
         auto request = MdpMessage::createClientMessage(Command::Get);
@@ -58,6 +60,23 @@ TEST_CASE("Test dns", "DNS") {
         // REQUIRE(reply->body().empty());
     }
 
+    // Request with the Broker Name
+    {
+        using opencmw::majordomo::Command;
+        auto request = MdpMessage::createClientMessage(Command::Get);
+
+        request.setServiceName("DnsService", static_tag);
+        request.setBody("{ \"brokerName\": \"testbroker\" }", static_tag);
+        client.send(request);
+
+        const auto reply = client.tryReadOne();
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->command() == Command::Final);
+        REQUIRE(reply->body() == "{\n\"uris\": [\"inproc://port2/AnotherService\", \"inproc://port1/DnsService\", \"inproc://port1:1/DnsService\"]\n}");
+    }
+
+    // Request With the Signal Name
     {
         using opencmw::majordomo::Command;
         auto request = MdpMessage::createClientMessage(Command::Get);
@@ -71,7 +90,7 @@ TEST_CASE("Test dns", "DNS") {
         REQUIRE(reply->isValid());
         REQUIRE(reply->command() == Command::Final);
         REQUIRE(reply->serviceName() == "DnsService");
-        REQUIRE(reply->body() == "{\n\"uris\": [\"inproc://port1/DnsService?signal_name=A\"]\n}");
+        REQUIRE(reply->body() == "{\n\"uris\": [\"inproc://port1/DnsService?signal_name=A\", \"inproc://port1:1/DnsService?signal_name=A\"]\n}");
         // REQUIRE(reply->body().empty());
     }
 }
