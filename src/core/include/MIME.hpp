@@ -32,12 +32,12 @@ public:
     constexpr std::string_view                  description() const noexcept { return _description; }
     constexpr std::span<const std::string_view> fileExtensions() const noexcept { return std::span(_fileExtensions.data(), _N); };
     constexpr explicit(false)                   operator const char *() const noexcept { return _typeName.data(); }
-#if not defined(_LIBCPP_VERSION)
+#if not defined(__clang__) or (__clang_major__ >= 16)
     constexpr explicit(false) operator std::string() const noexcept { return _typeName.data(); }
 #endif
     constexpr explicit(false) operator std::string_view() const noexcept { return _typeName; }
 
-#if defined(_LIBCPP_VERSION) and not(_LIBCPP_VERSION < 16000)
+#if not defined(__EMSCRIPTEN__) and defined(__clang__) and (__clang_major__ >= 16)
     constexpr auto operator<=>(const MimeType &rhs) const noexcept { return _typeName <=> rhs._typeName; }
 #endif
     constexpr bool operator==(const MimeType &rhs) const noexcept { return _typeName == rhs._typeName; }

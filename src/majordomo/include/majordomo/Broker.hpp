@@ -37,6 +37,46 @@ struct ServiceNamesList {
 };
 ENABLE_REFLECTION_FOR(ServiceNamesList, services)
 
+namespace opencmw::majordomo::detail {
+struct DnsServiceItem {
+    std::string                                        address;
+    std::string                                        serviceName;
+    std::set<URI<RELAXED>>                             uris;
+    std::chrono::time_point<std::chrono::steady_clock> expiry;
+
+    explicit DnsServiceItem(std::string address_, std::string serviceName_)
+        : address{ std::move(address_) }
+        , serviceName{ std::move(serviceName_) } {}
+};
+
+inline std::string uriAsString(const URI<RELAXED> &uri) {
+    return uri.str();
+}
+
+} // namespace opencmw::majordomo::detail
+
+template<>
+struct fmt::formatter<opencmw::majordomo::detail::DnsServiceItem> {
+    template<typename ParseContext>
+    constexpr auto parse(ParseContext &ctx) {
+        return ctx.begin();
+    }
+
+    template<typename FormatContext>
+    auto format(const opencmw::majordomo::detail::DnsServiceItem &v, FormatContext &ctx) const {
+#if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
+        return fmt::format_to(ctx.out(), "[{}: {}]", v.serviceName, fmt::join(v.uris | std::views::transform(opencmw::majordomo::detail::uriAsString), ","));
+#else
+        std::vector<std::string> uris{};
+        uris.reserve(v.uris.size());
+        for (auto &uri : v.uris) {
+            uris.emplace_back(opencmw::majordomo::detail::uriAsString(uri));
+        }
+        return fmt::format_to(ctx.out(), "[{}: {}]", v.serviceName, fmt::join(uris, ","));
+#endif
+    }
+};
+
 namespace opencmw::majordomo {
 
 using BrokerMessage = BasicMdpMessage<MessageFormat::WithSourceId>;
@@ -48,17 +88,6 @@ enum class BindOption {
 };
 
 namespace detail {
-
-struct DnsServiceItem {
-    std::string                                        address;
-    std::string                                        serviceName;
-    std::set<URI<RELAXED>>                             uris;
-    std::chrono::time_point<std::chrono::steady_clock> expiry;
-
-    explicit DnsServiceItem(std::string address_, std::string serviceName_)
-        : address{ std::move(address_) }
-        , serviceName{ std::move(serviceName_) } {}
-};
 
 inline constexpr std::string_view trimmed(std::string_view s) {
     using namespace std::literals;
@@ -104,10 +133,6 @@ inline bool iequal(const Left &left, const Right &right) noexcept {
             [](auto l, auto r) { return std::tolower(l) == std::tolower(r); });
 }
 
-inline std::string uriAsString(const URI<RELAXED> &uri) {
-    return uri.str();
-}
-
 inline std::string findDnsEntry(std::string_view brokerName, std::unordered_map<std::string, detail::DnsServiceItem> &dnsCache, std::string_view s) {
     const auto query                    = URI<RELAXED>(std::string(s));
 
@@ -127,9 +152,17 @@ inline std::string findDnsEntry(std::string_view brokerName, std::unordered_map<
 
     std::vector<std::string> results;
     for (const auto &[cachedQuery, cacheEntry] : dnsCache) {
+#if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
         using namespace std::views;
         auto matching = cacheEntry.uris | filter(entryMatches) | transform(uriAsString);
         results.insert(results.end(), matching.begin(), matching.end());
+#else
+        for (const auto &uri : cacheEntry.uris) {
+            if (entryMatches(uri)) {
+                results.emplace_back(uriAsString(uri));
+            }
+        }
+#endif
     }
 
     std::sort(results.begin(), results.end());
@@ -266,9 +299,18 @@ public:
 
             std::string reply;
             if (message.body().empty() || message.body().find_first_of(",:/") == std::string_view::npos) {
+#if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
                 const auto entryView = std::views::values(_dnsCache);
                 auto       entries   = std::vector(entryView.begin(), entryView.end());
                 std::ranges::sort(entries, {}, &detail::DnsServiceItem::serviceName);
+#else
+                std::vector<detail::DnsServiceItem> entries;
+                entries.reserve(_dnsCache.size());
+                for (auto& [_, val] : _dnsCache) {
+                    entries.emplace_back(val);
+                }
+                std::sort(entries.begin(), entries.end(), [](auto &a, auto &b) {return a.serviceName < b.serviceName;});
+#endif
                 reply = fmt::format("{}", fmt::join(entries, ","));
             } else {
                 // TODO std::views::split seems to have issues in GCC 11, maybe switch to views::split/transform
@@ -292,9 +334,18 @@ public:
         addInternalService("mmi.service", [this](BrokerMessage &&message) {
             message.setCommand(Command::Final);
             if (message.body().empty()) {
+#if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
                 const auto keyView = std::views::keys(_services);
                 auto       keys    = std::vector<std::string>(keyView.begin(), keyView.end());
                 std::ranges::sort(keys);
+#else
+                std::vector<std::string> keys;
+                keys.reserve(_services.size());
+                for (auto& [key, _] : _services) {
+                    keys.emplace_back(key);
+                }
+                std::sort(keys.begin(), keys.end());
+#endif
 
                 message.setBody(fmt::format("{}", fmt::join(keys, ",")), MessageFrame::dynamic_bytes_tag{});
                 return message;
@@ -897,18 +948,5 @@ private:
 };
 
 } // namespace opencmw::majordomo
-
-template<>
-struct fmt::formatter<opencmw::majordomo::detail::DnsServiceItem> {
-    template<typename ParseContext>
-    constexpr auto parse(ParseContext &ctx) {
-        return ctx.begin();
-    }
-
-    template<typename FormatContext>
-    auto format(const opencmw::majordomo::detail::DnsServiceItem &v, FormatContext &ctx) const {
-        return fmt::format_to(ctx.out(), "[{}: {}]", v.serviceName, fmt::join(v.uris | std::views::transform(opencmw::majordomo::detail::uriAsString), ","));
-    }
-};
 
 #endif

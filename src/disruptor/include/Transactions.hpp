@@ -142,7 +142,7 @@ public:
         bool expected = false;
         while (std::atomic_compare_exchange_strong(&_transactionListLock, &expected, true)) // spin-lock
             ;
-#if not defined(_LIBCPP_VERSION)
+#if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
         if (auto it = std::ranges::find_if(_transactionList, [&transactionToken](const auto &pair) { return pair.first == transactionToken; }); it != _transactionList.end()) {
 #else
         if (auto it = std::find_if(_transactionList.begin(), _transactionList.end(), [&transactionToken](const auto &pair) { return pair.first == transactionToken; }); it != _transactionList.end()) {
@@ -167,7 +167,7 @@ public:
         while (std::atomic_compare_exchange_strong(&_transactionListLock, &expected, true)) // spin-lock
             ;
 
-#if not defined(_LIBCPP_VERSION)
+#if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
         const auto [first, last] = std::ranges::remove_if(_transactionList, [&transactionToken, &submitted, this, &now](const auto &setting) {
             if (transactionToken == NullToken<TransactionToken> || setting.first == transactionToken) {
                 commit(std::move(*setting.second.value), now);
@@ -215,7 +215,7 @@ public:
         while (std::atomic_compare_exchange_strong(&_transactionListLock, &expected, true)) // spin-lock
             ;
         result.reserve(_transactionList.size());
-#if not defined(_LIBCPP_VERSION)
+#if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
         std::ranges::transform(_transactionList, std::back_inserter(result), [](const auto &setting) { return setting.first; });
 #else
         std::transform(_transactionList.begin(), _transactionList.end(), std::back_inserter(result), [](const auto &setting) { return setting.first; });
@@ -256,7 +256,7 @@ public:
         while (std::atomic_compare_exchange_strong(&_transactionListLock, &expected, true)) // spin-lock
             ;
 
-#if not defined(_LIBCPP_VERSION)
+#if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
         auto [first, last] = std::ranges::remove_if(_transactionList, [&transactionToken, &retired, this](const auto &setting) {
             if (transactionToken == NullToken<TransactionToken> || setting.first == transactionToken) {
                 retired = true;
@@ -286,7 +286,7 @@ public:
             bool expected = false;
             while (std::atomic_compare_exchange_strong(&_transactionListLock, &expected, true)) // spin-lock
                 ;
-#if not defined(_LIBCPP_VERSION)
+#if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
             const auto [first, last] = std::ranges::remove_if(_transactionList, [&now, this](const auto &setting) { return setting.second.lastAccess - now + TimeDiff{ timeOutTransactions } < TimeDiff{ 0 }; });
 #else
             const auto first = std::remove_if(_transactionList.begin(), _transactionList.end(), [&now, this](const auto &setting) { return setting.second.lastAccess - now + TimeDiff{ timeOutTransactions } < TimeDiff{ 0 }; });

@@ -335,11 +335,11 @@ private:
         std::array<std::pair<std::string_view, Permission>, N> data;
 
         opencmw::MIME::detail::static_for<std::size_t, 0, N>([&](auto i) {
-            using role = std::tuple_element<i, Roles>::type;
+            using role = typename std::tuple_element<i, Roles>::type;
             data[i]    = std::pair(role::name(), role::rights());
         });
 
-        return ConstExprMap<std::string_view, Permission, N>(data);
+        return ConstExprMap<std::string_view, Permission, N>(std::move(data));
     }
 
     static constexpr auto _permissionsByRole = permissionMap();
@@ -565,7 +565,7 @@ template<units::basic_fixed_string serviceName, ReflectableClass ContextType, Re
 class Worker : public BasicWorker<serviceName, Meta...> {
 public:
     using HandlerImpl      = worker_detail::HandlerImpl<Worker, ContextType, InputType, OutputType>;
-    using CallbackFunction = HandlerImpl::CallbackFunction;
+    using CallbackFunction = typename HandlerImpl::CallbackFunction;
 
     explicit Worker(URI<STRICT> brokerAddress, CallbackFunction callback, const Context &context, Settings settings = {})
         : BasicWorker<serviceName, Meta...>(std::move(brokerAddress), HandlerImpl(std::move(callback)), context, settings) {

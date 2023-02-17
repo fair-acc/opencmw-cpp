@@ -5,7 +5,7 @@
 #include <filesystem>
 #include <iostream>
 #include <mutex>
-#ifdef __clang__ // TODO: replace (source_location is part of C++20 but still "experimental" for clang
+#if defined(__clang__)
 #include <experimental/source_location>
 namespace std {
 typedef std::experimental::source_location source_location;

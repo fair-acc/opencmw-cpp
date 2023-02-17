@@ -3,10 +3,15 @@ add_subdirectory(utils)
 add_subdirectory(serialiser)
 add_subdirectory(disruptor)
 
-if (NOT USE_LIBCPP)
-        # does not work, because <source_location> is missing
+if (USE_LIBCPP)
+        # does not work, because <source_location> and std::jthread is missing
+        # also ranges support is not complete
+        message(WARN "Disabled majordomo and client module because they are not compatible with libc++")
+else()
         add_subdirectory(majordomo)
-        add_subdirectory(client)
+        if (NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+                add_subdirectory(client)
+        endif()
 endif()
 
 # installation

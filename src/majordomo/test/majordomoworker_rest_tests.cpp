@@ -82,7 +82,7 @@ class SimpleTestRestBackend : public opencmw::majordomo::RestBackend<Mode, Virtu
     using super_t = opencmw::majordomo::RestBackend<Mode, VirtualFS>;
 
 public:
-    using super_t::RestBackend;
+    using typename super_t::RestBackend;
 
     static MdpMessage deserializeMessage(std::string_view method, std::string_view serialized) {
         // clang-format off
@@ -109,6 +109,9 @@ public:
     void registerHandlers() override {
         super_t::registerHandlers();
     }
+
+    explicit SimpleTestRestBackend(typename super_t::BrokerType &broker, const VirtualFS &vfs, opencmw::URI<> restAddress = opencmw::URI<>::factory().scheme(opencmw::majordomo::PLAIN_HTTP::DEFAULT_REST_SCHEME).hostName("0.0.0.0").port(DEFAULT_REST_PORT).build())
+        : super_t(broker, vfs, restAddress) {}
 };
 
 std::jthread makeGetRequestResponseCheckerThread(const std::string &address, const std::string &requiredResponse, [[maybe_unused]] std::source_location location = std::source_location::current()) {
