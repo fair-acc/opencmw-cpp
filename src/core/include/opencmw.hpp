@@ -518,6 +518,8 @@ struct ConstExprMap {
         auto itr = std::find_if(begin(data), end(data), [&key](const auto &v) { return v.first == key; });
         return (itr != end(data)) ? itr->second : defaultValue;
     }
+
+    constexpr ConstExprMap(std::array<std::pair<Key, Value>, size> &&data_) : data(std::move(data_)) {};
 };
 
 /**

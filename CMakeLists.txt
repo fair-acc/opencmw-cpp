@@ -18,27 +18,26 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 11.1.0)
         message(FATAL_ERROR "GCC>=11.1.0 required, but gcc ${CMAKE_CXX_COMPILER_VERSION} detected.")
     endif ()
-elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 14.0.0)
-        message(FATAL_ERROR "Clang>=14.0.0 required, but clang ${CMAKE_CXX_COMPILER_VERSION} detected.")
+elseif (EMSCRIPTEN)
+    if (NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_VERSION VERSION_LESS 14.0.0)
+        message(FATAL_ERROR "Clang>=14.0.0 required for emscripten, but clang ${CMAKE_CXX_COMPILER_VERSION} detected.")
     endif ()
     # clang does not work with stdlib++ ranges, we have to use libc++
-    set(USE_LIBCPP 1)
-
-    add_compile_options(-stdlib=libc++)
-    add_link_options(-stdlib=libc++ -lc++abi)
-    message(WARN "You are building with Clang. Be advised that support is limited to working in conjunction with"
+    # add_compile_options(-stdlib=libc++)
+    # add_link_options(-stdlib=libc++ -lc++abi)
+    message(WARN "You are building with Emscripten Clang. Be advised that support is limited to working in conjunction with"
             " libc++ and certain modules. libc++ has been enabled.")
+    add_compile_options(-Wno-shorten-64-to-32 -fwasm-exceptions)
+    add_link_options(-fwasm-exceptions)
+    set(USE_LIBCPP 1)
+elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 15.0.0)
+        message(FATAL_ERROR "Clang>=15.0.0 required, but clang ${CMAKE_CXX_COMPILER_VERSION} detected.")
+    endif ()
 else ()
     message(WARN "No version check for your compiler (${CMAKE_CXX_COMPILER_ID}) implemented, "
             "in case of build problems consider updating your compiler or check if you can switch to gcc or clang")
 endif ()
-
-if (EMSCRIPTEN)
-    add_compile_options(-Wno-shorten-64-to-32 -fwasm-exceptions)
-    add_link_options(-fwasm-exceptions)
-    set(USE_LIBCPP 1)
-endif()
 
 # Determine if OpenCMW is built as a subproject (using add_subdirectory) or if it is the master project.
 set(opencmw_MASTER_PROJECT OFF)

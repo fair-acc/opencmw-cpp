@@ -29,5 +29,7 @@ target_include_directories(MajordomoRest_example
     )
 target_link_libraries(MajordomoRest_example PRIVATE majordomo opencmw_project_options opencmw_project_warnings assets::rest assets::testImages)
 
-add_executable(FilterSubscription_example FilterSubscription_example.cpp)
-target_link_libraries(FilterSubscription_example PRIVATE majordomo client opencmw_project_options opencmw_project_warnings)
+if (NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    add_executable(FilterSubscription_example FilterSubscription_example.cpp)
+    target_link_libraries(FilterSubscription_example PRIVATE majordomo client opencmw_project_options opencmw_project_warnings)
+endif()

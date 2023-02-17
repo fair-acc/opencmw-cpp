@@ -268,7 +268,7 @@ template<typename V>
 inline std::string fieldFormatter(std::set<V> const &value, const int nIndentation = 0) noexcept {
     if (nIndentation == 0) {
         if constexpr (is_stringlike<V>) {
-#if __cpp_lib_ranges >= 202106L
+#if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
             return fmt::format("[{}]", fmt::join(std::ranges::views::transform(value, [](const auto &v) { return "\"" + v + "\""; }), ", "));
 #else
             std::vector<V> quoted{ value.size() };
@@ -281,7 +281,7 @@ inline std::string fieldFormatter(std::set<V> const &value, const int nIndentati
     }
     const auto joinDelimiter = fmt::format("\n{:<{}}- ", ' ', nIndentation);
     if constexpr (is_stringlike<V>) {
-#if __cpp_lib_ranges >= 202106L
+#if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
         return fmt::format("{:<{}}- {}\n", ' ', nIndentation, fmt::join(std::ranges::views::transform(value, [](const auto &v) { return "\"" + v + "\""; }), joinDelimiter));
 #else
         std::vector<V> quoted{ value.size() };

@@ -35,6 +35,7 @@
 #include <refl.hpp>
 
 #include <cmrc/cmrc.hpp>
+#include <utility>
 CMRC_DECLARE(assets);
 
 struct FormData {
@@ -45,6 +46,9 @@ ENABLE_REFLECTION_FOR(FormData, fields)
 struct Service {
     std::string name;
     std::string description;
+
+    Service(std::string name_, std::string description_)
+        : name{ std::move(name_) }, description{ std::move(description_) } {}
 };
 ENABLE_REFLECTION_FOR(Service, name, description)
 
@@ -323,6 +327,7 @@ private:
     std::map<detail::SubscriptionInfo, std::unique_ptr<detail::Connection>> _connectionForService;
 
 public:
+    using BrokerType = Broker<Roles...>;
     // returns a connection with refcount 1. Make sure you lower it to
     // zero at some point
     detail::Connection *notificationSubscriptionConnectionFor(const detail::SubscriptionInfo &subscriptionInfo) {
