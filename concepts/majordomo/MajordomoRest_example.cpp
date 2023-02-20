@@ -253,8 +253,6 @@ int main() {
     // TODO IIRC we agreed that service names should be valid URIs and thus have a / prepended, but "/helloWorld"
     // doesn't work with the REST interface (http://localhost:8080/helloWorld and http://localhost:8080//helloWorld are mapped to "helloWorld")
 
-    // TODO '"Reply": { "name": ... }' isn't valid json I think (not an object at top-level; also, Firefox doesn't like it). Should we omit the '"Reply:"?
-
     Worker<"helloWorld", TestContext, Request, Reply, description<"A friendly service saying hello">> helloWorldWorker(primaryBroker, HelloWorldHandler());
     ImageServiceWorker<"testImage", description<"Returns an image">>                                  imageWorker(primaryBroker, std::chrono::seconds(10));
 
