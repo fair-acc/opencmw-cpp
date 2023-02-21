@@ -118,8 +118,13 @@ public:
     }
 
     bool disconnect(detail::Connection &con) {
+#if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
         const auto remove = std::ranges::remove_if(_pollItems, [&con](zmq_pollitem_t &pollItem) { return pollItem.socket == con._socket.zmq_ptr; });
         _pollItems.erase(remove.begin(), remove.end());
+#else
+        const auto remove = std::remove_if(_pollItems.begin(), _pollItems.end(), [&con](zmq_pollitem_t &pollItem) { return pollItem.socket == con._socket.zmq_ptr; });
+        _pollItems.erase(remove, _pollItems.end());
+#endif
         zmq_invoke(zmq_disconnect, con._socket, majordomo::toZeroMQEndpoint(URI<STRICT>(con._authority)).data()).ignoreResult();
         con._connectionState = detail::ConnectionState::DISCONNECTED;
         return true;
@@ -255,8 +260,13 @@ public:
     }
 
     bool disconnect(detail::Connection &con) {
+#if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
         const auto remove = std::ranges::remove_if(_pollItems, [&con](const zmq_pollitem_t &pollItem) { return pollItem.socket == con._socket.zmq_ptr; });
         _pollItems.erase(remove.begin(), remove.end());
+#else
+        const auto remove = std::remove_if(_pollItems.begin(), _pollItems.end(), [&con](const zmq_pollitem_t &pollItem) { return pollItem.socket == con._socket.zmq_ptr; });
+        _pollItems.erase(remove, _pollItems.end());
+#endif
         zmq_invoke(zmq_disconnect, con._socket, majordomo::toZeroMQEndpoint(URI<STRICT>(con._authority)).data()).ignoreResult();
         con._connectionState = detail::ConnectionState::DISCONNECTED;
         return true;

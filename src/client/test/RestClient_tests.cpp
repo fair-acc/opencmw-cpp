@@ -213,11 +213,19 @@ TEST_CASE("Basic Rest Client Subscribe/Unsubscribe Test", "[Client]") {
     server.Get("/event", [&eventDispatcher, &updateCounter](const httplib::Request &req, httplib::Response &res) {
         auto acceptType = req.headers.find("accept");
         if (acceptType == req.headers.end() || MIME::EVENT_STREAM.typeName() != acceptType->second) { // non-SSE request -> return default response
+#if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
             res.set_content(fmt::format("update counter = {}", updateCounter), MIME::TEXT);
+#else
+            res.set_content(fmt::format("update counter = {}", updateCounter), std::string(MIME::TEXT.typeName()));
+#endif
             return;
         } else {
             fmt::print("server received SSE request on path '{}' body = '{}'\n", req.path, req.body);
+#if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
             res.set_chunked_content_provider(MIME::EVENT_STREAM, [&eventDispatcher](size_t /*offset*/, httplib::DataSink &sink) {
+#else
+            res.set_chunked_content_provider(std::string(MIME::EVENT_STREAM.typeName()), [&eventDispatcher](size_t /*offset*/, httplib::DataSink &sink) {
+#endif
                 eventDispatcher.wait_event(sink);
                 return true;
             });
@@ -317,7 +325,11 @@ TEST_CASE("Basic Rest Client Long-Polling Test", "[Client]") {
 
         if (!server.is_running() || std::atomic_load_explicit(&forceErrorResponse, std::memory_order_acquire)) { // return error
             res.status = 503;                                                                                    // 503: Service Unavailable
+#if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
             res.set_content(httplib::detail::status_message(res.status), MIME::TEXT);
+#else
+            res.set_content(httplib::detail::status_message(res.status), std::string(MIME::TEXT.typeName()));
+#endif
             return;
         }
 
@@ -325,7 +337,11 @@ TEST_CASE("Basic Rest Client Long-Polling Test", "[Client]") {
         replyQueryParameters.erase(opencmw::client::LONG_POLLING_IDX_TAG);
         replyQueryParameters.insert({ opencmw::client::LONG_POLLING_IDX_TAG, repPollingIndex >= 0 ? fmt::format("{}", repPollingIndex + 1) : "0" });
         auto redirectPath = fmt::format("{}?{}", req.path, httplib::detail::params_to_query_str(replyQueryParameters));
+#if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
         res.set_content(fmt::format("response body for idx={}", repPollingIndex), MIME::TEXT);
+#else
+        res.set_content(fmt::format("response body for idx={}", repPollingIndex), std::string(MIME::TEXT.typeName()));
+#endif
         res.set_redirect(redirectPath);
     });
 
