@@ -9,9 +9,7 @@ if (USE_LIBCPP)
         message(WARN "Disabled majordomo and client module because they are not compatible with libc++")
 else()
         add_subdirectory(majordomo)
-        if (NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-                add_subdirectory(client)
-        endif()
+        add_subdirectory(client)
 endif()
 
 # installation

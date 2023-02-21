@@ -43,11 +43,19 @@ int main() {
     server.Get("/event", [&eventDispatcher, &updateCounter](const httplib::Request &req, httplib::Response &res) {
         auto acceptType = req.headers.find("accept");
         if (acceptType == req.headers.end() || opencmw::MIME::EVENT_STREAM.typeName() != acceptType->second) { // non-SSE request -> return default response
+#if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
             res.set_content(fmt::format("update counter = {}", updateCounter), opencmw::MIME::TEXT);
+#else
+            res.set_content(fmt::format("update counter = {}", updateCounter), std::string(opencmw::MIME::TEXT.typeName()));
+#endif
             return;
         } else {
             fmt::print("server received SSE request on path '{}' body = '{}'\n", req.path, req.body);
+#if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
             res.set_chunked_content_provider(opencmw::MIME::EVENT_STREAM, [&eventDispatcher](size_t /*offset*/, httplib::DataSink &sink) {
+#else
+            res.set_chunked_content_provider(std::string(opencmw::MIME::EVENT_STREAM.typeName()), [&eventDispatcher](size_t /*offset*/, httplib::DataSink &sink) {
+#endif
                 eventDispatcher.wait_event(sink);
                 return true;
             });
