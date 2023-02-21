@@ -43,12 +43,12 @@ jobs:
         cmake-build-type: [ Release, Debug ]
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
       with:
         fetch-depth: 100
 
     - name: Cache
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       env:
         cache-name: cache-fetchContent-cache
       with:
@@ -155,7 +155,7 @@ jobs:
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       run: cmake --build . --config ${{ matrix.cmake-build-type }} --target coverage
 
-    - uses: codecov/codecov-action@v2
+    - uses: codecov/codecov-action@v3
       if: matrix.configurations.name == env.REFERENCE_CONFIG && matrix.cmake-build-type == 'Debug'
       with:
         files: ${{runner.workspace}}/build/coverage.xml
