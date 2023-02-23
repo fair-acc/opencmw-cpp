@@ -256,7 +256,7 @@ private:
         if (!cmd.callback) {
             return;
         }
-        const bool msgOK            = result->status > 200 && result->status < 400 && errorMsgExt.empty();
+        const bool msgOK            = result->status >= 200 && result->status < 400 && errorMsgExt.empty();
         const bool hasErrorMessage  = (!msgOK && !result->body.empty()) || !errorMsgExt.empty();
         const auto selectedErrorMsg = [&result, &errorMsgExt](const bool hasError) noexcept { return fmt::format("{}{}", hasError ? "\n" : "", errorMsgExt.empty() ? result->body : errorMsgExt); };
         const auto httpError        = [status = result->status]() noexcept { return httplib::detail::status_message(status); };
