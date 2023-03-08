@@ -4,6 +4,9 @@ set(CMAKE_CXX_STANDARD 20)
 project(opencmw-cpp CXX)
 
 include(cmake/Dependencies.cmake)
+if (NOT EMSCRIPTEN)
+    include(cmake/DependenciesNative.cmake)
+endif ()
 # prefers usage via conan, but cmake should work, but doesn't find gsl-lite in targets
 include(cmake/StandardProjectSettings.cmake)
 include(cmake/PreventInSourceBuilds.cmake)

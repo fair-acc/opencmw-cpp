@@ -1,7 +1,10 @@
 add_subdirectory(core)
 add_subdirectory(utils)
 add_subdirectory(serialiser)
-add_subdirectory(disruptor)
+
+if (NOT EMSCRIPTEN)
+        add_subdirectory(disruptor)
+endif ()
 
 if (USE_LIBCPP)
         # does not work, because <source_location> and std::jthread is missing
