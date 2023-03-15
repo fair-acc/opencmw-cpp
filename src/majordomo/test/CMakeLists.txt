@@ -24,6 +24,9 @@ function(opencmw_add_test_app name sources)
     message("Test sources: ${test_SRCS}")
     add_executable(${name} ${test_SRCS})
 
+    # We need concepts to be visible
+    target_include_directories(${name} PRIVATE ${CMAKE_SOURCE_DIR})
+
     target_link_libraries(${name}
         PUBLIC
             opencmw_project_warnings
@@ -40,8 +43,8 @@ function(opencmw_add_test_catch2 name sources)
     catch_discover_tests(${name})
 endfunction()
 
+
 opencmw_add_test_app(majordomo_testapp testapp.cpp)
-opencmw_add_test_app(majordomo_rest_server restserver_testapp.cpp)
 opencmw_add_test_app(majordomo_benchmark majordomo_benchmark.cpp)
 
 opencmw_add_test_catch2(base64pp_tests base64pp_tests.cpp)

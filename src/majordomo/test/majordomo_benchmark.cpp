@@ -1,10 +1,11 @@
-#include "helpers.hpp"
-
 #include <majordomo/Broker.hpp>
 #include <majordomo/Constants.hpp>
 #include <majordomo/Message.hpp>
 #include <majordomo/MockClient.hpp>
 #include <majordomo/Worker.hpp>
+
+// Concepts and tests use common types
+#include <concepts/majordomo/helpers.hpp>
 
 #include <fmt/format.h>
 

@@ -1,5 +1,3 @@
-#include "helpers.hpp"
-
 #include <majordomo/Broker.hpp>
 #include <majordomo/Settings.hpp>
 #include <majordomo/Worker.hpp>
@@ -14,6 +12,9 @@
 
 #include <exception>
 #include <unordered_map>
+
+// Concepts and tests use common types
+#include <concepts/majordomo/helpers.hpp>
 
 using opencmw::majordomo::Broker;
 using opencmw::majordomo::BrokerMessage;
@@ -41,7 +42,7 @@ using opencmw::majordomo::Worker;
  * The handler must have a "handle" function taking the raw RequestContext, the input and output context objects (of type ContextType), and the input and output objects,
  * where the raw context and the output context and output object can be modified by the handler.
  *
- * In the following, somewhat nonsensical, example, the ContextType is TestContext, the InputType is AddressRequest, and the OutputType is AddressEntry.
+ * In the following, somewhat nonsensical, example, the ContextType is TestContext, the InputType is AddressQueryRequest, and the OutputType is AddressEntry.
  */
 
 /**
@@ -62,27 +63,11 @@ ENABLE_REFLECTION_FOR(TestContext, ctx, contentType)
 /**
  * Request type, here simply taking the ID of the object that is wanted
  */
-struct AddressRequest {
+struct AddressQueryRequest {
     int id;
 };
 
-ENABLE_REFLECTION_FOR(AddressRequest, id)
-
-/**
- * Reply type/
- *
- * This is a simplistic example, it could also be a nested structure with reflectable members, or contain vectors, etc.
- */
-struct AddressEntry {
-    int         id;
-    std::string name;
-    std::string street;
-    int         streetNumber;
-    std::string postalCode;
-    std::string city;
-};
-
-ENABLE_REFLECTION_FOR(AddressEntry, name, street, streetNumber, postalCode, city)
+ENABLE_REFLECTION_FOR(AddressQueryRequest, id)
 
 /**
  * The handler implementing the MajordomoHandler concept, here holding a single hardcoded address entry.
@@ -91,13 +76,13 @@ struct TestHandler {
     std::unordered_map<int, AddressEntry> _entries;
 
     TestHandler() {
-        _entries.emplace(42, AddressEntry{ 42, "Santa Claus", "Elf Road", 123, "88888", "North Pole" });
+        _entries[42] = AddressEntry{ "Santa Claus", "Elf Road", 123, "88888", "North Pole", false };
     }
 
     /**
      * The handler function that the handler is required to implement.
      */
-    void operator()(opencmw::majordomo::RequestContext & /*rawCtx*/, const TestContext & /*requestContext*/, const AddressRequest &request, TestContext & /*replyContext*/, AddressEntry &output) {
+    void operator()(opencmw::majordomo::RequestContext & /*rawCtx*/, const TestContext & /*requestContext*/, const AddressQueryRequest &request, TestContext & /*replyContext*/, AddressEntry &output) {
         // we just use the request to look up the address, return it if found, or throw an exception if not.
         // MajordomoWorker/BasicMdpWorker translate any exception from the handler or the deserialisation into an error reply (message.body() empty, error message in message.error())
 
@@ -124,7 +109,7 @@ TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][major
     opencmw::query::registerTypes(TestContext(), broker);
 
     // Create MajordomoWorker with our domain objects, and our TestHandler.
-    Worker<"addressbook", TestContext, AddressRequest, AddressEntry, opencmw::majordomo::description<"An Addressbook service">> worker(broker, TestHandler());
+    Worker<"addressbook", TestContext, AddressQueryRequest, AddressEntry, opencmw::majordomo::description<"An Addressbook service">> worker(broker, TestHandler());
 
     // Run worker and broker in separate threads
     RunInThread brokerRun(broker);
@@ -133,7 +118,7 @@ TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][major
     REQUIRE(waitUntilServiceAvailable(broker.context, "addressbook"));
 
     // The client used here is a simple test client, operating on raw messages.
-    // Later, a client class analog to MajordomoWorker, sending AddressRequest, and receiving AddressEntry, could be used.
+    // Later, a client class analog to MajordomoWorker, sending AddressQueryRequest, and receiving AddressEntry, could be used.
     TestNode<MdpMessage> client(broker.context);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
@@ -173,7 +158,7 @@ TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][major
         REQUIRE(reply->clientRequestId() == "1");
         REQUIRE(reply->error() == "");
         REQUIRE(reply->topic() == "/addresses?contentType=application%2Fjson&ctx=FAIR.SELECTOR.ALL");
-        REQUIRE(reply->body() == "{\n\"name\": \"Santa Claus\",\n\"street\": \"Elf Road\",\n\"streetNumber\": 123,\n\"postalCode\": \"88888\",\n\"city\": \"North Pole\"\n}");
+        REQUIRE(reply->body() == "{\n\"name\": \"Santa Claus\",\n\"street\": \"Elf Road\",\n\"streetNumber\": 123,\n\"postalCode\": \"88888\",\n\"city\": \"North Pole\",\n\"isCurrent\": false\n}");
     }
 }
 
@@ -182,7 +167,7 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
     Broker<ADMIN, ANY> broker("TestBroker", testSettings());
     opencmw::query::registerTypes(TestContext(), broker);
 
-    Worker<"addressbook", TestContext, AddressRequest, AddressEntry, rbac<ADMIN, NONE>, description<"API description">> worker(broker, TestHandler());
+    Worker<"addressbook", TestContext, AddressQueryRequest, AddressEntry, rbac<ADMIN, NONE>, description<"API description">> worker(broker, TestHandler());
     REQUIRE(worker.serviceDescription() == "API description");
 
     RunInThread brokerRun(broker);
@@ -214,7 +199,7 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
         REQUIRE(reply->clientRequestId() == "1");
         REQUIRE(reply->error() == "");
         REQUIRE(reply->topic() == "/addresses?contentType=application%2Fjson&ctx=FAIR.SELECTOR.ALL");
-        REQUIRE(reply->body() == "{\n\"name\": \"Santa Claus\",\n\"street\": \"Elf Road\",\n\"streetNumber\": 123,\n\"postalCode\": \"88888\",\n\"city\": \"North Pole\"\n}");
+        REQUIRE(reply->body() == "{\n\"name\": \"Santa Claus\",\n\"street\": \"Elf Road\",\n\"streetNumber\": 123,\n\"postalCode\": \"88888\",\n\"city\": \"North Pole\",\n\"isCurrent\": false\n}");
     }
 
     // GET with unknown role or empty role fails
@@ -303,12 +288,12 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
     {
         // send a notification that's not received by the client due to the non-matching context
         const auto entry = AddressEntry{
-            .id           = 1,
             .name         = "Sandman",
             .street       = "Some Dune",
             .streetNumber = 123,
             .postalCode   = "88888",
-            .city         = "Sahara"
+            .city         = "Sahara",
+            .isCurrent    = true
         };
         REQUIRE(worker.notify("/newAddress", TestContext{ .ctx = opencmw::TimingCtx(-1, 1, -1, -1), .contentType = opencmw::MIME::JSON }, entry));
     }
@@ -316,12 +301,12 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
     {
         // send a notification that's received (context matches)
         const auto entry = AddressEntry{
-            .id           = 1,
             .name         = "Easter Bunny",
             .street       = "Carrot Road",
             .streetNumber = 123,
             .postalCode   = "88888",
-            .city         = "Easter Island"
+            .city         = "Easter Island",
+            .isCurrent    = true
         };
         REQUIRE(worker.notify("/newAddress", TestContext{ .ctx = opencmw::TimingCtx(1), .contentType = opencmw::MIME::JSON }, entry));
         REQUIRE(worker.activeSubscriptions().size() == 1);
@@ -336,6 +321,6 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
         REQUIRE(notify->sourceId() == "/newAddress?ctx=FAIR.SELECTOR.C=1");
         REQUIRE(notify->topic() == "/newAddress?contentType=application%2Fjson&ctx=FAIR.SELECTOR.C%3D1");
         REQUIRE(notify->error().empty());
-        REQUIRE(notify->body() == "{\n\"name\": \"Easter Bunny\",\n\"street\": \"Carrot Road\",\n\"streetNumber\": 123,\n\"postalCode\": \"88888\",\n\"city\": \"Easter Island\"\n}");
+        REQUIRE(notify->body() == "{\n\"name\": \"Easter Bunny\",\n\"street\": \"Carrot Road\",\n\"streetNumber\": 123,\n\"postalCode\": \"88888\",\n\"city\": \"Easter Island\",\n\"isCurrent\": true\n}");
     }
 }

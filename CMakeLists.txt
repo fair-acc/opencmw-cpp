@@ -14,6 +14,8 @@ include(GNUInstallDirs)
 
 include(cmake/CMakeRC.cmake)
 
+configure_file(scripts/run_rest_tests.sh.in scripts/run_rest_tests.sh @ONLY)
+
 set(USE_LIBCPP)
 
 # Check for supported compiler versions
@@ -31,7 +33,7 @@ elseif (EMSCRIPTEN)
     message(WARN "You are building with Emscripten Clang. Be advised that support is limited to working in conjunction with"
             " libc++ and certain modules. libc++ has been enabled.")
     add_compile_options(-Wno-shorten-64-to-32 -fwasm-exceptions)
-    add_link_options(-fwasm-exceptions)
+    add_link_options(-fwasm-exceptions -sFETCH=1)
     set(USE_LIBCPP 1)
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 15.0.0)

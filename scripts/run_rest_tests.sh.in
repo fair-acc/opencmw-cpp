@@ -1,0 +1,13 @@
+#!/bin/bash
+
+export DISABLE_REST_HTTPS=1
+cd @CMAKE_BINARY_DIR@
+
+for current_test in "src/client/test/rest_client_only_tests"; do
+    echo "Current test is: ${current_test}"
+
+    @CMAKE_SOURCE_DIR@/scripts/wasm_run_test.py --server-build-dir=@CMAKE_BINARY_DIR@/build_native/ --test-name=${current_test}
+    killall MajordomoRest_example
+    @CMAKE_SOURCE_DIR@/scripts/native_run_test.py --server-build-dir=@CMAKE_BINARY_DIR@/build_native/ --test-name=${current_test}
+    killall MajordomoRest_example
+done

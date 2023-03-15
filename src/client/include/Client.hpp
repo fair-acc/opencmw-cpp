@@ -391,7 +391,7 @@ public:
         _poller.join();
     }
 
-    void request(Command &cmd) override {
+    void request(Command cmd) override {
         std::size_t req_id = 0;
         if (cmd.callback) {
             if (cmd.command == mdp::Command::Get || cmd.command == mdp::Command::Set) {
