@@ -13,27 +13,9 @@
 #include <MdpMessage.hpp>
 #include <URI.hpp>
 
+#include "ClientCommon.hpp"
+
 namespace opencmw::client {
-
-using opencmw::uri_check::STRICT;
-using timePoint = std::chrono::time_point<std::chrono::system_clock>;
-using namespace std::chrono_literals;
-
-struct Request {
-    URI<STRICT>                         uri;
-    std::function<void(mdp::Message &)> callback;
-    timePoint                           timestamp_received = std::chrono::system_clock::now();
-};
-
-struct Subscription {
-    URI<STRICT>                         uri;
-    std::function<void(mdp::Message &)> callback;
-    timePoint                           timestamp_received = std::chrono::system_clock::now();
-};
-
-struct Command : public mdp::Message {
-    std::function<void(const mdp::Message &)> callback; // callback or target ring buffer
-};
 
 static constexpr std::size_t CMD_RB_SIZE = 32;
 using CmdBufferType                      = opencmw::disruptor::RingBuffer<Command, CMD_RB_SIZE, opencmw::disruptor::BlockingWaitStrategy>;
@@ -41,10 +23,10 @@ using CmdPollerType                      = disruptor::EventPoller<Command, CMD_R
 
 class ClientBase {
 public:
-    virtual ~ClientBase()                               = default;
-    virtual std::vector<std::string> protocols()        = 0;
-    virtual void                     stop()             = 0;
-    virtual void                     request(Command &) = 0;
+    virtual ~ClientBase()                             = default;
+    virtual std::vector<std::string> protocols()      = 0;
+    virtual void                     stop()           = 0;
+    virtual void                     request(Command) = 0;
 };
 
 /*

@@ -1,7 +1,9 @@
-#include "../../majordomo/test/helpers.hpp" // TestNode
 #include <catch2/catch.hpp>
 #include <majordomo/MockClient.hpp>
 #include <MockServer.hpp>
+
+// Concepts and tests use common types
+#include <concepts/majordomo/helpers.hpp>
 
 TEST_CASE("SET/GET of MockServer", "[mock-server][lambda_handler]") {
     using namespace opencmw::majordomo;

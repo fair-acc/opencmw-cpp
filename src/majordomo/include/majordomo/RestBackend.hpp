@@ -245,9 +245,9 @@ public:
         : notificationSubscriptionSocket(context, ZMQ_DEALER)
         , requestResponseSocket(context, ZMQ_SUB) {}
 
-    Connection(const Connection &other) = delete;
+    Connection(const Connection &other)       = delete;
     Connection &operator=(const Connection &) = delete;
-    Connection &operator=(Connection &&) = delete;
+    Connection &operator=(Connection &&)      = delete;
 
     // Here be dragons! This is not to be used after
     // the connection was involved in any threading code
@@ -378,7 +378,7 @@ public:
                     // Expired subscriptions cleanup
                     std::vector<const detail::SubscriptionInfo *> expiredSubscriptions;
                     for (auto &[info, connection] : _connectionForService) {
-                        fmt::print("Reference count is {}\n", connection->referenceCount());
+                        // fmt::print("Reference count is {}\n", connection->referenceCount());
                         if (connection->referenceCount() == 0) {
                             auto connectionLock = connection->writeLock();
                             if (connection->referenceCount() != 0) {
@@ -395,7 +395,7 @@ public:
 
                     // Reading the missed messages
                     const auto connectionCount = _connectionForService.size();
-                    fmt::print("Current connection count is {}\n", connectionCount);
+                    // fmt::print("Current connection count is {}\n", connectionCount);
 
                     if (connectionCount != 0) {
                         std::vector<detail::SubscriptionInfo> subscriptions;
@@ -657,11 +657,11 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
 
                 message.setBody(std::string_view(requestDataBegin, requestData.cend()), MessageFrame::dynamic_bytes_tag{});
             }
+        } else if (!bodyOverride.empty()) {
+            message.setBody(bodyOverride, MessageFrame::dynamic_bytes_tag{});
 
         } else if (!request.body.empty()) {
             message.setBody(request.body, MessageFrame::dynamic_bytes_tag{});
-        } else {
-            message.setBody(bodyOverride, MessageFrame::dynamic_bytes_tag{});
         }
 
         auto connection = connect();

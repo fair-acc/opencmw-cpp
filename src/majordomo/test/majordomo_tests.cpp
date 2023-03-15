@@ -1,5 +1,3 @@
-#include "helpers.hpp"
-
 #include <majordomo/Broker.hpp>
 #include <majordomo/Constants.hpp>
 #include <majordomo/MockClient.hpp>
@@ -12,6 +10,9 @@
 #include <charconv>
 #include <cstdlib>
 #include <thread>
+
+// Concepts and tests use common types
+#include <concepts/majordomo/helpers.hpp>
 
 using namespace opencmw::majordomo;
 using namespace std::chrono_literals;
@@ -1111,7 +1112,7 @@ TEST_CASE("BasicWorker run loop quits when broker quits", "[worker]") {
     auto                     quitBroker = std::jthread([&broker]() {
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
         broker.shutdown();
-                        });
+    });
 
     worker.run(); // returns when broker disappears
     quitBroker.join();
