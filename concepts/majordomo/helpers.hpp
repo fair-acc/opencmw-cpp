@@ -258,9 +258,9 @@ public:
 
 template<typename T>
 concept Shutdownable = requires(T s) {
-                           s.run();
-                           s.shutdown();
-                       };
+    s.run();
+    s.shutdown();
+};
 
 template<Shutdownable T>
 struct RunInThread {
@@ -403,8 +403,8 @@ public:
 
 class NonCopyableMovableHandler {
 public:
-    NonCopyableMovableHandler()                                                 = default;
-    NonCopyableMovableHandler(NonCopyableMovableHandler &&) noexcept            = default;
+    NonCopyableMovableHandler()                                      = default;
+    NonCopyableMovableHandler(NonCopyableMovableHandler &&) noexcept = default;
     NonCopyableMovableHandler &operator=(NonCopyableMovableHandler &&) noexcept = default;
 
     void                       operator()(opencmw::majordomo::RequestContext &) {}

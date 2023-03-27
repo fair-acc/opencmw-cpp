@@ -65,7 +65,7 @@ int main(int argc, char **argv) {
     majordomo::Broker secondaryBroker("SecondaryTestBroker", { .dnsAddress = brokerRouterAddress->str() });
     std::jthread      secondaryBrokerThread([&secondaryBroker] {
         secondaryBroker.run();
-    });
+         });
 
     //
     majordomo::Worker<"helloWorld", SimpleContext, SimpleRequest, SimpleReply, majordomo::description<"A friendly service saying hello">> helloWorldWorker(primaryBroker, HelloWorldHandler());

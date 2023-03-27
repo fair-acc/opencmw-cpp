@@ -43,8 +43,7 @@ struct rest_test_step {
 
     rest_test_state                                    _state;
 
-    rest_test_step(opencmw::client::RestClient &client, auto endpoint, std::function<bool(const opencmw::mdp::Message &)> resultChecker = no_check, std::size_t expectedRepliesCount = 1)
-        requires(command != opencmw::mdp::Command::Set)
+    rest_test_step(opencmw::client::RestClient &client, auto endpoint, std::function<bool(const opencmw::mdp::Message &)> resultChecker = no_check, std::size_t expectedRepliesCount = 1) requires(command != opencmw::mdp::Command::Set)
         : _client(client), _resultChecker(std::move(resultChecker)), _expectedRepliesCount(expectedRepliesCount) {
         _command.command  = command;
         _command.endpoint = endpoint;
@@ -61,8 +60,7 @@ struct rest_test_step {
         };
     }
 
-    rest_test_step(opencmw::client::RestClient &client, auto endpoint, std::string new_data)
-        requires(command == opencmw::mdp::Command::Set)
+    rest_test_step(opencmw::client::RestClient &client, auto endpoint, std::string new_data) requires(command == opencmw::mdp::Command::Set)
         : _client(client) {
         _command.command  = command;
         _command.data     = opencmw::IoBuffer(new_data.data(), new_data.size());
@@ -72,7 +70,7 @@ struct rest_test_step {
         };
     }
 
-    rest_test_step(const rest_test_step &)            = delete;
+    rest_test_step(const rest_test_step &) = delete;
     rest_test_step &operator=(const rest_test_step &) = delete;
 
     // Runs this test step
@@ -132,7 +130,7 @@ struct rest_test_runner {
         step.run(rest_test_state{});
     }
 
-    rest_test_runner(const rest_test_runner &)            = delete;
+    rest_test_runner(const rest_test_runner &) = delete;
     rest_test_runner &operator=(const rest_test_runner &) = delete;
 };
 
