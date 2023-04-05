@@ -4,6 +4,7 @@
 
 #include <URI.hpp>
 
+#define RESTCLIENT_IMPLEMENTATION
 #include "RestClient.hpp"
 
 #include <cmrc/cmrc.hpp>

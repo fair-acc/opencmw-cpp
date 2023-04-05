@@ -3,6 +3,7 @@
 #include <thread>
 
 #include <MIME.hpp>
+#define RESTCLIENT_IMPLEMENTATION
 #include <RestClient.hpp>
 #include <URI.hpp>
 

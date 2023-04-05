@@ -60,6 +60,13 @@ struct ClientCertificates {
 
 namespace detail {
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
+
+int         readCertificateBundleFromBuffer(X509_STORE &cert_store, const std::string_view &X509_ca_bundle);
+X509_STORE *createCertificateStore(const std::string_view &X509_ca_bundle);
+X509       *readServerCertificateFromFile(const std::string_view &X509_ca_bundle);
+EVP_PKEY   *readServerPrivateKeyFromFile(const std::string_view &X509_private_key);
+
+#ifdef RESTCLIENT_IMPLEMENTATION
 int readCertificateBundleFromBuffer(X509_STORE &cert_store, const std::string_view &X509_ca_bundle) {
     BIO *cbio = BIO_new_mem_buf(X509_ca_bundle.data(), static_cast<int>(X509_ca_bundle.size()));
     if (!cbio) {
@@ -122,6 +129,7 @@ EVP_PKEY *readServerPrivateKeyFromFile(const std::string_view &X509_private_key)
     EVP_PKEY_free(privateKeyX509);
     throw std::invalid_argument(fmt::format("failed to read private key from buffer"));
 }
+#endif
 
 #endif
 
