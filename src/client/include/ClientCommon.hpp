@@ -5,6 +5,7 @@
 #include <functional>
 
 #include <MdpMessage.hpp>
+#include <MIME.hpp>
 #include <URI.hpp>
 
 namespace opencmw::client {
