@@ -34,9 +34,9 @@ auto subscribe_step   = rest_test_step<Command::Subscribe>(client, subscription_
 auto unsubscribe_step = rest_test_step<Command::Unsubscribe>(client, subscription_uri, no_check, 0);
 
 auto run              = rest_test_runner(
-        get_step,
-        subscribe_step,
-        unsubscribe_step);
+                     get_step,
+                     subscribe_step,
+                     unsubscribe_step);
 } // namespace test_state
 
 int main() {

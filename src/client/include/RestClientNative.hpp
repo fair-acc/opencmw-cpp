@@ -351,7 +351,7 @@ private:
                     };
                     if (const httplib::Result &result = redirect_get(endpoint, pollHeaders)) {
                         returnMdpMessage(cmd, result);
-                    } else { // failed or server is down -> wait until retry
+                    } else {                                      // failed or server is down -> wait until retry
                         std::this_thread::sleep_for(cmd.timeout); // time-out until potential retry
                         if (_run) {
                             returnMdpMessage(cmd, result, fmt::format("Long-Polling-GET request failed for {}: {}", cmd.endpoint.str(), result.error()));
