@@ -536,7 +536,7 @@ public:
                     res.set_header("Allow", "GET, POST, PUT, OPTIONS");
                     res.set_header("Access-Control-Allow-Origin", "*");
                     res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
-                    res.set_header("Access-Control-Allow-Headers", "X-OPENCMW-METHOD");
+                    res.set_header("Access-Control-Allow-Headers", "X-OPENCMW-METHOD,Content-Type");
                     res.set_header("Access-Control-Max-Age", "86400");
                 });
 
