@@ -265,7 +265,7 @@ private:
         };
 
         // TODO: Pass the payload as POST body: emscripten_fetch(&attr, uri.relativeRef()->data());
-        emscripten_fetch(&attr, URI<>::factory(uri).addQueryParameter("_bodyOverride", body).build().relativeRef()->data());
+        emscripten_fetch(&attr, URI<>::factory(uri).addQueryParameter("_bodyOverride", body).build().str().data());
     }
 
     void startSubscription(Command &&cmd) {
