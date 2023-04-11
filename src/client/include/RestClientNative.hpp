@@ -60,7 +60,7 @@ struct ClientCertificates {
 
 namespace detail {
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
-int readCertificateBundleFromBuffer(X509_STORE &cert_store, const std::string_view &X509_ca_bundle) {
+inline int readCertificateBundleFromBuffer(X509_STORE &cert_store, const std::string_view &X509_ca_bundle) {
     BIO *cbio = BIO_new_mem_buf(X509_ca_bundle.data(), static_cast<int>(X509_ca_bundle.size()));
     if (!cbio) {
         return -1;
@@ -90,7 +90,7 @@ int readCertificateBundleFromBuffer(X509_STORE &cert_store, const std::string_vi
     return count;
 }
 
-X509_STORE *createCertificateStore(const std::string_view &X509_ca_bundle) {
+inline X509_STORE *createCertificateStore(const std::string_view &X509_ca_bundle) {
     X509_STORE *cert_store = X509_STORE_new();
     if (detail::readCertificateBundleFromBuffer(*cert_store, X509_ca_bundle) <= 0) {
         X509_STORE_free(cert_store);
@@ -99,7 +99,7 @@ X509_STORE *createCertificateStore(const std::string_view &X509_ca_bundle) {
     return cert_store;
 }
 
-X509 *readServerCertificateFromFile(const std::string_view &X509_ca_bundle) {
+inline X509 *readServerCertificateFromFile(const std::string_view &X509_ca_bundle) {
     BIO *certBio = BIO_new(BIO_s_mem());
     BIO_write(certBio, X509_ca_bundle.data(), static_cast<int>(X509_ca_bundle.size()));
     X509 *certX509 = PEM_read_bio_X509(certBio, nullptr, nullptr, nullptr);
@@ -111,7 +111,7 @@ X509 *readServerCertificateFromFile(const std::string_view &X509_ca_bundle) {
     throw std::invalid_argument(fmt::format("failed to read certificate from buffer:\n#---start---\n{}\n#---end---\n", X509_ca_bundle));
 }
 
-EVP_PKEY *readServerPrivateKeyFromFile(const std::string_view &X509_private_key) {
+inline EVP_PKEY *readServerPrivateKeyFromFile(const std::string_view &X509_private_key) {
     BIO *certBio = BIO_new(BIO_s_mem());
     BIO_write(certBio, X509_private_key.data(), static_cast<int>(X509_private_key.size()));
     EVP_PKEY *privateKeyX509 = PEM_read_bio_PrivateKey(certBio, nullptr, nullptr, nullptr);
@@ -343,7 +343,7 @@ private:
                     };
                     if (const httplib::Result &result = redirect_get(endpoint, pollHeaders)) {
                         returnMdpMessage(cmd, result);
-                    } else { // failed or server is down -> wait until retry
+                    } else {                                      // failed or server is down -> wait until retry
                         std::this_thread::sleep_for(cmd.timeout); // time-out until potential retry
                         if (_run) {
                             returnMdpMessage(cmd, result, fmt::format("Long-Polling-GET request failed for {}: {}", cmd.endpoint.str(), result.error()));
