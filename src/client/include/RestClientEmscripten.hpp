@@ -55,9 +55,9 @@ struct FetchPayload {
     FetchPayload(Command &&_command)
         : command(std::move(_command)) {}
 
-    FetchPayload(const FetchPayload &other)                = delete;
-    FetchPayload(FetchPayload &&other) noexcept            = default;
-    FetchPayload &operator=(const FetchPayload &other)     = delete;
+    FetchPayload(const FetchPayload &other)     = delete;
+    FetchPayload(FetchPayload &&other) noexcept = default;
+    FetchPayload &operator=(const FetchPayload &other) = delete;
     FetchPayload &operator=(FetchPayload &&other) noexcept = default;
 
     void          returnMdpMessage(unsigned short status, std::string_view body, std::string_view errorMsgExt = "") noexcept {
@@ -107,9 +107,9 @@ struct SubscriptionPayload : FetchPayload {
         : FetchPayload(std::move(_command))
         , _mimeType(std::move(mimeType)) {}
 
-    SubscriptionPayload(const SubscriptionPayload &other)                = delete;
-    SubscriptionPayload(SubscriptionPayload &&other) noexcept            = default;
-    SubscriptionPayload &operator=(const SubscriptionPayload &other)     = delete;
+    SubscriptionPayload(const SubscriptionPayload &other)     = delete;
+    SubscriptionPayload(SubscriptionPayload &&other) noexcept = default;
+    SubscriptionPayload &operator=(const SubscriptionPayload &other) = delete;
     SubscriptionPayload &operator=(SubscriptionPayload &&other) noexcept = default;
 
     void                 requestNext() {
@@ -265,7 +265,7 @@ private:
         };
 
         // TODO: Pass the payload as POST body: emscripten_fetch(&attr, uri.relativeRef()->data());
-        emscripten_fetch(&attr, URI<>::factory(uri).addQueryParameter("_bodyOverride", body).build().relativeRef()->data());
+        emscripten_fetch(&attr, URI<>::factory(uri).addQueryParameter("_bodyOverride", body).build().str().data());
     }
 
     void startSubscription(Command &&cmd) {
