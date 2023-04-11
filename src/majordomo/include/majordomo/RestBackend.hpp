@@ -245,9 +245,9 @@ public:
         : notificationSubscriptionSocket(context, ZMQ_DEALER)
         , requestResponseSocket(context, ZMQ_SUB) {}
 
-    Connection(const Connection &other)       = delete;
+    Connection(const Connection &other) = delete;
     Connection &operator=(const Connection &) = delete;
-    Connection &operator=(Connection &&)      = delete;
+    Connection &operator=(Connection &&) = delete;
 
     // Here be dragons! This is not to be used after
     // the connection was involved in any threading code
@@ -536,7 +536,7 @@ public:
                     res.set_header("Allow", "GET, POST, PUT, OPTIONS");
                     res.set_header("Access-Control-Allow-Origin", "*");
                     res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
-                    res.set_header("Access-Control-Allow-Headers", "X-OPENCMW-METHOD");
+                    res.set_header("Access-Control-Allow-Headers", "X-OPENCMW-METHOD,Content-Type");
                     res.set_header("Access-Control-Max-Age", "86400");
                 });
 
