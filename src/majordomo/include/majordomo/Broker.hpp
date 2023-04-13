@@ -649,7 +649,7 @@ private:
         };
 
         for (auto &[name, service] : _services) {
-            if (!name.starts_with(serviceName)) continue;
+            if (!serviceName.starts_with(name)) continue;
             if (!bestService || lessByLength(name, bestServiceName)) {
                 bestServiceName = name;
                 bestService     = std::addressof(service);
