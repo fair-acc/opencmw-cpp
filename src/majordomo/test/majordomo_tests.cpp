@@ -581,6 +581,132 @@ TEST_CASE("One client/one worker roundtrip", "[broker][roundtrip]") {
     REQUIRE(disconnect->rbacToken() == "RBAC=ADMIN,abcdef12345");
 }
 
+TEST_CASE("Test service matching", "[broker][name-matcher]") {
+    using opencmw::majordomo::Broker;
+    using opencmw::majordomo::MdpMessage;
+
+    Broker               broker("testbroker", testSettings());
+
+    TestNode<MdpMessage> worker(broker.context);
+    REQUIRE(worker.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
+
+    TestNode<MdpMessage> client(broker.context);
+    REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
+
+    auto ready = MdpMessage::createWorkerMessage(Command::Ready);
+    ready.setServiceName("/DeviceA/dashboard", static_tag);
+    ready.setBody("An example worker serving different dashbards", static_tag);
+    ready.setRbacToken("rbacToken", static_tag);
+    worker.send(ready);
+
+    broker.processMessages();
+
+    {
+        auto request = MdpMessage::createClientMessage(Command::Get);
+        request.setServiceName("/DeviceA/dashboard", static_tag);
+        request.setClientRequestId("1", static_tag);
+        request.setTopic("/DeviceA/dashboard", static_tag);
+        request.setRbacToken("rbacToken", static_tag);
+        client.send(request);
+
+        broker.processMessages();
+
+        const auto requestAtWorker = worker.tryReadOneSkipHB(3);
+        REQUIRE(requestAtWorker.has_value());
+        REQUIRE(requestAtWorker->isValid());
+        REQUIRE(requestAtWorker->isWorkerMessage());
+        REQUIRE(requestAtWorker->command() == Command::Get);
+        REQUIRE(!requestAtWorker->clientSourceId().empty());
+        REQUIRE(requestAtWorker->clientRequestId() == "1");
+        REQUIRE(requestAtWorker->topic() == "/DeviceA/dashboard");
+        REQUIRE(requestAtWorker->body().empty());
+        REQUIRE(requestAtWorker->error().empty());
+        REQUIRE(requestAtWorker->rbacToken() == "rbacToken");
+
+        auto replyFromWorker = MdpMessage::createWorkerMessage(Command::Final);
+        replyFromWorker.setClientSourceId(requestAtWorker->clientSourceId(), dynamic_tag);
+        replyFromWorker.setClientRequestId("1", static_tag);
+        replyFromWorker.setTopic("/DeviceA/dashboard/default", static_tag);
+        replyFromWorker.setBody("Testreply", static_tag);
+        replyFromWorker.setRbacToken("rbac_worker", static_tag);
+        worker.send(replyFromWorker);
+
+        broker.processMessages();
+
+        const auto reply = client.tryReadOneSkipHB(3);
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->isClientMessage());
+        REQUIRE(reply->command() == Command::Final);
+        REQUIRE(reply->serviceName() == "/DeviceA/dashboard");
+        REQUIRE(reply->clientRequestId() == "1");
+        REQUIRE(reply->topic() == "/DeviceA/dashboard/default");
+        REQUIRE(reply->body() == "Testreply");
+        REQUIRE(reply->error().empty());
+        REQUIRE(reply->rbacToken() == "rbac_worker");
+    }
+
+    {
+        auto request = MdpMessage::createClientMessage(Command::Get);
+        request.setServiceName("/DeviceA/dashboard/main", static_tag);
+        request.setClientRequestId("2", static_tag);
+        request.setTopic("/DeviceA/dashboard/main?revision=12", static_tag);
+        request.setRbacToken("rbacToken", static_tag);
+        client.send(request);
+
+        broker.processMessages();
+
+        const auto requestAtWorker = worker.tryReadOneSkipHB(3);
+        REQUIRE(requestAtWorker.has_value());
+        REQUIRE(requestAtWorker->isValid());
+        REQUIRE(requestAtWorker->isWorkerMessage());
+        REQUIRE(requestAtWorker->command() == Command::Get);
+        REQUIRE(!requestAtWorker->clientSourceId().empty());
+        REQUIRE(requestAtWorker->clientRequestId() == "2");
+        REQUIRE(requestAtWorker->topic() == "/DeviceA/dashboard/main?revision=12");
+        REQUIRE(requestAtWorker->body().empty());
+        REQUIRE(requestAtWorker->error().empty());
+        REQUIRE(requestAtWorker->rbacToken() == "rbacToken");
+
+        auto replyFromWorker = MdpMessage::createWorkerMessage(Command::Final);
+        replyFromWorker.setClientSourceId(requestAtWorker->clientSourceId(), dynamic_tag);
+        replyFromWorker.setClientRequestId("2", static_tag);
+        replyFromWorker.setTopic("/DeviceA/dashboard/main?revision=12", static_tag);
+        replyFromWorker.setBody("Testreply", static_tag);
+        replyFromWorker.setRbacToken("rbac_worker", static_tag);
+        worker.send(replyFromWorker);
+
+        broker.processMessages();
+
+        const auto reply = client.tryReadOneSkipHB(3);
+        REQUIRE(reply.has_value());
+        REQUIRE(reply->isValid());
+        REQUIRE(reply->isClientMessage());
+        REQUIRE(reply->command() == Command::Final);
+        REQUIRE(reply->serviceName() == "/DeviceA/dashboard");
+        REQUIRE(reply->clientRequestId() == "2");
+        REQUIRE(reply->topic() == "/DeviceA/dashboard/main?revision=12");
+        REQUIRE(reply->body() == "Testreply");
+        REQUIRE(reply->error().empty());
+        REQUIRE(reply->rbacToken() == "rbac_worker");
+    }
+
+    broker.cleanup();
+
+    // verify that the broker shuts the worker down correctly
+    const auto disconnect = worker.tryReadOneSkipHB(3);
+    REQUIRE(disconnect.has_value());
+    REQUIRE(disconnect->isValid());
+    REQUIRE(disconnect->isWorkerMessage());
+    REQUIRE(disconnect->command() == Command::Disconnect);
+    REQUIRE(disconnect->serviceName() == "/DeviceA/dashboard");
+    REQUIRE(disconnect->clientRequestId().empty());
+    REQUIRE(disconnect->topic() == "//DeviceA/dashboard");
+    REQUIRE(disconnect->body() == "broker shutdown");
+    REQUIRE(disconnect->error().empty());
+    REQUIRE(disconnect->rbacToken() == "RBAC=ADMIN,abcdef12345");
+}
+
 TEST_CASE("Pubsub example using SUB client/DEALER worker", "[broker][pubsub_sub_dealer]") {
     using opencmw::majordomo::BindOption;
     using opencmw::majordomo::Broker;
@@ -1112,7 +1238,7 @@ TEST_CASE("BasicWorker run loop quits when broker quits", "[worker]") {
     auto                     quitBroker = std::jthread([&broker]() {
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
         broker.shutdown();
-    });
+                        });
 
     worker.run(); // returns when broker disappears
     quitBroker.join();

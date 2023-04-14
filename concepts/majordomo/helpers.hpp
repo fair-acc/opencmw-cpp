@@ -258,9 +258,9 @@ public:
 
 template<typename T>
 concept Shutdownable = requires(T s) {
-                           s.run();
-                           s.shutdown();
-                       };
+    s.run();
+    s.shutdown();
+};
 
 template<Shutdownable T>
 struct RunInThread {
@@ -336,6 +336,18 @@ public:
         return MessageType::receive(_socket);
     }
 
+    std::optional<MessageType> tryReadOneSkipHB(int retries, std::chrono::milliseconds timeout = std::chrono::milliseconds(3000)) {
+        int  i      = 0;
+        auto result = tryReadOne(timeout);
+        while (!result || !result->isValid() || result->command() == opencmw::majordomo::Command::Heartbeat) {
+            if (i++ >= retries) {
+                return {};
+            }
+            result = tryReadOne(timeout);
+        }
+        return result;
+    }
+
     void send(MessageType &message) {
         message.send(_socket).assertSuccess();
     }
@@ -403,8 +415,8 @@ public:
 
 class NonCopyableMovableHandler {
 public:
-    NonCopyableMovableHandler()                                                 = default;
-    NonCopyableMovableHandler(NonCopyableMovableHandler &&) noexcept            = default;
+    NonCopyableMovableHandler()                                      = default;
+    NonCopyableMovableHandler(NonCopyableMovableHandler &&) noexcept = default;
     NonCopyableMovableHandler &operator=(NonCopyableMovableHandler &&) noexcept = default;
 
     void                       operator()(opencmw::majordomo::RequestContext &) {}
