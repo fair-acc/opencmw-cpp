@@ -157,9 +157,9 @@ public:
     explicit ImageServiceWorker(const BrokerType &broker, std::chrono::milliseconds updateInterval)
         : super_t(broker, {}) {
         const auto fs = cmrc::testImages::get_filesystem();
-        for (const auto &path : fs.iterate_directory("/testImages")) {
+        for (const auto &path : fs.iterate_directory("/assets/testImages")) {
             if (path.is_file()) {
-                const auto file = fs.open(fmt::format("testImages/{}", path.filename()));
+                const auto file = fs.open(fmt::format("assets/testImages/{}", path.filename()));
                 imageData.push_back(std::vector<std::uint8_t>(file.begin(), file.end()));
             }
         }
