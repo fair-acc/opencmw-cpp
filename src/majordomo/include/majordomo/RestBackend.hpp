@@ -742,10 +742,10 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
     bool respondWithLongPoll(const httplib::Request &request, httplib::Response &response, const std::string_view &_service) {
         // TODO: After the URIs are formalized, rethink service and topic
         auto                     split = std::ranges::find(_service, '/');
-        std::string_view         service(_service.begin(), split);
-        std::string_view         topic(split, _service.end());
+        std::string              service(_service.begin(), split);
+        std::string              topic = "/"s + service + std::string(split, _service.end());
 
-        detail::SubscriptionInfo subscriptionInfo{ std::string(service), std::string(topic) };
+        detail::SubscriptionInfo subscriptionInfo{ service, topic };
 
         const auto               longPollingIdxIt = request.params.find("LongPollingIdx");
         if (longPollingIdxIt == request.params.end()) {
