@@ -156,7 +156,7 @@ struct SubscriptionPayload : FetchPayload {
             payload->onerror(fetch->status, std::string_view(fetch->data, detail::checkedStringViewSize(fetch->numBytes)), fetch->statusText);
             emscripten_fetch_close(fetch);
         };
-        emscripten_fetch(&attr, uri.relativeRef()->data());
+        emscripten_fetch(&attr, uri.str().data());
     }
 
     void onsuccess(unsigned short status, std::string_view data) {

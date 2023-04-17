@@ -786,6 +786,7 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         // Hoping we already have the requested value in the cache
         {
             const auto cache = fetchCache();
+            response.set_header("Access-Control-Allow-Origin", "*");
 
             if (longPollingIdxParam == "Next") {
                 return respondWithLongPollRedirect(request, response, cache.nextPollingIndex);
@@ -814,8 +815,6 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
             if (requestedLongPollingIdx < cache.firstCachedIndex) {
                 return detail::respondWithError(response, "Error: Requested LongPollingIdx is no longer cached");
             }
-
-            response.set_header("Access-Control-Allow-Origin", "*");
 
             if (cache.connection && requestedLongPollingIdx < cache.nextPollingIndex) {
                 auto connectionCacheLock = cache.connection->readLock();
