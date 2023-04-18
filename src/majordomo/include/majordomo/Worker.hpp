@@ -7,6 +7,9 @@
 #include <shared_mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
+#include <unordered_set>
+
 
 #include <fmt/format.h>
 
@@ -90,7 +93,7 @@ class BasicWorker {
     std::array<zmq_pollitem_t, 3>                            _pollerItems;
     SubscriptionMatcher                                      _subscriptionMatcher;
     mutable std::mutex                                       _activeSubscriptionsLock;
-    std::set<URI<RELAXED>>                                   _activeSubscriptions;
+    std::unordered_set<SubscriptionData>                                   _activeSubscriptions;
     Socket                                                   _notifyListenerSocket;
     std::unordered_map<std::thread::id, NotificationHandler> _notificationHandlers;
     std::shared_mutex                                        _notificationHandlersLock;
@@ -123,14 +126,10 @@ public:
         _subscriptionMatcher.addFilter<Filter>(key);
     }
 
-    std::set<URI<RELAXED>> activeSubscriptions() const noexcept {
+    std::unordered_set<SubscriptionData> activeSubscriptions() const noexcept {
         std::lock_guard        lockGuard(_activeSubscriptionsLock);
-        std::set<URI<RELAXED>> ret;
-        for (auto topic : _activeSubscriptions) {
-            auto copy = topic;
-            ret.emplace(copy);
-        }
-        return ret;
+        std::unordered_set<SubscriptionData> copy = _activeSubscriptions;
+        return copy;
     }
 
     void shutdown() {
@@ -255,16 +254,17 @@ private:
         }
 
         const auto topicString = data.substr(1);
-        const auto topic       = URI<RELAXED>(std::string(topicString));
+        // const auto topic       = URI<RELAXED>(std::string(topicString));
+        const SubscriptionData subscription(serviceName.data(), topicString, {});
 
         // this assumes that the broker does the subscribe/unsubscribe counting
         // for multiple clients and sends us a single sub/unsub for each topic
         if (data[0] == '\x1') {
             std::lock_guard lockGuard(_activeSubscriptionsLock);
-            _activeSubscriptions.insert(topic);
+            _activeSubscriptions.insert(subscription);
         } else {
             std::lock_guard lockGuard(_activeSubscriptionsLock);
-            _activeSubscriptions.erase(topic);
+            _activeSubscriptions.erase(subscription);
         }
 
         return true;
@@ -272,9 +272,10 @@ private:
 
     bool receiveNotificationMessage() {
         if (auto message = MdpMessage::receive(_notifyListenerSocket)) {
-            const auto topic                    = URI<RELAXED>(std::string(message->topic()));
-            const auto matchesNotificationTopic = [this, &topic](const auto &subscription) {
-                return _subscriptionMatcher(topic, subscription);
+            // const auto topic                    = URI<RELAXED>(std::string(message->topic()));
+            const SubscriptionData currentSubscription(message->serviceName(), message->topic(), {});
+            const auto matchesNotificationTopic = [this, &currentSubscription](const auto &activeSubscription) {
+                return _subscriptionMatcher(currentSubscription, activeSubscription);
             };
 
             // TODO what to do here if worker is disconnected?

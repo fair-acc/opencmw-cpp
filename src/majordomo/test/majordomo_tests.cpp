@@ -1046,6 +1046,7 @@ TEST_CASE("pubsub example using router socket (DEALER client)", "[broker][pubsub
     // unsubscribe client from /cooking.italian
     {
         auto unsubscribe = MdpMessage::createClientMessage(Command::Unsubscribe);
+        unsubscribe.setServiceName("first.service", static_tag);
         unsubscribe.setTopic("/cooking.italian", static_tag);
         unsubscribe.setRbacToken("rbacToken", static_tag);
         subscriber.send(unsubscribe);

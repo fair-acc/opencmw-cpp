@@ -10,10 +10,17 @@
 #include <charconv>
 
 using opencmw::majordomo::SubscriptionMatcher;
+using opencmw::majordomo::SubscriptionData;
+
+struct SubscriptionUriMatcher : SubscriptionMatcher {
+    bool operator() (const auto& notified, const auto& subscriber) const {
+        return SubscriptionMatcher::operator() (SubscriptionData::fromURI(notified), SubscriptionData::fromURI(subscriber));
+    }
+};
 
 TEST_CASE("Test path-only topics", "[subscription_matcher][path_only]") {
-    using URI = SubscriptionMatcher::URI;
-    SubscriptionMatcher matcher;
+    using URI = opencmw::URI<opencmw::RELAXED>;
+    SubscriptionUriMatcher matcher;
 
     REQUIRE(matcher(URI("/property"), URI("/property")));
     REQUIRE_FALSE(matcher(URI("/property/A"), URI("/property")));
@@ -59,8 +66,8 @@ TEST_CASE("Test path and query", "[subscription_matcher][path_and_query]") {
     using TestFilter1 = DomainFilter<Int>;
     using TestFilter2 = DomainFilter<std::string_view>;
     using TestFilter3 = DomainFilter<std::string_view, LessThan>;
-    using URI         = SubscriptionMatcher::URI;
-    SubscriptionMatcher matcher;
+    using URI = opencmw::URI<opencmw::RELAXED>;
+    SubscriptionUriMatcher matcher;
     matcher.addFilter<TestFilter1>("testKey1");
     matcher.addFilter<TestFilter2>("testKey2");
     matcher.addFilter<TestFilter3>("testKey3");
@@ -83,8 +90,8 @@ TEST_CASE("Test path and query", "[subscription_matcher][path_and_query]") {
 }
 
 TEST_CASE("Test timing and context type matching", "[subscription_matcher]") {
-    using URI = SubscriptionMatcher::URI;
-    SubscriptionMatcher matcher;
+    using URI = opencmw::URI<opencmw::RELAXED>;
+    SubscriptionUriMatcher matcher;
     matcher.addFilter<opencmw::TimingCtxFilter>("ctx");
     matcher.addFilter<opencmw::ContentTypeFilter>("contentType");
 
@@ -106,8 +113,7 @@ ENABLE_REFLECTION_FOR(MatcherTest, ctx, contentType)
 
 TEST_CASE("Register filters", "[QuerySerialiser][register_filters]") {
     using URI = opencmw::URI<opencmw::RELAXED>;
-
-    opencmw::majordomo::SubscriptionMatcher matcher;
+    SubscriptionUriMatcher matcher;
     opencmw::query::registerTypes(MatcherTest(), matcher);
 
     // subset of the subscriptionfilter_tests
