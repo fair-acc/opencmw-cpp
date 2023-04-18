@@ -62,7 +62,7 @@ public:
     noexcept { *this = other; }
     URI(const URI &&other)
     noexcept { *this = std::move(other); }
-    ~URI()       = default;
+    ~URI() = default;
 
     URI &operator=(const URI &other) noexcept {
         if (this == &other) {
@@ -336,44 +336,56 @@ private:
             }
         }
 
-        // check for scheme
-        size_t       scheme_size   = source.find_first_of(':', 0);
-        const size_t nextSeparator = source.find_first_of("/?#", 0);
-        if (scheme_size < nextSeparator && scheme_size != std::string::npos) {
-            _scheme = source.substr(0, scheme_size);
-            if constexpr (check == STRICT) {
-                if (!std::all_of(_scheme.begin(), _scheme.end(), [](char c) { return std::isalnum(c); })) {
-                    throw URISyntaxException(fmt::format("URI scheme contains illegal characters: {}", _scheme));
+        if (source.size() == 0) {
+            return;
+        }
+
+        const auto  pathOnly   = source[0] == '/';
+
+        std::size_t schemeSize = 0UL;
+        if (!pathOnly) {
+            // check for scheme
+            schemeSize                      = source.find_first_of(':', 0);
+            const std::size_t nextSeparator = source.find_first_of("/?#", 0);
+            if (schemeSize < nextSeparator && schemeSize != std::string::npos) {
+                _scheme = source.substr(0, schemeSize);
+                if constexpr (check == STRICT) {
+                    if (!std::all_of(_scheme.begin(), _scheme.end(), [](char c) { return std::isalnum(c); })) {
+                        throw URISyntaxException(fmt::format("URI scheme contains illegal characters: {}", _scheme));
+                    }
                 }
+                schemeSize++;
+            } else {
+                schemeSize = 0UL;
             }
-            scheme_size++;
-        } else {
-            scheme_size = 0L;
         }
 
         // check for authority
-        size_t authOffset = scheme_size;
-        size_t authEnd    = scheme_size;
-        if (authEnd == source.length()) {
-            return; // nothing more to parse
-        }
-        if ((source.length() > (authOffset + 1) && source[scheme_size] == '/' && source[scheme_size + 1] == '/')
-                || (scheme_size == 0 && source[scheme_size] != '/' && source[scheme_size] != '?' && source[scheme_size] != '#')) {
-            // authority isUnreserved defined starting with '//'
-            authOffset += 2;
-            authEnd    = std::min(source.find_first_of("/?#", authOffset), source.length());
-            _authority = source.substr(authOffset, authEnd - authOffset);
-            if constexpr (check == STRICT) {
-                if (!std::all_of(_authority.begin(), _authority.end(), [](char c) { return std::isalnum(c) || c == '@' || c == ':' || c == '.' || c == '-' || c == '_'; })) {
-                    throw URISyntaxException(fmt::format("URI authority contains illegal characters: {}", _authority));
-                }
+        std::size_t authEnd = 0UL;
+        if (!pathOnly) {
+            std::size_t authOffset      = schemeSize;
+            authEnd= schemeSize;
+            if (authEnd== source.length()) {
+                return; // nothing more to parse
             }
-            // lazy parsing of authority in parseAuthority()
-        } else {
-            authEnd = scheme_size;
+            if ((source.length() > (authOffset + 1) && source[schemeSize] == '/' && source[schemeSize + 1] == '/')
+                    || (schemeSize == 0 && source[schemeSize] != '/' && source[schemeSize] != '?' && source[schemeSize] != '#')) {
+                // authority isUnreserved defined starting with '//'
+                authOffset += 2;
+                authEnd= std::min(source.find_first_of("/?#", authOffset), source.length());
+                _authority      = source.substr(authOffset, authEnd- authOffset);
+                if constexpr (check == STRICT) {
+                    if (!std::all_of(_authority.begin(), _authority.end(), [](char c) { return std::isalnum(c) || c == '@' || c == ':' || c == '.' || c == '-' || c == '_'; })) {
+                        throw URISyntaxException(fmt::format("URI authority contains illegal characters: {}", _authority));
+                    }
+                }
+                // lazy parsing of authority in parseAuthority()
+            } else {
+                authEnd= schemeSize;
+            }
         }
 
-        size_t pathEnd = std::min(source.find_first_of("?#", authEnd), source.length());
+        size_t      pathEnd = std::min(source.find_first_of("?#", authEnd), source.length());
         if (pathEnd <= source.length()) {
             _path = source.substr(authEnd, pathEnd - authEnd);
             if constexpr (check == STRICT) {
@@ -453,7 +465,7 @@ struct fmt::formatter<std::optional<T>> {
 
     template<typename FormatContext>
     auto format(std::optional<T> const &v, FormatContext &ctx) const {
-        return v ? fmt::format_to(ctx.out(), "{}", v.value()) : fmt::format_to(ctx.out(), "<std::nullopt>");
+        return v ? fmt::format_to(ctx.out(), "'{}'", v.value()) : fmt::format_to(ctx.out(), "{{}}");
     }
 };
 
@@ -471,7 +483,7 @@ struct fmt::formatter<opencmw::URI<check>> {
 
     template<typename FormatContext>
     auto format(opencmw::URI<check> const &v, FormatContext &ctx) const {
-        return fmt::format_to(ctx.out(), "{{scheme: '{}', authority: '{}', user: '{}', pwd: '{}', host: '{}', port: '{}', path: '{}', query: '{}', fragment: '{}'}}", //
+        return fmt::format_to(ctx.out(), "{{scheme: {}, authority: {}, user: {}, pwd: {}, host: {}, port: {}, path: {}, query: {}, fragment: {}}}", //
                 v.scheme(), v.authority(), v.user(), v.password(), v.hostName(), v.port(), v.path(), v.queryParam(), v.fragment());
     }
 };
