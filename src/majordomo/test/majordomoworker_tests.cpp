@@ -179,7 +179,7 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
     TestNode<BrokerMessage> subClient(broker.context, ZMQ_SUB);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
     REQUIRE(subClient.connect(opencmw::majordomo::INTERNAL_ADDRESS_PUBLISHER));
-    const char *testSubscription = "/newAddress?ctx=FAIR.SELECTOR.C=1";
+    const char *testSubscription = "/newAddress?ctx=FAIR.SELECTOR.C%3D1";
     REQUIRE(subClient.subscribe(testSubscription));
 
     {
@@ -310,7 +310,7 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
         };
         REQUIRE(worker.notify("/newAddress", TestContext{ .ctx = opencmw::TimingCtx(1), .contentType = opencmw::MIME::JSON }, entry));
         REQUIRE(worker.activeSubscriptions().size() == 1);
-        REQUIRE(testSubscription == worker.activeSubscriptions().begin()->str());
+        REQUIRE(std::string_view(testSubscription).starts_with(worker.activeSubscriptions().begin()->serialized()));
     }
 
     {
@@ -318,7 +318,7 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
         REQUIRE(notify.has_value());
         REQUIRE(notify->isValid());
         REQUIRE(notify->command() == Command::Final);
-        REQUIRE(notify->sourceId() == "/newAddress?ctx=FAIR.SELECTOR.C=1");
+        REQUIRE(notify->sourceId() == "/newAddress?ctx=FAIR.SELECTOR.C%3D1");
         REQUIRE(notify->topic() == "/newAddress?contentType=application%2Fjson&ctx=FAIR.SELECTOR.C%3D1");
         REQUIRE(notify->error().empty());
         REQUIRE(notify->body() == "{\n\"name\": \"Easter Bunny\",\n\"street\": \"Carrot Road\",\n\"streetNumber\": 123,\n\"postalCode\": \"88888\",\n\"city\": \"Easter Island\",\n\"isCurrent\": true\n}");

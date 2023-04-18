@@ -110,10 +110,10 @@ private:
     void notifyUpdate() {
         for (auto subTopic : super_t::activeSubscriptions()) { // loop over active subscriptions
 
-            const auto          queryMap = subTopic.queryParamMap();
+            const auto          queryMap = subTopic.params();
             const FilterContext filterIn = opencmw::query::deserialise<FilterContext>(queryMap);
             if (!shallUpdateForTopic(filterIn)) {
-                fmt::print("active user subscription: '{}' is NOT being notified\n", subTopic.str());
+                fmt::print("active user subscription: '{}' is NOT being notified\n", subTopic);
                 break;
             }
             FilterContext filterOut = filterIn;
