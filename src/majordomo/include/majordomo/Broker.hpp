@@ -649,9 +649,19 @@ private:
         };
 
         for (auto &[name, service] : _services) {
-            if (!serviceName.starts_with(name)) continue;
-            if (!bestService || lessByLength(name, bestServiceName)) {
-                bestServiceName = name;
+            // remove leading slashes from both the name and the
+            // service name, if present
+            auto removeSlash = [](std::string_view s) {
+                if (s[0] == '/') {
+                    return std::string_view(s.data() + 1, s.size() - 1);
+                }
+                return s;
+            };
+            auto n  = removeSlash(name);
+            auto sn = removeSlash(serviceName);
+            if (!sn.starts_with(n)) continue;
+            if (!bestService || lessByLength(n, bestServiceName)) {
+                bestServiceName = n;
                 bestService     = std::addressof(service);
             }
         }
