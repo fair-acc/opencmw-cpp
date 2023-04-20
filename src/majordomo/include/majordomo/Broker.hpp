@@ -524,6 +524,7 @@ private:
             it->second--;
             if (it->second == 0) {
                 zmq_invoke(zmq_setsockopt, _subSocket, ZMQ_UNSUBSCRIBE, topic.str().data(), topic.str().size()).assertSuccess();
+                _subscribedTopics.erase(it);
             }
         }
     }
