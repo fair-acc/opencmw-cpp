@@ -164,7 +164,7 @@ bool respondWithServicesList(auto &broker, const httplib::Request &request, http
         std::vector<std::string> serviceNames;
         // TODO: Should this be synchronized?
         broker.forEachService([&](std::string_view name, std::string_view) {
-            serviceNames.emplace_back(std::string(name));
+            serviceNames.emplace_back(name);
         });
         response.status = HTTP_OK;
 
@@ -242,8 +242,8 @@ private:
 
 public:
     Connection(const Context &context)
-        : notificationSubscriptionSocket(context, ZMQ_DEALER)
-        , requestResponseSocket(context, ZMQ_SUB) {}
+        : notificationSubscriptionSocket(context, ZMQ_SUB)
+        , requestResponseSocket(context, ZMQ_DEALER) {}
 
     Connection(const Connection &other) = delete;
     Connection &operator=(const Connection &) = delete;
@@ -352,14 +352,7 @@ public:
 
         zmq_invoke(zmq_connect, connection->notificationSubscriptionSocket, INTERNAL_ADDRESS_BROKER.str()).template onFailure<opencmw::startup_error>("Can not connect REST worker to Majordomo broker");
 
-        auto subscribeMessage = MdpMessage::createClientMessage(Command::Subscribe);
-        subscribeMessage.setServiceName(subscriptionInfo.serviceName, MessageFrame::dynamic_bytes_tag{});
-        subscribeMessage.setTopic(subscriptionInfo.topicName, MessageFrame::dynamic_bytes_tag{});
-
-        if (!subscribeMessage.send(connection->notificationSubscriptionSocket)) {
-            std::terminate();
-            return nullptr;
-        }
+        zmq_invoke(zmq_setsockopt, connection->notificationSubscriptionSocket, ZMQ_SUBSCRIBE, subscriptionInfo.topicName, subscriptionInfo.topicName.size());
 
         return connection;
     }
@@ -588,8 +581,8 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         detail::Connection connection(restBackend._broker.context);
         pollItem.events = ZMQ_POLLIN;
 
-        zmq_invoke(zmq_connect, connection.notificationSubscriptionSocket, INTERNAL_ADDRESS_BROKER.str()).template onFailure<opencmw::startup_error>("Can not connect REST worker to Majordomo broker");
-        zmq_invoke(zmq_connect, connection.requestResponseSocket, INTERNAL_ADDRESS_PUBLISHER.str()).template onFailure<opencmw::startup_error>("Can not connect REST worker to Majordomo broker");
+        zmq_invoke(zmq_connect, connection.notificationSubscriptionSocket, INTERNAL_ADDRESS_PUBLISHER.str()).template onFailure<opencmw::startup_error>("Can not connect REST worker to Majordomo broker");
+        zmq_invoke(zmq_connect, connection.requestResponseSocket, INTERNAL_ADDRESS_BROKER.str()).template onFailure<opencmw::startup_error>("Can not connect REST worker to Majordomo broker");
 
         return std::move(connection).unsafeMove();
     }
@@ -666,15 +659,16 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
 
         auto connection = connect();
 
-        if (!message.send(connection.notificationSubscriptionSocket)) {
+        if (!message.send(connection.requestResponseSocket)) {
             return detail::respondWithError(response, "Error: Failed to send a message to the broker\n");
         }
 
-        pollItem.socket = connection.notificationSubscriptionSocket.zmq_ptr;
+        // blocks waiting for the response
+        pollItem.socket = connection.requestResponseSocket.zmq_ptr;
         auto pollResult = zmq_invoke(zmq_poll, &pollItem, 1, std::chrono::duration_cast<std::chrono::milliseconds>(REST_POLLING_TIME).count());
         if (!pollResult || pollResult.value() == 0) {
             detail::respondWithError(response, "Error: No response from broker\n");
-        } else if (auto responseMessage = MdpMessage::receive(connection.notificationSubscriptionSocket); !responseMessage) {
+        } else if (auto responseMessage = MdpMessage::receive(connection.requestResponseSocket); !responseMessage) {
             detail::respondWithError(response, "Error: Empty response from broker\n");
         } else if (!responseMessage->error().empty()) {
             detail::respondWithError(response, responseMessage->error());
@@ -744,10 +738,9 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
 
     bool respondWithLongPoll(const httplib::Request &request, httplib::Response &response, const std::string_view &_service) {
         // TODO: After the URIs are formalized, rethink service and topic
-        auto                     split = std::ranges::find(_service, '/');
-        std::string              service(_service);
+        std::string service(_service);
 
-        auto                     uri = URI<>::factory();
+        auto        uri = URI<>::factory();
         addParameters(request, uri);
         std::string              topic = "/"s + service + uri.toString();
 
