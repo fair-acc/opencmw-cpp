@@ -524,6 +524,7 @@ private:
             it->second--;
             if (it->second == 0) {
                 zmq_invoke(zmq_setsockopt, _subSocket, ZMQ_UNSUBSCRIBE, topic.str().data(), topic.str().size()).assertSuccess();
+                _subscribedTopics.erase(it);
             }
         }
     }
@@ -684,25 +685,24 @@ private:
     }
 
     void dispatchMessageToMatchingSubscribers(BrokerMessage &&message) {
-        const auto topicURI               = URI<RELAXED>(std::string(message.topic()));
-        const auto it                     = _subscribedClientsByTopic.find(topicURI);
-        const auto hasRouterSubscriptions = it != _subscribedClientsByTopic.end();
+        const auto topicURI = URI<RELAXED>(std::string(message.topic()));
 
         // TODO avoid clone() for last message sent out
         for (const auto &[topic, clientId] : _subscribedTopics) {
             if (_subscriptionMatcher(topicURI, topic)) {
                 // sends notification with the topic that is expected by the client for its subscription
                 auto copy = message.clone();
-                copy.setSourceId(topic.str(), MessageFrame::dynamic_bytes_tag{});
+                copy.setSourceId(topic.str(), MessageFrame::dynamic_bytes_tag{}); // Is this correct??
                 copy.send(_pubSocket).assertSuccess();
-            }
-        }
 
-        if (hasRouterSubscriptions) {
-            for (const auto &clientId : it->second) {
-                auto copy = message.clone();
-                copy.setSourceId(clientId, MessageFrame::dynamic_bytes_tag{});
-                copy.send(_routerSocket).assertSuccess();
+                const auto it = _subscribedClientsByTopic.find(topic);
+                if (it != _subscribedClientsByTopic.end()) {
+                    for (const auto &clientId : it->second) {
+                        auto copy = message.clone();
+                        copy.setSourceId(clientId, MessageFrame::dynamic_bytes_tag{});
+                        copy.send(_routerSocket).assertSuccess();
+                    }
+                }
             }
         }
     }
