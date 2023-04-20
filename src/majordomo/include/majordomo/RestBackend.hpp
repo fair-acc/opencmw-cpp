@@ -734,6 +734,9 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
                            .path(request.path)
                            .addQueryParameter("LongPollingIdx", std::to_string(redirectLongPollingIdx));
 
+        // copy over the original query parameters
+        addParameters(request, uri);
+
         const auto redirect = uri.toString();
         response.set_redirect(redirect);
         return true;
@@ -742,8 +745,11 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
     bool respondWithLongPoll(const httplib::Request &request, httplib::Response &response, const std::string_view &_service) {
         // TODO: After the URIs are formalized, rethink service and topic
         auto                     split = std::ranges::find(_service, '/');
-        std::string              service(_service.begin(), split);
-        std::string              topic = "/"s + service + std::string(split, _service.end());
+        std::string              service(_service);
+
+        auto                     uri = URI<>::factory();
+        addParameters(request, uri);
+        std::string              topic = "/"s + service + uri.toString();
 
         detail::SubscriptionInfo subscriptionInfo{ service, topic };
 
@@ -846,6 +852,18 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
 
         } else {
             return detail::respondWithError(response, "Error: We waited for the new value, but it was not found");
+        }
+    }
+
+private:
+    void addParameters(const httplib::Request &request, URI<>::UriFactory &uri) {
+        for (const auto &[key, value] : request.params) {
+            if (key == "LongPollingIdx") {
+                // This parameter is not passed on, it just means we
+                // want to use long polling -- already handled
+            } else {
+                uri = std::move(uri).addQueryParameter(key, value);
+            }
         }
     }
 };
