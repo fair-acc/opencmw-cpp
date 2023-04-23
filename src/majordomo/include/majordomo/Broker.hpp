@@ -262,21 +262,21 @@ public:
     const std::string brokerName;
 
 private:
-    Timestamp                                               _heartbeatAt = Clock::now() + settings.heartbeatInterval;
-    SubscriptionMatcher                                     _subscriptionMatcher;
+    Timestamp                                                   _heartbeatAt = Clock::now() + settings.heartbeatInterval;
+    SubscriptionMatcher                                         _subscriptionMatcher;
     std::unordered_map<SubscriptionData, std::set<std::string>> _subscribedClientsByTopic; // topic -> client IDs
     std::unordered_map<SubscriptionData, int>                   _subscribedTopics;         // topic -> subscription count
-    std::unordered_map<std::string, Client>                 _clients;
-    std::unordered_map<std::string, Worker>                 _workers;
-    std::unordered_map<std::string, Service>                _services;
-    std::unordered_map<std::string, detail::DnsServiceItem> _dnsCache;
-    std::set<std::string>                                   _dnsAddresses;
-    Timestamp                                               _dnsHeartbeatAt;
-    bool                                                    _connectedToDns    = false;
+    std::unordered_map<std::string, Client>                     _clients;
+    std::unordered_map<std::string, Worker>                     _workers;
+    std::unordered_map<std::string, Service>                    _services;
+    std::unordered_map<std::string, detail::DnsServiceItem>     _dnsCache;
+    std::set<std::string>                                       _dnsAddresses;
+    Timestamp                                                   _dnsHeartbeatAt;
+    bool                                                        _connectedToDns    = false;
 
-    const std::string                                       _rbac              = "RBAC=ADMIN,abcdef12345";
+    const std::string                                           _rbac              = "RBAC=ADMIN,abcdef12345";
 
-    std::atomic<bool>                                       _shutdownRequested = false;
+    std::atomic<bool>                                           _shutdownRequested = false;
 
     // Sockets collection. The Broker class will be used as the handler
     const Socket                  _routerSocket;
@@ -402,7 +402,7 @@ public:
         pollerItems[3].events = ZMQ_POLLIN;
     }
 
-    Broker(const Broker &) = delete;
+    Broker(const Broker &)            = delete;
     Broker &operator=(const Broker &) = delete;
 
     template<typename Filter>
@@ -588,6 +588,7 @@ private:
             }
             case Command::Subscribe: {
                 SubscriptionData subscription(message.serviceName(), message.topic(), {});
+
                 subscribe(subscription);
 
                 auto [it, inserted] = _subscribedClientsByTopic.try_emplace(subscription, std::set<std::string>{});
@@ -596,6 +597,7 @@ private:
             }
             case Command::Unsubscribe: {
                 SubscriptionData subscription(message.serviceName(), message.topic(), {});
+
                 unsubscribe(subscription);
 
                 auto it = _subscribedClientsByTopic.find(subscription);
@@ -683,25 +685,22 @@ private:
 
     void dispatchMessageToMatchingSubscribers(BrokerMessage &&message) {
         SubscriptionData subscription(message.serviceName(), message.topic(), {});
-        // const auto oldTopicURI = URI<RELAXED>(std::string(message.topic())); // TODO: Remove
-        // const auto topicURI = URI<RELAXED>("/"s + std::string(message.serviceName()) + "?"s + std::string(message.topic()));
-        const auto it                     = _subscribedClientsByTopic.find(subscription);
-        const auto hasRouterSubscriptions = it != _subscribedClientsByTopic.end();
 
         // TODO avoid clone() for last message sent out
-        for (const auto &[topic, clientId] : _subscribedTopics) {
+        for (const auto &[topic, _] : _subscribedTopics) {
             if (_subscriptionMatcher(subscription, topic)) {
-                // sends notification with the topic that is expected by the client for its subscription
                 auto copy = message.clone();
+                copy.setTopic(subscription.path(), MessageFrame::dynamic_bytes_tag{});
                 copy.setSourceId(topic.serialized(), MessageFrame::dynamic_bytes_tag{});
                 copy.send(_pubSocket).assertSuccess();
 
                 const auto it = _subscribedClientsByTopic.find(topic);
                 if (it != _subscribedClientsByTopic.end()) {
                     for (const auto &clientId : it->second) {
-                        auto copy = message.clone();
-                        copy.setSourceId(clientId, MessageFrame::dynamic_bytes_tag{});
-                        copy.send(_routerSocket).assertSuccess();
+                        auto clientCopy = message.clone();
+                        clientCopy.setTopic(subscription.path(), MessageFrame::dynamic_bytes_tag{});
+                        clientCopy.setSourceId(clientId, MessageFrame::dynamic_bytes_tag{});
+                        clientCopy.send(_routerSocket).assertSuccess();
                     }
                 }
             }

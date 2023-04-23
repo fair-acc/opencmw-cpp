@@ -113,7 +113,6 @@ private:
             const auto          queryMap = subTopic.params();
             const FilterContext filterIn = opencmw::query::deserialise<FilterContext>(queryMap);
             if (!shallUpdateForTopic(filterIn)) {
-                fmt::print("active user subscription: '{}' is NOT being notified\n", subTopic);
                 break;
             }
             FilterContext filterOut = filterIn;

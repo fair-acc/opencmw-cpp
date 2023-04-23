@@ -74,14 +74,14 @@ int main(int argc, char **argv) {
     majordomo::BasicWorker<"beverages">                                                                                                   beveragesWorker(primaryBroker, TestIntHandler(10));
 
     //
-    ImageServiceWorker<"testImage", majordomo::description<"Returns an image">> imageWorker(primaryBroker, std::chrono::seconds(10));
+    // ImageServiceWorker<"testImage", majordomo::description<"Returns an image">> imageWorker(primaryBroker, std::chrono::seconds(10));
 
     //
     RunInThread runHelloWorld(helloWorldWorker);
     RunInThread runAddressbook(addressbookWorker);
     RunInThread runAddressbookBackup(addressbookBackupWorker);
     RunInThread runBeverages(beveragesWorker);
-    RunInThread runImage(imageWorker);
+    // RunInThread runImage(imageWorker);
     waitUntilServiceAvailable(primaryBroker.context, "addressbook");
 
     // Fake message publisher - sends messages on notifier.service
@@ -89,12 +89,41 @@ int main(int argc, char **argv) {
     publisher.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER);
 
     for (int i = 0; true; ++i) {
-        std::cerr << "Sending new number (step " << i << ")\n";
-        majordomo::MdpMessage notifyMessage;
-        notifyMessage.setTopic("/wine", static_tag);
-        notifyMessage.setBody(std::to_string(i), dynamic_tag);
+        {
+            std::cerr << "Sending new number (step " << i << ")\n";
+            majordomo::MdpMessage notifyMessage;
+            notifyMessage.setTopic("/wine", static_tag);
+            notifyMessage.setBody(std::to_string(i), dynamic_tag);
 
-        beveragesWorker.notify(std::move(notifyMessage));
+            beveragesWorker.notify(std::move(notifyMessage));
+        }
+
+        {
+            AddressEntry entry{
+                .name         = "Sherlock Holmes",
+                .street       = "Baker Street",
+                .streetNumber = i,
+                .postalCode   = "1000",
+                .city         = "London",
+                .isCurrent    = true
+            };
+
+            SimpleContext context{
+                .ctx         = opencmw::TimingCtx(),
+                .contentType = opencmw::MIME::JSON
+            };
+
+            addressbookWorker.notify("/addressbook", context, entry);
+
+            context.testFilter = "main";
+            entry.city = "London";
+            addressbookWorker.notify("/addressbook", context, entry);
+
+            context.testFilter = "alternate";
+            entry.city = "Brighton";
+            addressbookWorker.notify("/addressbook", context, entry);
+        }
+
         std::this_thread::sleep_for(3s);
     }
 }
