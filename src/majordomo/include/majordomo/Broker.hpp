@@ -402,7 +402,7 @@ public:
         pollerItems[3].events = ZMQ_POLLIN;
     }
 
-    Broker(const Broker &)            = delete;
+    Broker(const Broker &) = delete;
     Broker &operator=(const Broker &) = delete;
 
     template<typename Filter>
@@ -549,7 +549,7 @@ private:
 
         const auto topicString = data.substr(1);
         const auto topicURI    = URI<RELAXED>(std::string(topicString));
-        const auto topic = SubscriptionData::fromURI(topicURI);
+        const auto topic       = SubscriptionData::fromURI(topicURI);
 
         if (data[0] == '\x1') {
             subscribe(topic);
@@ -674,8 +674,8 @@ private:
 
     void dispatchMessageToMatchingSubscribers(BrokerMessage &&message) {
         SubscriptionData subscription(message.serviceName(), message.topic(), {});
-        const auto it                     = _subscribedClientsByTopic.find(subscription);
-        const auto hasRouterSubscriptions = it != _subscribedClientsByTopic.end();
+        const auto       it                     = _subscribedClientsByTopic.find(subscription);
+        const auto       hasRouterSubscriptions = it != _subscribedClientsByTopic.end();
 
         // TODO avoid clone() for last message sent out
         for (const auto &[topic, clientId] : _subscribedTopics) {

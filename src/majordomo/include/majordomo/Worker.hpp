@@ -12,7 +12,6 @@
 #include <unordered_map>
 #include <unordered_set>
 
-
 #include <fmt/format.h>
 
 #include <IoSerialiserCmwLight.hpp>
@@ -95,7 +94,7 @@ class BasicWorker {
     std::array<zmq_pollitem_t, 3>                            _pollerItems;
     SubscriptionMatcher                                      _subscriptionMatcher;
     mutable std::mutex                                       _activeSubscriptionsLock;
-    std::unordered_set<SubscriptionData>                               _activeSubscriptions;
+    std::unordered_set<SubscriptionData>                     _activeSubscriptions;
     Socket                                                   _notifyListenerSocket;
     std::unordered_map<std::thread::id, NotificationHandler> _notificationHandlers;
     std::shared_mutex                                        _notificationHandlersLock;
@@ -129,7 +128,7 @@ public:
     }
 
     std::unordered_set<SubscriptionData> activeSubscriptions() const noexcept {
-        std::lock_guard        lockGuard(_activeSubscriptionsLock);
+        std::lock_guard                      lockGuard(_activeSubscriptionsLock);
         std::unordered_set<SubscriptionData> copy = _activeSubscriptions;
         return copy;
     }
@@ -275,18 +274,18 @@ private:
     bool receiveNotificationMessage() {
         if (auto message = MdpMessage::receive(_notifyListenerSocket)) {
             // const auto topic                    = URI<RELAXED>(std::string(message->topic()));
-        const SubscriptionData currentSubscription(message->serviceName(), message->topic(), {});
-        const auto matchesNotificationTopic = [this, &currentSubscription](const auto &activeSubscription) {
+            const SubscriptionData currentSubscription(message->serviceName(), message->topic(), {});
+            const auto             matchesNotificationTopic = [this, &currentSubscription](const auto &activeSubscription) {
                 return _subscriptionMatcher(currentSubscription, activeSubscription);
-        };
+            };
 
-        // TODO what to do here if worker is disconnected?
-        std::lock_guard lockGuard(_activeSubscriptionsLock);
-        if (_workerSocket && std::any_of(_activeSubscriptions.begin(), _activeSubscriptions.end(), matchesNotificationTopic)) {
-            message->send(*_workerSocket).assertSuccess();
+            // TODO what to do here if worker is disconnected?
+            std::lock_guard lockGuard(_activeSubscriptionsLock);
+            if (_workerSocket && std::any_of(_activeSubscriptions.begin(), _activeSubscriptions.end(), matchesNotificationTopic)) {
+                message->send(*_workerSocket).assertSuccess();
+            }
+            return true;
         }
-        return true;
-    }
 
         return false;
     }
@@ -458,11 +457,11 @@ inline void serialiseAndWriteToBody(RequestContext &rawCtx, const ReflectableCla
 }
 
 inline void writeResult(std::string_view workerName, RequestContext &rawCtx, const auto &replyContext, const auto &output) {
-    auto       replyQuery = query::serialise(replyContext);
-    const auto baseUri    = URI<RELAXED>(std::string(rawCtx.reply.topic().empty() ? rawCtx.request.topic() : rawCtx.reply.topic()));
-    const auto topicUriOld   = URI<RELAXED>::factory(baseUri).setQuery(std::move(replyQuery)).build();
-    const auto topicUriNew   = URI<RELAXED>::factory(baseUri).build();
-    const auto& topicUri = topicUriOld;
+    auto        replyQuery  = query::serialise(replyContext);
+    const auto  baseUri     = URI<RELAXED>(std::string(rawCtx.reply.topic().empty() ? rawCtx.request.topic() : rawCtx.reply.topic()));
+    const auto  topicUriOld = URI<RELAXED>::factory(baseUri).setQuery(std::move(replyQuery)).build();
+    const auto  topicUriNew = URI<RELAXED>::factory(baseUri).build();
+    const auto &topicUri    = topicUriOld;
 
     rawCtx.reply.setTopic(topicUri.str(), MessageFrame::dynamic_bytes_tag{});
     const auto replyMimetype = query::getMimeType(replyContext);
