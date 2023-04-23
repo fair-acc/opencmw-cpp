@@ -330,8 +330,9 @@ public:
         pollerItems[0].events = ZMQ_POLLIN;
 
         const auto result     = opencmw::majordomo::zmq_invoke(zmq_poll, pollerItems.data(), static_cast<int>(pollerItems.size()), timeout.count());
-        if (!result.isValid())
+        if (!result.isValid() || result.value() == 0) {
             return {};
+        }
 
         return MessageType::receive(_socket);
     }

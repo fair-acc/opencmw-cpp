@@ -176,35 +176,38 @@
     function pollingHandler() {
         let get = { method: 'GET', headers: { 'X-OPENCMW-METHOD' : 'POLL' } };
 
-        let formMeta = window.opencmwWebForms.replyContextForm;
-        console.log(formMeta);
+        let queryParams = window.opencmwActiveSubscriptionQueryParams;
 
-        // let json = {};
+        if (!window.opencmwActiveSubscriptionQueryParams) {
+            let formMeta = window.opencmwWebForms.replyContextForm;
 
-        let queryParams = new URLSearchParams();
+            queryParams = new URLSearchParams();
 
-        for (const [key, fieldMeta] of Object.entries(formMeta)) {
-            const field = document.getElementById(fieldMeta.formId + "_" + fieldMeta.name);
-            if (fieldMeta.fieldType == "checkbox") {
-                queryParams.append(fieldMeta.name, `opencmw_unquoted_value(${field.checked})`);
+            for (const [key, fieldMeta] of Object.entries(formMeta)) {
+                const field = document.getElementById(fieldMeta.formId + "_" + fieldMeta.name);
+                if (fieldMeta.fieldType == "checkbox") {
+                    queryParams.append(fieldMeta.name, `opencmw_unquoted_value(${field.checked})`);
 
-            } else if (fieldMeta.fieldType == "number") {
-                queryParams.append(fieldMeta.name, field.valueAsNumber);
+                } else if (fieldMeta.fieldType == "number") {
+                    queryParams.append(fieldMeta.name, field.valueAsNumber);
 
-            } else if (fieldMeta.type == "MimeType") {
-                queryParams.append(fieldMeta.name,
-                    field.value == "text/html" ? "application/json" : field.value);
+                } else if (fieldMeta.type == "MimeType") {
+                    queryParams.append(fieldMeta.name,
+                        field.value == "text/html" ? "application/json" : field.value);
 
-            } else {
-                queryParams.append(fieldMeta.name, field.value);
+                } else {
+                    queryParams.append(fieldMeta.name, field.value);
+                }
             }
-        }
 
-        console.log(queryParams);
+            console.log("update window.opencmwActiveSubscriptionQueryParams");
+            window.opencmwActiveSubscriptionQueryParams = queryParams;
+        }
 
         let url = getPageBaseUrl();
         url.searchParams.append("LongPollingIdx", "Next");
-        url.searchParams.append("SubscriptionContext", queryParams.toString());
+        let currentObject = (new URL(document.URL)).pathname;
+        url.searchParams.append("SubscriptionContext", currentObject + "?" + queryParams.toString());
         let address = url.href;
 
         console.log(address);
@@ -219,17 +222,29 @@
             });
     }
 
-    function startSubscription() {
+    function registerSubscriptionActive(value) {
         var checkbox = document.getElementById("subscriptionPollingCheckbox");
-        checkbox.checked = true;
-        pollingHandler();
+        checkbox.checked = value;
+
+        var button = document.getElementById("subscriptionPollingButton");
+        button.value = value ? "Unsubscribe" : "Subscribe";
+
+        if (!value) {
+            window.opencmwActiveSubscriptionQueryParams = null;
+        }
     }
 
-    function toggleSubscriptionPolling() {
+    function toggleSubscriptionPolling(externalEventSource) {
         var checkbox = document.getElementById("subscriptionPollingCheckbox");
+
+        if (externalEventSource) {
+            checkbox.checked = !checkbox.checked;
+        }
+
         if (checkbox.checked) {
             setTimeout(pollingHandler, 1000);
         }
+        registerSubscriptionActive(checkbox.checked);
     }
 
     function pulseIndicator() {
@@ -513,7 +528,7 @@
                                 </tbody>
                                 <tr>
                                     <td class="">
-                                        <input type="button" onclick="startSubscription()" value="Subscribe" />
+                                        <input type="button" id="subscriptionPollingButton" onclick="toggleSubscriptionPolling(true)" value="Subscribe" />
                                     </td>
                                 </tr>
                             </table>

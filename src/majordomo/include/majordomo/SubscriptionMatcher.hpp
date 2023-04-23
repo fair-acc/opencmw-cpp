@@ -17,15 +17,15 @@ struct SubscriptionData {
     using map = std::unordered_map<std::string, std::optional<std::string>>;
 
 private:
-    std::string             _rawService;
-    std::string             _rawPath;
+    // std::string             _rawService;
+    // std::string             _rawPath;
 
-    map                     _params;
 
     std::string        _service;
     std::string        _path;
+    map                     _params;
 
-    static std::string stripSlashes(const std::string &str, bool addLeadingSlash) {
+    static std::string stripSlashes(std::string_view str, bool addLeadingSlash) {
         auto firstNonSlash = str.find_first_not_of("/ ");
         if (firstNonSlash == std::string::npos) {
             return "";
@@ -43,12 +43,10 @@ private:
 public:
     template <typename ServiceString, typename PathString>
     SubscriptionData(ServiceString&& service, PathString&& path, std::unordered_map<std::string, std::optional<std::string>> params)
-        : _rawService(std::forward<ServiceString>(service))
-        , _rawPath(std::forward<PathString>(path))
+        : _service(stripSlashes(std::forward<ServiceString>(service), false))
+        , _path(stripSlashes(std::forward<PathString>(path), true))
         , _params(std::move(params))
-        , _service(stripSlashes(_rawService, false))
-        , _path(stripSlashes(_rawPath, true)) {
-
+    {
         if (_path.find("?") != std::string::npos) {
             if (_params.size() != 0) {
                 throw fmt::format("Parameters are not empty, and there are more in the path {} {}\n", _params, _path);
@@ -74,11 +72,11 @@ public:
     }
 
     SubscriptionData(const SubscriptionData& other)
-        : SubscriptionData(other._rawService, other._rawPath, other._params)
+        : SubscriptionData(other._service, other._path, other._params)
     {}
 
     SubscriptionData(SubscriptionData&& other)
-        : SubscriptionData(std::move(other._rawService), std::move(other._rawPath), std::move(other._params))
+        : SubscriptionData(std::move(other._service), std::move(other._path), std::move(other._params))
     {}
 
     SubscriptionData& operator=(SubscriptionData other) = delete;
@@ -175,7 +173,7 @@ private:
             const auto &key   = subscriptionParam.first;
             const auto &value = subscriptionParam.second;
 
-            assert(!value || !value->empty()); // map never gives us "" (empty strings are returned as nullopt)
+            // assert(!value || !value->empty()); // map never gives us "" (empty strings are returned as nullopt)
 
             auto filterIt = _filters.find(key);
             if (filterIt == _filters.end()) {

@@ -235,19 +235,21 @@ private:
     Connection(Connection &&other) noexcept
         : notificationSubscriptionSocket(std::move(other.notificationSubscriptionSocket))
         , requestResponseSocket(std::move(other.requestResponseSocket))
+        , subscriptionInfo(std::move(other.subscriptionInfo))
         , lastUsed(std::move(other.lastUsed))
         , _cachedReplies(std::move(other._cachedReplies))
         , _nextPollingIndex(other._nextPollingIndex) {
     }
 
 public:
-    Connection(const Context &context)
+    Connection(const Context &context, SubscriptionInfo _subscriptionInfo)
         : notificationSubscriptionSocket(context, ZMQ_DEALER)
-        , requestResponseSocket(context, ZMQ_SUB) {}
+        , requestResponseSocket(context, ZMQ_SUB)
+        , subscriptionInfo(std::move(_subscriptionInfo)) {}
 
-    Connection(const Connection &other) = delete;
+    Connection(const Connection &other)       = delete;
     Connection &operator=(const Connection &) = delete;
-    Connection &operator=(Connection &&) = delete;
+    Connection &operator=(Connection &&)      = delete;
 
     // Here be dragons! This is not to be used after
     // the connection was involved in any threading code
@@ -341,7 +343,7 @@ public:
 
         auto [it, inserted] = _connectionForService.emplace(std::piecewise_construct,
                 std::forward_as_tuple(subscriptionInfo),
-                std::forward_as_tuple(std::make_unique<detail::Connection>(_broker.context)));
+                std::forward_as_tuple(std::make_unique<detail::Connection>(_broker.context, subscriptionInfo)));
 
         if (!inserted) {
             assert(inserted);
@@ -395,13 +397,10 @@ public:
 
                     // Reading the missed messages
                     const auto connectionCount = _connectionForService.size();
-                    // fmt::print("Current connection count is {}\n", connectionCount);
 
                     if (connectionCount != 0) {
-                        std::vector<detail::SubscriptionInfo> subscriptions;
                         std::vector<detail::Connection *>     connections;
                         std::vector<zmq_pollitem_t>           pollItems;
-                        subscriptions.resize(connectionCount);
                         connections.resize(connectionCount);
                         pollItems.resize(connectionCount);
 
@@ -409,7 +408,7 @@ public:
 
                         for (std::size_t i = 0; auto &kvp : _connectionForService) {
                             auto &[key, connection] = kvp;
-                            subscriptions[i]        = key;
+
                             connections[i]          = connection.get();
                             keep.emplace_back(connection.get());
 
@@ -423,12 +422,13 @@ public:
                         if (!pollCount) {
                             std::terminate();
                         }
-                        if (!pollCount || pollCount.value() == 0) {
+                        if (pollCount.value() == 0) {
                             continue;
                         }
 
                         for (std::size_t i = 0; i < connectionCount; ++i) {
-                            if (pollItems[i].revents != 0) {
+                            const auto events = pollItems[i].revents;
+                            if (events & ZMQ_POLLIN) {
                                 auto *currentConnection = connections[i];
                                 auto  connectionLock    = currentConnection->writeLock();
                                 if (auto responseMessage = MdpMessage::receive(currentConnection->notificationSubscriptionSocket)) {
@@ -494,11 +494,16 @@ public:
             // clang-format on
         }();
 
+        std::string subscriptionContext;
+
         for (const auto &[key, value] : request.params) {
             if (key == "LongPollingIdx") {
                 // This parameter is not passed on, it just means we
                 // want to use long polling
                 restMethod = value == "Subscription" ? RestMethod::Subscribe : RestMethod::LongPoll;
+
+            } else if (key == "SubscriptionContext") {
+                subscriptionContext = value;
             }
         }
 
@@ -514,10 +519,10 @@ public:
             return worker.respondWithPubSub(request, response, service, restMethod, content_reader_);
 
         case RestMethod::LongPoll:
-            return worker.respondWithLongPoll(request, response, service);
+            return worker.respondWithLongPoll(request, response, service, subscriptionContext);
 
         case RestMethod::Subscribe:
-            return worker.respondWithSubscription(response, service);
+            return worker.respondWithSubscription(response, service, subscriptionContext);
 
         default:
             // std::unreachable() is C++23
@@ -585,7 +590,7 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
     RestWorker(RestWorker &&other) = default;
 
     detail::Connection connect() {
-        detail::Connection connection(restBackend._broker.context);
+        detail::Connection connection(restBackend._broker.context, {});
         pollItem.events = ZMQ_POLLIN;
 
         zmq_invoke(zmq_connect, connection.notificationSubscriptionSocket, INTERNAL_ADDRESS_BROKER.str()).template onFailure<opencmw::startup_error>("Can not connect REST worker to Majordomo broker");
@@ -694,12 +699,7 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         return true;
     }
 
-    bool respondWithSubscription(httplib::Response &response, const std::string_view &_service) {
-        // TODO: After the URIs are formalized, rethink service and topic
-        auto                     split = std::ranges::find(_service, '/');
-        std::string_view         service(_service.begin(), split);
-        std::string_view         topic(split, _service.end());
-
+    bool respondWithSubscription(httplib::Response &response, const std::string_view &service, const std::string_view &topic) {
         detail::SubscriptionInfo subscriptionInfo{ std::string(service), std::string(topic) };
 
         auto                    *connection = restBackend.notificationSubscriptionConnectionFor(subscriptionInfo);
@@ -729,10 +729,11 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         return true;
     }
 
-    bool respondWithLongPollRedirect(const httplib::Request &request, httplib::Response &response, detail::PollingIndex redirectLongPollingIdx) {
+    bool respondWithLongPollRedirect(const httplib::Request &request, httplib::Response &response, const std::string_view& subscriptionContext, detail::PollingIndex redirectLongPollingIdx) {
         auto uri = URI<>::factory()
                            .path(request.path)
-                           .addQueryParameter("LongPollingIdx", std::to_string(redirectLongPollingIdx));
+                           .addQueryParameter("LongPollingIdx", std::to_string(redirectLongPollingIdx))
+                           .addQueryParameter("SubscriptionContext", std::string(subscriptionContext));
 
         // copy over the original query parameters
         addParameters(request, uri);
@@ -742,23 +743,19 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         return true;
     }
 
-    bool respondWithLongPoll(const httplib::Request &request, httplib::Response &response, const std::string_view &_service) {
+    bool respondWithLongPoll(const httplib::Request &request, httplib::Response &response, const std::string_view &service, const std::string_view& topic) {
         // TODO: After the URIs are formalized, rethink service and topic
-        auto        split = std::ranges::find(_service, '/');
-        std::string service(_service);
-
         auto        uri = URI<>::factory();
         addParameters(request, uri);
-        std::string              topic = "/"s + service + uri.toString();
 
-        detail::SubscriptionInfo subscriptionInfo{ service, topic };
+        detail::SubscriptionInfo subscriptionInfo{ std::string(service), std::string(topic) };
 
         const auto               longPollingIdxIt = request.params.find("LongPollingIdx");
         if (longPollingIdxIt == request.params.end()) {
             return detail::respondWithError(response, "Error: LongPollingIdx parameter not specified");
         }
 
-        const auto &longPollingIdxParam = longPollingIdxIt->second;
+        const auto              &longPollingIdxParam = longPollingIdxIt->second;
 
         struct CacheInfo {
             detail::PollingIndex firstCachedIndex = 0;
@@ -795,19 +792,19 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
             response.set_header("Access-Control-Allow-Origin", "*");
 
             if (longPollingIdxParam == "Next") {
-                return respondWithLongPollRedirect(request, response, cache.nextPollingIndex);
+                return respondWithLongPollRedirect(request, response, topic, cache.nextPollingIndex);
             }
 
             if (longPollingIdxParam == "Last") {
                 if (cache.connection != nullptr) {
-                    return respondWithLongPollRedirect(request, response, cache.nextPollingIndex - 1);
+                    return respondWithLongPollRedirect(request, response, topic, cache.nextPollingIndex - 1);
                 } else {
-                    return respondWithLongPollRedirect(request, response, cache.nextPollingIndex);
+                    return respondWithLongPollRedirect(request, response, topic, cache.nextPollingIndex);
                 }
             }
 
             if (longPollingIdxParam == "FirstAvailable") {
-                return respondWithLongPollRedirect(request, response, cache.firstCachedIndex);
+                return respondWithLongPollRedirect(request, response, topic, cache.firstCachedIndex);
             }
 
             if (std::from_chars(longPollingIdxParam.data(), longPollingIdxParam.data() + longPollingIdxParam.size(), requestedLongPollingIdx).ec != std::errc{}) {
