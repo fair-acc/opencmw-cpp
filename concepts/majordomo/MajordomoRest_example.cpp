@@ -65,7 +65,7 @@ int main(int argc, char **argv) {
     majordomo::Broker secondaryBroker("SecondaryTestBroker", { .dnsAddress = brokerRouterAddress->str() });
     std::jthread      secondaryBrokerThread([&secondaryBroker] {
         secondaryBroker.run();
-    });
+         });
 
     //
     majordomo::Worker<"helloWorld", SimpleContext, SimpleRequest, SimpleReply, majordomo::description<"A friendly service saying hello">> helloWorldWorker(primaryBroker, HelloWorldHandler());
@@ -116,11 +116,11 @@ int main(int argc, char **argv) {
             addressbookWorker.notify("/addressbook", context, entry);
 
             context.testFilter = "main";
-            entry.city = "London";
+            entry.city         = "London";
             addressbookWorker.notify("/addressbook", context, entry);
 
             context.testFilter = "alternate";
-            entry.city = "Brighton";
+            entry.city         = "Brighton";
             addressbookWorker.notify("/addressbook", context, entry);
         }
 

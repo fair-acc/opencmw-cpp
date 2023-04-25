@@ -402,7 +402,7 @@ public:
         pollerItems[3].events = ZMQ_POLLIN;
     }
 
-    Broker(const Broker &)            = delete;
+    Broker(const Broker &) = delete;
     Broker &operator=(const Broker &) = delete;
 
     template<typename Filter>
@@ -518,7 +518,7 @@ private:
             auto topicStr = topic.path();
             zmq_invoke(zmq_setsockopt, _subSocket, ZMQ_SUBSCRIBE, topicStr.data(), topicStr.size()).assertSuccess();
         }
-}
+    }
 
     void unsubscribe(const SubscriptionData &topic) {
         auto it = _subscribedTopics.find(topic);
@@ -550,7 +550,7 @@ private:
 
         const auto topicString = data.substr(1);
         const auto topicURI    = URI<RELAXED>(std::string(topicString));
-        const auto topic = SubscriptionData::fromURI(topicURI);
+        const auto topic       = SubscriptionData::fromURI(topicURI);
 
         if (data[0] == '\x1') {
             subscribe(topic);

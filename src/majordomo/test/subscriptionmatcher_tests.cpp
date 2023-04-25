@@ -9,12 +9,12 @@
 
 #include <charconv>
 
-using opencmw::majordomo::SubscriptionMatcher;
 using opencmw::majordomo::SubscriptionData;
+using opencmw::majordomo::SubscriptionMatcher;
 
 struct SubscriptionUriMatcher : SubscriptionMatcher {
-    bool operator() (const auto& notified, const auto& subscriber) const {
-        return SubscriptionMatcher::operator() (SubscriptionData::fromURI(notified), SubscriptionData::fromURI(subscriber));
+    bool operator()(const auto &notified, const auto &subscriber) const {
+        return SubscriptionMatcher::operator()(SubscriptionData::fromURI(notified), SubscriptionData::fromURI(subscriber));
     }
 };
 
@@ -66,7 +66,7 @@ TEST_CASE("Test path and query", "[subscription_matcher][path_and_query]") {
     using TestFilter1 = DomainFilter<Int>;
     using TestFilter2 = DomainFilter<std::string_view>;
     using TestFilter3 = DomainFilter<std::string_view, LessThan>;
-    using URI = opencmw::URI<opencmw::RELAXED>;
+    using URI         = opencmw::URI<opencmw::RELAXED>;
     SubscriptionUriMatcher matcher;
     matcher.addFilter<TestFilter1>("testKey1");
     matcher.addFilter<TestFilter2>("testKey2");

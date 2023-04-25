@@ -20,10 +20,9 @@ private:
     // std::string             _rawService;
     // std::string             _rawPath;
 
-
     std::string        _service;
     std::string        _path;
-    map                     _params;
+    map                _params;
 
     static std::string stripSlashes(std::string_view str, bool addLeadingSlash) {
         auto firstNonSlash = str.find_first_not_of("/ ");
@@ -41,20 +40,19 @@ private:
     }
 
 public:
-    template <typename ServiceString, typename PathString>
-    SubscriptionData(ServiceString&& service, PathString&& path, std::unordered_map<std::string, std::optional<std::string>> params)
+    template<typename ServiceString, typename PathString>
+    SubscriptionData(ServiceString &&service, PathString &&path, std::unordered_map<std::string, std::optional<std::string>> params)
         : _service(stripSlashes(std::forward<ServiceString>(service), false))
         , _path(stripSlashes(std::forward<PathString>(path), true))
-        , _params(std::move(params))
-    {
+        , _params(std::move(params)) {
         if (_path.find("?") != std::string::npos) {
             if (_params.size() != 0) {
                 throw fmt::format("Parameters are not empty, and there are more in the path {} {}\n", _params, _path);
             }
             auto oldPath = _path;
-            auto parsed = URI<RELAXED>(_path);
-            _path = parsed.path().value_or("/");
-            _params = parsed.queryParamMap();
+            auto parsed  = URI<RELAXED>(_path);
+            _path        = parsed.path().value_or("/");
+            _params      = parsed.queryParamMap();
         }
 
         auto is_char_valid = [](char c) {
@@ -71,21 +69,19 @@ public:
         }
     }
 
-    SubscriptionData(const SubscriptionData& other)
-        : SubscriptionData(other._service, other._path, other._params)
-    {}
+    SubscriptionData(const SubscriptionData &other)
+        : SubscriptionData(other._service, other._path, other._params) {}
 
-    SubscriptionData(SubscriptionData&& other)
-        : SubscriptionData(std::move(other._service), std::move(other._path), std::move(other._params))
-    {}
+    SubscriptionData(SubscriptionData &&other)
+        : SubscriptionData(std::move(other._service), std::move(other._path), std::move(other._params)) {}
 
-    SubscriptionData& operator=(SubscriptionData other) = delete;
+    SubscriptionData &operator=(SubscriptionData other) = delete;
 
-    bool operator==(const SubscriptionData& other) const {
+    bool              operator==(const SubscriptionData &other) const {
         return std::tie(_service, _path, _params) == std::tie(other._service, other._path, other._params);
     }
 
-    bool operator!=(const SubscriptionData& other) const {
+    bool operator!=(const SubscriptionData &other) const {
         return !operator==(other);
     }
 

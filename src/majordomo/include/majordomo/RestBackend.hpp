@@ -247,9 +247,9 @@ public:
         , requestResponseSocket(context, ZMQ_SUB)
         , subscriptionInfo(std::move(_subscriptionInfo)) {}
 
-    Connection(const Connection &other)       = delete;
+    Connection(const Connection &other) = delete;
     Connection &operator=(const Connection &) = delete;
-    Connection &operator=(Connection &&)      = delete;
+    Connection &operator=(Connection &&) = delete;
 
     // Here be dragons! This is not to be used after
     // the connection was involved in any threading code
@@ -399,8 +399,8 @@ public:
                     const auto connectionCount = _connectionForService.size();
 
                     if (connectionCount != 0) {
-                        std::vector<detail::Connection *>     connections;
-                        std::vector<zmq_pollitem_t>           pollItems;
+                        std::vector<detail::Connection *> connections;
+                        std::vector<zmq_pollitem_t>       pollItems;
                         connections.resize(connectionCount);
                         pollItems.resize(connectionCount);
 
@@ -729,7 +729,7 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         return true;
     }
 
-    bool respondWithLongPollRedirect(const httplib::Request &request, httplib::Response &response, const std::string_view& subscriptionContext, detail::PollingIndex redirectLongPollingIdx) {
+    bool respondWithLongPollRedirect(const httplib::Request &request, httplib::Response &response, const std::string_view &subscriptionContext, detail::PollingIndex redirectLongPollingIdx) {
         auto uri = URI<>::factory()
                            .path(request.path)
                            .addQueryParameter("LongPollingIdx", std::to_string(redirectLongPollingIdx))
@@ -743,9 +743,9 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         return true;
     }
 
-    bool respondWithLongPoll(const httplib::Request &request, httplib::Response &response, const std::string_view &service, const std::string_view& topic) {
+    bool respondWithLongPoll(const httplib::Request &request, httplib::Response &response, const std::string_view &service, const std::string_view &topic) {
         // TODO: After the URIs are formalized, rethink service and topic
-        auto        uri = URI<>::factory();
+        auto uri = URI<>::factory();
         addParameters(request, uri);
 
         detail::SubscriptionInfo subscriptionInfo{ std::string(service), std::string(topic) };
@@ -755,7 +755,7 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
             return detail::respondWithError(response, "Error: LongPollingIdx parameter not specified");
         }
 
-        const auto              &longPollingIdxParam = longPollingIdxIt->second;
+        const auto &longPollingIdxParam = longPollingIdxIt->second;
 
         struct CacheInfo {
             detail::PollingIndex firstCachedIndex = 0;
