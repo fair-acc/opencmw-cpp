@@ -479,7 +479,7 @@ inline void writeResult(std::string_view workerName, RequestContext &rawCtx, con
     } else if (mimeType == MIME::HTML) {
         using namespace std::string_literals;
         std::stringstream stream;
-        mustache::serialise(std::string(workerName), stream,
+        mustache::serialise(cmrc::assets::get_filesystem(), std::string(workerName), stream,
                 std::pair<std::string, const decltype(output) &>{ "result"s, output },
                 std::pair<std::string, const RequestContext &>{ "rawCtx"s, rawCtx });
         rawCtx.reply.setBody(stream.str(), MessageFrame::dynamic_bytes_tag{});
@@ -511,7 +511,7 @@ inline void writeResultFull(std::string_view workerName, RequestContext &rawCtx,
         std::stringstream stream;
 
         try {
-            mustache::serialise(std::string(workerName), stream,
+            mustache::serialise(cmrc::assets::get_filesystem(), std::string(workerName), stream,
                     std::pair<std::string, const decltype(output) &>{ "result"s, output },
                     std::pair<std::string, const decltype(input) &>{ "input"s, input },
                     std::pair<std::string, const decltype(requestContext) &>{ "requestContext"s, requestContext },

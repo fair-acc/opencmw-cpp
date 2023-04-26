@@ -118,6 +118,7 @@ int main(int argc, char **argv) {
 
             SimpleContext context{
                 .ctx         = opencmw::TimingCtx(),
+                .testFilter  = ""s,
                 .contentType = opencmw::MIME::JSON
             };
 

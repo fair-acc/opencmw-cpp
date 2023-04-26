@@ -45,7 +45,7 @@ TEST_CASE("MustacheSerialization: value with vector of strings", "[Mustache][Mus
     std::stringstream str;
     ServicesList      servicesList;
     servicesList.services = { "a", "b", "c" };
-    opencmw::mustache::serialise("Services", str,
+    opencmw::mustache::serialise(cmrc::assets::get_filesystem(), "Services", str,
             std::pair<std::string, const ServicesList &>{ "result"s, servicesList });
 
     REQUIRE(str.str() == "<html><li><span>a</span></li><li><span>b</span></li><li><span>c</span></li></html>\n");
@@ -57,7 +57,7 @@ TEST_CASE("MustacheSerialization: value with vector of objects", "[Mustache][Mus
     servicesList.services.emplace_back("a");
     servicesList.services.emplace_back("b");
     servicesList.services.emplace_back("c");
-    opencmw::mustache::serialise("Services", str,
+    opencmw::mustache::serialise(cmrc::assets::get_filesystem(), "Services", str,
             std::pair<std::string, const ServiceNamesList &>{ "result"s, servicesList });
 
     REQUIRE(str.str() == "<html><li><span>a</span></li><li><span>b</span></li><li><span>c</span></li></html>\n");
@@ -70,7 +70,7 @@ TEST_CASE("MustacheSerialization: value with fallback serialisation", "[Mustache
         address.streetNumber = 0;
         std::stringstream str;
 
-        opencmw::mustache::serialise("Address", str,
+        opencmw::mustache::serialise(cmrc::assets::get_filesystem(), "Address", str,
                 std::pair<std::string, const AddressEntry &>{ "result"s, address });
 
         REQUIRE(str.str() == R"""([name::][street::][streetNumber::0][postalCode::][city::][multiArray::{"dims": [0, 0],"values": []}][isCurrent::false]
@@ -88,7 +88,7 @@ TEST_CASE("MustacheSerialization: value with fallback serialisation", "[Mustache
             .isCurrent    = true
         };
         std::stringstream str;
-        opencmw::mustache::serialise("Address", str,
+        opencmw::mustache::serialise(cmrc::assets::get_filesystem(), "Address", str,
                 std::pair<std::string, const AddressEntry &>{ "result"s, address });
 
         REQUIRE(str.str() == R"""([name::Holmes, Sherlock][street::Baker Street][streetNumber::221][postalCode::][city::London][multiArray::{"dims": [2, 2],"values": [1.337e+00, 2.342e+01, 4.223e+01, 1.337e+01]}][isCurrent::true]
@@ -105,7 +105,7 @@ ENABLE_REFLECTION_FOR(MustacheDataWithSet, strings, floats)
 TEST_CASE("MustacheSerialization: value with set of strings and set of floats", "[Mustache][MustacheValueSerialiser]") {
     std::stringstream   str;
     MustacheDataWithSet data{ .strings = { "Set", "of", "Strings" }, .floats = { 1.337f, 4.2f, 2.3f } };
-    opencmw::mustache::serialise("", str, std::pair<std::string, const MustacheDataWithSet &>{ "result"s, data });
+    opencmw::mustache::serialise(cmrc::assets::get_filesystem(), "", str, std::pair<std::string, const MustacheDataWithSet &>{ "result"s, data });
 
     REQUIRE(str.str() == R"""([strings::["Set", "Strings", "of"]][floats::[1.337e+00, 2.3e+00, 4.2e+00]]
 )""");

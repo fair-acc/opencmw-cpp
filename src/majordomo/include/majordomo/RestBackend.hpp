@@ -195,7 +195,7 @@ bool respondWithServicesList(auto &broker, const httplib::Request &request, http
                     std::sort(servicesList.services.begin(), servicesList.services.end(), serviceLessThan);
 
                     using namespace std::string_literals;
-                    mustache::serialise("ServicesList", sink.os,
+                    mustache::serialise(cmrc::assets::get_filesystem(), "ServicesList", sink.os,
                             std::pair<std::string, const ServicesList &>{ "servicesList"s, servicesList });
                     sink.done();
                     return true;
