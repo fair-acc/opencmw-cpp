@@ -74,14 +74,14 @@ int main(int argc, char **argv) {
     majordomo::BasicWorker<"beverages">                                                                                                   beveragesWorker(primaryBroker, TestIntHandler(10));
 
     //
-    // ImageServiceWorker<"testImage", majordomo::description<"Returns an image">> imageWorker(primaryBroker, std::chrono::seconds(10));
+    ImageServiceWorker<"testImage", majordomo::description<"Returns an image">> imageWorker(primaryBroker, std::chrono::seconds(10));
 
     //
     RunInThread runHelloWorld(helloWorldWorker);
     RunInThread runAddressbook(addressbookWorker);
     RunInThread runAddressbookBackup(addressbookBackupWorker);
     RunInThread runBeverages(beveragesWorker);
-    // RunInThread runImage(imageWorker);
+    RunInThread runImage(imageWorker);
     waitUntilServiceAvailable(primaryBroker.context, "addressbook");
 
     // Fake message publisher - sends messages on notifier.service
