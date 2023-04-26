@@ -13,6 +13,7 @@
 
 #include <exception>
 #include <unordered_map>
+#include <thread>
 
 // Concepts and tests use common types
 #include <concepts/majordomo/helpers.hpp>
@@ -38,6 +39,7 @@ TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][major
     majordomo::Broker                                          broker("TestBroker", testSettings());
     auto                                                       fs = cmrc::assets::get_filesystem();
     FileServerRestBackend<majordomo::PLAIN_HTTP, decltype(fs)> rest(broker, fs);
+    RunInThread restServerRun(rest);
 
     // For subscription matching, it is necessary that broker knows how to handle the query params "ctx" and "contentType".
     // ("ctx" needs to use the TimingCtxFilter, and "contentType" compare the mime types (currently simply a string comparison))

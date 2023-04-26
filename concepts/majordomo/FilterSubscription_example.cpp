@@ -1,7 +1,6 @@
 #include <Client.hpp>
 #include <majordomo/base64pp.hpp>
 #include <majordomo/Broker.hpp>
-#include <majordomo/RestBackend.hpp>
 #include <majordomo/Worker.hpp>
 
 #include <atomic>

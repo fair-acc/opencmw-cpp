@@ -50,6 +50,14 @@ int main(int argc, char **argv) {
         rest.emplace<FileServerRestBackend<majordomo::HTTPS, decltype(fs)>>(primaryBroker, fs, rootPath);
     }
 
+    std::jthread restServerThread([&rest] {
+            std::visit([] <typename T> (T& server) {
+                if constexpr (not std::is_same_v<T, std::monostate>) {
+                    server.run();
+                }
+            }, rest);
+        });
+
     const auto brokerRouterAddress = primaryBroker.bind(URI<>("mds://127.0.0.1:12345"));
     if (!brokerRouterAddress) {
         std::cerr << "Could not bind to broker address" << std::endl;

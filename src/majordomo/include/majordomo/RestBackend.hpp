@@ -319,7 +319,6 @@ class RestBackend : public Mode {
 protected:
     Broker<Roles...> &_broker;
     const VirtualFS  &_vfs;
-    std::jthread      _restServerThread;
     URI<>             _restAddress;
 
 private:
@@ -456,8 +455,6 @@ public:
     explicit RestBackend(Broker<Roles...> &broker, const VirtualFS &vfs, URI<> restAddress = URI<>::factory().scheme(DEFAULT_REST_SCHEME).hostName("0.0.0.0").port(DEFAULT_REST_PORT).build())
         : _broker(broker), _vfs(vfs), _restAddress(restAddress) {
         _broker.registerDnsAddress(restAddress);
-        _restServerThread = std::jthread(&RestBackend::run, this);
-        startUpdaterThread();
     }
 
     virtual ~RestBackend() {
@@ -560,6 +557,8 @@ public:
     void run() {
         thread::setThreadName("RestBackend thread");
 
+        startUpdaterThread();
+
         registerHandlers();
 
         if (!_restAddress.hostName() || !_restAddress.port()) {
@@ -574,6 +573,10 @@ public:
 
     void requestStop() {
         _svr.stop();
+    }
+
+    void shutdown() {
+        requestStop();
     }
 };
 
