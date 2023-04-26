@@ -51,14 +51,15 @@ int main(int argc, char **argv) {
     }
 
     std::jthread restServerThread([&rest] {
-            std::visit([] <typename T> (T& server) {
-                if constexpr (not std::is_same_v<T, std::monostate>) {
-                    server.run();
-                }
-            }, rest);
-        });
+        std::visit([]<typename T>(T &server) {
+            if constexpr (not std::is_same_v<T, std::monostate>) {
+                server.run();
+            }
+        },
+                rest);
+    });
 
-    const auto brokerRouterAddress = primaryBroker.bind(URI<>("mds://127.0.0.1:12345"));
+    const auto   brokerRouterAddress = primaryBroker.bind(URI<>("mds://127.0.0.1:12345"));
     if (!brokerRouterAddress) {
         std::cerr << "Could not bind to broker address" << std::endl;
         return 1;
@@ -73,7 +74,7 @@ int main(int argc, char **argv) {
     majordomo::Broker secondaryBroker("SecondaryTestBroker", { .dnsAddress = brokerRouterAddress->str() });
     std::jthread      secondaryBrokerThread([&secondaryBroker] {
         secondaryBroker.run();
-    });
+         });
 
     //
     majordomo::Worker<"helloWorld", SimpleContext, SimpleRequest, SimpleReply, majordomo::description<"A friendly service saying hello">> helloWorldWorker(primaryBroker, HelloWorldHandler());
@@ -125,11 +126,11 @@ int main(int argc, char **argv) {
             addressbookWorker.notify("/addressbook", context, entry);
 
             context.testFilter = "main";
-            entry.city = "London";
+            entry.city         = "London";
             addressbookWorker.notify("/addressbook", context, entry);
 
             context.testFilter = "alternate";
-            entry.city = "Brighton";
+            entry.city         = "Brighton";
             addressbookWorker.notify("/addressbook", context, entry);
         }
 

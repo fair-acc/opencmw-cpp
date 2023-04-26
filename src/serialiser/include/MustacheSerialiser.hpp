@@ -356,7 +356,7 @@ auto serialiseWithFieldMetadata(T &&object) {
 }
 
 template<typename VirtualFS, typename Stream, typename... Objects>
-void serialise(const VirtualFS& fs, const std::string &workerName, Stream &out, std::pair<std::string, const Objects &> &&...namedObjects) {
+void serialise(const VirtualFS &fs, const std::string &workerName, Stream &out, std::pair<std::string, const Objects &> &&...namedObjects) {
     static_assert((ReflectableClass<std::remove_cvref_t<Objects>> && ...));
 
     static const auto fileName = "assets/mustache/" + workerName + ".mustache";
