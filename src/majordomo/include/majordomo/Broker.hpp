@@ -265,7 +265,13 @@ private:
     Timestamp                                               _heartbeatAt = Clock::now() + settings.heartbeatInterval;
     SubscriptionMatcher                                     _subscriptionMatcher;
     std::unordered_map<URI<RELAXED>, std::set<std::string>> _subscribedClientsByTopic; // topic -> client IDs
-    std::unordered_map<URI<RELAXED>, int>                   _subscribedTopics;         // topic -> subscription count
+    struct Sub {
+        Sub(int c)
+            : count(c) {}
+        int                 count;
+        SubscriptionMatcher matcher;
+    };
+    std::unordered_map<URI<RELAXED>, Sub>                   _subscribedTopics; // topic -> subscription count and matcher
     std::unordered_map<std::string, Client>                 _clients;
     std::unordered_map<std::string, Worker>                 _workers;
     std::unordered_map<std::string, Service>                _services;
@@ -512,8 +518,13 @@ public:
 private:
     void subscribe(const URI<RELAXED> &topic) {
         auto [it, inserted] = _subscribedTopics.try_emplace(topic, 0);
-        it->second++;
-        if (it->second == 1) {
+        it->second.count++;
+        const auto &query = topic.queryParamMap();
+        for (const auto &[name, value] : query) {
+            it->second.matcher.template addFilter<opencmw::DomainFilter<std::string_view>>(name);
+        }
+
+        if (it->second.count == 1) {
             zmq_invoke(zmq_setsockopt, _subSocket, ZMQ_SUBSCRIBE, topic.str().data(), topic.str().size()).assertSuccess();
         }
     }
@@ -521,8 +532,8 @@ private:
     void unsubscribe(const URI<RELAXED> &topic) {
         auto it = _subscribedTopics.find(topic);
         if (it != _subscribedTopics.end()) {
-            it->second--;
-            if (it->second == 0) {
+            it->second.count--;
+            if (it->second.count == 0) {
                 zmq_invoke(zmq_setsockopt, _subSocket, ZMQ_UNSUBSCRIBE, topic.str().data(), topic.str().size()).assertSuccess();
                 _subscribedTopics.erase(it);
             }
@@ -688,8 +699,8 @@ private:
         const auto topicURI = URI<RELAXED>(std::string(message.topic()));
 
         // TODO avoid clone() for last message sent out
-        for (const auto &[topic, _] : _subscribedTopics) {
-            if (_subscriptionMatcher(topicURI, topic)) {
+        for (const auto &[topic, sub] : _subscribedTopics) {
+            if (sub.matcher(topicURI, topic)) {
                 // sends notification with the topic that is expected by the client for its subscription
                 auto copy = message.clone();
                 copy.setSourceId(topic.str(), MessageFrame::dynamic_bytes_tag{});
