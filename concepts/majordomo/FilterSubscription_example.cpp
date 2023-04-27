@@ -1,7 +1,6 @@
 #include <Client.hpp>
 #include <majordomo/base64pp.hpp>
 #include <majordomo/Broker.hpp>
-#include <majordomo/RestBackend.hpp>
 #include <majordomo/Worker.hpp>
 
 #include <atomic>
@@ -110,10 +109,9 @@ private:
     void notifyUpdate() {
         for (auto subTopic : super_t::activeSubscriptions()) { // loop over active subscriptions
 
-            const auto          queryMap = subTopic.queryParamMap();
+            const auto          queryMap = subTopic.params();
             const FilterContext filterIn = opencmw::query::deserialise<FilterContext>(queryMap);
             if (!shallUpdateForTopic(filterIn)) {
-                fmt::print("active user subscription: '{}' is NOT being notified\n", subTopic.str());
                 break;
             }
             FilterContext filterOut = filterIn;

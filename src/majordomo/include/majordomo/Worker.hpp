@@ -2,11 +2,15 @@
 #define OPENCMW_MAJORDOMO_WORKER_H
 #include <array>
 #include <atomic>
+
 #include <chrono>
 #include <concepts>
 #include <shared_mutex>
 #include <string>
 #include <thread>
+
+#include <unordered_map>
+#include <unordered_set>
 
 #include <fmt/format.h>
 
@@ -90,7 +94,7 @@ class BasicWorker {
     std::array<zmq_pollitem_t, 3>                            _pollerItems;
     SubscriptionMatcher                                      _subscriptionMatcher;
     mutable std::mutex                                       _activeSubscriptionsLock;
-    std::set<URI<RELAXED>>                                   _activeSubscriptions;
+    std::unordered_set<SubscriptionData>                     _activeSubscriptions;
     Socket                                                   _notifyListenerSocket;
     std::unordered_map<std::thread::id, NotificationHandler> _notificationHandlers;
     std::shared_mutex                                        _notificationHandlersLock;
@@ -123,14 +127,10 @@ public:
         _subscriptionMatcher.addFilter<Filter>(key);
     }
 
-    std::set<URI<RELAXED>> activeSubscriptions() const noexcept {
-        std::lock_guard        lockGuard(_activeSubscriptionsLock);
-        std::set<URI<RELAXED>> ret;
-        for (auto topic : _activeSubscriptions) {
-            auto copy = topic;
-            ret.emplace(copy);
-        }
-        return ret;
+    std::unordered_set<SubscriptionData> activeSubscriptions() const noexcept {
+        std::lock_guard                      lockGuard(_activeSubscriptionsLock);
+        std::unordered_set<SubscriptionData> copy = _activeSubscriptions;
+        return copy;
     }
 
     void shutdown() {
@@ -255,16 +255,17 @@ private:
         }
 
         const auto topicString = data.substr(1);
-        const auto topic       = URI<RELAXED>(std::string(topicString));
+        // const auto topic       = URI<RELAXED>(std::string(topicString));
+        const SubscriptionData subscription(serviceName.data(), topicString, {});
 
         // this assumes that the broker does the subscribe/unsubscribe counting
         // for multiple clients and sends us a single sub/unsub for each topic
         if (data[0] == '\x1') {
             std::lock_guard lockGuard(_activeSubscriptionsLock);
-            _activeSubscriptions.insert(topic);
+            _activeSubscriptions.insert(subscription);
         } else {
             std::lock_guard lockGuard(_activeSubscriptionsLock);
-            _activeSubscriptions.erase(topic);
+            _activeSubscriptions.erase(subscription);
         }
 
         return true;
@@ -272,9 +273,10 @@ private:
 
     bool receiveNotificationMessage() {
         if (auto message = MdpMessage::receive(_notifyListenerSocket)) {
-            const auto topic                    = URI<RELAXED>(std::string(message->topic()));
-            const auto matchesNotificationTopic = [this, &topic](const auto &subscription) {
-                return _subscriptionMatcher(topic, subscription);
+            // const auto topic                    = URI<RELAXED>(std::string(message->topic()));
+            const SubscriptionData currentSubscription(message->serviceName(), message->topic(), {});
+            const auto             matchesNotificationTopic = [this, &currentSubscription](const auto &activeSubscription) {
+                return _subscriptionMatcher(currentSubscription, activeSubscription);
             };
 
             // TODO what to do here if worker is disconnected?
@@ -455,9 +457,11 @@ inline void serialiseAndWriteToBody(RequestContext &rawCtx, const ReflectableCla
 }
 
 inline void writeResult(std::string_view workerName, RequestContext &rawCtx, const auto &replyContext, const auto &output) {
-    auto       replyQuery = query::serialise(replyContext);
-    const auto baseUri    = URI<RELAXED>(std::string(rawCtx.reply.topic().empty() ? rawCtx.request.topic() : rawCtx.reply.topic()));
-    const auto topicUri   = URI<RELAXED>::factory(baseUri).setQuery(std::move(replyQuery)).build();
+    auto        replyQuery  = query::serialise(replyContext);
+    const auto  baseUri     = URI<RELAXED>(std::string(rawCtx.reply.topic().empty() ? rawCtx.request.topic() : rawCtx.reply.topic()));
+    const auto  topicUriOld = URI<RELAXED>::factory(baseUri).setQuery(std::move(replyQuery)).build();
+    const auto  topicUriNew = URI<RELAXED>::factory(baseUri).build();
+    const auto &topicUri    = topicUriOld;
 
     rawCtx.reply.setTopic(topicUri.str(), MessageFrame::dynamic_bytes_tag{});
     const auto replyMimetype = query::getMimeType(replyContext);
@@ -474,7 +478,7 @@ inline void writeResult(std::string_view workerName, RequestContext &rawCtx, con
     } else if (mimeType == MIME::HTML) {
         using namespace std::string_literals;
         std::stringstream stream;
-        mustache::serialise(std::string(workerName), stream,
+        mustache::serialise(cmrc::assets::get_filesystem(), std::string(workerName), stream,
                 std::pair<std::string, const decltype(output) &>{ "result"s, output },
                 std::pair<std::string, const RequestContext &>{ "rawCtx"s, rawCtx });
         rawCtx.reply.setBody(stream.str(), MessageFrame::dynamic_bytes_tag{});
@@ -506,7 +510,7 @@ inline void writeResultFull(std::string_view workerName, RequestContext &rawCtx,
         std::stringstream stream;
 
         try {
-            mustache::serialise(std::string(workerName), stream,
+            mustache::serialise(cmrc::assets::get_filesystem(), std::string(workerName), stream,
                     std::pair<std::string, const decltype(output) &>{ "result"s, output },
                     std::pair<std::string, const decltype(input) &>{ "input"s, input },
                     std::pair<std::string, const decltype(requestContext) &>{ "requestContext"s, requestContext },
@@ -579,22 +583,12 @@ public:
     }
 
     bool notify(const ContextType &context, const OutputType &reply) {
-        return notify("", context, reply);
+        return notify("/", context, reply);
     }
 
     bool notify(std::string_view path, const ContextType &context, const OutputType &reply) {
-        // Java does _serviceName + path, do we want that?
-        // std::string topicString = this->_serviceName;
-        // topicString.append(path);
-        // auto topicURI = URI<RELAXED>(topicString);
-
-        auto       query    = query::serialise(context);
-        const auto topicURI = URI<RELAXED>::factory(URI<RELAXED>(std::string(path))).setQuery(std::move(query)).build();
-
-        // TODO java does subscription handling here which BasicMdpWorker does in the sender thread. check what we need there.
-
         RequestContext rawCtx;
-        rawCtx.reply.setTopic(topicURI.str(), MessageFrame::dynamic_bytes_tag{});
+        rawCtx.reply.setTopic(path, MessageFrame::dynamic_bytes_tag{});
         worker_detail::writeResult(Worker::name, rawCtx, context, reply);
         return BasicWorker<serviceName, Meta...>::notify(std::move(rawCtx.reply));
     }

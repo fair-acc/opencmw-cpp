@@ -355,12 +355,11 @@ auto serialiseWithFieldMetadata(T &&object) {
     return meta;
 }
 
-template<typename Stream, typename... Objects>
-void serialise(const std::string &workerName, Stream &out, std::pair<std::string, const Objects &> &&...namedObjects) {
+template<typename VirtualFS, typename Stream, typename... Objects>
+void serialise(const VirtualFS &fs, const std::string &workerName, Stream &out, std::pair<std::string, const Objects &> &&...namedObjects) {
     static_assert((ReflectableClass<std::remove_cvref_t<Objects>> && ...));
 
     static const auto fileName = "assets/mustache/" + workerName + ".mustache";
-    const auto        fs       = cmrc::assets::get_filesystem();
 
     using mustache_ns          = kainjow::mustache_ns<std::string, mustache_data_base>;
     // Structured bindings here break the linker...

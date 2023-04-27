@@ -262,21 +262,21 @@ public:
     const std::string brokerName;
 
 private:
-    Timestamp                                               _heartbeatAt = Clock::now() + settings.heartbeatInterval;
-    SubscriptionMatcher                                     _subscriptionMatcher;
-    std::unordered_map<URI<RELAXED>, std::set<std::string>> _subscribedClientsByTopic; // topic -> client IDs
-    std::unordered_map<URI<RELAXED>, int>                   _subscribedTopics;         // topic -> subscription count
-    std::unordered_map<std::string, Client>                 _clients;
-    std::unordered_map<std::string, Worker>                 _workers;
-    std::unordered_map<std::string, Service>                _services;
-    std::unordered_map<std::string, detail::DnsServiceItem> _dnsCache;
-    std::set<std::string>                                   _dnsAddresses;
-    Timestamp                                               _dnsHeartbeatAt;
-    bool                                                    _connectedToDns    = false;
+    Timestamp                                                   _heartbeatAt = Clock::now() + settings.heartbeatInterval;
+    SubscriptionMatcher                                         _subscriptionMatcher;
+    std::unordered_map<SubscriptionData, std::set<std::string>> _subscribedClientsByTopic; // topic -> client IDs
+    std::unordered_map<SubscriptionData, int>                   _subscribedTopics;         // topic -> subscription count
+    std::unordered_map<std::string, Client>                     _clients;
+    std::unordered_map<std::string, Worker>                     _workers;
+    std::unordered_map<std::string, Service>                    _services;
+    std::unordered_map<std::string, detail::DnsServiceItem>     _dnsCache;
+    std::set<std::string>                                       _dnsAddresses;
+    Timestamp                                                   _dnsHeartbeatAt;
+    bool                                                        _connectedToDns    = false;
 
-    const std::string                                       _rbac              = "RBAC=ADMIN,abcdef12345";
+    const std::string                                           _rbac              = "RBAC=ADMIN,abcdef12345";
 
-    std::atomic<bool>                                       _shutdownRequested = false;
+    std::atomic<bool>                                           _shutdownRequested = false;
 
     // Sockets collection. The Broker class will be used as the handler
     const Socket                  _routerSocket;
@@ -510,22 +510,27 @@ public:
     }
 
 private:
-    void subscribe(const URI<RELAXED> &topic) {
+    void subscribe(const SubscriptionData &topic) {
         auto [it, inserted] = _subscribedTopics.try_emplace(topic, 0);
         it->second++;
         if (it->second == 1) {
-            zmq_invoke(zmq_setsockopt, _subSocket, ZMQ_SUBSCRIBE, topic.str().data(), topic.str().size()).assertSuccess();
+            // auto topicStr = topic.serialized();
+            auto topicStr = topic.path();
+            zmq_invoke(zmq_setsockopt, _subSocket, ZMQ_SUBSCRIBE, topicStr.data(), topicStr.size()).assertSuccess();
         }
     }
 
-    void unsubscribe(const URI<RELAXED> &topic) {
+    void unsubscribe(const SubscriptionData &topic) {
         auto it = _subscribedTopics.find(topic);
         if (it != _subscribedTopics.end()) {
             it->second--;
             if (it->second == 0) {
-                zmq_invoke(zmq_setsockopt, _subSocket, ZMQ_UNSUBSCRIBE, topic.str().data(), topic.str().size()).assertSuccess();
+                auto topicStr = topic.serialized();
+                zmq_invoke(zmq_setsockopt, _subSocket, ZMQ_UNSUBSCRIBE, topicStr.data(), topicStr.size()).assertSuccess();
                 _subscribedTopics.erase(it);
             }
+        } else {
+            throw fmt::format("Nothing subscribed to {}\n", topic);
         }
     }
 
@@ -544,7 +549,8 @@ private:
         }
 
         const auto topicString = data.substr(1);
-        const auto topic       = URI<RELAXED>(std::string(topicString));
+        const auto topicURI    = URI<RELAXED>(std::string(topicString));
+        const auto topic       = SubscriptionData::fromURI(topicURI);
 
         if (data[0] == '\x1') {
             subscribe(topic);
@@ -581,27 +587,20 @@ private:
                 return true;
             }
             case Command::Subscribe: {
-                if (message.topic().empty()) {
-                    // TODO disconnect client?
-                    return false;
-                }
-                const auto topicURI = URI<RELAXED>(std::string(message.topic()));
+                SubscriptionData subscription(message.serviceName(), message.topic(), {});
 
-                subscribe(topicURI);
+                subscribe(subscription);
 
-                auto [it, inserted] = _subscribedClientsByTopic.try_emplace(topicURI, std::set<std::string>{});
+                auto [it, inserted] = _subscribedClientsByTopic.try_emplace(subscription, std::set<std::string>{});
                 it->second.emplace(message.sourceId());
                 return true;
             }
             case Command::Unsubscribe: {
-                if (message.topic().empty()) {
-                    // TODO disconnect client?
-                    return false;
-                }
-                const auto topicURI = URI<RELAXED>(std::string(message.topic()));
-                unsubscribe(topicURI);
+                SubscriptionData subscription(message.serviceName(), message.topic(), {});
 
-                auto it = _subscribedClientsByTopic.find(topicURI);
+                unsubscribe(subscription);
+
+                auto it = _subscribedClientsByTopic.find(subscription);
                 if (it != _subscribedClientsByTopic.end()) {
                     it->second.erase(std::string(message.sourceId()));
                     if (it->second.empty()) {
@@ -685,22 +684,23 @@ private:
     }
 
     void dispatchMessageToMatchingSubscribers(BrokerMessage &&message) {
-        const auto topicURI = URI<RELAXED>(std::string(message.topic()));
+        SubscriptionData subscription(message.serviceName(), message.topic(), {});
 
         // TODO avoid clone() for last message sent out
         for (const auto &[topic, _] : _subscribedTopics) {
-            if (_subscriptionMatcher(topicURI, topic)) {
-                // sends notification with the topic that is expected by the client for its subscription
+            if (_subscriptionMatcher(subscription, topic)) {
                 auto copy = message.clone();
-                copy.setSourceId(topic.str(), MessageFrame::dynamic_bytes_tag{});
+                copy.setTopic(subscription.path(), MessageFrame::dynamic_bytes_tag{});
+                copy.setSourceId(topic.serialized(), MessageFrame::dynamic_bytes_tag{});
                 copy.send(_pubSocket).assertSuccess();
 
                 const auto it = _subscribedClientsByTopic.find(topic);
                 if (it != _subscribedClientsByTopic.end()) {
                     for (const auto &clientId : it->second) {
-                        auto copy = message.clone();
-                        copy.setSourceId(clientId, MessageFrame::dynamic_bytes_tag{});
-                        copy.send(_routerSocket).assertSuccess();
+                        auto clientCopy = message.clone();
+                        clientCopy.setTopic(subscription.path(), MessageFrame::dynamic_bytes_tag{});
+                        clientCopy.setSourceId(clientId, MessageFrame::dynamic_bytes_tag{});
+                        clientCopy.send(_routerSocket).assertSuccess();
                     }
                 }
             }

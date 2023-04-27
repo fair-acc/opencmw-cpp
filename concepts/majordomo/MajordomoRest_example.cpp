@@ -50,7 +50,16 @@ int main(int argc, char **argv) {
         rest.emplace<FileServerRestBackend<majordomo::HTTPS, decltype(fs)>>(primaryBroker, fs, rootPath);
     }
 
-    const auto brokerRouterAddress = primaryBroker.bind(URI<>("mds://127.0.0.1:12345"));
+    std::jthread restServerThread([&rest] {
+        std::visit([]<typename T>(T &server) {
+            if constexpr (not std::is_same_v<T, std::monostate>) {
+                server.run();
+            }
+        },
+                rest);
+    });
+
+    const auto   brokerRouterAddress = primaryBroker.bind(URI<>("mds://127.0.0.1:12345"));
     if (!brokerRouterAddress) {
         std::cerr << "Could not bind to broker address" << std::endl;
         return 1;
@@ -65,7 +74,7 @@ int main(int argc, char **argv) {
     majordomo::Broker secondaryBroker("SecondaryTestBroker", { .dnsAddress = brokerRouterAddress->str() });
     std::jthread      secondaryBrokerThread([&secondaryBroker] {
         secondaryBroker.run();
-    });
+         });
 
     //
     majordomo::Worker<"helloWorld", SimpleContext, SimpleRequest, SimpleReply, majordomo::description<"A friendly service saying hello">> helloWorldWorker(primaryBroker, HelloWorldHandler());
@@ -89,12 +98,42 @@ int main(int argc, char **argv) {
     publisher.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER);
 
     for (int i = 0; true; ++i) {
-        std::cerr << "Sending new number (step " << i << ")\n";
-        majordomo::MdpMessage notifyMessage;
-        notifyMessage.setTopic("/wine", static_tag);
-        notifyMessage.setBody(std::to_string(i), dynamic_tag);
+        {
+            std::cerr << "Sending new number (step " << i << ")\n";
+            majordomo::MdpMessage notifyMessage;
+            notifyMessage.setTopic("/wine", static_tag);
+            notifyMessage.setBody(std::to_string(i), dynamic_tag);
 
-        beveragesWorker.notify(std::move(notifyMessage));
+            beveragesWorker.notify(std::move(notifyMessage));
+        }
+
+        {
+            AddressEntry entry{
+                .name         = "Sherlock Holmes",
+                .street       = "Baker Street",
+                .streetNumber = i,
+                .postalCode   = "1000",
+                .city         = "London",
+                .isCurrent    = true
+            };
+
+            SimpleContext context{
+                .ctx         = opencmw::TimingCtx(),
+                .testFilter  = ""s,
+                .contentType = opencmw::MIME::JSON
+            };
+
+            addressbookWorker.notify("/addressbook", context, entry);
+
+            context.testFilter = "main";
+            entry.city         = "London";
+            addressbookWorker.notify("/addressbook", context, entry);
+
+            context.testFilter = "alternate";
+            entry.city         = "Brighton";
+            addressbookWorker.notify("/addressbook", context, entry);
+        }
+
         std::this_thread::sleep_for(3s);
     }
 }

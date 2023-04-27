@@ -16,7 +16,7 @@ target_link_libraries(RestSubscription_client
         client
         opencmw_project_options
         opencmw_project_warnings
-        assets::rest)
+        )
 
 if (EMSCRIPTEN)
     set(CMAKE_EXECUTABLE_SUFFIX ".html")
