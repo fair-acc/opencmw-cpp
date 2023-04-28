@@ -153,11 +153,11 @@ int main() {
     std::atomic<int>               receivedA{ 0 };
     std::atomic<int>               receivedAB{ 0 };
     client.subscribe(URI("mds://127.0.0.1:12345/DeviceName/Acquisition?signalFilter=A"), [&receivedA](const opencmw::mdp::Message &update) {
-        fmt::print("Client('A') received message from service '{}' for endpoint '{}'\n", update.serviceName.str(), update.endpoint.str());
+        fmt::print("Client('A') received message from service '{}' for endpoint '{}'\n", update.serviceName, update.endpoint.str());
         receivedA++;
     });
     client.subscribe(URI("mds://127.0.0.1:12345/DeviceName/Acquisition?signalFilter=A,B"), [&receivedAB](const opencmw::mdp::Message &update) {
-        fmt::print("Client('A,B') received message from service '{}' for endpoint '{}'\n", update.serviceName.str(), update.endpoint.str());
+        fmt::print("Client('A,B') received message from service '{}' for endpoint '{}'\n", update.serviceName, update.endpoint.str());
         receivedAB++;
     });
 

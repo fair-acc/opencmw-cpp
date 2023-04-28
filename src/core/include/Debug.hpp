@@ -1,8 +1,64 @@
-#ifndef OPENCMW_DEBUG_H
-#define OPENCMW_DEBUG_H
+
+#ifndef OPENCMW_MAJORDOMO_DEBUG_H
+#define OPENCMW_MAJORDOMO_DEBUG_H
+
 #include <ctime>
-#include <fmt/format.h>
+#include <filesystem>
 #include <iostream>
+#include <mutex>
+#if defined(__clang__)
+#include <experimental/source_location>
+namespace std {
+typedef std::experimental::source_location source_location;
+}
+#else
+#include <source_location>
+#endif
+
+#include <fmt/format.h>
+
+namespace opencmw::debug {
+
+struct DebugImpl {
+    bool _breakLineOnEnd = true;
+
+    DebugImpl() {}
+
+    ~DebugImpl() {
+        if (_breakLineOnEnd) {
+            operator<<('\n');
+        }
+    }
+
+    template<typename T>
+    DebugImpl &operator<<(T &&val) {
+        // static std::mutex print_lock;
+        // std::lock_guard   lock{ print_lock };
+        std::cerr << std::forward<T>(val);
+        return *this;
+    }
+
+    DebugImpl(const DebugImpl & /*unused*/) {
+    }
+
+    DebugImpl(DebugImpl &&other) noexcept {
+        other._breakLineOnEnd = false;
+    }
+};
+
+// TODO: Make a proper debug function
+inline auto
+log() {
+    return DebugImpl{};
+}
+
+inline auto withLocation(const std::source_location location = std::source_location::current()) {
+    std::error_code error;
+    auto            relative = std::filesystem::relative(location.file_name(), error);
+    return log() << (relative.string() /*location.file_name()*/) << ":" << location.line() << " in " << location.function_name() << " --> ";
+}
+
+} // namespace opencmw::debug
 
 #define REQUIRE_MESSAGE(cond, msg) \
     do { \
@@ -28,7 +84,7 @@ static std::size_t alloc{ 0 };   // NOLINT(cppcoreguidelines-avoid-non-const-glo
 static std::size_t realloc{ 0 }; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 static std::size_t dealloc{ 0 }; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
-static void        resetStats() {
+[[maybe_unused]] static void        resetStats() {
     alloc = realloc = dealloc = 0;
 }
 
@@ -140,4 +196,4 @@ void                     operator delete(void *ptr, std::size_t /*unused*/) noex
 #pragma clang diagnostic pop
 #endif // OPENCMW_INSTRUMENT_ALLOC
 
-#endif // OPENCMW_DEBUG_H
+#endif // include guard

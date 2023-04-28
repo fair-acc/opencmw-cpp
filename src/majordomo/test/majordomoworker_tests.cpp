@@ -1,4 +1,5 @@
 #include <majordomo/Broker.hpp>
+#include <majordomo/Message.hpp>
 #include <majordomo/Settings.hpp>
 #include <majordomo/Worker.hpp>
 
@@ -17,13 +18,13 @@
 #include <concepts/majordomo/helpers.hpp>
 
 using opencmw::majordomo::Broker;
-using opencmw::majordomo::BrokerMessage;
 using opencmw::majordomo::Command;
 using opencmw::majordomo::MdpMessage;
 using opencmw::majordomo::MessageFrame;
 using opencmw::majordomo::Settings;
 using opencmw::majordomo::Worker;
 
+using BrokerMessage = opencmw::majordomo::BasicMdpMessage<opencmw::majordomo::MessageFormat::WithSourceId>;
 /*
  * This test serves as example on how MajordomoWorker is to be used.
  *

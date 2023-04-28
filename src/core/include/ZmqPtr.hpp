@@ -1,5 +1,5 @@
-#ifndef OPENCMW_MAJORDOMO_ZMQPTR_H
-#define OPENCMW_MAJORDOMO_ZMQPTR_H
+#ifndef OPENCMW_CPP_ZMQPTR_H
+#define OPENCMW_CPP_ZMQPTR_H
 
 // A few thin RAII-only wrappers for ZMQ structures
 
@@ -7,6 +7,8 @@
 #include <cstring>
 #include <string>
 #include <type_traits>
+
+#include "Debug.hpp"
 
 #include <zmq.h>
 
@@ -25,7 +27,7 @@ typedef std::experimental::source_location source_location;
 #define ENABLE_RESULT_CHECKS 1
 #endif
 
-namespace opencmw::majordomo {
+namespace opencmw::zmq {
 
 template<typename T>
 class [[nodiscard]] Result {
@@ -142,7 +144,7 @@ constexpr decltype(auto) passArgument(Arg &&arg) {
 } // namespace detail
 
 template<typename Function, typename... Args>
-[[nodiscard]] auto zmq_invoke(const Function &&f, Args &&...args) {
+[[nodiscard]] auto invoke(const Function &&f, Args &&...args) {
     static_assert((not std::is_same_v<std::remove_cvref_t<Args>, void *> && ...));
     auto result = f(detail::passArgument(std::forward<Args>(args))...);
     return Result{ result };
@@ -177,6 +179,6 @@ struct Socket : ZmqPtr {
     ~Socket() { zmq_close(zmq_ptr); }
 };
 
-} // namespace opencmw::majordomo
+} // namespace opencmw::zmq
 
 #endif
