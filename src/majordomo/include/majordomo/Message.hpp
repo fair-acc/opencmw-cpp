@@ -11,7 +11,8 @@
 
 #include "Debug.hpp"
 
-#include "ZmqPtr.hpp"
+// core
+#include <ZmqPtr.hpp>
 
 namespace opencmw::majordomo { // TODO: move to opencmw and header to new 'core' package since these are needed by 'broker','worker' and 'client'
 using Bytes = std::string;

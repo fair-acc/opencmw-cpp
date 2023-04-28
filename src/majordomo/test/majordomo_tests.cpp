@@ -17,6 +17,7 @@
 using namespace opencmw::majordomo;
 using namespace std::chrono_literals;
 using URI = opencmw::URI<>;
+using BrokerMessage = BasicMdpMessage<MessageFormat::WithSourceId>;
 
 TEST_CASE("OpenCMW::Frame cloning", "[frame][cloning]") {
     {

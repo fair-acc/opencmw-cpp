@@ -19,12 +19,13 @@
 #include <IoSerialiserYaS.hpp>
 #include <majordomo/Broker.hpp>
 #include <majordomo/Constants.hpp>
-#include <majordomo/Debug.hpp>
+#include <majordomo/Message.hpp>
 #include <majordomo/Rbac.hpp>
 #include <majordomo/Settings.hpp>
 #include <majordomo/Utils.hpp>
 #include <MIME.hpp>
 #include <MustacheSerialiser.hpp>
+#include <Debug.hpp>
 #include <opencmw.hpp>
 #include <QuerySerialiser.hpp>
 

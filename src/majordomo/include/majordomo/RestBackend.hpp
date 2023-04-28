@@ -30,7 +30,6 @@
 // Majordomo
 #include <majordomo/Broker.hpp>
 #include <majordomo/Message.hpp>
-#include <majordomo/ZmqPtr.hpp>
 
 #include <refl.hpp>
 

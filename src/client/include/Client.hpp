@@ -6,7 +6,7 @@
 #include <chrono>
 #include <ClientContext.hpp>
 #include <majordomo/Message.hpp>
-#include <majordomo/ZmqPtr.hpp>
+#include <ZmqPtr.hpp>
 #include <MdpMessage.hpp>
 #include <opencmw.hpp>
 #include <URI.hpp>
@@ -282,7 +282,7 @@ public:
             output.data.resize(message.body().size());
             std::memcpy(output.data.data(), message.body().begin(), message.body().size());
             // output.serviceName = URI<uri_check::STRICT>(std::string{ message.serviceName() });
-            output.serviceName = URI<uri_check::STRICT>(std::string{ message.sourceId() }); // // temporary hack until serviceName -> 'requestedTopic' and 'topic' -> 'replyTopic'
+            output.serviceName = std::string{ message.sourceId() }; // // temporary hack until serviceName -> 'requestedTopic' and 'topic' -> 'replyTopic'
             output.endpoint    = URI<uri_check::STRICT>(std::string{ message.topic() });
             output.clientRequestID.reset();
             output.clientRequestID.put(message.clientRequestId());
@@ -467,8 +467,8 @@ private:
             for (const auto &[uri, client] : _clients) {
                 mdp::Message receivedEvent;
                 while (client->receive(receivedEvent)) {
-                    if (auto serviceName = receivedEvent.serviceName.str(); _subscriptions.contains(serviceName)) {
-                        _subscriptions.at(serviceName).callback(receivedEvent); // callback
+                    if (_subscriptions.contains(receivedEvent.serviceName)) {
+                        _subscriptions.at(receivedEvent.serviceName).callback(receivedEvent); // callback
                     }
                     if (_requests.contains(receivedEvent.id)) {
                         _requests.at(receivedEvent.id).callback(receivedEvent); // callback
