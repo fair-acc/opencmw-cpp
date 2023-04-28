@@ -237,6 +237,7 @@ public:
     [[nodiscard]] forceinline constexpr const std::size_t &position() const noexcept { return _position; }
     [[nodiscard]] forceinline constexpr const std::size_t &capacity() const noexcept { return _capacity; }
     [[nodiscard]] forceinline constexpr const std::size_t &size() const noexcept { return _size; }
+    [[nodiscard]] forceinline constexpr bool               empty() const noexcept { return _size == 0; }
     [[nodiscard]] forceinline constexpr uint8_t           *data() noexcept { return _buffer; }
     [[nodiscard]] forceinline constexpr const uint8_t     *data() const noexcept { return _buffer; }
     constexpr void                                         clear() noexcept { _position = _size = 0; }
