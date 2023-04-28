@@ -34,6 +34,19 @@ TEST_CASE("IoBuffer() - constructor", "[IoBuffer]") {
     REQUIRE(opencmw::debug::alloc == opencmw::debug::dealloc); // a memory leak occurred
 }
 
+TEST_CASE("IoBuffer(const char*) - constructor", "[IoBuffer]") {
+    opencmw::debug::resetStats();
+    {
+        opencmw::debug::Timer timer("IoBuffer(const char*) - constructor", 30);
+        opencmw::IoBuffer a("Hello World!");
+        REQUIRE(a.asString() == "Hello World!");
+        REQUIRE(a.size() == 12);
+        REQUIRE(!a.empty());
+    }
+
+    REQUIRE(opencmw::debug::alloc == opencmw::debug::dealloc); // a memory leak occurred
+}
+
 TEST_CASE("IoBuffer(&other) constructor", "[IoBuffer]") {
     opencmw::debug::resetStats();
     { // test copy constructor
