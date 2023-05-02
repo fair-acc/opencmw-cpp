@@ -82,7 +82,7 @@ namespace opencmw::zmq {
         // Reads a message from the socket
         // Returns the number of received bytes
         Result<int> receive(const Socket &socket, int flags) {
-            auto result = zmq_invoke(zmq_msg_recv, &_message, socket, flags);
+            auto result = zmq::invoke(zmq_msg_recv, &_message, socket, flags);
             _owning     = result.isValid();
             return result;
         }
@@ -90,7 +90,7 @@ namespace opencmw::zmq {
         // Sending is not const as 0mq nullifies the message
         // See: http://api.zeromq.org/3-2:zmq-msg-send
         [[nodiscard]] auto send(const Socket &socket, int flags) {
-            auto result = zmq_invoke(zmq_msg_send, &_message, socket, flags);
+            auto result = zmq::invoke(zmq_msg_send, &_message, socket, flags);
             assert(result.isValid() || result.error() == EAGAIN);
             _owning = !result.isValid();
             return result;
@@ -204,7 +204,7 @@ namespace opencmw::zmq {
 
             int64_t more;
             size_t  moreSize = sizeof(more);
-            if (!zmq_invoke(zmq_getsockopt, socket, ZMQ_RCVMORE, &more, &moreSize)) {
+            if (!zmq::invoke(zmq_getsockopt, socket, ZMQ_RCVMORE, &more, &moreSize)) {
                 // Can not check rcvmore
                 return {};
 

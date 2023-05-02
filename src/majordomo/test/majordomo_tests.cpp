@@ -14,9 +14,9 @@
 // Concepts and tests use common types
 #include <concepts/majordomo/helpers.hpp>
 
+using namespace opencmw;
 using namespace opencmw::majordomo;
 using namespace std::chrono_literals;
-using URI = opencmw::URI<>;
 using BrokerMessage = BasicMdpMessage<MessageFormat::WithSourceId>;
 
 TEST_CASE("OpenCMW::Frame cloning", "[frame][cloning]") {
@@ -199,7 +199,7 @@ TEST_CASE("Test mmi.dns", "[broker][mmi][mmi_dns]") {
     std::this_thread::sleep_for(settings.dnsTimeout * 3);
 
     { // list everything from primary broker
-        Context              clientContext;
+        zmq::Context         clientContext;
         TestNode<MdpMessage> client(clientContext);
         REQUIRE(client.connect(brokerAddress));
 
@@ -222,7 +222,7 @@ TEST_CASE("Test mmi.dns", "[broker][mmi][mmi_dns]") {
     }
 
     { // list everything from DNS broker
-        Context              clientContext;
+        zmq::Context         clientContext;
         TestNode<MdpMessage> client(clientContext);
         REQUIRE(client.connect(dnsAddress));
 
@@ -247,7 +247,7 @@ TEST_CASE("Test mmi.dns", "[broker][mmi][mmi_dns]") {
     }
 
     { // query for specific services
-        Context              clientContext;
+        zmq::Context         clientContext;
         TestNode<MdpMessage> client(clientContext);
         REQUIRE(client.connect(dnsAddress));
 
@@ -432,7 +432,7 @@ TEST_CASE("Request answered with unknown service", "[broker][unknown_service]") 
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::MdpMessage;
 
-    const auto address = URI("inproc://testrouter");
+    const auto address = URI<>("inproc://testrouter");
 
     Broker     broker("testbroker", testSettings());
 
@@ -465,23 +465,23 @@ TEST_CASE("Request answered with unknown service", "[broker][unknown_service]") 
 }
 
 TEST_CASE("Test toZeroMQEndpoint conversion", "[utils][toZeroMQEndpoint]") {
-    REQUIRE(toZeroMQEndpoint(URI("mdp://127.0.0.1:12345")) == "tcp://127.0.0.1:12345");
-    REQUIRE(toZeroMQEndpoint(URI("mds://127.0.0.1:12345")) == "tcp://127.0.0.1:12345");
-    REQUIRE(toZeroMQEndpoint(URI("inproc://test")) == "inproc://test");
+    REQUIRE(toZeroMQEndpoint(URI<>("mdp://127.0.0.1:12345")) == "tcp://127.0.0.1:12345");
+    REQUIRE(toZeroMQEndpoint(URI<>("mds://127.0.0.1:12345")) == "tcp://127.0.0.1:12345");
+    REQUIRE(toZeroMQEndpoint(URI<>("inproc://test")) == "inproc://test");
 }
 
 TEST_CASE("Bind broker to endpoints", "[broker][bind]") {
     // the tcp/mdp/mds test cases rely on the ports being free, use wildcards/search for free ports if this turns out to be a problem
     static const std::array testcases = {
-        std::tuple{ URI("tcp://127.0.0.1:22345"), BindOption::Router, std::make_optional<URI>("mdp://127.0.0.1:22345") },
-        std::tuple{ URI("mdp://127.0.0.1:22346"), BindOption::Router, std::make_optional<URI>("mdp://127.0.0.1:22346") },
-        std::tuple{ URI("mdp://127.0.0.1:22347"), BindOption::DetectFromURI, std::make_optional<URI>("mdp://127.0.0.1:22347") },
-        std::tuple{ URI("mdp://127.0.0.1:22348"), BindOption::Router, std::make_optional<URI>("mdp://127.0.0.1:22348") },
-        std::tuple{ URI("mdp://127.0.0.1:22348"), BindOption::Router, std::optional<URI>{} }, // error, already bound
-        std::tuple{ URI("mds://127.0.0.1:22349"), BindOption::DetectFromURI, std::make_optional<URI>("mds://127.0.0.1:22349") },
-        std::tuple{ URI("tcp://127.0.0.1:22350"), BindOption::Pub, std::make_optional<URI>("mds://127.0.0.1:22350") },
-        std::tuple{ URI("inproc://bindtest"), BindOption::Router, std::make_optional<URI>("inproc://bindtest") },
-        std::tuple{ URI("inproc://bindtest_pub"), BindOption::Pub, std::make_optional<URI>("inproc://bindtest_pub") },
+        std::tuple{ URI<>("tcp://127.0.0.1:22345"), BindOption::Router, std::make_optional<URI<>>("mdp://127.0.0.1:22345") },
+        std::tuple{ URI<>("mdp://127.0.0.1:22346"), BindOption::Router, std::make_optional<URI<>>("mdp://127.0.0.1:22346") },
+        std::tuple{ URI<>("mdp://127.0.0.1:22347"), BindOption::DetectFromURI, std::make_optional<URI<>>("mdp://127.0.0.1:22347") },
+        std::tuple{ URI<>("mdp://127.0.0.1:22348"), BindOption::Router, std::make_optional<URI<>>("mdp://127.0.0.1:22348") },
+        std::tuple{ URI<>("mdp://127.0.0.1:22348"), BindOption::Router, std::optional<URI<>>{} }, // error, already bound
+        std::tuple{ URI<>("mds://127.0.0.1:22349"), BindOption::DetectFromURI, std::make_optional<URI<>>("mds://127.0.0.1:22349") },
+        std::tuple{ URI<>("tcp://127.0.0.1:22350"), BindOption::Pub, std::make_optional<URI<>>("mds://127.0.0.1:22350") },
+        std::tuple{ URI<>("inproc://bindtest"), BindOption::Router, std::make_optional<URI<>>("inproc://bindtest") },
+        std::tuple{ URI<>("inproc://bindtest_pub"), BindOption::Pub, std::make_optional<URI<>>("inproc://bindtest_pub") },
     };
 
     Broker broker("testbroker", testSettings());
@@ -713,7 +713,7 @@ TEST_CASE("Pubsub example using SUB client/DEALER worker", "[broker][pubsub_sub_
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::MdpMessage;
 
-    const auto publisherAddress = URI("inproc://testpub");
+    const auto publisherAddress = URI<>("inproc://testpub");
 
     Broker     broker("testbroker", testSettings());
 
@@ -1225,13 +1225,13 @@ TEST_CASE("pubsub example using PUB socket (SUB client)", "[broker][pubsub_subcl
 using opencmw::majordomo::MdpMessage;
 
 TEST_CASE("BasicWorker connects to non-existing broker", "[worker]") {
-    const Context            context;
-    BasicWorker<"a.service"> worker(URI("inproc:/doesnotexist"), TestIntHandler(10), context);
+    const zmq::Context       context;
+    BasicWorker<"a.service"> worker(URI<>("inproc:/doesnotexist"), TestIntHandler(10), context);
     worker.run(); // returns immediately on connection failure
 }
 
 TEST_CASE("BasicWorker run loop quits when broker quits", "[worker]") {
-    const Context            context;
+    const zmq::Context       context;
     Broker                   broker("testbroker", testSettings());
     BasicWorker<"a.service"> worker(broker, TestIntHandler(10));
 
@@ -1247,7 +1247,7 @@ TEST_CASE("BasicWorker run loop quits when broker quits", "[worker]") {
 }
 
 TEST_CASE("BasicWorker connection basics", "[worker][basic_worker_connection]") {
-    const Context           context;
+    const zmq::Context      context;
     TestNode<BrokerMessage> brokerRouter(context, ZMQ_ROUTER);
     TestNode<BrokerMessage> brokerPub(context, ZMQ_PUB);
     const auto              brokerAddress = opencmw::URI<opencmw::STRICT>("inproc://test/");
@@ -1542,7 +1542,6 @@ TEST_CASE("BasicWorker SET/GET example with RBAC permission handling", "[worker]
 
 TEST_CASE("NOTIFY example using the BasicWorker class", "[worker][notify_basic_worker]") {
     using opencmw::majordomo::Broker;
-    using opencmw::majordomo::MdpMessage;
     using namespace std::literals;
 
     Broker                   broker("testbroker", testSettings());
@@ -1571,9 +1570,9 @@ TEST_CASE("NOTIFY example using the BasicWorker class", "[worker][notify_basic_w
     // in a loop until one gets through.
     while (!seenNotification) {
         {
-            MdpMessage notify;
-            notify.setTopic("/beer.time", static_tag);
-            notify.setBody("Have a beer", static_tag);
+            mdp::Message notify;
+            notify.endpoint = mdp::Message::URI("/beer.time");
+            notify.data = IoBuffer("Have a beer");
             REQUIRE(worker.notify(std::move(notify)));
         }
         {
@@ -1591,9 +1590,9 @@ TEST_CASE("NOTIFY example using the BasicWorker class", "[worker][notify_basic_w
     }
 
     {
-        MdpMessage notify;
-        notify.setTopic("/beer.error", static_tag);
-        notify.setError("Fridge empty!", static_tag);
+        mdp::Message notify;
+        notify.endpoint = mdp::Message::URI("/beer.error");
+        notify.error = "Fridge empty!";
         REQUIRE(worker.notify(std::move(notify)));
     }
 
@@ -1620,9 +1619,9 @@ TEST_CASE("NOTIFY example using the BasicWorker class", "[worker][notify_basic_w
     {
         // as the subscribe for wine* was sent before the beer* one, this should be
         // race-free now (as know the beer* subscribe was processed by everyone)
-        MdpMessage notify;
-        notify.setTopic("/wine.italian", static_tag);
-        notify.setBody("Try our Chianti!", static_tag);
+        mdp::Message notify;
+        notify.endpoint = mdp::Message::URI("/wine.italian");
+        notify.data = IoBuffer("Try our Chianti!");
         REQUIRE(worker.notify(std::move(notify)));
     }
 
@@ -1643,21 +1642,21 @@ TEST_CASE("NOTIFY example using the BasicWorker class", "[worker][notify_basic_w
     // loop until we get two consecutive messages about wine, it means that the beer unsubscribe was processed
     while (true) {
         {
-            MdpMessage notify;
-            notify.setTopic("/wine.portuguese", static_tag);
-            notify.setBody("New Vinho Verde arrived.", static_tag);
+            mdp::Message notify;
+            notify.endpoint = mdp::Message::URI("/wine.portuguese");
+            notify.data = IoBuffer("New Vinho Verde arrived.");
             REQUIRE(worker.notify(std::move(notify)));
         }
         {
-            MdpMessage notify;
-            notify.setTopic("/beer.offer", static_tag);
-            notify.setBody("Get our pilsner now!", static_tag);
+            mdp::Message notify;
+            notify.endpoint = mdp::Message::URI("/beer.offer");
+            notify.data = IoBuffer("Get our pilsner now!");
             REQUIRE(worker.notify(std::move(notify)));
         }
         {
-            MdpMessage notify;
-            notify.setTopic("/wine.portuguese", static_tag);
-            notify.setBody("New Vinho Verde arrived.", static_tag);
+            mdp::Message notify;
+            notify.endpoint = mdp::Message::URI("/wine.portuguese");
+            notify.data = IoBuffer("New Vinho Verde arrived.");
             REQUIRE(worker.notify(std::move(notify)));
         }
 
@@ -1713,9 +1712,9 @@ TEST_CASE("NOTIFY example using the BasicWorker class (via ROUTER socket)", "[wo
     // in a loop until one gets through.
     while (!seenNotification) {
         {
-            MdpMessage notify;
-            notify.setTopic("/beer", static_tag);
-            notify.setBody("Have a beer", static_tag);
+            mdp::Message notify;
+            notify.endpoint = mdp::Message::URI("/beer");
+            notify.data = IoBuffer("Have a beer");
             REQUIRE(worker.notify(std::move(notify)));
         }
         {
@@ -1734,9 +1733,9 @@ TEST_CASE("NOTIFY example using the BasicWorker class (via ROUTER socket)", "[wo
     {
         // as the subscribe for /wine was sent before the /beer one, this should be
         // race-free now (as know the /beer subscribe was processed by everyone)
-        MdpMessage notify;
-        notify.setTopic("/wine", static_tag);
-        notify.setBody("Try our Chianti!", static_tag);
+        mdp::Message notify;
+        notify.endpoint = mdp::Message::URI("/wine");
+        notify.data = IoBuffer("Try our Chianti!");
         REQUIRE(worker.notify(std::move(notify)));
     }
 
@@ -1761,21 +1760,21 @@ TEST_CASE("NOTIFY example using the BasicWorker class (via ROUTER socket)", "[wo
     // loop until we get two consecutive messages about wine, it means that the beer unsubscribe was processed
     while (true) {
         {
-            MdpMessage notify;
-            notify.setTopic("/wine", static_tag);
-            notify.setBody("New Vinho Verde arrived.", static_tag);
+            mdp::Message notify;
+            notify.endpoint = mdp::Message::URI("/wine");
+            notify.data = IoBuffer("New Vinho Verde arrived.");
             REQUIRE(worker.notify(std::move(notify)));
         }
         {
-            MdpMessage notify;
-            notify.setTopic("/beer", static_tag);
-            notify.setBody("Get our pilsner now!", static_tag);
+            mdp::Message notify;
+            notify.endpoint = mdp::Message::URI("/beer");
+            notify.data = IoBuffer("Get our pilsner now!");
             REQUIRE(worker.notify(std::move(notify)));
         }
         {
-            MdpMessage notify;
-            notify.setTopic("/wine", static_tag);
-            notify.setBody("New Vinho Verde arrived.", static_tag);
+            mdp::Message notify;
+            notify.endpoint = mdp::Message::URI("/wine");
+            notify.data = IoBuffer("New Vinho Verde arrived.");
             REQUIRE(worker.notify(std::move(notify)));
         }
 
@@ -1798,29 +1797,30 @@ TEST_CASE("NOTIFY example using the BasicWorker class (via ROUTER socket)", "[wo
 
 TEST_CASE("SET/GET example using a lambda as the worker's request handler", "[worker][lambda_handler]") {
     using opencmw::majordomo::Broker;
-    using opencmw::majordomo::MdpMessage;
     using opencmw::majordomo::MockClient;
 
     Broker broker("testbroker", testSettings());
 
     auto   handleInt = [](RequestContext &requestContext) {
         static int value = 100;
-        if (requestContext.request.command() == Command::Get) {
-            requestContext.reply.setBody(std::to_string(value), MessageFrame::dynamic_bytes_tag{});
+
+        if (requestContext.request.command == mdp::Command::Get) {
+            const auto data = std::to_string(value);
+            requestContext.reply.data = IoBuffer(data.data(), data.size());
             return;
         }
 
-        assert(requestContext.request.command() == Command::Set);
+        assert(requestContext.request.command == mdp::Command::Set);
 
-        const auto request     = requestContext.request.body();
+        const auto request     = requestContext.request.data.asString();
         int        parsedValue = 0;
         const auto result      = std::from_chars(request.begin(), request.end(), parsedValue);
 
         if (result.ec == std::errc::invalid_argument) {
-            requestContext.reply.setError("Not a valid int", MessageFrame::static_bytes_tag{});
+            requestContext.reply.error = "Not a valid int";
         } else {
             value = parsedValue;
-            requestContext.reply.setBody("Value set. All good!", MessageFrame::static_bytes_tag{});
+            requestContext.reply.data = IoBuffer("Value set. All good!");
         }
     };
 

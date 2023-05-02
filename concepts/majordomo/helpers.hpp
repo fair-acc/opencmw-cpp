@@ -102,9 +102,9 @@ struct TestAddressHandler {
      * The handler function that the handler is required to implement.
      */
     void operator()(const opencmw::majordomo::RequestContext &rawCtx, const SimpleContext & /*requestContext*/, const AddressRequest &request, SimpleContext & /*replyContext*/, AddressEntry &output) {
-        if (rawCtx.request.command() == majordomo::Command::Get) {
+        if (rawCtx.request.command == opencmw::mdp::Command::Get) {
             output = _entry;
-        } else if (rawCtx.request.command() == majordomo::Command::Set) {
+        } else if (rawCtx.request.command == opencmw::mdp::Command::Set) {
             _entry = AddressEntry{
                 .name         = request.name,
                 .street       = request.street,
@@ -129,7 +129,7 @@ struct HelloWorldHandler {
         out.byteReturnType    = 42;
 
         out.timingCtx         = opencmw::TimingCtx(3, {}, {}, {}, duration_cast<microseconds>(now.time_since_epoch()));
-        if (rawCtx.request.command() == majordomo::Command::Set) {
+        if (rawCtx.request.command == opencmw::mdp::Command::Set) {
             customFilter = in.customFilter;
         }
         out.lsaContext           = customFilter;
@@ -183,7 +183,7 @@ public:
 
         super_t::setCallback([this](majordomo::RequestContext &rawCtx, const SimpleContext &, const majordomo::Empty &, SimpleContext &, BinaryData &out) {
             using namespace opencmw;
-            const auto topicPath  = URI<RELAXED>(std::string(rawCtx.request.topic())).path().value_or("");
+            const auto topicPath  = rawCtx.request.endpoint.path().value_or("");
             const auto path       = ::detail::stripPrefix(topicPath, "/");
             out.resourceName      = ::detail::stripPrefix(::detail::stripPrefix(path, PROPERTY_NAME), "/");
             out.image.base64      = base64pp::encode(imageData[selectedImage]);
@@ -288,18 +288,18 @@ inline opencmw::majordomo::Settings testSettings() {
 template<typename MessageType>
 class TestNode {
 public:
-    opencmw::majordomo::Socket _socket;
+    opencmw::zmq::Socket _socket;
 
-    explicit TestNode(const opencmw::majordomo::Context &context, int socket_type = ZMQ_DEALER)
+    explicit TestNode(const opencmw::zmq::Context &context, int socket_type = ZMQ_DEALER)
         : _socket(context, socket_type) {
     }
 
     bool bind(const opencmw::URI<opencmw::STRICT> &address) {
-        return zmq_invoke(zmq_bind, _socket, opencmw::majordomo::toZeroMQEndpoint(address).data()).isValid();
+        return opencmw::zmq::invoke(zmq_bind, _socket, opencmw::majordomo::toZeroMQEndpoint(address).data()).isValid();
     }
 
     bool connect(const opencmw::URI<opencmw::STRICT> &address, std::string_view subscription = "") {
-        auto result = zmq_invoke(zmq_connect, _socket, opencmw::majordomo::toZeroMQEndpoint(address).data());
+        auto result = opencmw::zmq::invoke(zmq_connect, _socket, opencmw::majordomo::toZeroMQEndpoint(address).data());
         if (!result) return false;
 
         if (!subscription.empty()) {
@@ -311,12 +311,12 @@ public:
 
     bool subscribe(std::string_view subscription) {
         assert(!subscription.empty());
-        return zmq_invoke(zmq_setsockopt, _socket, ZMQ_SUBSCRIBE, subscription.data(), subscription.size()).isValid();
+        return opencmw::zmq::invoke(zmq_setsockopt, _socket, ZMQ_SUBSCRIBE, subscription.data(), subscription.size()).isValid();
     }
 
     bool unsubscribe(std::string_view subscription) {
         assert(!subscription.empty());
-        return zmq_invoke(zmq_setsockopt, _socket, ZMQ_UNSUBSCRIBE, subscription.data(), subscription.size()).isValid();
+        return opencmw::zmq::invoke(zmq_setsockopt, _socket, ZMQ_UNSUBSCRIBE, subscription.data(), subscription.size()).isValid();
     }
 
     bool sendRawFrame(const std::string &data) {
@@ -329,7 +329,7 @@ public:
         pollerItems[0].socket = _socket.zmq_ptr;
         pollerItems[0].events = ZMQ_POLLIN;
 
-        const auto result     = opencmw::majordomo::zmq_invoke(zmq_poll, pollerItems.data(), static_cast<int>(pollerItems.size()), timeout.count());
+        const auto result     = opencmw::zmq::invoke(zmq_poll, pollerItems.data(), static_cast<int>(pollerItems.size()), timeout.count());
         if (!result.isValid() || result.value() == 0) {
             return {};
         }
@@ -354,7 +354,7 @@ public:
     }
 };
 
-inline bool waitUntilServiceAvailable(const opencmw::majordomo::Context &context, std::string_view serviceName, const opencmw::URI<opencmw::STRICT> &brokerAddress = opencmw::majordomo::INTERNAL_ADDRESS_BROKER) {
+inline bool waitUntilServiceAvailable(const opencmw::zmq::Context &context, std::string_view serviceName, const opencmw::URI<opencmw::STRICT> &brokerAddress = opencmw::majordomo::INTERNAL_ADDRESS_BROKER) {
     TestNode<opencmw::majordomo::MdpMessage> client(context);
     if (!client.connect(brokerAddress)) {
         return false;
@@ -394,22 +394,23 @@ public:
     }
 
     void operator()(opencmw::majordomo::RequestContext &context) {
-        if (context.request.command() == opencmw::majordomo::Command::Get) {
-            context.reply.setBody(std::to_string(_x), opencmw::majordomo::MessageFrame::dynamic_bytes_tag{});
+        if (context.request.command == opencmw::mdp::Command::Get) {
+            const auto body = std::to_string(_x);
+            context.reply.data = opencmw::IoBuffer(body.data(), body.size());
             return;
         }
 
-        assert(context.request.command() == opencmw::majordomo::Command::Set);
+        assert(context.request.command == opencmw::mdp::Command::Set);
 
-        const auto request = context.request.body();
+        const auto request = context.request.data.asString();
         int        value   = 0;
         const auto result  = std::from_chars(request.begin(), request.end(), value);
 
         if (result.ec == std::errc::invalid_argument) {
-            context.reply.setError("Not a valid int", opencmw::majordomo::MessageFrame::static_bytes_tag{});
+            context.reply.error = "Not a valid int";
         } else {
             _x = value;
-            context.reply.setBody("Value set. All good!", opencmw::majordomo::MessageFrame::static_bytes_tag{});
+            context.reply.data = opencmw::IoBuffer("Value set. All good!");
         }
     }
 };

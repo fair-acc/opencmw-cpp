@@ -10,9 +10,9 @@ using opencmw::uri_check;
 using opencmw::client::Client;
 using opencmw::client::SubscriptionClient;
 using opencmw::majordomo::Command;
-using opencmw::majordomo::Context;
 using opencmw::majordomo::MessageFrame;
 using opencmw::majordomo::MockServer;
+using opencmw::zmq::Context;
 using namespace std::chrono_literals;
 
 static std::span<const std::byte> byte_array_from_string(const std::string_view &string) {

@@ -14,10 +14,10 @@ using opencmw::client::MDClientCtx;
 using opencmw::client::SubscriptionClient;
 using opencmw::disruptor::Disruptor;
 using opencmw::majordomo::Command;
-using opencmw::majordomo::Context;
 using opencmw::majordomo::MessageFrame;
 using opencmw::majordomo::MockServer;
 using opencmw::uri_check::STRICT;
+using opencmw::zmq::Context;
 using namespace std::chrono_literals;
 
 TEST_CASE("Basic get/set test", "[ClientContext]") {

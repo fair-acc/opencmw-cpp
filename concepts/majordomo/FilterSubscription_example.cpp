@@ -11,6 +11,7 @@
 #include <string_view>
 #include <thread>
 
+using namespace opencmw;
 using namespace opencmw::majordomo;
 using namespace std::chrono_literals;
 
@@ -40,10 +41,10 @@ public:
     explicit AcquisitionWorker(const BrokerType &broker)
         : super_t(broker, {}) {
         super_t::setCallback([this](const RequestContext &rawCtx, const FilterContext &filterIn, const Empty & /*in - unused*/, FilterContext &filterOut, Reply &out) {
-            if (rawCtx.request.command() == Command::Get) {
+            if (rawCtx.request.command == mdp::Command::Get) {
                 fmt::print("worker received 'get' request\n");
                 handleGetRequest(filterIn, filterOut, out);
-            } else if (rawCtx.request.command() == Command::Set) {
+            } else if (rawCtx.request.command == mdp::Command::Set) {
                 fmt::print("worker received 'set' request\n");
                 // do some set action
             }
@@ -145,7 +146,7 @@ int main() {
 
     // start some simple subscription client
     fmt::print("starting some client subscriptions\n");
-    const Context                                             zctx{};
+    const zmq::Context                                        zctx{};
     std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
     clients.emplace_back(std::make_unique<opencmw::client::MDClientCtx>(zctx, 20ms, ""));
     opencmw::client::ClientContext client{ std::move(clients) };

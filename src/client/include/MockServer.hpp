@@ -23,30 +23,30 @@ namespace opencmw::majordomo {
 class MockServer {
     static int                    INSTANCE_COUNT;
     const int                     id;
-    const Context                &_context;
+    const zmq::Context           &_context;
     std::string                   _address;
     std::string                   _subAddress;
-    std::optional<Socket>         _socket;
-    std::optional<Socket>         _pubSocket;
+    std::optional<zmq::Socket>    _socket;
+    std::optional<zmq::Socket>    _pubSocket;
     std::array<zmq_pollitem_t, 1> _pollerItems{};
     Settings                      _settings;
 
 public:
-    explicit MockServer(const Context &context)
+    explicit MockServer(const zmq::Context &context)
         : id(INSTANCE_COUNT++), _context(context), _address{ fmt::format("inproc://MockServer{}", id) }, _subAddress{ fmt::format("inproc://MockServerSub{}", id) } {
         bind();
     }
 
     virtual ~MockServer() = default;
 
-    const Context            &context() { return _context; };
+    const zmq::Context       &context() { return _context; };
 
     [[nodiscard]] std::string address() { return _address; };
     [[nodiscard]] std::string addressSub() { return _subAddress; };
 
     template<typename Callback>
     bool processRequest(Callback handler) {
-        const auto result           = zmq_invoke(zmq_poll, _pollerItems.data(), static_cast<int>(_pollerItems.size()), _settings.heartbeatInterval.count());
+        const auto result           = zmq::invoke(zmq_poll, _pollerItems.data(), static_cast<int>(_pollerItems.size()), _settings.heartbeatInterval.count());
         bool       anythingReceived = false;
         int        loopCount        = 0;
         do {
@@ -72,7 +72,7 @@ public:
 
     void bind() {
         _socket.emplace(_context, ZMQ_DEALER);
-        if (const auto result = zmq_invoke(zmq_bind, *_socket, _address.data()); result.isValid()) {
+        if (const auto result = zmq::invoke(zmq_bind, *_socket, _address.data()); result.isValid()) {
             _pollerItems[0].socket = _socket->zmq_ptr;
             _pollerItems[0].events = ZMQ_POLLIN;
         } else {
@@ -80,7 +80,7 @@ public:
             _socket.reset();
         }
         _pubSocket.emplace(_context, ZMQ_XPUB);
-        if (auto result = zmq_invoke(zmq_bind, *_pubSocket, _subAddress.data()); !result.isValid()) {
+        if (auto result = zmq::invoke(zmq_bind, *_pubSocket, _subAddress.data()); !result.isValid()) {
             fmt::print("error: {}\n", zmq_strerror(result.error()));
             _pubSocket.reset();
         }
