@@ -88,16 +88,16 @@ public:
 
     // Reads a message from the socket
     // Returns the number of received bytes
-    Result<int> receive(const Socket &socket, int flags) {
-        auto result = zmq_invoke(zmq_msg_recv, &_message, socket, flags);
+    zmq::Result<int> receive(const zmq::Socket &socket, int flags) {
+        auto result = zmq::invoke(zmq_msg_recv, &_message, socket, flags);
         _owning     = result.isValid();
         return result;
     }
 
     // Sending is not const as 0mq nullifies the message
     // See: http://api.zeromq.org/3-2:zmq-msg-send
-    [[nodiscard]] auto send(const Socket &socket, int flags) {
-        auto result = zmq_invoke(zmq_msg_send, &_message, socket, flags);
+    [[nodiscard]] auto send(const zmq::Socket &socket, int flags) {
+        auto result = zmq::invoke(zmq_msg_send, &_message, socket, flags);
         assert(result.isValid() || result.error() == EAGAIN);
         _owning = !result.isValid();
         return result;
@@ -253,7 +253,7 @@ public:
         }
     }
 
-    [[nodiscard]] auto sendFrame(const Socket &socket, std::size_t index, int flags) {
+    [[nodiscard]] auto sendFrame(const zmq::Socket &socket, std::size_t index, int flags) {
         assert(flags & ZMQ_DONTWAIT);
         while (true) { // TODO -Q: could become a infinite busy-loop?!?
             const auto result = _frames[index].send(socket, flags);
@@ -266,12 +266,12 @@ public:
         }
     }
 
-    [[nodiscard]] auto sendFrame(const Socket &socket, std::size_t index) {
+    [[nodiscard]] auto sendFrame(const zmq::Socket &socket, std::size_t index) {
         const auto flags = index + 1 == RequiredFrameCount ? ZMQ_DONTWAIT : ZMQ_DONTWAIT | ZMQ_SNDMORE;
         return sendFrame(socket, index, flags);
     }
 
-    [[nodiscard]] auto send(const Socket &socket) {
+    [[nodiscard]] auto send(const zmq::Socket &socket) {
         decltype(sendFrame(socket, 0)) result{ 0 };
         for (std::size_t i = 0; i < RequiredFrameCount; ++i) {
             result = sendFrame(socket, i);
@@ -283,7 +283,7 @@ public:
         return result;
     }
 
-    static std::optional<this_t> receive(const Socket &socket) {
+    static std::optional<this_t> receive(const zmq::Socket &socket) {
         std::optional<this_t> r;
         std::size_t           framesReceived = 0;
 
@@ -305,7 +305,7 @@ public:
 
             int64_t more;
             size_t  moreSize = sizeof(more);
-            if (!zmq_invoke(zmq_getsockopt, socket, ZMQ_RCVMORE, &more, &moreSize)) {
+            if (!zmq::invoke(zmq_getsockopt, socket, ZMQ_RCVMORE, &more, &moreSize)) {
                 // Can not check rcvmore
                 return {};
 

@@ -100,9 +100,10 @@ int main(int argc, char **argv) {
     for (int i = 0; true; ++i) {
         {
             std::cerr << "Sending new number (step " << i << ")\n";
-            majordomo::MdpMessage notifyMessage;
-            notifyMessage.setTopic("/wine", static_tag);
-            notifyMessage.setBody(std::to_string(i), dynamic_tag);
+            opencmw::mdp::Message notifyMessage;
+            notifyMessage.endpoint = opencmw::mdp::Message::URI("/wine");
+            const auto data = std::to_string(i);
+            notifyMessage.data = opencmw::IoBuffer(data.data(), data.size());
 
             beveragesWorker.notify(std::move(notifyMessage));
         }

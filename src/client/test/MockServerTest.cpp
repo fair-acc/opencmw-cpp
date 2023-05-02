@@ -6,11 +6,12 @@
 #include <concepts/majordomo/helpers.hpp>
 
 TEST_CASE("SET/GET of MockServer", "[mock-server][lambda_handler]") {
+    using namespace opencmw;
     using namespace opencmw::majordomo;
     using namespace std::chrono_literals;
 
-    Context    context{};
-    MockServer server(context);
+    zmq::Context context{};
+    MockServer   server(context);
 
     MockClient client(server.context());
     REQUIRE(client.connect(opencmw::URI<>(server.address())));
@@ -56,13 +57,13 @@ TEST_CASE("SET/GET of MockServer", "[mock-server][lambda_handler]") {
 TEST_CASE("MockServer Subscription Test", "[mock-server][lambda_handler]") {
     using opencmw::majordomo::BasicMdpMessage;
     using opencmw::majordomo::Command;
-    using opencmw::majordomo::Context;
     using opencmw::majordomo::MessageFormat;
     using opencmw::majordomo::MessageFrame;
     using opencmw::majordomo::MockServer;
+    using namespace opencmw;
     using namespace std::chrono_literals;
 
-    Context                                                context{};
+    zmq::Context                                           context{};
     MockServer                                             server(context);
 
     TestNode<BasicMdpMessage<MessageFormat::WithSourceId>> client(context, ZMQ_SUB);

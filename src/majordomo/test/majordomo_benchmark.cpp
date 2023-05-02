@@ -9,16 +9,16 @@
 
 #include <fmt/format.h>
 
-using URI = opencmw::URI<>;
 using opencmw::majordomo::BasicWorker;
 using opencmw::majordomo::BindOption;
 using opencmw::majordomo::Broker;
 using opencmw::majordomo::Command;
-using opencmw::majordomo::Context;
 using opencmw::majordomo::MdpMessage;
 using opencmw::majordomo::MockClient;
 using opencmw::majordomo::RequestContext;
 using opencmw::majordomo::Settings;
+using opencmw::zmq::Context;
+using namespace opencmw;
 
 #define REQUIRE(expression) \
     { \
@@ -43,8 +43,8 @@ public:
     }
 
     void operator()(RequestContext &context) {
-        if (context.request.command() == Command::Get) {
-            context.reply.setBody(_payload, opencmw::majordomo::MessageFrame::dynamic_bytes_tag{});
+        if (context.request.command == opencmw::mdp::Command::Get) {
+            context.reply.data = opencmw::IoBuffer(_payload.data(), _payload.size());
         } else {
             throw std::runtime_error("SET not supported");
         }
@@ -81,14 +81,14 @@ enum class Get {
 };
 
 struct Result {
-    URI                           routerAddress;
+    URI<>                         routerAddress;
     int                           iterations;
     Get                           mode;
     std::size_t                   payloadSize;
     std::chrono::duration<double> duration;
 };
 
-Result simpleOneWorkerBenchmark(const URI &routerAddress, Get mode, int iterations, std::size_t payloadSize) {
+Result simpleOneWorkerBenchmark(const URI<> &routerAddress, Get mode, int iterations, std::size_t payloadSize) {
     auto broker = Broker("benchmarkbroker", benchmarkSettings());
     REQUIRE(broker.bind(routerAddress, BindOption::Router));
 
@@ -133,7 +133,7 @@ Result simpleOneWorkerBenchmark(const URI &routerAddress, Get mode, int iteratio
     };
 }
 
-void simpleTwoWorkerBenchmark(const URI &routerAddress, Get mode, int iterations, std::size_t payload1_size, std::size_t payload2_size) {
+void simpleTwoWorkerBenchmark(const URI<> &routerAddress, Get mode, int iterations, std::size_t payload1_size, std::size_t payload2_size) {
     Broker broker("benchmarkbroker", benchmarkSettings());
     REQUIRE(broker.bind(routerAddress, BindOption::Router));
     RunInThread         brokerRun(broker);
@@ -181,8 +181,8 @@ void simpleTwoWorkerBenchmark(const URI &routerAddress, Get mode, int iterations
 
 int main(int argc, char **argv) {
     const auto          N      = argc > 1 ? std::atoi(argv[1]) : 100000;
-    const auto          tcp    = URI("tcp://127.0.0.1:12346");
-    const auto          inproc = URI("inproc://benchmark");
+    const auto          tcp    = URI<>("tcp://127.0.0.1:12346");
+    const auto          inproc = URI<>("inproc://benchmark");
 
     std::vector<Result> results;
 

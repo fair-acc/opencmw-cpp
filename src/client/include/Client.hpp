@@ -26,11 +26,11 @@ enum class ConnectionState {
 
 struct Connection {
     std::string       _authority;
-    majordomo::Socket _socket;
+    zmq::Socket       _socket;
     ConnectionState   _connectionState               = ConnectionState::DISCONNECTED;
     timePoint         _nextReconnectAttemptTimeStamp = std::chrono::system_clock::now();
 
-    Connection(const majordomo::Context &context, const std::string_view authority, const int zmq_dealer_type)
+    Connection(const zmq::Context &context, const std::string_view authority, const int zmq_dealer_type)
         : _authority{ authority }, _socket{ context, zmq_dealer_type } {
         majordomo::initializeZmqSocket(_socket).assertSuccess();
     }
@@ -52,17 +52,17 @@ public:
 class Client : public MDClientBase {
     using timeUnit = std::chrono::milliseconds;
     const timeUnit                  _clientTimeout;
-    const majordomo::Context       &_context;
+    const zmq::Context             &_context;
     const std::string               _clientId;
     const std::string               _sourceName;
     std::vector<detail::Connection> _connections;
     std::vector<zmq_pollitem_t>    &_pollItems;
 
 public:
-    explicit Client(const majordomo::Context &context,
-            std::vector<zmq_pollitem_t>      &pollItems,
-            const timeUnit                    timeout  = 1s,
-            std::string                       clientId = "")
+    explicit Client(const zmq::Context  &context,
+            std::vector<zmq_pollitem_t> &pollItems,
+            const timeUnit              timeout  = 1s,
+            std::string                 clientId = "")
         : _clientTimeout(timeout), _context(context), _clientId(std::move(clientId)), _sourceName(fmt::format("OpenCmwClient(clientId: {})", _clientId)), _pollItems(pollItems) {}
 
     void connect(const URI<STRICT> &uri) {
@@ -75,7 +75,7 @@ public:
         // todo: switch on scheme, for now use tcp if port is specified, otherwise use inproc
         auto        ep     = con._authority.find(':') != std::string::npos ? URI<STRICT>("tcp://"s + con._authority) : URI<STRICT>("inproc://"s + con._authority);
         std::string zmq_ep = majordomo::toZeroMQEndpoint(ep);
-        if (opencmw::majordomo::zmq_invoke(zmq_connect, con._socket, zmq_ep).isValid()) {
+        if (opencmw::zmq::invoke(zmq_connect, con._socket, zmq_ep).isValid()) {
             _pollItems.push_back({ .socket = con._socket.zmq_ptr, .fd = 0, .events = ZMQ_POLLIN, .revents = 0 });
         }
         con._connectionState = ConnectionState::CONNECTED;
@@ -125,7 +125,7 @@ public:
         const auto remove = std::remove_if(_pollItems.begin(), _pollItems.end(), [&con](zmq_pollitem_t &pollItem) { return pollItem.socket == con._socket.zmq_ptr; });
         _pollItems.erase(remove, _pollItems.end());
 #endif
-        zmq_invoke(zmq_disconnect, con._socket, majordomo::toZeroMQEndpoint(URI<STRICT>(con._authority)).data()).ignoreResult();
+        zmq::invoke(zmq_disconnect, con._socket, majordomo::toZeroMQEndpoint(URI<STRICT>(con._authority)).data()).ignoreResult();
         con._connectionState = detail::ConnectionState::DISCONNECTED;
         return true;
     }
@@ -199,14 +199,14 @@ private:
 class SubscriptionClient : public MDClientBase {
     using timeUnit = std::chrono::milliseconds;
     const timeUnit                  _clientTimeout;
-    const majordomo::Context       &_context;
+    const zmq::Context       &_context;
     const std::string               _clientId;
     const std::string               _sourceName;
     std::vector<detail::Connection> _connections;
     std::vector<zmq_pollitem_t>    &_pollItems;
 
 public:
-    explicit SubscriptionClient(const majordomo::Context &context, std::vector<zmq_pollitem_t> &pollItems, const timeUnit timeout = 1s, std::string clientId = "")
+    explicit SubscriptionClient(const zmq::Context &context, std::vector<zmq_pollitem_t> &pollItems, const timeUnit timeout = 1s, std::string clientId = "")
         : _clientTimeout(timeout), _context(context), _clientId(std::move(clientId)), _sourceName(fmt::format("OpenCmwClient(clientId: {})", _clientId)), _pollItems(pollItems) {}
 
     void connect(const URI<STRICT> &uri) {
@@ -219,7 +219,7 @@ public:
         // todo: replace this by proper logic, for now use tcp if port is specified, otherwise use inproc... mds+tcp:// -> tcp://, mds+inproc:// -> inproc:// -> auto detect
         auto        ep     = con._authority.find(':') != std::string::npos ? URI<STRICT>("tcp://"s + con._authority) : URI<STRICT>("inproc://"s + con._authority);
         std::string zmq_ep = majordomo::toZeroMQEndpoint(ep);
-        if (opencmw::majordomo::zmq_invoke(zmq_connect, con._socket, zmq_ep).isValid()) {
+        if (opencmw::zmq::invoke(zmq_connect, con._socket, zmq_ep).isValid()) {
             _pollItems.push_back({ .socket = con._socket.zmq_ptr, .fd = 0, .events = ZMQ_POLLIN, .revents = 0 });
             con._connectionState = ConnectionState::CONNECTED;
         }
@@ -249,14 +249,14 @@ public:
         auto       &con         = findConnection(uri);
         std::string serviceName = uri.relativeRefNoFragment().value();
         assert(!serviceName.empty());
-        opencmw::majordomo::zmq_invoke(zmq_setsockopt, con._socket, ZMQ_SUBSCRIBE, serviceName.data(), serviceName.size()).assertSuccess();
+        opencmw::zmq::invoke(zmq_setsockopt, con._socket, ZMQ_SUBSCRIBE, serviceName.data(), serviceName.size()).assertSuccess();
     }
 
     void unsubscribe(const URI<STRICT> &uri, majordomo::MessageFrame & /*reqId*/) override {
         auto       &con         = findConnection(uri);
         std::string serviceName = uri.relativeRefNoFragment().value();
         assert(!serviceName.empty());
-        opencmw::majordomo::zmq_invoke(zmq_setsockopt, con._socket, ZMQ_UNSUBSCRIBE, serviceName.data(), serviceName.size()).assertSuccess();
+        opencmw::zmq::invoke(zmq_setsockopt, con._socket, ZMQ_UNSUBSCRIBE, serviceName.data(), serviceName.size()).assertSuccess();
     }
 
     bool disconnect(detail::Connection &con) {
@@ -267,7 +267,7 @@ public:
         const auto remove = std::remove_if(_pollItems.begin(), _pollItems.end(), [&con](const zmq_pollitem_t &pollItem) { return pollItem.socket == con._socket.zmq_ptr; });
         _pollItems.erase(remove, _pollItems.end());
 #endif
-        zmq_invoke(zmq_disconnect, con._socket, majordomo::toZeroMQEndpoint(URI<STRICT>(con._authority)).data()).ignoreResult();
+        zmq::invoke(zmq_disconnect, con._socket, majordomo::toZeroMQEndpoint(URI<STRICT>(con._authority)).data()).ignoreResult();
         con._connectionState = detail::ConnectionState::DISCONNECTED;
         return true;
     }
@@ -341,9 +341,9 @@ public:
 class MDClientCtx : public ClientBase {
     using timeUnit = std::chrono::milliseconds;
     std::unordered_map<URI<STRICT>, std::unique_ptr<MDClientBase>> _clients;
-    const majordomo::Context                                      &_zctx;
-    majordomo::Socket                                              _control_socket_send;
-    majordomo::Socket                                              _control_socket_recv;
+    const zmq::Context                                            &_zctx;
+    zmq::Socket                                                    _control_socket_send;
+    zmq::Socket                                                    _control_socket_recv;
     std::jthread                                                   _poller;
     std::vector<zmq_pollitem_t>                                    _pollitems{};
     std::unordered_map<std::size_t, Request>                       _requests;
@@ -353,10 +353,10 @@ class MDClientCtx : public ClientBase {
     std::size_t                                                    _request_id = 0;
 
 public:
-    explicit MDClientCtx(const majordomo::Context &zeromq_context, const timeUnit timeout = 1s, std::string clientId = "") // todo: also pass thread pool
+    explicit MDClientCtx(const zmq::Context &zeromq_context, const timeUnit timeout = 1s, std::string clientId = "") // todo: also pass thread pool
         : _zctx{ zeromq_context }, _control_socket_send(zeromq_context, ZMQ_PAIR), _control_socket_recv(zeromq_context, ZMQ_PAIR), _timeout(timeout), _clientId(std::move(clientId)) {
         _poller = std::jthread([this](const std::stop_token &stoken) { this->poll(stoken); });
-        majordomo::zmq_invoke(zmq_bind, _control_socket_send, "inproc://mdclientControlSocket").assertSuccess();
+        zmq::invoke(zmq_bind, _control_socket_send, "inproc://mdclientControlSocket").assertSuccess();
         _pollitems.push_back({ .socket = _control_socket_recv.zmq_ptr, .fd = 0, .events = ZMQ_POLLIN, .revents = 0 });
     }
 
@@ -457,8 +457,8 @@ private:
 
     void poll(const std::stop_token &stoken) {
         auto nextHousekeeping = std::chrono::system_clock::now();
-        majordomo::zmq_invoke(zmq_connect, _control_socket_recv, "inproc://mdclientControlSocket").assertSuccess();
-        while (!stoken.stop_requested() && majordomo::zmq_invoke(zmq_poll, _pollitems.data(), static_cast<int>(_pollitems.size()), 200)) {
+        zmq::invoke(zmq_connect, _control_socket_recv, "inproc://mdclientControlSocket").assertSuccess();
+        while (!stoken.stop_requested() && zmq::invoke(zmq_poll, _pollitems.data(), static_cast<int>(_pollitems.size()), 200)) {
             if (auto now = std::chrono::system_clock::now(); nextHousekeeping < now) {
                 nextHousekeeping = housekeeping(now);
                 // expire old subscriptions/requests/connections

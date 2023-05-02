@@ -258,9 +258,9 @@ private:
     };
 
 public:
-    const Context     context;
-    const Settings    settings;
-    const std::string brokerName;
+    const zmq::Context context;
+    const Settings     settings;
+    const std::string  brokerName;
 
 private:
     Timestamp                                                   _heartbeatAt = Clock::now() + settings.heartbeatInterval;

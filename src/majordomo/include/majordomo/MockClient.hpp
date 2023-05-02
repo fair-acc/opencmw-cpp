@@ -14,8 +14,8 @@
 namespace opencmw::majordomo {
 
 class MockClient {
-    const Context                &_context;
-    std::optional<Socket>         _socket;
+    const zmq::Context           &_context;
+    std::optional<zmq::Socket>    _socket;
     std::string                   _brokerUrl;
     int                           _nextRequestId = 0;
     std::array<zmq_pollitem_t, 1> _pollerItems;
@@ -28,7 +28,7 @@ public:
         int id;
     };
 
-    explicit MockClient(const Context &context)
+    explicit MockClient(const zmq::Context &context)
         : _context(context) {
     }
 
@@ -37,7 +37,7 @@ public:
     [[nodiscard]] auto connect(const opencmw::URI<> &brokerUrl) {
         _socket.emplace(_context, ZMQ_DEALER);
 
-        const auto result = zmq_invoke(zmq_connect, *_socket, toZeroMQEndpoint(brokerUrl).data());
+        const auto result = zmq::invoke(zmq_connect, *_socket, toZeroMQEndpoint(brokerUrl).data());
         if (result.isValid()) {
             _pollerItems[0].socket = _socket->zmq_ptr;
             _pollerItems[0].events = ZMQ_POLLIN;
@@ -114,7 +114,7 @@ public:
     }
 
     bool tryRead(std::chrono::milliseconds timeout) {
-        const auto result = zmq_invoke(zmq_poll, _pollerItems.data(), static_cast<int>(_pollerItems.size()), timeout.count());
+        const auto result = zmq::invoke(zmq_poll, _pollerItems.data(), static_cast<int>(_pollerItems.size()), timeout.count());
         if (!result.isValid()) {
             return false;
         }

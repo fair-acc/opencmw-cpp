@@ -8,12 +8,11 @@
 
 #include <fmt/format.h>
 
-using opencmw::majordomo::Command;
-using opencmw::majordomo::Context;
-using opencmw::majordomo::MdpMessage;
-using opencmw::majordomo::MessageFrame;
+using opencmw::IoBuffer;
 using opencmw::majordomo::RequestContext;
 using opencmw::majordomo::Settings;
+using opencmw::mdp::Command;
+using opencmw::zmq::Context;
 
 static Settings testSettings() {
     return Settings{}; // use defaults
@@ -24,21 +23,21 @@ class TestHandler {
 
 public:
     void operator()(RequestContext &context) {
-        if (context.request.command() == Command::Get) {
-            const auto property = std::string(context.request.body());
+        if (context.request.command == Command::Get) {
+            const auto property = std::string(context.request.data.asString());
             const auto it       = _properties.find(property);
 
             if (it != _properties.end()) {
-                context.reply.setBody(it->second, MessageFrame::dynamic_bytes_tag{});
+                context.reply.data = IoBuffer(it->second.data(), it->second.size());
             } else {
-                context.reply.setError(fmt::format("Unknown property '{}'", property), MessageFrame::dynamic_bytes_tag{});
+                context.reply.error = fmt::format("Unknown property '{}'", property);
             }
             return;
         }
 
-        assert(context.request.command() == Command::Set);
+        assert(context.request.command == Command::Set);
 
-        const auto request = context.request.body();
+        const auto request = context.request.data.asString();
         const auto pos     = request.find("=");
 
         if (pos != std::string_view::npos) {
@@ -47,11 +46,13 @@ public:
 
             _properties[std::string(property)] = value;
 
-            std::cout << fmt::format("Property '{}' set to value '{}'", property, value) << std::endl;
+            const auto body = fmt::format("Property '{}' set to value '{}'", property, value);
 
-            context.reply.setBody(fmt::format("Property '{}' set to value '{}'", property, value), MessageFrame::dynamic_bytes_tag{});
+            std::cout << body << std::endl;
+
+            context.reply.data = IoBuffer(body.data(), body.size());
         } else {
-            context.reply.setError("Invalid request, \"property=value\" expected", MessageFrame::static_bytes_tag{});
+            context.reply.error = "Invalid request, \"property=value\" expected";
         }
     }
 };

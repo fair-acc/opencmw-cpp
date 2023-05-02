@@ -214,8 +214,8 @@ struct SubscriptionInfo {
 };
 
 struct Connection {
-    Socket           notificationSubscriptionSocket;
-    Socket           requestResponseSocket;
+    zmq::Socket      notificationSubscriptionSocket;
+    zmq::Socket      requestResponseSocket;
     SubscriptionInfo subscriptionInfo;
 
     using Timestamp    = std::chrono::time_point<std::chrono::system_clock>;
@@ -241,7 +241,7 @@ private:
     }
 
 public:
-    Connection(const Context &context, SubscriptionInfo _subscriptionInfo)
+    Connection(const zmq::Context &context, SubscriptionInfo _subscriptionInfo)
         : notificationSubscriptionSocket(context, ZMQ_DEALER)
         , requestResponseSocket(context, ZMQ_SUB)
         , subscriptionInfo(std::move(_subscriptionInfo)) {}
@@ -350,7 +350,7 @@ public:
 
         auto *connection = it->second.get();
 
-        zmq_invoke(zmq_connect, connection->notificationSubscriptionSocket, INTERNAL_ADDRESS_BROKER.str()).template onFailure<opencmw::startup_error>("Can not connect REST worker to Majordomo broker");
+        zmq::invoke(zmq_connect, connection->notificationSubscriptionSocket, INTERNAL_ADDRESS_BROKER.str()).template onFailure<opencmw::startup_error>("Can not connect REST worker to Majordomo broker");
 
         auto subscribeMessage = MdpMessage::createClientMessage(Command::Subscribe);
         subscribeMessage.setServiceName(subscriptionInfo.serviceName, MessageFrame::dynamic_bytes_tag{});
@@ -415,7 +415,7 @@ public:
                             ++i;
                         }
 
-                        auto pollCount = zmq_invoke(zmq_poll, pollItems.data(), static_cast<int>(pollItems.size()),
+                        auto pollCount = zmq::invoke(zmq_poll, pollItems.data(), static_cast<int>(pollItems.size()),
                                 std::chrono::duration_cast<std::chrono::milliseconds>(UPDATER_POLLING_TIME).count());
                         if (!pollCount) {
                             std::terminate();
@@ -595,8 +595,8 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         detail::Connection connection(restBackend._broker.context, {});
         pollItem.events = ZMQ_POLLIN;
 
-        zmq_invoke(zmq_connect, connection.notificationSubscriptionSocket, INTERNAL_ADDRESS_BROKER.str()).template onFailure<opencmw::startup_error>("Can not connect REST worker to Majordomo broker");
-        zmq_invoke(zmq_connect, connection.requestResponseSocket, INTERNAL_ADDRESS_PUBLISHER.str()).template onFailure<opencmw::startup_error>("Can not connect REST worker to Majordomo broker");
+        zmq::invoke(zmq_connect, connection.notificationSubscriptionSocket, INTERNAL_ADDRESS_BROKER.str()).template onFailure<opencmw::startup_error>("Can not connect REST worker to Majordomo broker");
+        zmq::invoke(zmq_connect, connection.requestResponseSocket, INTERNAL_ADDRESS_PUBLISHER.str()).template onFailure<opencmw::startup_error>("Can not connect REST worker to Majordomo broker");
 
         return std::move(connection).unsafeMove();
     }
@@ -678,7 +678,7 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         }
 
         pollItem.socket = connection.notificationSubscriptionSocket.zmq_ptr;
-        auto pollResult = zmq_invoke(zmq_poll, &pollItem, 1, std::chrono::duration_cast<std::chrono::milliseconds>(REST_POLLING_TIME).count());
+        auto pollResult = zmq::invoke(zmq_poll, &pollItem, 1, std::chrono::duration_cast<std::chrono::milliseconds>(REST_POLLING_TIME).count());
         if (!pollResult || pollResult.value() == 0) {
             detail::respondWithError(response, "Error: No response from broker\n");
         } else if (auto responseMessage = MdpMessage::receive(connection.notificationSubscriptionSocket); !responseMessage) {
