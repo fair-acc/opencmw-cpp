@@ -17,38 +17,44 @@ TEST_CASE("SET/GET of MockServer", "[mock-server][lambda_handler]") {
     REQUIRE(client.connect(opencmw::URI<>(server.address())));
     // REQUIRE(client.connect(INTERNAL_ADDRESS_BROKER));
 
-    client.get("a.service", "", [](auto &&message) {
+    client.get("a.service", {}, [](auto &&message) {
+#if 0 // TODO
         fmt::print("A: {}\n", message);
-        REQUIRE(message.error() == "");
-        REQUIRE(message.body() == "100");
+#endif
+        REQUIRE(message.error == "");
+        REQUIRE(message.data.asString() == "100");
     });
     server.processRequest([](auto &&req, auto &reply) {
-        REQUIRE(req.command() == Command::Get);
-        reply.setBody(std::to_string(100), MessageFrame::dynamic_bytes_tag{});
+        REQUIRE(req.command == mdp::Command::Get);
+        reply.data = IoBuffer("100");
     });
     REQUIRE(client.tryRead(3s));
 
-    client.set("a.service", "42", [](auto &&message) {
+    client.set("a.service", IoBuffer("42"), [](auto &&message) {
+#if 0 // TODO
         fmt::print("B: {}\n", message);
-        REQUIRE(message.error() == "");
-        REQUIRE(message.body() == "Value set. All good!");
+#endif
+        REQUIRE(message.error == "");
+        REQUIRE(message.data.asString() == "Value set. All good!");
     });
     server.processRequest([](auto &&req, auto &reply) {
-        REQUIRE(req.command() == Command::Set);
-        REQUIRE(req.body() == "42");
-        reply.setBody("Value set. All good!", MessageFrame::static_bytes_tag{});
+        REQUIRE(req.command == mdp::Command::Set);
+        REQUIRE(req.data.asString() == "42");
+        reply.data = IoBuffer("Value set. All good!");
     });
     REQUIRE(client.tryRead(3s));
 
-    client.get("a.service", "", [](auto &&message) {
+    client.get("a.service", {}, [](auto &&message) {
+#if 0 // TODO
         fmt::print("C: {}\n", message);
-        REQUIRE(message.error() == "");
-        REQUIRE(message.body() == "42");
+#endif
+        REQUIRE(message.error == "");
+        REQUIRE(message.data.asString() == "42");
     });
 
     server.processRequest([](auto &&req, auto &reply) {
-        REQUIRE(req.command() == Command::Get);
-        reply.setBody(std::to_string(42), MessageFrame::dynamic_bytes_tag{});
+        REQUIRE(req.command == mdp::Command::Get);
+        reply.data = IoBuffer("42");
     });
 
     REQUIRE(client.tryRead(3s));

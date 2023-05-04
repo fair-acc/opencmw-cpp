@@ -8,7 +8,6 @@ add_library(majordomo INTERFACE
     include/majordomo/RestBackend.hpp
     include/majordomo/Settings.hpp
     include/majordomo/SubscriptionMatcher.hpp
-    include/majordomo/Utils.hpp
     include/majordomo/Worker.hpp
 )
 target_include_directories(majordomo INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include/>)

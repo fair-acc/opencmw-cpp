@@ -5,6 +5,7 @@
 #include <opencmw.hpp>
 #include <URI.hpp>
 
+#include <chrono>
 #include <type_traits>
 #include <variant>
 
@@ -33,6 +34,23 @@ constexpr auto clientProtocol     = std::string_view{ "MDPC03" };
 constexpr auto workerProtocol     = std::string_view{ "MDPW03" };
 
 /**
+ * Converts an address URI to the format expected by ZeroMQ, i.e. replace mds:/ and mdp:/ by tcp:/
+ */
+inline std::string toZeroMQEndpoint(const opencmw::URI<> &uri) {
+    if (uri.scheme() == "mdp" || uri.scheme() == "mds") {
+        return opencmw::URI<>::factory(uri).scheme("tcp").toString();
+    }
+
+    return uri.str();
+}
+
+struct Settings {
+    int                       highWaterMark     = 0;
+    int                       heartbeatLiveness = 3;
+    std::chrono::milliseconds heartbeatInterval = std::chrono::milliseconds(1000);
+};
+
+/**
  * @brief Domain object representation of the Majordomo Protocol (MDP) message
  */
 template<MessageFormat Format>
@@ -59,5 +77,18 @@ struct BasicMessage {
 using Message = BasicMessage<MessageFormat::WithoutSourceId>;
 
 } // namespace opencmw::mdp
+
+template<opencmw::mdp::MessageFormat Format>
+struct fmt::formatter<opencmw::mdp::BasicMessage<Format>> {
+    template<typename ParseContext>
+    constexpr auto parse(ParseContext &ctx) {
+        return ctx.begin(); // not (yet) implemented
+    }
+
+    template<typename FormatContext>
+    auto format(const opencmw::mdp::BasicMessage<Format> &v, FormatContext &ctx) const {
+        return "TODO"; //fmt::format_to(ctx.out(), "{}", v.asString());
+    }
+};
 
 #endif // OPENCMW_CPP_MDPMESSAGE_HPP

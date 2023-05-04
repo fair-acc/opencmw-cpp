@@ -21,7 +21,6 @@
 #include <majordomo/Constants.hpp>
 #include <majordomo/Rbac.hpp>
 #include <majordomo/Settings.hpp>
-#include <majordomo/Utils.hpp>
 #include <MIME.hpp>
 #include <MustacheSerialiser.hpp>
 #include <Debug.hpp>
@@ -383,14 +382,14 @@ private:
         _workerSocket.emplace(_context, ZMQ_DEALER);
 
         const auto routerEndpoint = opencmw::URI<STRICT>::factory(_brokerAddress).path(opencmw::majordomo::SUFFIX_ROUTER).build();
-        if (!zmq::invoke(zmq_connect, *_workerSocket, toZeroMQEndpoint(routerEndpoint).data()).isValid()) {
+        if (!zmq::invoke(zmq_connect, *_workerSocket, mdp::toZeroMQEndpoint(routerEndpoint).data()).isValid()) {
             return false;
         }
 
         _pubSocket.emplace(_context, ZMQ_XPUB);
 
         const auto subEndpoint = opencmw::URI<STRICT>::factory(_brokerAddress).path(opencmw::majordomo::SUFFIX_SUBSCRIBE).build();
-        if (!zmq::invoke(zmq_connect, *_pubSocket, toZeroMQEndpoint(subEndpoint).data()).isValid()) {
+        if (!zmq::invoke(zmq_connect, *_pubSocket, mdp::toZeroMQEndpoint(subEndpoint).data()).isValid()) {
             _workerSocket.reset();
             return false;
         }

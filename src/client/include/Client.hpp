@@ -3,17 +3,17 @@
 
 #include <algorithm>
 #include <atomic>
+#include <charconv>
 #include <chrono>
 #include <ClientContext.hpp>
-#include <majordomo/Message.hpp>
-#include <ZmqPtr.hpp>
 #include <MdpMessage.hpp>
 #include <opencmw.hpp>
 #include <URI.hpp>
+#include <ZmqMessage.hpp>
 
 namespace opencmw::client {
 
-using opencmw::majordomo::MessageFormat;
+using opencmw::mdp::MessageFormat;
 
 namespace detail {
 
@@ -32,7 +32,7 @@ struct Connection {
 
     Connection(const zmq::Context &context, const std::string_view authority, const int zmq_dealer_type)
         : _authority{ authority }, _socket{ context, zmq_dealer_type } {
-        majordomo::initializeZmqSocket(_socket).assertSuccess();
+        zmq::initializeSocket(_socket).assertSuccess();
     }
 };
 
@@ -40,13 +40,13 @@ struct Connection {
 
 class MDClientBase {
 public:
-    virtual ~MDClientBase()                                                                                   = default;
-    virtual bool      receive(mdp::Message &message)                                                          = 0;
-    virtual timePoint housekeeping(const timePoint &now)                                                      = 0;
-    virtual void      get(const URI<STRICT> &, majordomo::MessageFrame &)                                     = 0;
-    virtual void      set(const URI<STRICT> &, majordomo::MessageFrame &, const std::span<const std::byte> &) = 0;
-    virtual void      subscribe(const URI<STRICT> &, majordomo::MessageFrame &)                               = 0;
-    virtual void      unsubscribe(const URI<STRICT> &, majordomo::MessageFrame &)                             = 0;
+    virtual ~MDClientBase()                                                                          = default;
+    virtual bool      receive(mdp::Message &message)                                                 = 0;
+    virtual timePoint housekeeping(const timePoint &now)                                             = 0;
+    virtual void      get(const URI<STRICT> &, std::string_view)                                     = 0;
+    virtual void      set(const URI<STRICT> &, std::string_view, const std::span<const std::byte> &) = 0;
+    virtual void      subscribe(const URI<STRICT> &, std::string_view)                               = 0;
+    virtual void      unsubscribe(const URI<STRICT> &, std::string_view)                             = 0;
 };
 
 class Client : public MDClientBase {
@@ -72,9 +72,10 @@ public:
 
     void connect(detail::Connection &con) {
         using detail::ConnectionState;
+        using namespace std::string_literals;
         // todo: switch on scheme, for now use tcp if port is specified, otherwise use inproc
         auto        ep     = con._authority.find(':') != std::string::npos ? URI<STRICT>("tcp://"s + con._authority) : URI<STRICT>("inproc://"s + con._authority);
-        std::string zmq_ep = majordomo::toZeroMQEndpoint(ep);
+        std::string zmq_ep = mdp::toZeroMQEndpoint(ep);
         if (opencmw::zmq::invoke(zmq_connect, con._socket, zmq_ep).isValid()) {
             _pollItems.push_back({ .socket = con._socket.zmq_ptr, .fd = 0, .events = ZMQ_POLLIN, .revents = 0 });
         }
@@ -92,29 +93,29 @@ public:
         return *con;
     }
 
-    void get(const URI<STRICT> &uri, majordomo::MessageFrame &req_id) override {
+    void get(const URI<STRICT> &uri, std::string_view req_id) override {
         const auto &con     = findConnection(uri);
-        auto        message = createRequestTemplate(majordomo::Command::Get, uri.relativeRefNoFragment().value(), req_id);
-        message.send(con._socket).assertSuccess();
+        auto        message = createRequestTemplate(mdp::Command::Get, uri.relativeRefNoFragment().value(), req_id);
+        zmq::send(std::move(message), con._socket).assertSuccess();
     }
 
-    void set(const URI<STRICT> &uri, majordomo::MessageFrame &req_id, const std::span<const std::byte> &request) override {
+    void set(const URI<STRICT> &uri, std::string_view req_id, const std::span<const std::byte> &request) override {
         const auto &con     = findConnection(uri);
-        auto        message = createRequestTemplate(majordomo::Command::Set, uri.relativeRefNoFragment().value(), req_id);
-        message.setBody(std::string(reinterpret_cast<const char *>(request.data()), request.size()), majordomo::MessageFrame::dynamic_bytes_tag{});
-        message.send(con._socket).assertSuccess();
+        auto        message = createRequestTemplate(mdp::Command::Set, uri.relativeRefNoFragment().value(), req_id);
+        message.data = IoBuffer(reinterpret_cast<const char *>(request.data()), request.size());
+        zmq::send(std::move(message), con._socket).assertSuccess();
     }
 
-    void subscribe(const URI<STRICT> &uri, majordomo::MessageFrame &req_id) override {
+    void subscribe(const URI<STRICT> &uri, std::string_view req_id) override {
         const auto &con     = findConnection(uri);
-        auto        message = createRequestTemplate(majordomo::Command::Subscribe, uri.relativeRefNoFragment().value(), req_id);
-        message.send(con._socket).assertSuccess();
+        auto        message = createRequestTemplate(mdp::Command::Subscribe, uri.relativeRefNoFragment().value(), req_id);
+        zmq::send(std::move(message), con._socket).assertSuccess();
     }
 
-    void unsubscribe(const URI<STRICT> &uri, majordomo::MessageFrame &req_id) override {
+    void unsubscribe(const URI<STRICT> &uri, std::string_view req_id) override {
         const auto &con     = findConnection(uri);
-        auto        message = createRequestTemplate(majordomo::Command::Unsubscribe, uri.relativeRefNoFragment().value(), req_id);
-        message.send(con._socket).assertSuccess();
+        auto        message = createRequestTemplate(mdp::Command::Unsubscribe, uri.relativeRefNoFragment().value(), req_id);
+        zmq::send(std::move(message), con._socket).assertSuccess();
     }
 
     bool disconnect(detail::Connection &con) {
@@ -125,24 +126,21 @@ public:
         const auto remove = std::remove_if(_pollItems.begin(), _pollItems.end(), [&con](zmq_pollitem_t &pollItem) { return pollItem.socket == con._socket.zmq_ptr; });
         _pollItems.erase(remove, _pollItems.end());
 #endif
-        zmq::invoke(zmq_disconnect, con._socket, majordomo::toZeroMQEndpoint(URI<STRICT>(con._authority)).data()).ignoreResult();
+        zmq::invoke(zmq_disconnect, con._socket, mdp::toZeroMQEndpoint(URI<STRICT>(con._authority)).data()).ignoreResult();
         con._connectionState = detail::ConnectionState::DISCONNECTED;
         return true;
     }
 
-    static bool handleMessage(const majordomo::MdpMessage &message, mdp::Message &output) {
-        if (!message.isValid()) {
-            return true;
-        }
+    static bool handleMessage(const mdp::Message &message, mdp::Message &output) {
         // subscription updates
-        if (message.command() == majordomo::Command::Notify || message.command() == majordomo::Command::Final) {
+        if (message.command == mdp::Command::Notify || message.command == mdp::Command::Final) {
             output.arrivalTime = std::chrono::system_clock::now();
-            output.data.resize(message.body().size());
-            URI<uri_check::STRICT> uri{ std::string{ message.topic() } };
-            std::memcpy(output.data.data(), message.body().begin(), message.body().size());
-            output.endpoint   = URI<uri_check::STRICT>(std::string{ message.topic() });
+            const auto body = message.data.asString();
+            output.data.resize(body.size());
+            std::memcpy(output.data.data(), body.begin(), body.size());
+            output.endpoint   = message.endpoint;
             auto params       = output.endpoint.queryParamMap();
-            auto requestId_sv = message.clientRequestId();
+            auto requestId_sv = message.clientRequestID.asString();
             if (auto result = std::from_chars(requestId_sv.data(), requestId_sv.data() + requestId_sv.size(), output.id); result.ec == std::errc::invalid_argument || result.ec == std::errc::result_out_of_range) {
                 output.id = 0;
             }
@@ -156,7 +154,7 @@ public:
             if (con._connectionState != detail::ConnectionState::CONNECTED) {
                 continue;
             }
-            if (auto message = majordomo::MdpMessage::receive(con._socket)) {
+            if (auto message = zmq::receive<mdp::MessageFormat::WithoutSourceId>(con._socket)) {
                 return handleMessage(std::move(*message), msg);
             }
         }
@@ -188,10 +186,13 @@ public:
     }
 
 private:
-    static majordomo::MdpMessage createRequestTemplate(majordomo::Command command, std::string_view serviceName, const majordomo::MessageFrame &req_id) {
-        auto req = majordomo::MdpMessage::createClientMessage(command);
-        req.setServiceName(serviceName, majordomo::MessageFrame::dynamic_bytes_tag{});
-        req.setClientRequestId(req_id.data(), majordomo::MessageFrame::dynamic_bytes_tag{});
+    static mdp::Message createRequestTemplate(mdp::Command command, std::string_view serviceName, std::string_view req_id) {
+        mdp::Message req;
+        req.protocolName = mdp::clientProtocol;
+        req.command = command;
+        req.serviceName = std::string(serviceName);
+        req.clientRequestID = IoBuffer(req_id.data(), req_id.size());
+
         return req;
     }
 };
@@ -216,9 +217,10 @@ public:
 
     void connect(detail::Connection &con) {
         using detail::ConnectionState;
+        using namespace std::string_literals;
         // todo: replace this by proper logic, for now use tcp if port is specified, otherwise use inproc... mds+tcp:// -> tcp://, mds+inproc:// -> inproc:// -> auto detect
         auto        ep     = con._authority.find(':') != std::string::npos ? URI<STRICT>("tcp://"s + con._authority) : URI<STRICT>("inproc://"s + con._authority);
-        std::string zmq_ep = majordomo::toZeroMQEndpoint(ep);
+        std::string zmq_ep = mdp::toZeroMQEndpoint(ep);
         if (opencmw::zmq::invoke(zmq_connect, con._socket, zmq_ep).isValid()) {
             _pollItems.push_back({ .socket = con._socket.zmq_ptr, .fd = 0, .events = ZMQ_POLLIN, .revents = 0 });
             con._connectionState = ConnectionState::CONNECTED;
@@ -237,22 +239,22 @@ public:
         return *con;
     }
 
-    void get(const URI<STRICT> & /*uri*/, majordomo::MessageFrame &) override {
+    void get(const URI<STRICT> & /*uri*/, std::string_view) override {
         throw std::logic_error("get not implemented");
     }
 
-    void set(const URI<STRICT> & /*uri*/, majordomo::MessageFrame &, const std::span<const std::byte> & /*request*/) override {
+    void set(const URI<STRICT> & /*uri*/, std::string_view, const std::span<const std::byte> & /*request*/) override {
         throw std::logic_error("get not implemented");
     }
 
-    void subscribe(const URI<STRICT> &uri, majordomo::MessageFrame & /*reqId*/) override {
+    void subscribe(const URI<STRICT> &uri, std::string_view /*reqId*/) override {
         auto       &con         = findConnection(uri);
         std::string serviceName = uri.relativeRefNoFragment().value();
         assert(!serviceName.empty());
         opencmw::zmq::invoke(zmq_setsockopt, con._socket, ZMQ_SUBSCRIBE, serviceName.data(), serviceName.size()).assertSuccess();
     }
 
-    void unsubscribe(const URI<STRICT> &uri, majordomo::MessageFrame & /*reqId*/) override {
+    void unsubscribe(const URI<STRICT> &uri, std::string_view /*reqId*/) override {
         auto       &con         = findConnection(uri);
         std::string serviceName = uri.relativeRefNoFragment().value();
         assert(!serviceName.empty());
@@ -267,25 +269,20 @@ public:
         const auto remove = std::remove_if(_pollItems.begin(), _pollItems.end(), [&con](const zmq_pollitem_t &pollItem) { return pollItem.socket == con._socket.zmq_ptr; });
         _pollItems.erase(remove, _pollItems.end());
 #endif
-        zmq::invoke(zmq_disconnect, con._socket, majordomo::toZeroMQEndpoint(URI<STRICT>(con._authority)).data()).ignoreResult();
+        zmq::invoke(zmq_disconnect, con._socket, mdp::toZeroMQEndpoint(URI<STRICT>(con._authority)).data()).ignoreResult();
         con._connectionState = detail::ConnectionState::DISCONNECTED;
         return true;
     }
 
-    static bool handleMessage(const majordomo::BasicMdpMessage<MessageFormat::WithSourceId> &message, mdp::Message &output) {
-        if (!message.isValid()) {
-            return true;
-        }
+    static bool handleMessage(const mdp::BasicMessage<MessageFormat::WithSourceId> &message, mdp::Message &output) {
         // subscription updates
-        if (message.command() == majordomo::Command::Notify || message.command() == majordomo::Command::Final) {
+        if (message.command == mdp::Command::Notify || message.command == mdp::Command::Final) {
             output.arrivalTime = std::chrono::system_clock::now();
-            output.data.resize(message.body().size());
-            std::memcpy(output.data.data(), message.body().begin(), message.body().size());
+            output.data = message.data;
             // output.serviceName = URI<uri_check::STRICT>(std::string{ message.serviceName() });
-            output.serviceName = std::string{ message.sourceId() }; // // temporary hack until serviceName -> 'requestedTopic' and 'topic' -> 'replyTopic'
-            output.endpoint    = URI<uri_check::STRICT>(std::string{ message.topic() });
-            output.clientRequestID.reset();
-            output.clientRequestID.put(message.clientRequestId());
+            output.serviceName = message.sourceId; // temporary hack until serviceName -> 'requestedTopic' and 'topic' -> 'replyTopic'
+            output.endpoint    = message.endpoint;
+            output.clientRequestID = message.clientRequestID;
             output.id = 0; // review if this is still needed
             return true;
         }
@@ -298,7 +295,7 @@ public:
                 continue;
             }
             while (true) {
-                if (auto message = majordomo::BasicMdpMessage<MessageFormat::WithSourceId>::receive(con._socket)) {
+                if (auto message = zmq::receive<MessageFormat::WithSourceId>(con._socket)) {
                     return handleMessage(*message, msg);
                 } else {
                     break;
@@ -408,24 +405,24 @@ public:
     }
 
 private:
-    void sendCmd(const URI<STRICT> &uri, mdp::Command commandType, std::size_t req_id, const IoBuffer &data = std::move(IoBuffer())) const {
+    void sendCmd(const URI<STRICT> &uri, mdp::Command commandType, std::size_t req_id, IoBuffer data = {}) const {
         const bool              isSet = commandType == mdp::Command::Set;
-        majordomo::MessageFrame cmdType{ std::string{ static_cast<char>(commandType) }, majordomo::MessageFrame::dynamic_bytes_tag() };
+        zmq::MessageFrame cmdType{ std::string{ static_cast<char>(commandType) } };
         cmdType.send(_control_socket_send, ZMQ_SNDMORE).assertSuccess();
-        majordomo::MessageFrame reqId{ std::to_string(req_id), majordomo::MessageFrame::dynamic_bytes_tag() };
+        zmq::MessageFrame reqId{ std::to_string(req_id) };
         reqId.send(_control_socket_send, ZMQ_SNDMORE).assertSuccess();
-        majordomo::MessageFrame endpoint{ uri.str(), majordomo::MessageFrame::dynamic_bytes_tag() };
+        zmq::MessageFrame endpoint{ std::string(uri.str()) };
         endpoint.send(_control_socket_send, isSet ? ZMQ_SNDMORE : 0).assertSuccess();
         if (isSet) {
-            majordomo::MessageFrame dataframe{ std::string_view{ reinterpret_cast<const char *>(data.data()), data.size() }, majordomo::MessageFrame::dynamic_bytes_tag() };
+            zmq::MessageFrame dataframe{ std::move(data) };
             dataframe.send(_control_socket_send, 0).assertSuccess();
         }
     }
 
     void handleRequests() {
-        majordomo::MessageFrame cmd;
-        majordomo::MessageFrame reqId;
-        majordomo::MessageFrame endpoint;
+        zmq::MessageFrame cmd;
+        zmq::MessageFrame reqId;
+        zmq::MessageFrame endpoint;
         while (cmd.receive(_control_socket_recv, ZMQ_DONTWAIT).isValid()) {
             if (!reqId.receive(_control_socket_recv, ZMQ_DONTWAIT).isValid()) {
                 throw std::logic_error("invalid request received: failure receiving message");
@@ -438,17 +435,17 @@ private:
             if (cmd.data().size() != 1) {
                 throw std::logic_error("invalid request received: wrong number of frames");
             } else if (cmd.data()[0] == static_cast<char>(mdp::Command::Get)) {
-                client->get(uri, reqId);
+                client->get(uri, reqId.data());
             } else if (cmd.data()[0] == static_cast<char>(mdp::Command::Set)) {
-                majordomo::MessageFrame data;
+                zmq::MessageFrame data;
                 if (!data.receive(_control_socket_recv, ZMQ_DONTWAIT).isValid()) {
                     throw std::logic_error("missing set str");
                 }
-                client->set(uri, reqId, as_bytes(std::span(data.data().data(), data.data().size())));
+                client->set(uri, reqId.data(), as_bytes(std::span(data.data().data(), data.data().size())));
             } else if (cmd.data()[0] == static_cast<char>(mdp::Command::Subscribe)) {
-                client->subscribe(uri, reqId);
+                client->subscribe(uri, reqId.data());
             } else if (cmd.data()[0] == static_cast<char>(mdp::Command::Unsubscribe)) {
-                client->unsubscribe(uri, reqId);
+                client->unsubscribe(uri, reqId.data());
             } else {
                 throw std::logic_error("invalid request received"); // messages always consist of 2 frames
             }

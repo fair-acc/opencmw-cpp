@@ -1,17 +1,14 @@
 #ifndef OPENCMW_MAJORDOMO_SETTINGS_H
 #define OPENCMW_MAJORDOMO_SETTINGS_H
 
-#include <chrono>
+#include <MdpMessage.hpp>
 #include <URI.hpp>
+
+#include <chrono>
 
 namespace opencmw::majordomo {
 
-struct Settings {
-    // shared
-    int                       highWaterMark     = 0;
-    int                       heartbeatLiveness = 3;
-    std::chrono::milliseconds heartbeatInterval = std::chrono::milliseconds(1000);
-
+struct Settings : public mdp::Settings {
     // broker
     std::chrono::milliseconds clientTimeout = std::chrono::seconds(10);
     std::string               dnsAddress;

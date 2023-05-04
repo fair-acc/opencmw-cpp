@@ -187,24 +187,25 @@ int main(int argc, char **argv) {
         bool replyReceived = false;
 
         if (command == "set") {
-            client.set(propertyStoreService.data(), fmt::format("{}={}", property, value), [&replyReceived](auto &&reply) {
+            const auto req = fmt::format("{}={}", property, value);
+            client.set(propertyStoreService.data(), IoBuffer(req.data(), req.size()), [&replyReceived](auto &&reply) {
                 replyReceived = true;
-                if (!reply.error().empty()) {
-                    std::cout << "Error: " << reply.error() << std::endl;
+                if (!reply.error.empty()) {
+                    std::cout << "Error: " << reply.error << std::endl;
                     return;
                 }
 
-                std::cout << reply.body() << std::endl;
+                std::cout << reply.data.asString() << std::endl;
             });
         } else {
-            client.get(propertyStoreService.data(), property, [property, &replyReceived](auto &&reply) {
+            client.get(propertyStoreService.data(), IoBuffer(property.data(), property.size()), [property, &replyReceived](auto &&reply) {
                 replyReceived = true;
-                if (!reply.error().empty()) {
-                    std::cout << "Error: " << reply.error() << std::endl;
+                if (!reply.error.empty()) {
+                    std::cout << "Error: " << reply.error << std::endl;
                     return;
                 }
 
-                std::cout << fmt::format("The value of '{}' is '{}'\n", property, reply.body());
+                std::cout << fmt::format("The value of '{}' is '{}'\n", property, reply.data);
             });
         }
 
