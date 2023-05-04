@@ -189,7 +189,7 @@ TEST_CASE("JsonSerialisation", "[JsonSerialiser]") {
         foo.stringValue               = "test";
         foo.nested                    = std::make_shared<DataX>();
         foo.doubleMatrix[{ 1U, 1U }]  = 42.1337;
-        foo.nested.get()->stringValue = "asdf";
+        foo.nested.get()->stringValue = "as\nd\"f";
         foo.nested.get()->doubleMap.emplace("key", 99.99);
         opencmw::serialise<opencmw::Json>(buffer, foo);
         std::cout << "serialised: " << buffer.asString() << std::endl;
