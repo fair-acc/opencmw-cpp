@@ -121,6 +121,23 @@ TEST_CASE("Test for some previous issues", "[URI]") {
     using namespace opencmw;
     using QueryMap = std::unordered_map<std::string, std::optional<std::string>>;
 
+     // in the case of small-string optimization, the string_view accessors returned invalid data after movedFrom was destroyed
+    {
+        URI<STRICT> movedTo("/");
+        {
+            auto movedFrom = URI<STRICT>("s://u:p@h:1/p#f");
+            movedTo = std::move(movedFrom);
+        }
+        CHECK(movedTo.str() == "s://u:p@h:1/p#f");
+        CHECK(movedTo.scheme() == "s");
+        CHECK(movedTo.user() == "u");
+        CHECK(movedTo.password() == "p");
+        CHECK(movedTo.hostName() == "h");
+        CHECK(movedTo.port() == 1);
+        CHECK(movedTo.path() == "/p");
+        CHECK(movedTo.fragment() == "f");
+    }
+
     // parsing qas confused by ":" in the query param
     CHECK(URI<RELAXED>("/property?ctx=FAIR.SELECTOR.C=2:P=1").path() == "/property"); // path() == "P=1"
 

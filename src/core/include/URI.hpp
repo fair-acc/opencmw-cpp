@@ -98,6 +98,9 @@ public:
         if (this == &other) {
             return *this;
         }
+
+        const char *oldBegin = other._str.data();
+
         std::swap(_str, other._str);
         std::swap(_scheme, other._scheme);
         std::swap(_authority, other._authority);
@@ -105,12 +108,29 @@ public:
         std::swap(_query, other._query);
         std::swap(_fragment, other._fragment);
         std::swap(_queryMap, other._queryMap);
-
         std::swap(_parsedAuthority, other._parsedAuthority);
         std::swap(_userName, other._userName);
         std::swap(_pwd, other._pwd);
         std::swap(_hostName, other._hostName);
         std::swap(_port, other._port);
+
+        // small strings are copied, then adjust views
+        if (_str.data() != oldBegin) {
+            auto adjustView = [this, oldBegin](std::string_view &view) {
+                view = std::string_view(_str.data() + std::distance(oldBegin, view.data()), view.size());
+            };
+
+            adjustView(_scheme);
+            adjustView(_authority);
+            adjustView(_path);
+            adjustView(_query);
+            adjustView(_fragment);
+            adjustView(_userName);
+            adjustView(_pwd);
+            adjustView(_hostName);
+            adjustView(_port);
+        }
+
         return *this;
     }
 
