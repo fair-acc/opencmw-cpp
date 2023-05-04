@@ -125,7 +125,7 @@ TEST_CASE("Test for some previous issues", "[URI]") {
         URI<STRICT> movedTo("/");
         {
             auto movedFrom = URI<STRICT>("/property");
-            movedTo = std::move(movedFrom);
+            movedTo        = std::move(movedFrom);
         }
         CHECK(movedTo.str() == "/property");
         CHECK(movedTo.path() == "/property"); // this failed after movedFrom was destroyed

@@ -99,9 +99,9 @@ public:
             return *this;
         }
 
-        const char *oldBegin = other._str.data();
+        const char *oldBegin   = other._str.data();
 
-        auto adjustView = [this, oldBegin](std::string_view &view) {
+        auto        adjustView = [this, oldBegin](std::string_view &view) {
             view = std::string_view(_str.data() + std::distance(oldBegin, view.data()), view.size());
         };
 
