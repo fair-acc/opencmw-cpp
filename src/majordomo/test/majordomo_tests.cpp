@@ -1,7 +1,7 @@
 #include <majordomo/Broker.hpp>
 #include <majordomo/Constants.hpp>
+#include <majordomo/Message.hpp>
 #include <majordomo/MockClient.hpp>
-#include <majordomo/Utils.hpp>
 #include <majordomo/Worker.hpp>
 
 #include <catch2/catch.hpp>
@@ -18,6 +18,9 @@ using namespace opencmw;
 using namespace opencmw::majordomo;
 using namespace std::chrono_literals;
 using BrokerMessage = BasicMdpMessage<MessageFormat::WithSourceId>;
+
+static constexpr auto dynamic_tag = opencmw::majordomo::MessageFrame::dynamic_bytes_tag{};
+static constexpr auto static_tag = opencmw::majordomo::MessageFrame::static_bytes_tag{};
 
 TEST_CASE("OpenCMW::Frame cloning", "[frame][cloning]") {
     {
@@ -465,9 +468,9 @@ TEST_CASE("Request answered with unknown service", "[broker][unknown_service]") 
 }
 
 TEST_CASE("Test toZeroMQEndpoint conversion", "[utils][toZeroMQEndpoint]") {
-    REQUIRE(toZeroMQEndpoint(URI<>("mdp://127.0.0.1:12345")) == "tcp://127.0.0.1:12345");
-    REQUIRE(toZeroMQEndpoint(URI<>("mds://127.0.0.1:12345")) == "tcp://127.0.0.1:12345");
-    REQUIRE(toZeroMQEndpoint(URI<>("inproc://test")) == "inproc://test");
+    REQUIRE(mdp::toZeroMQEndpoint(URI<>("mdp://127.0.0.1:12345")) == "tcp://127.0.0.1:12345");
+    REQUIRE(mdp::toZeroMQEndpoint(URI<>("mds://127.0.0.1:12345")) == "tcp://127.0.0.1:12345");
+    REQUIRE(mdp::toZeroMQEndpoint(URI<>("inproc://test")) == "inproc://test");
 }
 
 TEST_CASE("Bind broker to endpoints", "[broker][bind]") {
@@ -1834,23 +1837,23 @@ TEST_CASE("SET/GET example using a lambda as the worker's request handler", "[wo
 
     REQUIRE(waitUntilServiceAvailable(broker.context, "a.service"));
 
-    client.get("a.service", "", [](auto &&message) {
-        REQUIRE(message.error() == "");
-        REQUIRE(message.body() == "100");
+    client.get("a.service", {}, [](auto &&message) {
+        REQUIRE(message.error == "");
+        REQUIRE(message.data.asString() == "100");
     });
 
     REQUIRE(client.tryRead(std::chrono::seconds(3)));
 
-    client.set("a.service", "42", [](auto &&message) {
-        REQUIRE(message.error() == "");
-        REQUIRE(message.body() == "Value set. All good!");
+    client.set("a.service", IoBuffer("42"), [](auto &&message) {
+        REQUIRE(message.error == "");
+        REQUIRE(message.data.asString() == "Value set. All good!");
     });
 
     REQUIRE(client.tryRead(std::chrono::seconds(3)));
 
-    client.get("a.service", "", [](auto &&message) {
-        REQUIRE(message.error() == "");
-        REQUIRE(message.body() == "42");
+    client.get("a.service", {}, [](auto &&message) {
+        REQUIRE(message.error == "");
+        REQUIRE(message.data.asString() == "42");
     });
 
     REQUIRE(client.tryRead(std::chrono::seconds(3)));
@@ -1877,8 +1880,8 @@ TEST_CASE("Worker's request handler throws an exception", "[worker][handler_exce
 
     REQUIRE(waitUntilServiceAvailable(broker.context, "a.service"));
 
-    client.get("a.service", "", [](auto &&message) {
-        REQUIRE(message.error() == "Caught exception for service 'a.service'\nrequest message: \nexception: Something went wrong!");
+    client.get("a.service", {}, [](auto &&message) {
+        REQUIRE(message.error == "Caught exception for service 'a.service'\nrequest message: \nexception: Something went wrong!");
     });
 
     REQUIRE(client.tryRead(std::chrono::seconds(3)));
@@ -1905,8 +1908,8 @@ TEST_CASE("Worker's request handler throws an unexpected exception", "[worker][h
 
     REQUIRE(waitUntilServiceAvailable(broker.context, "a.service"));
 
-    client.get("a.service", "", [](auto &&message) {
-        REQUIRE(message.error() == "Caught unexpected exception for service 'a.service'\nrequest message: ");
+    client.get("a.service", {}, [](auto &&message) {
+        REQUIRE(message.error == "Caught unexpected exception for service 'a.service'\nrequest message: ");
     });
 
     REQUIRE(client.tryRead(std::chrono::seconds(3)));

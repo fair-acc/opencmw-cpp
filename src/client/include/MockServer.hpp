@@ -7,7 +7,6 @@
 #include <unordered_map>
 
 #include <majordomo/Broker.hpp>
-#include <majordomo/Message.hpp>
 #include <majordomo/Settings.hpp>
 #include <majordomo/Worker.hpp>
 
@@ -50,19 +49,19 @@ public:
         bool       anythingReceived = false;
         int        loopCount        = 0;
         do {
-            auto maybeMessage = MdpMessage::receive(_socket.value());
+            auto maybeMessage = zmq::receive<mdp::MessageFormat::WithoutSourceId>(_socket.value());
             if (!maybeMessage) { // empty message
                 anythingReceived = false;
                 break;
             }
             anythingReceived = true;
             auto &message    = maybeMessage.value();
-            if (!message.isValid() || !message.isClientMessage()) {
-                throw std::logic_error("mock server received invalid message");
+            if (message.protocolName != mdp::clientProtocol) {
+                throw std::logic_error("mock server received unexpected worker message");
             }
             auto reply = replyFromRequest(message);
             handler(message, reply);
-            reply.send(_socket.value()).assertSuccess();
+            zmq::send(std::move(reply), _socket.value()).assertSuccess();
 
             loopCount++;
         } while (anythingReceived);
@@ -95,38 +94,39 @@ public:
     void notify(std::string_view topic, std::string_view value) {
         auto       brokerName  = "";
         auto       serviceName = "a.service";
-        const auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
-        auto       notify      = BasicMdpMessage<MessageFormat::WithSourceId>::createClientMessage(Command::Final);
-        notify.setServiceName(serviceName, dynamic_tag);
-        notify.setTopic(topic, dynamic_tag);
-        notify.setSourceId(topic, dynamic_tag);
-        notify.setClientRequestId(brokerName, dynamic_tag);
-        notify.setBody(value, dynamic_tag);
-        notify.send(_pubSocket.value()).assertSuccess();
+        mdp::BasicMessage<mdp::MessageFormat::WithSourceId> notify;
+        notify.protocolName = mdp::clientProtocol;
+        notify.command = mdp::Command::Final;
+        notify.serviceName = serviceName;
+        notify.endpoint = mdp::Message::URI(std::string(topic));
+        notify.sourceId = std::string(topic);
+        notify.clientRequestID = IoBuffer(brokerName);
+        notify.data = IoBuffer(value.data(), value.size());
+        zmq::send(std::move(notify), _pubSocket.value()).assertSuccess();
     }
 
     void notify(std::string_view topic, std::string_view uri, std::string_view value) {
         auto       brokerName  = "";
         auto       serviceName = "a.service";
-        const auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
-        auto       notify      = BasicMdpMessage<MessageFormat::WithSourceId>::createClientMessage(Command::Final);
-        notify.setServiceName(serviceName, dynamic_tag);
-        notify.setTopic(uri, dynamic_tag);
-        notify.setSourceId(topic, dynamic_tag);
-        notify.setClientRequestId(brokerName, dynamic_tag);
-        notify.setBody(value, dynamic_tag);
-        notify.send(_pubSocket.value()).assertSuccess();
+        mdp::BasicMessage<mdp::MessageFormat::WithSourceId> notify;
+        notify.protocolName = mdp::clientProtocol;
+        notify.command = mdp::Command::Final;
+        notify.serviceName = serviceName;
+        notify.endpoint = mdp::Message::URI(std::string(uri));
+        notify.sourceId = topic;
+        notify.clientRequestID = IoBuffer(brokerName);
+        notify.data = IoBuffer(value.data(), value.size());
+        zmq::send(std::move(notify), _pubSocket.value()).assertSuccess();
     }
 
-    static MdpMessage replyFromRequest(const MdpMessage &request) noexcept {
-        MdpMessage reply;
-        reply.setProtocol(request.protocol());
-        reply.setCommand(Command::Final);
-        reply.setServiceName(request.serviceName(), MessageFrame::dynamic_bytes_tag{});
-        reply.setClientSourceId(request.clientSourceId(), MessageFrame::dynamic_bytes_tag{});
-        reply.setClientRequestId(request.clientRequestId(), MessageFrame::dynamic_bytes_tag{});
-        reply.setTopic(request.topic(), MessageFrame::dynamic_bytes_tag{});
-        reply.setRbacToken(request.rbacToken(), MessageFrame::dynamic_bytes_tag{});
+    static mdp::Message replyFromRequest(const mdp::Message &request) noexcept {
+        mdp::Message reply;
+        reply.protocolName = request.protocolName;
+        reply.command = mdp::Command::Final;
+        reply.serviceName = request.serviceName;
+        reply.clientRequestID = request.clientRequestID;
+        reply.endpoint = request.endpoint;
+        reply.rbac = request.rbac;
         return reply;
     }
 };

@@ -12,6 +12,7 @@
 
 // OpenCMW Majordomo
 #include <majordomo/base64pp.hpp>
+#include <majordomo/Message.hpp>
 #include <majordomo/RestBackend.hpp>
 #include <majordomo/Worker.hpp>
 
@@ -212,28 +213,6 @@ public:
         : super_t(broker, vfs, restAddress), _serverRoot(std::move(serverRoot)) {
     }
 
-    static majordomo::MdpMessage deserializeSemicolonFormattedMessage(std::string_view method, std::string_view serialized) {
-        // clang-format off
-        auto result = majordomo::MdpMessage::createClientMessage(
-                method == "SUB" ? majordomo::Command::Subscribe :
-                method == "PUT" ? majordomo::Command::Set :
-                /* default */     majordomo::Command::Get);
-        // clang-format on
-
-        // For the time being, just use ';' as frame separator. Not meant
-        // to be a safe long-term solution:
-        auto       currentBegin = serialized.cbegin();
-        const auto bodyEnd      = serialized.cend();
-        auto       currentEnd   = std::find(currentBegin, serialized.cend(), ';');
-
-        for (std::size_t i = 2; i < result.requiredFrameCount(); ++i) {
-            result.setFrameData(i, std::string_view(currentBegin, currentEnd), majordomo::MessageFrame::dynamic_bytes_tag{});
-            currentBegin = (currentEnd != bodyEnd) ? currentEnd + 1 : bodyEnd;
-            currentEnd   = std::find(currentBegin, serialized.cend(), ';');
-        }
-        return result;
-    }
-
     void registerHandlers() override {
         _svr.set_mount_point("/", _serverRoot.string());
 
@@ -295,11 +274,11 @@ public:
     }
 
     bool bind(const opencmw::URI<opencmw::STRICT> &address) {
-        return opencmw::zmq::invoke(zmq_bind, _socket, opencmw::majordomo::toZeroMQEndpoint(address).data()).isValid();
+        return opencmw::zmq::invoke(zmq_bind, _socket, opencmw::mdp::toZeroMQEndpoint(address).data()).isValid();
     }
 
     bool connect(const opencmw::URI<opencmw::STRICT> &address, std::string_view subscription = "") {
-        auto result = opencmw::zmq::invoke(zmq_connect, _socket, opencmw::majordomo::toZeroMQEndpoint(address).data());
+        auto result = opencmw::zmq::invoke(zmq_connect, _socket, opencmw::mdp::toZeroMQEndpoint(address).data());
         if (!result) return false;
 
         if (!subscription.empty()) {
@@ -381,9 +360,6 @@ inline bool waitUntilServiceAvailable(const opencmw::zmq::Context &context, std:
 
     return false;
 }
-
-constexpr auto static_tag  = opencmw::majordomo::MessageFrame::static_bytes_tag{};
-constexpr auto dynamic_tag = opencmw::majordomo::MessageFrame::dynamic_bytes_tag{};
 
 class TestIntHandler {
     int _x = 10;

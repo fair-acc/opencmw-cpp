@@ -97,6 +97,9 @@ struct TestHandler {
     }
 };
 
+static constexpr auto dynamic_tag = opencmw::majordomo::MessageFrame::dynamic_bytes_tag{};
+static constexpr auto static_tag = opencmw::majordomo::MessageFrame::static_bytes_tag{};
+
 TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][majordomoworker][simple_example]") {
     // We run both broker and worker inproc
     Broker broker("TestBroker", testSettings());

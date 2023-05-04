@@ -12,8 +12,6 @@
 using opencmw::majordomo::BasicWorker;
 using opencmw::majordomo::BindOption;
 using opencmw::majordomo::Broker;
-using opencmw::majordomo::Command;
-using opencmw::majordomo::MdpMessage;
 using opencmw::majordomo::MockClient;
 using opencmw::majordomo::RequestContext;
 using opencmw::majordomo::Settings;
@@ -43,8 +41,8 @@ public:
     }
 
     void operator()(RequestContext &context) {
-        if (context.request.command == opencmw::mdp::Command::Get) {
-            context.reply.data = opencmw::IoBuffer(_payload.data(), _payload.size());
+        if (context.request.command == mdp::Command::Get) {
+            context.reply.data = IoBuffer(_payload.data(), _payload.size());
         } else {
             throw std::runtime_error("SET not supported");
         }
@@ -57,15 +55,14 @@ public:
         : MockClient(context) {
     }
 
-    void handleResponse(MdpMessage &&) override {
+    void handleResponse(mdp::Message &&) override {
         opencmw::debug::log() << "Unexpected message not handled by callback\n";
         std::terminate();
     }
 
-    template<typename BodyType>
-    void getAndBusyWait(std::string serviceName, BodyType body) {
+    void getAndBusyWait(std::string serviceName, IoBuffer body) {
         bool receivedReply = false;
-        get(std::move(serviceName), std::forward<BodyType>(body), [&receivedReply](auto &&) {
+        get(std::move(serviceName), std::move(body), [&receivedReply](auto &&) {
             receivedReply = true;
         });
 
@@ -107,7 +104,7 @@ Result simpleOneWorkerBenchmark(const URI<> &routerAddress, Get mode, int iterat
     if (mode == Get::Async) {
         int counter = 0;
         for (int i = 0; i < iterations; ++i) {
-            client.get("blob", "", [&counter](auto &&) {
+            client.get("blob", {}, [&counter](auto &&) {
                 ++counter;
             });
         }
@@ -117,7 +114,7 @@ Result simpleOneWorkerBenchmark(const URI<> &routerAddress, Get mode, int iterat
         }
     } else {
         for (int i = 0; i < iterations; ++i) {
-            client.getAndBusyWait("blob", "");
+            client.getAndBusyWait("blob", {});
         }
     }
 
@@ -153,7 +150,7 @@ void simpleTwoWorkerBenchmark(const URI<> &routerAddress, Get mode, int iteratio
     if (mode == Get::Async) {
         int counter = 0;
         for (int i = 0; i < iterations; ++i) {
-            client.get(i % 2 == 0 ? "blob1" : "blob2", "", [&counter](auto &&) {
+            client.get(i % 2 == 0 ? "blob1" : "blob2", {}, [&counter](auto &&) {
                 ++counter;
             });
         }
@@ -163,7 +160,7 @@ void simpleTwoWorkerBenchmark(const URI<> &routerAddress, Get mode, int iteratio
         }
     } else {
         for (int i = 0; i < iterations; ++i) {
-            client.getAndBusyWait(i % 2 == 0 ? "blob1" : "blob2", "");
+            client.getAndBusyWait(i % 2 == 0 ? "blob1" : "blob2", {});
         }
     }
     const auto                          after = std::chrono::system_clock::now();

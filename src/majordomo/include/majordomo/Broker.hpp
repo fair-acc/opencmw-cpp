@@ -27,7 +27,6 @@
 #include <majordomo/Constants.hpp>
 #include <majordomo/Settings.hpp>
 #include <majordomo/SubscriptionMatcher.hpp>
-#include <majordomo/Utils.hpp>
 #include <QuerySerialiser.hpp>
 
 using namespace std::string_literals;
@@ -376,20 +375,20 @@ public:
         // TODO: Does not exist in zmq.h/hpp
         // socket.setHeartbeatContext(PROT_CLIENT.getData());
 
-        initializeZmqSocket(_routerSocket, settings).assertSuccess();
+        zmq::initializeSocket(_routerSocket, settings).assertSuccess();
         zmq::invoke(zmq_bind, _routerSocket, INTERNAL_ADDRESS_BROKER.str().data()).assertSuccess();
 
-        initializeZmqSocket(_subSocket, settings).assertSuccess();
+        zmq::initializeSocket(_subSocket, settings).assertSuccess();
         zmq::invoke(zmq_bind, _subSocket, INTERNAL_ADDRESS_SUBSCRIBE.str().data()).assertSuccess();
 
-        initializeZmqSocket(_pubSocket, settings).assertSuccess();
+        zmq::initializeSocket(_pubSocket, settings).assertSuccess();
         int verbose = 1;
         zmq::invoke(zmq_setsockopt, _pubSocket, ZMQ_XPUB_VERBOSE, &verbose, sizeof(verbose)).assertSuccess();
         zmq::invoke(zmq_bind, _pubSocket, INTERNAL_ADDRESS_PUBLISHER.str().data()).assertSuccess();
 
-        initializeZmqSocket(_dnsSocket, settings).assertSuccess();
+        zmq::initializeSocket(_dnsSocket, settings).assertSuccess();
         if (!settings.dnsAddress.empty()) {
-            zmq::invoke(zmq_connect, _dnsSocket, toZeroMQEndpoint(URI<>(settings.dnsAddress)).data()).assertSuccess();
+            zmq::invoke(zmq_connect, _dnsSocket, mdp::toZeroMQEndpoint(URI<>(settings.dnsAddress)).data()).assertSuccess();
         } else {
             zmq::invoke(zmq_connect, _dnsSocket, INTERNAL_ADDRESS_BROKER.str().data()).assertSuccess();
         }
@@ -429,7 +428,7 @@ public:
         assert(!(option == BindOption::DetectFromURI && (endpoint.scheme() == SCHEME_INPROC || endpoint.scheme() == SCHEME_TCP)));
         const auto isRouterSocket = option != BindOption::Pub && (option == BindOption::Router || endpoint.scheme() == SCHEME_MDP || endpoint.scheme() == SCHEME_TCP);
 
-        const auto zmqEndpoint    = toZeroMQEndpoint(endpoint);
+        const auto zmqEndpoint    = mdp::toZeroMQEndpoint(endpoint);
         const auto result         = isRouterSocket ? zmq::invoke(zmq_bind, _routerSocket, zmqEndpoint.data())
                                                    : zmq::invoke(zmq_bind, _pubSocket, zmqEndpoint.data());
 

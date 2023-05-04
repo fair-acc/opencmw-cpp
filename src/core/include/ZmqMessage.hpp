@@ -9,6 +9,18 @@
 
 namespace opencmw::zmq {
 
+    inline Result<int> initializeSocket(const Socket &sock, const mdp::Settings &settings = {}) {
+        const int heartbeatInterval = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(settings.heartbeatInterval).count());
+        const int ttl               = heartbeatInterval * settings.heartbeatLiveness;
+        const int hb_timeout        = heartbeatInterval * settings.heartbeatLiveness;
+        return invoke(zmq_setsockopt, sock, ZMQ_SNDHWM, &settings.highWaterMark, sizeof(settings.highWaterMark))
+            && invoke(zmq_setsockopt, sock, ZMQ_RCVHWM, &settings.highWaterMark, sizeof(settings.highWaterMark))
+            && invoke(zmq_setsockopt, sock, ZMQ_HEARTBEAT_TTL, &ttl, sizeof(ttl))
+            && invoke(zmq_setsockopt, sock, ZMQ_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_timeout))
+            && invoke(zmq_setsockopt, sock, ZMQ_HEARTBEAT_IVL, &heartbeatInterval, sizeof(heartbeatInterval))
+            && invoke(zmq_setsockopt, sock, ZMQ_LINGER, &heartbeatInterval, sizeof(heartbeatInterval));
+    }
+
     class MessageFrame {
     private:
         bool _owning = true;
@@ -162,13 +174,16 @@ namespace opencmw::zmq {
 
     template<mdp::MessageFormat Format>
     [[nodiscard]] inline auto send(mdp::BasicMessage<Format> &&message, const Socket &socket) {
+        using namespace std::literals;
+
         ZmqMessage<Format> zmsg;
         if constexpr (Format == mdp::MessageFormat::WithSourceId) {
             zmsg.frame(ZmqMessage<Format>::Frame::SourceId) = MessageFrame{ std::move(message.sourceId) };
         }
 
-        static constexpr auto commandStrings = std::array<std::string_view, 11>{
-            "\x0", "\x1", "\x2", "\x3", "\x4", "\x5", "\x6", "\x7", "\x8", "\x9", "\xa"
+        // use sv to avoid "\x0" being truncated
+        static constexpr auto commandStrings = std::array{
+            "\x0"sv, "\x1"sv, "\x2"sv, "\x3"sv, "\x4"sv, "\x5"sv, "\x6"sv, "\x7"sv, "\x8"sv, "\x9"sv, "\xa"sv
         };
 
         zmsg.frame(ZmqMessage<Format>::Frame::Protocol) = MessageFrame{ std::move(message.protocolName) };

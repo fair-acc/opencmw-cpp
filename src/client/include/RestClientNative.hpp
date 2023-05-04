@@ -252,6 +252,7 @@ private:
     }
 
     void executeCommand(Command &&cmd) const {
+        using namespace std::string_literals;
         std::cout << "RestClient::request(" << (cmd.endpoint.str()) << ")" << std::endl;
         auto preferredHeader = getPreferredContentTypeHeader(cmd.endpoint);
 
