@@ -165,7 +165,7 @@ public:
     }
 
     [[nodiscard]] explicit IoBuffer(const char *data)
-        : IoBuffer(data, std::strlen(data)) {}
+        : IoBuffer(data, data ? std::strlen(data) : 0) {}
 
     [[nodiscard]] explicit IoBuffer(const char *data, const std::size_t size, Allocator allocator = Allocator(Reallocator::defaultReallocator()))
         : IoBuffer(size, allocator) {
