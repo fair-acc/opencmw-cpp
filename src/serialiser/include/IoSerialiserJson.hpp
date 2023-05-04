@@ -27,6 +27,45 @@ constexpr inline bool isHexNumber(const char *start, const size_t size) noexcept
     return true;
 }
 
+template<StringLike T>
+inline void writeString(IoBuffer &buffer, const T &string) {
+    buffer.put('"');
+    for (const char c : string) {
+        switch (c) {
+        case '\"':
+        case '\\':
+        case '/':
+            buffer.put('\\');
+            buffer.put(c);
+            break;
+        case '\b':
+            buffer.put('\\');
+            buffer.put('b');
+            break;
+        case '\f':
+            buffer.put('\\');
+            buffer.put('f');
+            break;
+        case '\n':
+            buffer.put('\\');
+            buffer.put('n');
+            break;
+        case '\r':
+            buffer.put('\\');
+            buffer.put('r');
+            break;
+        case '\t':
+            buffer.put('\\');
+            buffer.put('t');
+            break;
+        default:
+            buffer.put(c);
+            break;
+        }
+    }
+    buffer.put('"');
+}
+
 inline std::string readString(IoBuffer &buffer) {
     if (buffer.position() >= buffer.size()) {
         return "";
@@ -395,9 +434,7 @@ template<StringLike T>
 struct IoSerialiser<Json, T> { // catch all template
     inline static constexpr uint8_t getDataTypeId() { return IoSerialiser<Json, OTHER>::getDataTypeId(); }
     constexpr static void           serialise(IoBuffer &buffer, FieldDescription auto const           &/*field*/, const T &value) noexcept {
-        buffer.put('"');
-        buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>(value);
-        buffer.put('"');
+        json::writeString(buffer, value);
     }
     constexpr static void deserialise(IoBuffer &buffer, FieldDescription auto const & /*field*/, T &value) {
         value = json::readString(buffer);
