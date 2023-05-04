@@ -98,19 +98,35 @@ public:
         if (this == &other) {
             return *this;
         }
+
+        const char *oldBegin = other._str.data();
+
+        auto adjustView = [this, oldBegin](std::string_view &view) {
+            view = std::string_view(_str.data() + std::distance(oldBegin, view.data()), view.size());
+        };
+
         std::swap(_str, other._str);
         std::swap(_scheme, other._scheme);
+        adjustView(_scheme);
         std::swap(_authority, other._authority);
+        adjustView(_authority);
         std::swap(_path, other._path);
+        adjustView(_path);
         std::swap(_query, other._query);
+        adjustView(_query);
         std::swap(_fragment, other._fragment);
+        adjustView(_fragment);
         std::swap(_queryMap, other._queryMap);
 
         std::swap(_parsedAuthority, other._parsedAuthority);
         std::swap(_userName, other._userName);
+        adjustView(_userName);
         std::swap(_pwd, other._pwd);
+        adjustView(_pwd);
         std::swap(_hostName, other._hostName);
+        adjustView(_hostName);
         std::swap(_port, other._port);
+        adjustView(_port);
         return *this;
     }
 

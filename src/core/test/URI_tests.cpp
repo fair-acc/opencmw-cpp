@@ -121,6 +121,16 @@ TEST_CASE("Test for some previous issues", "[URI]") {
     using namespace opencmw;
     using QueryMap = std::unordered_map<std::string, std::optional<std::string>>;
 
+    {
+        URI<STRICT> movedTo("/");
+        {
+            auto movedFrom = URI<STRICT>("/property");
+            movedTo = std::move(movedFrom);
+        }
+        CHECK(movedTo.str() == "/property");
+        CHECK(movedTo.path() == "/property"); // this failed after movedFrom was destroyed
+    }
+
     // parsing qas confused by ":" in the query param
     CHECK(URI<RELAXED>("/property?ctx=FAIR.SELECTOR.C=2:P=1").path() == "/property"); // path() == "P=1"
 
