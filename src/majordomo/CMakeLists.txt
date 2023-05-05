@@ -3,7 +3,6 @@ add_library(majordomo INTERFACE
     include/majordomo/Broker.hpp
     include/majordomo/MockClient.hpp
     include/majordomo/Constants.hpp
-    include/majordomo/Message.hpp
     include/majordomo/Rbac.hpp
     include/majordomo/RestBackend.hpp
     include/majordomo/Settings.hpp

@@ -61,10 +61,6 @@ TEST_CASE("SET/GET of MockServer", "[mock-server][lambda_handler]") {
 }
 
 TEST_CASE("MockServer Subscription Test", "[mock-server][lambda_handler]") {
-    using opencmw::majordomo::BasicMdpMessage;
-    using opencmw::majordomo::Command;
-    using opencmw::majordomo::MessageFormat;
-    using opencmw::majordomo::MessageFrame;
     using opencmw::majordomo::MockServer;
     using namespace opencmw;
     using namespace std::chrono_literals;
@@ -72,7 +68,7 @@ TEST_CASE("MockServer Subscription Test", "[mock-server][lambda_handler]") {
     zmq::Context                                           context{};
     MockServer                                             server(context);
 
-    TestNode<BasicMdpMessage<MessageFormat::WithSourceId>> client(context, ZMQ_SUB);
+    BrokerMessageNode client(context, ZMQ_SUB);
     REQUIRE(client.connect(opencmw::URI<>(server.addressSub())));
 
     client.subscribe("a.service");
@@ -85,17 +81,17 @@ TEST_CASE("MockServer Subscription Test", "[mock-server][lambda_handler]") {
         auto reply = client.tryReadOne();
         fmt::print("{}\n", reply.has_value());
         REQUIRE(reply);
-        REQUIRE(reply->body() == "100");
-        REQUIRE(reply->command() == Command::Final);
-        REQUIRE(reply->topic() == "a.service");
+        REQUIRE(reply->data.asString() == "100");
+        REQUIRE(reply->command == mdp::Command::Final);
+        REQUIRE(reply->endpoint.str() == "a.service");
     }
     {
         auto reply = client.tryReadOne();
         fmt::print("{}\n", reply.has_value());
         REQUIRE(reply);
-        REQUIRE(reply->body() == "23");
-        REQUIRE(reply->command() == Command::Final);
-        REQUIRE(reply->topic() == "a.service");
+        REQUIRE(reply->data.asString() == "23");
+        REQUIRE(reply->command == mdp::Command::Final);
+        REQUIRE(reply->endpoint.str() == "a.service");
     }
 
     server.notify("a.service", "10");
@@ -103,8 +99,8 @@ TEST_CASE("MockServer Subscription Test", "[mock-server][lambda_handler]") {
         auto reply = client.tryReadOne();
         fmt::print("{}\n", reply.has_value());
         REQUIRE(reply);
-        REQUIRE(reply->body() == "10");
-        REQUIRE(reply->command() == Command::Final);
-        REQUIRE(reply->topic() == "a.service");
+        REQUIRE(reply->data.asString() == "10");
+        REQUIRE(reply->command == mdp::Command::Final);
+        REQUIRE(reply->endpoint.str() == "a.service");
     }
 }
