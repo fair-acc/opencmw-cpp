@@ -167,7 +167,8 @@ public:
         }
     }
 
-    [[nodiscard]] IoBuffer() noexcept : IoBuffer(std::size_t{0}) {
+    [[nodiscard]] IoBuffer() noexcept
+        : IoBuffer(std::size_t{ 0 }) {
     }
 
     [[nodiscard]] explicit IoBuffer(const char *data)

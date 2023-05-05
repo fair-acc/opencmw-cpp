@@ -55,9 +55,9 @@ public:
 
     virtual void handleResponse(mdp::Message && /*message*/) {}
 
-    Request get(const std::string_view &serviceName, IoBuffer request) {
+    Request      get(const std::string_view &serviceName, IoBuffer request) {
         auto [handle, message] = createRequestTemplate(mdp::Command::Get, serviceName);
-        message.data = std::move(request);
+        message.data           = std::move(request);
         zmq::send(std::move(message), *_socket).assertSuccess();
         return handle;
     }
@@ -71,7 +71,7 @@ public:
 
     Request set(std::string_view serviceName, IoBuffer request) {
         auto [handle, message] = createRequestTemplate(mdp::Command::Set, serviceName);
-        message.data = std::move(request);
+        message.data           = std::move(request);
         zmq::send(std::move(message), *_socket).assertSuccess();
         return handle;
     }
@@ -122,11 +122,11 @@ public:
 
 private:
     std::pair<Request, mdp::Message> createRequestTemplate(mdp::Command command, std::string_view serviceName) {
-        auto req = std::make_pair(makeRequestHandle(), mdp::Message());
-        req.second.protocolName = mdp::clientProtocol;
-        req.second.command = command;
-        req.second.serviceName = std::string(serviceName);
-        const auto requestID = std::to_string(req.first.id);
+        auto req                   = std::make_pair(makeRequestHandle(), mdp::Message());
+        req.second.protocolName    = mdp::clientProtocol;
+        req.second.command         = command;
+        req.second.serviceName     = std::string(serviceName);
+        const auto requestID       = std::to_string(req.first.id);
         req.second.clientRequestID = IoBuffer(requestID.data(), requestID.size());
         return req;
     }

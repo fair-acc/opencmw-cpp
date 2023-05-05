@@ -181,7 +181,7 @@ private:
     using Timestamp = std::chrono::time_point<Clock>;
 
     struct Client {
-        const zmq::Socket         &socket;
+        const zmq::Socket        &socket;
         const std::string         id;
         std::deque<BrokerMessage> requests;
         Timestamp                 expiry;
@@ -192,10 +192,10 @@ private:
 
     struct Worker {
         const zmq::Socket &socket;
-        const std::string id;
-        const std::string serviceName;
-        const std::string serviceNameTopic;
-        Timestamp         expiry;
+        const std::string  id;
+        const std::string  serviceName;
+        const std::string  serviceNameTopic;
+        Timestamp          expiry;
 
         explicit Worker(const zmq::Socket &s, const std::string &id_, const std::string &serviceName_, Timestamp expiry_)
             : socket(s), id{ std::move(id_) }, serviceName{ std::move(serviceName_) }, serviceNameTopic(std::string("/") + serviceName), expiry{ std::move(expiry_) } {}
@@ -347,25 +347,25 @@ public:
                 std::sort(keys.begin(), keys.end());
 #endif
 
-                auto body = fmt::format("{}", fmt::join(keys, ","));
+                auto body    = fmt::format("{}", fmt::join(keys, ","));
                 message.data = IoBuffer(body.data(), body.size());
                 return message;
             }
 
             const auto exists = _services.contains(std::string(message.data.asString()));
-            message.data = IoBuffer(exists ? "200" : "404");
+            message.data      = IoBuffer(exists ? "200" : "404");
             return message;
         });
 
         addInternalService("mmi.openapi", [this](BrokerMessage &&message) {
-            message.command = mdp::Command::Final;
+            message.command        = mdp::Command::Final;
             const auto serviceName = std::string(message.data.asString());
             const auto serviceIt   = _services.find(serviceName);
             if (serviceIt != _services.end()) {
                 message.data = IoBuffer(serviceIt->second.description.data(), serviceIt->second.description.size());
                 message.error.clear();
             } else {
-                message.data = IoBuffer();
+                message.data  = IoBuffer();
                 message.error = fmt::format("Requested invalid service '{}'", serviceName);
             }
             return message;
@@ -537,7 +537,7 @@ private:
 
     bool receivePubMessage(const zmq::Socket &socket) {
         zmq::MessageFrame frame;
-        const auto   result = frame.receive(socket, ZMQ_DONTWAIT);
+        const auto        result = frame.receive(socket, ZMQ_DONTWAIT);
 
         if (!result) {
             return false;
@@ -575,7 +575,7 @@ private:
             switch (message.command) {
             case mdp::Command::Ready: {
                 if (const auto topicURI = URI<RELAXED>(message.endpoint.str()); topicURI.scheme()) {
-                    auto [iter, inserted]  = _dnsCache.try_emplace(message.serviceName, std::string(message.sourceId), message.serviceName);
+                    auto [iter, inserted] = _dnsCache.try_emplace(message.serviceName, std::string(message.sourceId), message.serviceName);
                     iter->second.uris.insert(topicURI);
                     iter->second.expiry = updatedDnsExpiry();
                 }
@@ -670,8 +670,8 @@ private:
             auto message = service.takeNextMessage();
             auto worker  = service.takeNextWorker();
             assert(worker);
-            message.serviceName = message.sourceId; // serviceName=clientSourceID
-            message.sourceId = worker->id;
+            message.serviceName  = message.sourceId; // serviceName=clientSourceID
+            message.sourceId     = worker->id;
             message.protocolName = mdp::workerProtocol;
             // TODO assert that command exists in both protocols?
             zmq::send(std::move(message), worker->socket).assertSuccess();
@@ -684,16 +684,16 @@ private:
         // TODO avoid clone() for last message sent out
         for (const auto &[topic, _] : _subscribedTopics) {
             if (_subscriptionMatcher(subscription, topic)) {
-                auto copy = message;
+                auto       copy            = message;
                 const auto subscriptionURI = mdp::Message::URI(std::string(subscription.path()));
-                copy.endpoint = subscriptionURI;
-                copy.sourceId = topic.serialized();
+                copy.endpoint              = subscriptionURI;
+                copy.sourceId              = topic.serialized();
                 zmq::send(std::move(copy), _pubSocket).assertSuccess();
 
                 const auto it = _subscribedClientsByTopic.find(topic);
                 if (it != _subscribedClientsByTopic.end()) {
                     for (const auto &clientId : it->second) {
-                        auto clientCopy = message;
+                        auto clientCopy     = message;
                         clientCopy.endpoint = subscriptionURI;
                         clientCopy.sourceId = clientId;
                         zmq::send(std::move(clientCopy), _routerSocket).assertSuccess();
@@ -750,12 +750,12 @@ private:
 
             // not implemented -- reply according to Majordomo Management Interface (MMI) as defined in http://rfc.zeromq.org/spec:8
 
-            auto           reply       = std::move(clientMessage);
-            reply.command = mdp::Command::Final;
+            auto reply     = std::move(clientMessage);
+            reply.command  = mdp::Command::Final;
             reply.endpoint = INTERNAL_SERVICE_NAMES_URI;
             reply.data.clear();
             reply.error = fmt::format("unknown service (error 501): '{}'", reply.serviceName);
-            reply.rbac = _rbac;
+            reply.rbac  = _rbac;
 
             zmq::send(std::move(reply), client.socket).assertSuccess();
         }
@@ -785,11 +785,11 @@ private:
         sendDnsHeartbeats(false);
 
         BrokerMessage challenge;
-        challenge.protocolName = mdp::clientProtocol;
-        challenge.command = mdp::Command::Heartbeat;
+        challenge.protocolName    = mdp::clientProtocol;
+        challenge.command         = mdp::Command::Heartbeat;
         challenge.clientRequestID = IoBuffer("dnsChallenge");
-        challenge.rbac = _rbac;
-        const auto newExpiry = updatedDnsExpiry();
+        challenge.rbac            = _rbac;
+        const auto newExpiry      = updatedDnsExpiry();
 
         for (auto &[broker, registeredService] : _dnsCache) {
             if (registeredService.serviceName == brokerName) { // TODO ignore case
@@ -797,8 +797,8 @@ private:
                 continue;
             }
             // challenge remote broker with a HEARTBEAT
-            auto toSend = challenge;
-            toSend.sourceId = registeredService.address;
+            auto toSend        = challenge;
+            toSend.sourceId    = registeredService.address;
             toSend.serviceName = registeredService.serviceName;
             zmq::send(std::move(toSend), _routerSocket).assertSuccess();
         }
@@ -816,10 +816,10 @@ private:
             for (auto &worker : service.waiting) {
                 BrokerMessage heartbeat;
                 heartbeat.protocolName = mdp::workerProtocol;
-                heartbeat.command = mdp::Command::Heartbeat;
-                heartbeat.sourceId = worker->id;
-                heartbeat.serviceName = worker->serviceName;
-                heartbeat.rbac = _rbac;
+                heartbeat.command      = mdp::Command::Heartbeat;
+                heartbeat.sourceId     = worker->id;
+                heartbeat.serviceName  = worker->serviceName;
+                heartbeat.rbac         = _rbac;
                 zmq::send(std::move(heartbeat), worker->socket).assertSuccess();
             }
         }
@@ -828,9 +828,9 @@ private:
     }
 
     void processWorker(const zmq::Socket &socket, BrokerMessage &&message) {
-        const auto &serviceId  = message.sourceId;
-        const auto knownWorker = _workers.contains(serviceId);
-        auto      &worker      = _workers.try_emplace(serviceId, socket, serviceId, message.serviceName, updatedWorkerExpiry()).first->second;
+        const auto &serviceId   = message.sourceId;
+        const auto  knownWorker = _workers.contains(serviceId);
+        auto       &worker      = _workers.try_emplace(serviceId, socket, serviceId, message.serviceName, updatedWorkerExpiry()).first->second;
 
         switch (message.command) {
         case mdp::Command::Ready: {
@@ -838,11 +838,11 @@ private:
             workerWaiting(worker);
             registerNewService(message.serviceName);
             // notify potential listeners
-            BrokerMessage      notify;
-            notify.serviceName = INTERNAL_SERVICE_NAMES;
-            notify.endpoint = INTERNAL_SERVICE_NAMES_URI;
+            BrokerMessage notify;
+            notify.serviceName     = INTERNAL_SERVICE_NAMES;
+            notify.endpoint        = INTERNAL_SERVICE_NAMES_URI;
             notify.clientRequestID = IoBuffer(brokerName.data(), brokerName.size());
-            notify.sourceId = INTERNAL_SERVICE_NAMES;
+            notify.sourceId        = INTERNAL_SERVICE_NAMES;
             zmq::send(std::move(notify), _pubSocket).assertSuccess();
             break;
         }
@@ -852,13 +852,13 @@ private:
         case mdp::Command::Partial:
         case mdp::Command::Final: {
             if (knownWorker) {
-                auto client   = _clients.find(message.serviceName); // serviceName=clientSourceID
+                auto client = _clients.find(message.serviceName); // serviceName=clientSourceID
                 if (client == _clients.end()) {
                     return; // drop if client unknown/disappeared
                 }
 
-                message.sourceId = message.serviceName; // serviceName=clientSourceID
-                message.serviceName = worker.serviceName;
+                message.sourceId     = message.serviceName; // serviceName=clientSourceID
+                message.serviceName  = worker.serviceName;
                 message.protocolName = mdp::clientProtocol;
                 zmq::send(std::move(message), client->second.socket).assertSuccess();
                 workerWaiting(worker);
@@ -869,8 +869,8 @@ private:
         }
         case mdp::Command::Notify: {
             message.protocolName = mdp::clientProtocol;
-            message.command = mdp::Command::Final;
-            message.serviceName = worker.serviceName;
+            message.command      = mdp::Command::Final;
+            message.serviceName  = worker.serviceName;
 
             dispatchMessageToMatchingSubscribers(std::move(message));
             break;
@@ -899,23 +899,23 @@ private:
     void disconnectWorker(Worker &worker) {
         BrokerMessage disconnect;
         disconnect.protocolName = mdp::workerProtocol;
-        disconnect.command = mdp::Command::Disconnect;
-        disconnect.sourceId = worker.id;
-        disconnect.serviceName = worker.serviceName;
-        disconnect.endpoint = mdp::Message::URI(worker.serviceNameTopic);
-        disconnect.data = IoBuffer("broker shutdown");
-        disconnect.rbac = _rbac;
+        disconnect.command      = mdp::Command::Disconnect;
+        disconnect.sourceId     = worker.id;
+        disconnect.serviceName  = worker.serviceName;
+        disconnect.endpoint     = mdp::Message::URI(worker.serviceNameTopic);
+        disconnect.data         = IoBuffer("broker shutdown");
+        disconnect.rbac         = _rbac;
         zmq::send(std::move(disconnect), worker.socket).assertSuccess();
         deleteWorker(worker);
     }
 
     mdp::Message createDnsReadyMessage() {
         mdp::Message ready;
-        ready.protocolName = mdp::clientProtocol;
-        ready.command = mdp::Command::Ready;
-        ready.serviceName = brokerName;
+        ready.protocolName    = mdp::clientProtocol;
+        ready.command         = mdp::Command::Ready;
+        ready.serviceName     = brokerName;
         ready.clientRequestID = IoBuffer("clientID");
-        ready.rbac = _rbac;
+        ready.rbac            = _rbac;
         return ready;
     }
 
@@ -923,7 +923,7 @@ private:
         if (Clock::now() > _dnsHeartbeatAt || force) {
             const auto ready = createDnsReadyMessage();
             for (const auto &dnsAddress : _dnsAddresses) {
-                auto toSend = ready;
+                auto toSend     = ready;
                 toSend.endpoint = mdp::Message::URI(dnsAddress);
                 registerWithDnsServices(std::move(toSend));
             }

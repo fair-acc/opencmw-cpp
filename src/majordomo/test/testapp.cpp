@@ -46,7 +46,7 @@ public:
 
             _properties[std::string(property)] = value;
 
-            const auto body = fmt::format("Property '{}' set to value '{}'", property, value);
+            const auto body                    = fmt::format("Property '{}' set to value '{}'", property, value);
 
             std::cout << body << std::endl;
 

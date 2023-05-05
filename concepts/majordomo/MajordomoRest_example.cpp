@@ -12,7 +12,7 @@
 #include "helpers.hpp"
 
 namespace majordomo = opencmw::majordomo;
-namespace mdp = opencmw::mdp;
+namespace mdp       = opencmw::mdp;
 
 int main(int argc, char **argv) {
     using opencmw::URI;
@@ -103,8 +103,8 @@ int main(int argc, char **argv) {
             std::cerr << "Sending new number (step " << i << ")\n";
             opencmw::mdp::Message notifyMessage;
             notifyMessage.endpoint = opencmw::mdp::Message::URI("/wine");
-            const auto data = std::to_string(i);
-            notifyMessage.data = opencmw::IoBuffer(data.data(), data.size());
+            const auto data        = std::to_string(i);
+            notifyMessage.data     = opencmw::IoBuffer(data.data(), data.size());
 
             beveragesWorker.notify(std::move(notifyMessage));
         }

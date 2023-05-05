@@ -19,8 +19,8 @@ CMRC_DECLARE(testImages);
 CMRC_DECLARE(assets);
 
 namespace majordomo = opencmw::majordomo;
-namespace mdp = opencmw::mdp;
-namespace zmq = opencmw::zmq;
+namespace mdp       = opencmw::mdp;
+namespace zmq       = opencmw::zmq;
 
 using namespace std::chrono_literals;
 using namespace std::string_literals;
@@ -335,7 +335,7 @@ public:
     }
 };
 
-using MessageNode = TestNode<opencmw::mdp::MessageFormat::WithoutSourceId>;
+using MessageNode       = TestNode<opencmw::mdp::MessageFormat::WithoutSourceId>;
 using BrokerMessageNode = TestNode<opencmw::mdp::MessageFormat::WithSourceId>;
 
 inline bool waitUntilServiceAvailable(const opencmw::zmq::Context &context, std::string_view serviceName, const opencmw::URI<opencmw::STRICT> &brokerAddress = opencmw::majordomo::INTERNAL_ADDRESS_BROKER) {
@@ -350,9 +350,9 @@ inline bool waitUntilServiceAvailable(const opencmw::zmq::Context &context, std:
     while (std::chrono::system_clock::now() - startTime < timeout) {
         opencmw::mdp::Message request;
         request.protocolName = opencmw::mdp::clientProtocol;
-        request.command = opencmw::mdp::Command::Get;
-        request.serviceName = "mmi.service";
-        request.data = opencmw::IoBuffer(serviceName.data(), serviceName.size());
+        request.command      = opencmw::mdp::Command::Get;
+        request.serviceName  = "mmi.service";
+        request.data         = opencmw::IoBuffer(serviceName.data(), serviceName.size());
         client.send(std::move(request));
 
         auto reply = client.tryReadOne();
@@ -378,7 +378,7 @@ public:
 
     void operator()(opencmw::majordomo::RequestContext &context) {
         if (context.request.command == opencmw::mdp::Command::Get) {
-            const auto body = std::to_string(_x);
+            const auto body    = std::to_string(_x);
             context.reply.data = opencmw::IoBuffer(body.data(), body.size());
             return;
         }
@@ -392,7 +392,7 @@ public:
         if (result.ec == std::errc::invalid_argument) {
             context.reply.error = "Not a valid int";
         } else {
-            _x = value;
+            _x                 = value;
             context.reply.data = opencmw::IoBuffer("Value set. All good!");
         }
     }

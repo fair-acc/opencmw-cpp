@@ -34,7 +34,7 @@ TEST_CASE("Basic get/set test", "[ClientContext]") {
     std::this_thread::sleep_for(20ms); // allow the request to reach the server
     server.processRequest([&endpoint](auto &&req, auto &reply) {
         REQUIRE(req.command == Command::Get);
-        reply.data = IoBuffer("100");
+        reply.data     = IoBuffer("100");
         reply.endpoint = Message::URI::factory(endpoint).addQueryParameter("ctx", "test_ctx").build();
     });
     std::this_thread::sleep_for(20ms); // hacky: this is needed because the requests are only identified using their uri, so we cannot have multiple requests with identical uris
@@ -53,7 +53,7 @@ TEST_CASE("Basic get/set test", "[ClientContext]") {
     server.processRequest([&endpoint](auto &&req, auto &reply) {
         REQUIRE(req.command == Command::Set);
         REQUIRE(req.data.asString() == "abc");
-        reply.data = IoBuffer();
+        reply.data     = IoBuffer();
         reply.endpoint = Message::URI::factory(endpoint).addQueryParameter("ctx", "test_ctx").build();
     });
     std::this_thread::sleep_for(10ms); // allow the reply to reach the client
