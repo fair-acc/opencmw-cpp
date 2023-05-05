@@ -6,6 +6,9 @@
 
 #include "MultiArray.hpp"
 #include "opencmw.hpp"
+
+#include <fmt/format.h>
+
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -165,7 +168,7 @@ public:
     }
 
     [[nodiscard]] explicit IoBuffer(const char *data)
-        : IoBuffer(data, std::strlen(data)) {}
+        : IoBuffer(data, data ? std::strlen(data) : 0) {}
 
     [[nodiscard]] explicit IoBuffer(const char *data, const std::size_t size, Allocator allocator = Allocator(Reallocator::defaultReallocator()))
         : IoBuffer(size, allocator) {
@@ -455,6 +458,19 @@ public:
 };
 
 } // namespace opencmw
+
+template<>
+struct fmt::formatter<opencmw::IoBuffer> {
+    template<typename ParseContext>
+    constexpr auto parse(ParseContext &ctx) {
+        return ctx.begin(); // not (yet) implemented
+    }
+
+    template<typename FormatContext>
+    auto format(const opencmw::IoBuffer &v, FormatContext &ctx) const {
+        return fmt::format_to(ctx.out(), "{}", v.asString());
+    }
+};
 
 #pragma clang diagnostic pop
 #endif // OPENCMW_IOBUFFER_H
