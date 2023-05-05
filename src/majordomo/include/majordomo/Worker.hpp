@@ -14,6 +14,7 @@
 
 #include <fmt/format.h>
 
+#include <Debug.hpp>
 #include <IoSerialiserCmwLight.hpp>
 #include <IoSerialiserJson.hpp>
 #include <IoSerialiserYaS.hpp>
@@ -21,13 +22,12 @@
 #include <majordomo/Constants.hpp>
 #include <majordomo/Rbac.hpp>
 #include <majordomo/Settings.hpp>
+#include <MdpMessage.hpp>
 #include <MIME.hpp>
 #include <MustacheSerialiser.hpp>
-#include <Debug.hpp>
-#include <MdpMessage.hpp>
 #include <opencmw.hpp>
-#include <QuerySerialiser.hpp>
 #include <ZmqMessage.hpp>
+#include <QuerySerialiser.hpp>
 
 namespace opencmw::majordomo {
 
@@ -140,9 +140,9 @@ public:
 
     bool notify(mdp::Message &&message) {
         message.protocolName = mdp::workerProtocol;
-        message.command = mdp::Command::Notify;
-        message.serviceName = serviceName.data(); // TODO unnecessary copy
-        message.rbac = _defaultRbacToken;
+        message.command      = mdp::Command::Notify;
+        message.serviceName  = serviceName.data(); // TODO unnecessary copy
+        message.rbac         = _defaultRbacToken;
         return notificationHandlerForThisThread().send(std::move(message));
     }
 
@@ -223,26 +223,26 @@ private:
     mdp::Message createMessage(mdp::Command command) const noexcept {
         mdp::Message message;
         message.protocolName = mdp::workerProtocol;
-        message.command = command;
-        message.serviceName = serviceName.data(); // TODO unnecessary copy
-        message.rbac = _defaultRbacToken;
+        message.command      = command;
+        message.serviceName  = serviceName.data(); // TODO unnecessary copy
+        message.rbac         = _defaultRbacToken;
         return message;
     }
 
     mdp::Message replyFromRequest(const mdp::Message &request) const noexcept {
         mdp::Message reply;
-        reply.protocolName = request.protocolName;
-        reply.command = mdp::Command::Final;
-        reply.serviceName = request.serviceName; // serviceName == clientSourceId
+        reply.protocolName    = request.protocolName;
+        reply.command         = mdp::Command::Final;
+        reply.serviceName     = request.serviceName; // serviceName == clientSourceId
         reply.clientRequestID = request.clientRequestID;
-        reply.endpoint = request.endpoint;
-        reply.rbac = request.rbac;
+        reply.endpoint        = request.endpoint;
+        reply.rbac            = request.rbac;
         return reply;
     }
 
     bool receiveSubscriptionMessage() {
         zmq::MessageFrame frame;
-        const auto   result = frame.receive(*_pubSocket, ZMQ_DONTWAIT);
+        const auto        result = frame.receive(*_pubSocket, ZMQ_DONTWAIT);
 
         if (!result) {
             return false;
@@ -343,16 +343,16 @@ private:
     static constexpr auto _permissionsByRole = permissionMap();
     static constexpr auto _defaultPermission = _permissionsByRole.data.back().second;
 
-    mdp::Message            processRequest(mdp::Message &&request) noexcept {
+    mdp::Message          processRequest(mdp::Message &&request) noexcept {
         const auto clientRole = parse_rbac::role(request.rbac.asString());
         const auto permission = _permissionsByRole.at(clientRole, _defaultPermission);
 
         if (request.command == mdp::Command::Get && !(permission == Permission::RW || permission == Permission::RO)) {
-            auto errorReply = replyFromRequest(request);
+            auto errorReply  = replyFromRequest(request);
             errorReply.error = fmt::format("GET access denied to role '{}'", clientRole);
             return errorReply;
         } else if (request.command == mdp::Command::Set && !(permission == Permission::RW || permission == Permission::WO)) {
-            auto errorReply = replyFromRequest(request);
+            auto errorReply  = replyFromRequest(request);
             errorReply.error = fmt::format("SET access denied to role '{}'", clientRole);
             return errorReply;
         }
@@ -363,11 +363,11 @@ private:
             std::invoke(_handler, context);
             return std::move(context.reply);
         } catch (const std::exception &e) {
-            auto errorReply = replyFromRequest(context.request);
+            auto errorReply  = replyFromRequest(context.request);
             errorReply.error = fmt::format("Caught exception for service '{}'\nrequest message: {}\nexception: {}", serviceName.data(), context.request.data, e.what());
             return errorReply;
         } catch (...) {
-            auto errorReply = replyFromRequest(context.request);
+            auto errorReply  = replyFromRequest(context.request);
             errorReply.error = fmt::format("Caught unexpected exception for service '{}'\nrequest message: {}", serviceName.data(), context.request.data);
             return errorReply;
         }
@@ -420,7 +420,7 @@ inline I deserialiseRequest(const mdp::Message &request) {
     I input;
 
     if (!request.data.empty()) {
-        IoBuffer tmp(request.data);
+        IoBuffer   tmp(request.data);
         const auto result = opencmw::deserialise<Protocol, opencmw::ProtocolCheck::ALWAYS>(tmp, input);
         if (!result.exceptions.empty()) {
             throw result.exceptions.front();
@@ -452,13 +452,13 @@ inline void serialiseAndWriteToBody(RequestContext &rawCtx, const ReflectableCla
 }
 
 inline void writeResult(std::string_view workerName, RequestContext &rawCtx, const auto &replyContext, const auto &output) {
-    auto        replyQuery  = query::serialise(replyContext);
-    const auto  baseUri     = rawCtx.reply.endpoint.empty() ? rawCtx.request.endpoint : rawCtx.reply.endpoint;
-    const auto  topicUriOld = mdp::Message::URI::factory(baseUri).setQuery(std::move(replyQuery)).build();
-    const auto  topicUriNew = mdp::Message::URI::factory(baseUri).build();
-    const auto &topicUri    = topicUriOld;
+    auto        replyQuery   = query::serialise(replyContext);
+    const auto  baseUri      = rawCtx.reply.endpoint.empty() ? rawCtx.request.endpoint : rawCtx.reply.endpoint;
+    const auto  topicUriOld  = mdp::Message::URI::factory(baseUri).setQuery(std::move(replyQuery)).build();
+    const auto  topicUriNew  = mdp::Message::URI::factory(baseUri).build();
+    const auto &topicUri     = topicUriOld;
 
-    rawCtx.reply.endpoint = topicUri;
+    rawCtx.reply.endpoint    = topicUri;
     const auto replyMimetype = query::getMimeType(replyContext);
     const auto mimeType      = replyMimetype != MIME::UNKNOWN ? replyMimetype : rawCtx.mimeType;
     if (mimeType == MIME::JSON) {
@@ -477,7 +477,7 @@ inline void writeResult(std::string_view workerName, RequestContext &rawCtx, con
                 std::pair<std::string, const decltype(output) &>{ "result"s, output },
                 std::pair<std::string, const RequestContext &>{ "rawCtx"s, rawCtx });
         // TODO move the data?
-        const auto buf = stream.str();
+        const auto buf    = stream.str();
         rawCtx.reply.data = IoBuffer(buf.data(), buf.size());
         return;
     }
@@ -486,11 +486,11 @@ inline void writeResult(std::string_view workerName, RequestContext &rawCtx, con
 }
 
 inline void writeResultFull(std::string_view workerName, RequestContext &rawCtx, const auto &requestContext, const auto &replyContext, const auto &input, const auto &output) {
-    auto       replyQuery = query::serialise(replyContext);
-    const auto baseUri    = rawCtx.reply.endpoint.empty() ? rawCtx.request.endpoint : rawCtx.reply.endpoint;
-    const auto topicUri   = mdp::Message::URI::factory(baseUri).setQuery(std::move(replyQuery)).build();
+    auto       replyQuery    = query::serialise(replyContext);
+    const auto baseUri       = rawCtx.reply.endpoint.empty() ? rawCtx.request.endpoint : rawCtx.reply.endpoint;
+    const auto topicUri      = mdp::Message::URI::factory(baseUri).setQuery(std::move(replyQuery)).build();
 
-    rawCtx.reply.endpoint = topicUri;
+    rawCtx.reply.endpoint    = topicUri;
     const auto replyMimetype = query::getMimeType(replyContext);
     const auto mimeType      = replyMimetype != MIME::UNKNOWN ? replyMimetype : rawCtx.mimeType;
     if (mimeType == MIME::JSON) {

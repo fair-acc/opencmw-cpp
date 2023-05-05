@@ -13,7 +13,7 @@ TEST_CASE("SET/GET of MockServer", "[mock-server][lambda_handler]") {
     zmq::Context context{};
     MockServer   server(context);
 
-    MockClient client(server.context());
+    MockClient   client(server.context());
     REQUIRE(client.connect(opencmw::URI<>(server.address())));
     // REQUIRE(client.connect(INTERNAL_ADDRESS_BROKER));
 
@@ -65,8 +65,8 @@ TEST_CASE("MockServer Subscription Test", "[mock-server][lambda_handler]") {
     using namespace opencmw;
     using namespace std::chrono_literals;
 
-    zmq::Context                                           context{};
-    MockServer                                             server(context);
+    zmq::Context      context{};
+    MockServer        server(context);
 
     BrokerMessageNode client(context, ZMQ_SUB);
     REQUIRE(client.connect(opencmw::URI<>(server.addressSub())));

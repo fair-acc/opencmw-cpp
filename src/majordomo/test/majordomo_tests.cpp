@@ -18,20 +18,20 @@ using namespace opencmw::majordomo;
 using namespace std::chrono_literals;
 
 namespace {
-    mdp::Message createClientMessage(mdp::Command command) {
-        mdp::Message message;
-        message.protocolName = mdp::clientProtocol;
-        message.command = command;
-        return message;
-    }
-
-    mdp::Message createWorkerMessage(mdp::Command command) {
-        mdp::Message message;
-        message.protocolName = mdp::workerProtocol;
-        message.command = command;
-        return message;
-    }
+mdp::Message createClientMessage(mdp::Command command) {
+    mdp::Message message;
+    message.protocolName = mdp::clientProtocol;
+    message.command      = command;
+    return message;
 }
+
+mdp::Message createWorkerMessage(mdp::Command command) {
+    mdp::Message message;
+    message.protocolName = mdp::workerProtocol;
+    message.command      = command;
+    return message;
+}
+} // namespace
 
 TEST_CASE("Test mmi.dns", "[broker][mmi][mmi_dns]") {
     using opencmw::majordomo::Broker;
@@ -59,9 +59,9 @@ TEST_CASE("Test mmi.dns", "[broker][mmi][mmi_dns]") {
     REQUIRE(worker.connect(brokerAddress));
 
     {
-        auto ready = createWorkerMessage(mdp::Command::Ready);
+        auto ready        = createWorkerMessage(mdp::Command::Ready);
         ready.serviceName = "/aDevice/aProperty";
-        ready.data = IoBuffer("API description");
+        ready.data        = IoBuffer("API description");
         worker.send(std::move(ready));
     }
 
@@ -71,13 +71,13 @@ TEST_CASE("Test mmi.dns", "[broker][mmi][mmi_dns]") {
     std::this_thread::sleep_for(settings.dnsTimeout * 3);
 
     { // list everything from primary broker
-        zmq::Context         clientContext;
-        MessageNode client(clientContext);
+        zmq::Context clientContext;
+        MessageNode  client(clientContext);
         REQUIRE(client.connect(brokerAddress));
 
-        auto request = createClientMessage(mdp::Command::Set);
+        auto request        = createClientMessage(mdp::Command::Set);
         request.serviceName = "mmi.dns";
-        request.data = IoBuffer("Hello World!");
+        request.data        = IoBuffer("Hello World!");
         client.send(std::move(request));
 
         const auto reply = client.tryReadOne();
@@ -87,19 +87,19 @@ TEST_CASE("Test mmi.dns", "[broker][mmi][mmi_dns]") {
         REQUIRE(reply->command == mdp::Command::Final);
         REQUIRE(reply->serviceName == "mmi.dns");
         REQUIRE(reply->data.asString() == "[testbroker: https://127.0.0.1:8080,https://127.0.0.1:8080/aDevice/aProperty,https://127.0.0.1:8080/mmi.dns,"
-                                 "https://127.0.0.1:8080/mmi.echo,https://127.0.0.1:8080/mmi.openapi,https://127.0.0.1:8080/mmi.service,"
-                                 "mdp://127.0.0.1:22346,mdp://127.0.0.1:22346/aDevice/aProperty,mdp://127.0.0.1:22346/mmi.dns,"
-                                 "mdp://127.0.0.1:22346/mmi.echo,mdp://127.0.0.1:22346/mmi.openapi,mdp://127.0.0.1:22346/mmi.service]");
+                                          "https://127.0.0.1:8080/mmi.echo,https://127.0.0.1:8080/mmi.openapi,https://127.0.0.1:8080/mmi.service,"
+                                          "mdp://127.0.0.1:22346,mdp://127.0.0.1:22346/aDevice/aProperty,mdp://127.0.0.1:22346/mmi.dns,"
+                                          "mdp://127.0.0.1:22346/mmi.echo,mdp://127.0.0.1:22346/mmi.openapi,mdp://127.0.0.1:22346/mmi.service]");
     }
 
     { // list everything from DNS broker
-        zmq::Context         clientContext;
-        MessageNode client(clientContext);
+        zmq::Context clientContext;
+        MessageNode  client(clientContext);
         REQUIRE(client.connect(dnsAddress));
 
-        auto request = createClientMessage(mdp::Command::Set);
+        auto request        = createClientMessage(mdp::Command::Set);
         request.serviceName = "mmi.dns";
-        request.data = IoBuffer("Hello World!");
+        request.data        = IoBuffer("Hello World!");
         client.send(std::move(request));
 
         const auto reply = client.tryReadOne();
@@ -109,19 +109,19 @@ TEST_CASE("Test mmi.dns", "[broker][mmi][mmi_dns]") {
         REQUIRE(reply->command == mdp::Command::Final);
         REQUIRE(reply->serviceName == "mmi.dns");
         REQUIRE(reply->data.asString() == "[dnsBroker: mdp://127.0.0.1:22345,mdp://127.0.0.1:22345/mmi.dns,mdp://127.0.0.1:22345/mmi.echo,"
-                                 "mdp://127.0.0.1:22345/mmi.openapi,mdp://127.0.0.1:22345/mmi.service],"
-                                 "[testbroker: https://127.0.0.1:8080,https://127.0.0.1:8080/aDevice/aProperty,https://127.0.0.1:8080/mmi.dns,"
-                                 "https://127.0.0.1:8080/mmi.echo,https://127.0.0.1:8080/mmi.openapi,https://127.0.0.1:8080/mmi.service,"
-                                 "mdp://127.0.0.1:22346,mdp://127.0.0.1:22346/aDevice/aProperty,mdp://127.0.0.1:22346/mmi.dns,"
-                                 "mdp://127.0.0.1:22346/mmi.echo,mdp://127.0.0.1:22346/mmi.openapi,mdp://127.0.0.1:22346/mmi.service]");
+                                          "mdp://127.0.0.1:22345/mmi.openapi,mdp://127.0.0.1:22345/mmi.service],"
+                                          "[testbroker: https://127.0.0.1:8080,https://127.0.0.1:8080/aDevice/aProperty,https://127.0.0.1:8080/mmi.dns,"
+                                          "https://127.0.0.1:8080/mmi.echo,https://127.0.0.1:8080/mmi.openapi,https://127.0.0.1:8080/mmi.service,"
+                                          "mdp://127.0.0.1:22346,mdp://127.0.0.1:22346/aDevice/aProperty,mdp://127.0.0.1:22346/mmi.dns,"
+                                          "mdp://127.0.0.1:22346/mmi.echo,mdp://127.0.0.1:22346/mmi.openapi,mdp://127.0.0.1:22346/mmi.service]");
     }
 
     { // query for specific services
-        zmq::Context         clientContext;
-        MessageNode client(clientContext);
+        zmq::Context clientContext;
+        MessageNode  client(clientContext);
         REQUIRE(client.connect(dnsAddress));
 
-        auto request = createClientMessage(mdp::Command::Set);
+        auto request        = createClientMessage(mdp::Command::Set);
         request.serviceName = "mmi.dns";
 
         // atm services must be prepended by "/" to form URIs that opencmw::URI can parse
@@ -142,16 +142,16 @@ TEST_CASE("Test mmi.dns", "[broker][mmi][mmi_dns]") {
 TEST_CASE("Test mmi.service", "[broker][mmi][mmi_service]") {
     using opencmw::majordomo::Broker;
 
-    Broker               broker("testbroker", testSettings());
-    RunInThread          brokerRun(broker);
+    Broker      broker("testbroker", testSettings());
+    RunInThread brokerRun(broker);
 
     MessageNode client(broker.context);
     REQUIRE(client.connect(INTERNAL_ADDRESS_BROKER));
 
     { // ask for not yet existing service
-        auto request = createClientMessage(mdp::Command::Get);
+        auto request        = createClientMessage(mdp::Command::Get);
         request.serviceName = "mmi.service";
-        request.data = IoBuffer("a.service");
+        request.data        = IoBuffer("a.service");
         client.send(std::move(request));
 
         const auto reply = client.tryReadOne();
@@ -167,18 +167,18 @@ TEST_CASE("Test mmi.service", "[broker][mmi][mmi_service]") {
     MessageNode worker(broker.context);
     REQUIRE(worker.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
-    auto ready = createWorkerMessage(mdp::Command::Ready);
+    auto ready        = createWorkerMessage(mdp::Command::Ready);
     ready.serviceName = "a.service";
-    ready.data = IoBuffer("API description");
-    ready.rbac = IoBuffer("rbacToken");
+    ready.data        = IoBuffer("API description");
+    ready.rbac        = IoBuffer("rbacToken");
     worker.send(std::move(ready));
 
     REQUIRE(waitUntilServiceAvailable(broker.context, "a.service"));
 
     { // service now exists
-        auto request = createClientMessage(mdp::Command::Get);
+        auto request        = createClientMessage(mdp::Command::Get);
         request.serviceName = "mmi.service";
-        request.data = IoBuffer("a.service");
+        request.data        = IoBuffer("a.service");
         client.send(std::move(request));
 
         const auto reply = client.tryReadOne();
@@ -191,7 +191,7 @@ TEST_CASE("Test mmi.service", "[broker][mmi][mmi_service]") {
     }
 
     { // list services
-        auto request = createClientMessage(mdp::Command::Get);
+        auto request        = createClientMessage(mdp::Command::Get);
         request.serviceName = "mmi.service";
         client.send(std::move(request));
 
@@ -207,18 +207,18 @@ TEST_CASE("Test mmi.service", "[broker][mmi][mmi_service]") {
 TEST_CASE("Test mmi.echo", "[broker][mmi][mmi_echo]") {
     using opencmw::majordomo::Broker;
 
-    Broker               broker("testbroker", testSettings());
-    RunInThread          brokerRun(broker);
+    Broker      broker("testbroker", testSettings());
+    RunInThread brokerRun(broker);
 
     MessageNode client(broker.context);
     REQUIRE(client.connect(INTERNAL_ADDRESS_BROKER));
 
-    auto request = createClientMessage(mdp::Command::Get);
+    auto request        = createClientMessage(mdp::Command::Get);
     request.serviceName = "mmi.echo";
-    request.data = IoBuffer("Wie heisst der Buergermeister von Wesel");
-    request.rbac = IoBuffer("rbac");
+    request.data        = IoBuffer("Wie heisst der Buergermeister von Wesel");
+    request.rbac        = IoBuffer("rbac");
 
-    client.send(mdp::Message{request});
+    client.send(mdp::Message{ request });
 
     const auto reply = client.tryReadOne();
 
@@ -236,16 +236,16 @@ TEST_CASE("Test mmi.echo", "[broker][mmi][mmi_echo]") {
 TEST_CASE("Test mmi.openapi", "[broker][mmi][mmi_openapi]") {
     using opencmw::majordomo::Broker;
 
-    Broker               broker("testbroker", testSettings());
-    RunInThread          brokerRun(broker);
+    Broker      broker("testbroker", testSettings());
+    RunInThread brokerRun(broker);
 
     MessageNode client(broker.context);
     REQUIRE(client.connect(INTERNAL_ADDRESS_BROKER));
 
     { // request API of not yet existing service
-        auto request = createClientMessage(mdp::Command::Get);
+        auto request        = createClientMessage(mdp::Command::Get);
         request.serviceName = "mmi.openapi";
-        request.data = IoBuffer("a.service");
+        request.data        = IoBuffer("a.service");
         client.send(std::move(request));
 
         const auto reply = client.tryReadOne();
@@ -262,18 +262,18 @@ TEST_CASE("Test mmi.openapi", "[broker][mmi][mmi_openapi]") {
     MessageNode worker(broker.context);
     REQUIRE(worker.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
-    auto ready = createWorkerMessage(mdp::Command::Ready);
+    auto ready        = createWorkerMessage(mdp::Command::Ready);
     ready.serviceName = "a.service";
-    ready.data = IoBuffer("API description");
-    ready.rbac = IoBuffer("rbacToken");
+    ready.data        = IoBuffer("API description");
+    ready.rbac        = IoBuffer("rbacToken");
     worker.send(std::move(ready));
 
     REQUIRE(waitUntilServiceAvailable(broker.context, "a.service"));
 
     { // service now exists, API description is returned
-        auto request = createClientMessage(mdp::Command::Get);
+        auto request        = createClientMessage(mdp::Command::Get);
         request.serviceName = "mmi.openapi";
-        request.data = IoBuffer("a.service");
+        request.data        = IoBuffer("a.service");
         client.send(std::move(request));
 
         const auto reply = client.tryReadOne();
@@ -301,11 +301,11 @@ TEST_CASE("Request answered with unknown service", "[broker][unknown_service]") 
 
     RunInThread brokerRun(broker);
 
-    auto        request = createClientMessage(mdp::Command::Get);
-    request.serviceName = "no.service";
+    auto        request     = createClientMessage(mdp::Command::Get);
+    request.serviceName     = "no.service";
     request.clientRequestID = IoBuffer("1");
-    request.endpoint = mdp::Message::URI("/topic");
-    request.rbac = IoBuffer("rbacToken");
+    request.endpoint        = mdp::Message::URI("/topic");
+    request.rbac            = IoBuffer("rbacToken");
     client.send(std::move(request));
 
     const auto reply = client.tryReadOne();
@@ -354,7 +354,7 @@ TEST_CASE("Bind broker to endpoints", "[broker][bind]") {
 TEST_CASE("One client/one worker roundtrip", "[broker][roundtrip]") {
     using opencmw::majordomo::Broker;
 
-    Broker               broker("testbroker", testSettings());
+    Broker      broker("testbroker", testSettings());
 
     MessageNode worker(broker.context);
     REQUIRE(worker.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
@@ -362,19 +362,19 @@ TEST_CASE("One client/one worker roundtrip", "[broker][roundtrip]") {
     MessageNode client(broker.context);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
-    auto ready = createWorkerMessage(mdp::Command::Ready);
+    auto ready        = createWorkerMessage(mdp::Command::Ready);
     ready.serviceName = "a.service";
-    ready.data = IoBuffer("API description");
-    ready.rbac = IoBuffer("rbacToken");
+    ready.data        = IoBuffer("API description");
+    ready.rbac        = IoBuffer("rbacToken");
     worker.send(std::move(ready));
 
     broker.processMessages();
 
-    auto request = createClientMessage(mdp::Command::Get);
-    request.serviceName = "a.service";
+    auto request            = createClientMessage(mdp::Command::Get);
+    request.serviceName     = "a.service";
     request.clientRequestID = IoBuffer("1");
-    request.endpoint = mdp::Message::URI("/topic");
-    request.rbac = IoBuffer("rbacToken");
+    request.endpoint        = mdp::Message::URI("/topic");
+    request.rbac            = IoBuffer("rbacToken");
     client.send(std::move(request));
 
     broker.processMessages();
@@ -390,12 +390,12 @@ TEST_CASE("One client/one worker roundtrip", "[broker][roundtrip]") {
     REQUIRE(requestAtWorker->error.empty());
     REQUIRE(requestAtWorker->rbac.asString() == "rbacToken");
 
-    auto replyFromWorker = createWorkerMessage(mdp::Command::Final);
-    replyFromWorker.serviceName = requestAtWorker->serviceName; // clientSourceID
+    auto replyFromWorker            = createWorkerMessage(mdp::Command::Final);
+    replyFromWorker.serviceName     = requestAtWorker->serviceName; // clientSourceID
     replyFromWorker.clientRequestID = IoBuffer("1");
-    replyFromWorker.endpoint = mdp::Message::URI("/topic");
-    replyFromWorker.data = IoBuffer("reply body");
-    replyFromWorker.rbac = IoBuffer("rbac_worker");
+    replyFromWorker.endpoint        = mdp::Message::URI("/topic");
+    replyFromWorker.data            = IoBuffer("reply body");
+    replyFromWorker.rbac            = IoBuffer("rbac_worker");
     worker.send(std::move(replyFromWorker));
 
     broker.processMessages();
@@ -437,7 +437,7 @@ TEST_CASE("One client/one worker roundtrip", "[broker][roundtrip]") {
 TEST_CASE("Test service matching", "[broker][name-matcher]") {
     using opencmw::majordomo::Broker;
 
-    Broker               broker("testbroker", testSettings());
+    Broker      broker("testbroker", testSettings());
 
     MessageNode worker(broker.context);
     REQUIRE(worker.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
@@ -445,20 +445,20 @@ TEST_CASE("Test service matching", "[broker][name-matcher]") {
     MessageNode client(broker.context);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
-    auto ready = createWorkerMessage(mdp::Command::Ready);
+    auto ready        = createWorkerMessage(mdp::Command::Ready);
     ready.serviceName = "/DeviceA/dashboard";
-    ready.data = IoBuffer("An example worker serving different dashbards");
-    ready.rbac = IoBuffer("rbacToken");
+    ready.data        = IoBuffer("An example worker serving different dashbards");
+    ready.rbac        = IoBuffer("rbacToken");
     worker.send(std::move(ready));
 
     broker.processMessages();
 
     {
-        auto request = createClientMessage(mdp::Command::Get);
-        request.serviceName = "/DeviceA/dashboard";
+        auto request            = createClientMessage(mdp::Command::Get);
+        request.serviceName     = "/DeviceA/dashboard";
         request.clientRequestID = IoBuffer("1");
-        request.endpoint = mdp::Message::URI("/DeviceA/dashboard");
-        request.rbac = IoBuffer("rbacToken");
+        request.endpoint        = mdp::Message::URI("/DeviceA/dashboard");
+        request.rbac            = IoBuffer("rbacToken");
         client.send(std::move(request));
 
         broker.processMessages();
@@ -474,12 +474,12 @@ TEST_CASE("Test service matching", "[broker][name-matcher]") {
         REQUIRE(requestAtWorker->error.empty());
         REQUIRE(requestAtWorker->rbac.asString() == "rbacToken");
 
-        auto replyFromWorker = createWorkerMessage(mdp::Command::Final);
-        replyFromWorker.serviceName = requestAtWorker->serviceName; // clientSourceID
+        auto replyFromWorker            = createWorkerMessage(mdp::Command::Final);
+        replyFromWorker.serviceName     = requestAtWorker->serviceName; // clientSourceID
         replyFromWorker.clientRequestID = IoBuffer("1");
-        replyFromWorker.endpoint = mdp::Message::URI("/DeviceA/dashboard/default");
-        replyFromWorker.data = IoBuffer("Testreply");
-        replyFromWorker.rbac = IoBuffer("rbac_worker");
+        replyFromWorker.endpoint        = mdp::Message::URI("/DeviceA/dashboard/default");
+        replyFromWorker.data            = IoBuffer("Testreply");
+        replyFromWorker.rbac            = IoBuffer("rbac_worker");
         worker.send(std::move(replyFromWorker));
 
         broker.processMessages();
@@ -497,11 +497,11 @@ TEST_CASE("Test service matching", "[broker][name-matcher]") {
     }
 
     {
-        auto request = createClientMessage(mdp::Command::Get);
-        request.serviceName = "/DeviceA/dashboard/main";
+        auto request            = createClientMessage(mdp::Command::Get);
+        request.serviceName     = "/DeviceA/dashboard/main";
         request.clientRequestID = IoBuffer("2");
-        request.endpoint = mdp::Message::URI("/DeviceA/dashboard/main?revision=12");
-        request.rbac = IoBuffer("rbacToken");
+        request.endpoint        = mdp::Message::URI("/DeviceA/dashboard/main?revision=12");
+        request.rbac            = IoBuffer("rbacToken");
         client.send(std::move(request));
 
         broker.processMessages();
@@ -517,12 +517,12 @@ TEST_CASE("Test service matching", "[broker][name-matcher]") {
         REQUIRE(requestAtWorker->error.empty());
         REQUIRE(requestAtWorker->rbac.asString() == "rbacToken");
 
-        auto replyFromWorker = createWorkerMessage(mdp::Command::Final);
-        replyFromWorker.serviceName = requestAtWorker->serviceName; // clientSourceID
+        auto replyFromWorker            = createWorkerMessage(mdp::Command::Final);
+        replyFromWorker.serviceName     = requestAtWorker->serviceName; // clientSourceID
         replyFromWorker.clientRequestID = IoBuffer("2");
-        replyFromWorker.endpoint = mdp::Message::URI("/DeviceA/dashboard/main?revision=12");
-        replyFromWorker.data = IoBuffer("Testreply");
-        replyFromWorker.rbac = IoBuffer("rbac_worker");
+        replyFromWorker.endpoint        = mdp::Message::URI("/DeviceA/dashboard/main?revision=12");
+        replyFromWorker.data            = IoBuffer("Testreply");
+        replyFromWorker.rbac            = IoBuffer("rbac_worker");
         worker.send(std::move(replyFromWorker));
 
         broker.processMessages();
@@ -575,33 +575,33 @@ TEST_CASE("Pubsub example using SUB client/DEALER worker", "[broker][pubsub_sub_
 
     // send three notifications, two matching (one exact, one via wildcard), one not matching
     {
-        auto notify = createWorkerMessage(mdp::Command::Notify);
+        auto notify        = createWorkerMessage(mdp::Command::Notify);
         notify.serviceName = "a.service";
-        notify.endpoint = mdp::Message::URI("/a.topic");
-        notify.data = IoBuffer("Notification about /a.topic");
-        notify.rbac = IoBuffer("rbac_worker");
+        notify.endpoint    = mdp::Message::URI("/a.topic");
+        notify.data        = IoBuffer("Notification about /a.topic");
+        notify.rbac        = IoBuffer("rbac_worker");
         publisher.send(std::move(notify));
     }
 
     broker.processMessages();
 
     {
-        auto notify = createWorkerMessage(mdp::Command::Notify);
+        auto notify        = createWorkerMessage(mdp::Command::Notify);
         notify.serviceName = "a.service";
-        notify.endpoint = mdp::Message::URI("/a.topic_2");
-        notify.data = IoBuffer("Notification about /a.topic_2");
-        notify.rbac = IoBuffer("rbac_worker");
+        notify.endpoint    = mdp::Message::URI("/a.topic_2");
+        notify.data        = IoBuffer("Notification about /a.topic_2");
+        notify.rbac        = IoBuffer("rbac_worker");
         publisher.send(std::move(notify));
     }
 
     broker.processMessages();
 
     {
-        auto notify = createWorkerMessage(mdp::Command::Notify);
+        auto notify        = createWorkerMessage(mdp::Command::Notify);
         notify.serviceName = "a.service";
-        notify.endpoint = mdp::Message::URI("/other.topic");
-        notify.data = IoBuffer("Notification about /other.topic");
-        notify.rbac = IoBuffer("rbac_worker");
+        notify.endpoint    = mdp::Message::URI("/other.topic");
+        notify.data        = IoBuffer("Notification about /other.topic");
+        notify.rbac        = IoBuffer("rbac_worker");
         publisher.send(std::move(notify));
     }
 
@@ -643,18 +643,18 @@ TEST_CASE("Broker sends heartbeats", "[broker][heartbeat]") {
     Settings       settings;
     settings.heartbeatInterval = heartbeatInterval;
     settings.heartbeatLiveness = 3;
-    Broker               broker("testbroker", settings);
+    Broker      broker("testbroker", settings);
 
     MessageNode worker(broker.context);
 
-    RunInThread          brokerRun(broker);
+    RunInThread brokerRun(broker);
     REQUIRE(worker.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
     {
-        auto ready = createWorkerMessage(mdp::Command::Ready);
+        auto ready        = createWorkerMessage(mdp::Command::Ready);
         ready.serviceName = "heartbeat.service";
-        ready.data = IoBuffer("API description");
-        ready.rbac = IoBuffer("rbac_worker");
+        ready.data        = IoBuffer("API description");
+        ready.rbac        = IoBuffer("rbac_worker");
         worker.send(std::move(ready));
     }
 
@@ -663,9 +663,9 @@ TEST_CASE("Broker sends heartbeats", "[broker][heartbeat]") {
     std::this_thread::sleep_for(heartbeatInterval * 0.75);
 
     {
-        auto heartbeat = createWorkerMessage(mdp::Command::Heartbeat);
+        auto heartbeat        = createWorkerMessage(mdp::Command::Heartbeat);
         heartbeat.serviceName = "heartbeat.service";
-        heartbeat.rbac = IoBuffer("rbac_worker");
+        heartbeat.rbac        = IoBuffer("rbac_worker");
         worker.send(std::move(heartbeat));
     }
 
@@ -702,17 +702,17 @@ TEST_CASE("Broker disconnects on unexpected heartbeat", "[broker][unexpected_hea
 
     Settings       settings;
     settings.heartbeatInterval = heartbeatInterval;
-    Broker               broker("testbroker", settings);
+    Broker      broker("testbroker", settings);
 
     MessageNode worker(broker.context);
 
-    RunInThread          brokerRun(broker);
+    RunInThread brokerRun(broker);
     REQUIRE(worker.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
     // send heartbeat without initial ready - invalid
-    auto heartbeat = createWorkerMessage(mdp::Command::Heartbeat);
+    auto heartbeat        = createWorkerMessage(mdp::Command::Heartbeat);
     heartbeat.serviceName = "heartbeat.service";
-    heartbeat.rbac = IoBuffer("rbac_worker");
+    heartbeat.rbac        = IoBuffer("rbac_worker");
     worker.send(std::move(heartbeat));
 
     const auto disconnect = worker.tryReadOne();
@@ -729,17 +729,17 @@ TEST_CASE("Test RBAC role priority handling", "[broker][rbac]") {
     opencmw::majordomo::Settings settings;
     settings.heartbeatInterval = std::chrono::seconds(1);
 
-    Broker               broker("testbroker", settings);
-    RunInThread          brokerRun(broker);
+    Broker      broker("testbroker", settings);
+    RunInThread brokerRun(broker);
 
     MessageNode worker(broker.context);
     REQUIRE(worker.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
     {
-        auto ready = createWorkerMessage(mdp::Command::Ready);
+        auto ready        = createWorkerMessage(mdp::Command::Ready);
         ready.serviceName = "a.service";
-        ready.data = IoBuffer("API description");
-        ready.rbac = IoBuffer("rbac_worker");
+        ready.data        = IoBuffer("API description");
+        ready.rbac        = IoBuffer("rbac_worker");
         worker.send(std::move(ready));
     }
 
@@ -752,12 +752,12 @@ TEST_CASE("Test RBAC role priority handling", "[broker][rbac]") {
 
     int            clientRequestId = 0;
     for (const auto &role : roles) {
-        auto msg = createClientMessage(mdp::Command::Get);
-        const auto reqId = std::to_string(clientRequestId++);
+        auto       msg      = createClientMessage(mdp::Command::Get);
+        const auto reqId    = std::to_string(clientRequestId++);
         msg.clientRequestID = IoBuffer(reqId.data(), reqId.size());
-        msg.serviceName = "a.service";
-        const auto rbac = fmt::format("RBAC={},123456abcdef", role);
-        msg.rbac = IoBuffer(rbac.data(), rbac.size());
+        msg.serviceName     = "a.service";
+        const auto rbac     = fmt::format("RBAC={},123456abcdef", role);
+        msg.rbac            = IoBuffer(rbac.data(), rbac.size());
         client.send(std::move(msg));
     }
 
@@ -770,10 +770,10 @@ TEST_CASE("Test RBAC role priority handling", "[broker][rbac]") {
         // we give the broker time to read and queue the following requests
         std::this_thread::sleep_for(settings.heartbeatInterval * 0.7);
 
-        auto reply = createWorkerMessage(mdp::Command::Final);
-        reply.serviceName = msg->serviceName; // clientSourceID
+        auto reply            = createWorkerMessage(mdp::Command::Final);
+        reply.serviceName     = msg->serviceName; // clientSourceID
         reply.clientRequestID = msg->clientRequestID;
-        reply.data = IoBuffer("Hello!");
+        reply.data            = IoBuffer("Hello!");
         worker.send(std::move(reply));
     }
 
@@ -785,10 +785,10 @@ TEST_CASE("Test RBAC role priority handling", "[broker][rbac]") {
         REQUIRE(msg.has_value());
         seenMessages.push_back(std::string(msg->clientRequestID.asString()));
 
-        auto reply = createWorkerMessage(mdp::Command::Final);
-        reply.serviceName = msg->serviceName; // clientSourceID
+        auto reply            = createWorkerMessage(mdp::Command::Final);
+        reply.serviceName     = msg->serviceName; // clientSourceID
         reply.clientRequestID = msg->clientRequestID;
-        reply.data = IoBuffer("Hello!");
+        reply.data            = IoBuffer("Hello!");
         worker.send(std::move(reply));
     }
 
@@ -798,7 +798,7 @@ TEST_CASE("Test RBAC role priority handling", "[broker][rbac]") {
 TEST_CASE("pubsub example using router socket (DEALER client)", "[broker][pubsub_router]") {
     using opencmw::majordomo::Broker;
 
-    Broker               broker("testbroker", testSettings());
+    Broker      broker("testbroker", testSettings());
 
     MessageNode subscriber(broker.context);
     REQUIRE(subscriber.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
@@ -811,10 +811,10 @@ TEST_CASE("pubsub example using router socket (DEALER client)", "[broker][pubsub
 
     // subscribe client to /cooking.italian
     {
-        auto subscribe = createClientMessage(mdp::Command::Subscribe);
+        auto subscribe        = createClientMessage(mdp::Command::Subscribe);
         subscribe.serviceName = "first.service";
-        subscribe.endpoint = mdp::Message::URI("/cooking.italian");
-        subscribe.rbac = IoBuffer("rbacToken");
+        subscribe.endpoint    = mdp::Message::URI("/cooking.italian");
+        subscribe.rbac        = IoBuffer("rbacToken");
         subscriber.send(std::move(subscribe));
     }
 
@@ -822,10 +822,10 @@ TEST_CASE("pubsub example using router socket (DEALER client)", "[broker][pubsub
 
     // subscribe client to /cooking.indian
     {
-        auto subscribe = createClientMessage(mdp::Command::Subscribe);
+        auto subscribe        = createClientMessage(mdp::Command::Subscribe);
         subscribe.serviceName = "second.service";
-        subscribe.endpoint = mdp::Message::URI("/cooking.indian");
-        subscribe.rbac = IoBuffer("rbacToken");
+        subscribe.endpoint    = mdp::Message::URI("/cooking.indian");
+        subscribe.rbac        = IoBuffer("rbacToken");
         subscriber.send(std::move(subscribe));
     }
 
@@ -833,11 +833,11 @@ TEST_CASE("pubsub example using router socket (DEALER client)", "[broker][pubsub
 
     // publisher 1 sends a notification for /cooking.italian
     {
-        auto pubMsg = createWorkerMessage(mdp::Command::Notify);
+        auto pubMsg        = createWorkerMessage(mdp::Command::Notify);
         pubMsg.serviceName = "first.service";
-        pubMsg.endpoint = mdp::Message::URI("/cooking.italian");
-        pubMsg.data = IoBuffer("Original carbonara recipe here!");
-        pubMsg.rbac = IoBuffer("rbac_worker_1");
+        pubMsg.endpoint    = mdp::Message::URI("/cooking.italian");
+        pubMsg.data        = IoBuffer("Original carbonara recipe here!");
+        pubMsg.rbac        = IoBuffer("rbac_worker_1");
         publisherOne.send(std::move(pubMsg));
     }
 
@@ -859,11 +859,11 @@ TEST_CASE("pubsub example using router socket (DEALER client)", "[broker][pubsub
 
     // publisher 2 sends a notification for /cooking.indian
     {
-        auto pubMsg = createWorkerMessage(mdp::Command::Notify);
+        auto pubMsg        = createWorkerMessage(mdp::Command::Notify);
         pubMsg.serviceName = "second.service";
-        pubMsg.endpoint = mdp::Message::URI("/cooking.indian");
-        pubMsg.data = IoBuffer("Try our Chicken Korma!");
-        pubMsg.rbac = IoBuffer("rbac_worker_2");
+        pubMsg.endpoint    = mdp::Message::URI("/cooking.indian");
+        pubMsg.data        = IoBuffer("Try our Chicken Korma!");
+        pubMsg.rbac        = IoBuffer("rbac_worker_2");
         publisherTwo.send(std::move(pubMsg));
     }
 
@@ -885,10 +885,10 @@ TEST_CASE("pubsub example using router socket (DEALER client)", "[broker][pubsub
 
     // unsubscribe client from /cooking.italian
     {
-        auto unsubscribe = createClientMessage(mdp::Command::Unsubscribe);
+        auto unsubscribe        = createClientMessage(mdp::Command::Unsubscribe);
         unsubscribe.serviceName = "first.service";
-        unsubscribe.endpoint = mdp::Message::URI("/cooking.italian");
-        unsubscribe.rbac = IoBuffer("rbacToken");
+        unsubscribe.endpoint    = mdp::Message::URI("/cooking.italian");
+        unsubscribe.rbac        = IoBuffer("rbacToken");
         subscriber.send(std::move(unsubscribe));
     }
 
@@ -896,11 +896,11 @@ TEST_CASE("pubsub example using router socket (DEALER client)", "[broker][pubsub
 
     // publisher 1 sends a notification for /cooking.italian
     {
-        auto pubMsg = createWorkerMessage(mdp::Command::Notify);
+        auto pubMsg        = createWorkerMessage(mdp::Command::Notify);
         pubMsg.serviceName = "first.service";
-        pubMsg.endpoint = mdp::Message::URI("/cooking.italian");
-        pubMsg.data = IoBuffer("The best Margherita in town!");
-        pubMsg.rbac = IoBuffer("rbac_worker_1");
+        pubMsg.endpoint    = mdp::Message::URI("/cooking.italian");
+        pubMsg.data        = IoBuffer("The best Margherita in town!");
+        pubMsg.rbac        = IoBuffer("rbac_worker_1");
         publisherOne.send(std::move(pubMsg));
     }
 
@@ -908,11 +908,11 @@ TEST_CASE("pubsub example using router socket (DEALER client)", "[broker][pubsub
 
     // publisher 2 sends a notification for /cooking.indian
     {
-        auto pubMsg = createWorkerMessage(mdp::Command::Notify);
+        auto pubMsg        = createWorkerMessage(mdp::Command::Notify);
         pubMsg.serviceName = "second.service";
-        pubMsg.endpoint = mdp::Message::URI("/cooking.indian");
-        pubMsg.data = IoBuffer("Sizzling tikkas in our Restaurant!");
-        pubMsg.rbac = IoBuffer("rbac_worker_2");
+        pubMsg.endpoint    = mdp::Message::URI("/cooking.indian");
+        pubMsg.data        = IoBuffer("Sizzling tikkas in our Restaurant!");
+        pubMsg.rbac        = IoBuffer("rbac_worker_2");
         publisherTwo.send(std::move(pubMsg));
     }
 
@@ -938,7 +938,7 @@ TEST_CASE("pubsub example using router socket (DEALER client)", "[broker][pubsub
 TEST_CASE("pubsub example using PUB socket (SUB client)", "[broker][pubsub_subclient]") {
     using opencmw::majordomo::Broker;
 
-    Broker                  broker("testbroker", testSettings());
+    Broker            broker("testbroker", testSettings());
 
     BrokerMessageNode subscriber(broker.context, ZMQ_SUB);
     REQUIRE(subscriber.connect(opencmw::majordomo::INTERNAL_ADDRESS_PUBLISHER));
@@ -959,11 +959,11 @@ TEST_CASE("pubsub example using PUB socket (SUB client)", "[broker][pubsub_subcl
 
     // publisher 1 sends a notification for /cooking.italian.pasta
     {
-        auto pubMsg = createWorkerMessage(mdp::Command::Notify);
+        auto pubMsg        = createWorkerMessage(mdp::Command::Notify);
         pubMsg.serviceName = "first.service";
-        pubMsg.endpoint = mdp::Message::URI("/cooking.italian.pasta");
-        pubMsg.data = IoBuffer("Original carbonara recipe here!");
-        pubMsg.rbac = IoBuffer("rbac_worker_1");
+        pubMsg.endpoint    = mdp::Message::URI("/cooking.italian.pasta");
+        pubMsg.data        = IoBuffer("Original carbonara recipe here!");
+        pubMsg.rbac        = IoBuffer("rbac_worker_1");
         publisherOne.send(std::move(pubMsg));
     }
 
@@ -986,11 +986,11 @@ TEST_CASE("pubsub example using PUB socket (SUB client)", "[broker][pubsub_subcl
 
     // publisher 2 sends a notification for /cooking.indian.chicken
     {
-        auto pubMsg = createWorkerMessage(mdp::Command::Notify);
+        auto pubMsg        = createWorkerMessage(mdp::Command::Notify);
         pubMsg.serviceName = "second.service";
-        pubMsg.endpoint = mdp::Message::URI("/cooking.indian.chicken");
-        pubMsg.data = IoBuffer("Try our Chicken Korma!");
-        pubMsg.rbac = IoBuffer("rbac_worker_2");
+        pubMsg.endpoint    = mdp::Message::URI("/cooking.indian.chicken");
+        pubMsg.data        = IoBuffer("Try our Chicken Korma!");
+        pubMsg.rbac        = IoBuffer("rbac_worker_2");
         publisherTwo.send(std::move(pubMsg));
     }
 
@@ -1017,11 +1017,11 @@ TEST_CASE("pubsub example using PUB socket (SUB client)", "[broker][pubsub_subcl
 
     // publisher 1 sends a notification for /cooking.italian.pizza
     {
-        auto pubMsg = createWorkerMessage(mdp::Command::Notify);
+        auto pubMsg        = createWorkerMessage(mdp::Command::Notify);
         pubMsg.serviceName = "first.service";
-        pubMsg.endpoint = mdp::Message::URI("/cooking.italian.pizza");
-        pubMsg.data = IoBuffer("The best Margherita in town!");
-        pubMsg.rbac = IoBuffer("rbac_worker_1");
+        pubMsg.endpoint    = mdp::Message::URI("/cooking.italian.pizza");
+        pubMsg.data        = IoBuffer("The best Margherita in town!");
+        pubMsg.rbac        = IoBuffer("rbac_worker_1");
         publisherOne.send(std::move(pubMsg));
     }
 
@@ -1029,11 +1029,11 @@ TEST_CASE("pubsub example using PUB socket (SUB client)", "[broker][pubsub_subcl
 
     // publisher 2 sends a notification for /cooking.indian.tikkas
     {
-        auto pubMsg = createWorkerMessage(mdp::Command::Notify);
+        auto pubMsg        = createWorkerMessage(mdp::Command::Notify);
         pubMsg.serviceName = "second.service";
-        pubMsg.endpoint = mdp::Message::URI("/cooking.indian.tikkas");
-        pubMsg.data = IoBuffer("Sizzling tikkas in our Restaurant!");
-        pubMsg.rbac = IoBuffer("rbac_worker_2");
+        pubMsg.endpoint    = mdp::Message::URI("/cooking.indian.tikkas");
+        pubMsg.data        = IoBuffer("Sizzling tikkas in our Restaurant!");
+        pubMsg.rbac        = IoBuffer("rbac_worker_2");
         publisherTwo.send(std::move(pubMsg));
     }
 
@@ -1079,12 +1079,12 @@ TEST_CASE("BasicWorker run loop quits when broker quits", "[worker]") {
 }
 
 TEST_CASE("BasicWorker connection basics", "[worker][basic_worker_connection]") {
-    const zmq::Context      context;
-    BrokerMessageNode brokerRouter(context, ZMQ_ROUTER);
-    BrokerMessageNode brokerPub(context, ZMQ_PUB);
-    const auto              brokerAddress = opencmw::URI<opencmw::STRICT>("inproc://test/");
-    const auto              routerAddress = opencmw::URI<opencmw::STRICT>::factory(brokerAddress).path(opencmw::majordomo::SUFFIX_ROUTER).build();
-    const auto              pubAddress    = opencmw::URI<opencmw::STRICT>::factory(brokerAddress).path(opencmw::majordomo::SUFFIX_SUBSCRIBE).build();
+    const zmq::Context context;
+    BrokerMessageNode  brokerRouter(context, ZMQ_ROUTER);
+    BrokerMessageNode  brokerPub(context, ZMQ_PUB);
+    const auto         brokerAddress = opencmw::URI<opencmw::STRICT>("inproc://test/");
+    const auto         routerAddress = opencmw::URI<opencmw::STRICT>::factory(brokerAddress).path(opencmw::majordomo::SUFFIX_ROUTER).build();
+    const auto         pubAddress    = opencmw::URI<opencmw::STRICT>::factory(brokerAddress).path(opencmw::majordomo::SUFFIX_SUBSCRIBE).build();
     REQUIRE(brokerRouter.bind(routerAddress));
     REQUIRE(brokerPub.bind(pubAddress));
     Settings settings;
@@ -1129,8 +1129,8 @@ TEST_CASE("BasicWorker connection basics", "[worker][basic_worker_connection]") 
     {
         BrokerMessage heartbeat;
         heartbeat.protocolName = mdp::workerProtocol;
-        heartbeat.command = mdp::Command::Heartbeat;
-        heartbeat.sourceId = workerId;
+        heartbeat.command      = mdp::Command::Heartbeat;
+        heartbeat.sourceId     = workerId;
         brokerRouter.send(std::move(heartbeat));
     }
 
@@ -1164,11 +1164,11 @@ TEST_CASE("SET/GET example using the BasicWorker class", "[worker][getset_basic_
     // an "unknown service" error, retry until we get the expected reply
     bool replyReceived = false;
     while (!replyReceived) {
-        auto request = createClientMessage(mdp::Command::Get);
-        request.serviceName = "a.service";
+        auto request            = createClientMessage(mdp::Command::Get);
+        request.serviceName     = "a.service";
         request.clientRequestID = IoBuffer("1");
-        request.endpoint = mdp::Message::URI("/topic");
-        request.rbac = IoBuffer("rbacToken");
+        request.endpoint        = mdp::Message::URI("/topic");
+        request.rbac            = IoBuffer("rbacToken");
         client.send(std::move(request));
 
         const auto reply = client.tryReadOne();
@@ -1191,12 +1191,12 @@ TEST_CASE("SET/GET example using the BasicWorker class", "[worker][getset_basic_
     }
 
     {
-        auto request = createClientMessage(mdp::Command::Set);
-        request.serviceName = "a.service";
+        auto request            = createClientMessage(mdp::Command::Set);
+        request.serviceName     = "a.service";
         request.clientRequestID = IoBuffer("2");
-        request.endpoint = mdp::Message::URI("/topic");
-        request.data = IoBuffer("42");
-        request.rbac = IoBuffer("rbacToken");
+        request.endpoint        = mdp::Message::URI("/topic");
+        request.data            = IoBuffer("42");
+        request.rbac            = IoBuffer("rbacToken");
 
         client.send(std::move(request));
 
@@ -1211,11 +1211,11 @@ TEST_CASE("SET/GET example using the BasicWorker class", "[worker][getset_basic_
     }
 
     {
-        auto request = createClientMessage(mdp::Command::Get);
-        request.serviceName = "a.service";
+        auto request            = createClientMessage(mdp::Command::Get);
+        request.serviceName     = "a.service";
         request.clientRequestID = IoBuffer("3");
-        request.endpoint = mdp::Message::URI("/topic");
-        request.rbac = IoBuffer("rbacToken");
+        request.endpoint        = mdp::Message::URI("/topic");
+        request.rbac            = IoBuffer("rbacToken");
         client.send(std::move(request));
 
         const auto reply = client.tryReadOne();
@@ -1249,12 +1249,12 @@ TEST_CASE("BasicWorker SET/GET example with RBAC permission handling", "[worker]
 
     // writer is allowed to SET
     {
-        auto set = createClientMessage(mdp::Command::Set);
-        set.serviceName = "/a.service";
+        auto set            = createClientMessage(mdp::Command::Set);
+        set.serviceName     = "/a.service";
         set.clientRequestID = IoBuffer("1");
-        set.endpoint = mdp::Message::URI("/topic");
-        set.data = IoBuffer("42");
-        set.rbac = IoBuffer("RBAC=WRITER,1234");
+        set.endpoint        = mdp::Message::URI("/topic");
+        set.data            = IoBuffer("42");
+        set.rbac            = IoBuffer("RBAC=WRITER,1234");
 
         writer.send(std::move(set));
 
@@ -1267,11 +1267,11 @@ TEST_CASE("BasicWorker SET/GET example with RBAC permission handling", "[worker]
 
     // writer is not allowed to GET
     {
-        auto get = createClientMessage(mdp::Command::Get);
-        get.serviceName = "/a.service";
+        auto get            = createClientMessage(mdp::Command::Get);
+        get.serviceName     = "/a.service";
         get.clientRequestID = IoBuffer("2");
-        get.endpoint = mdp::Message::URI("/topic");
-        get.rbac = IoBuffer("RBAC=WRITER,1234");
+        get.endpoint        = mdp::Message::URI("/topic");
+        get.rbac            = IoBuffer("RBAC=WRITER,1234");
 
         writer.send(std::move(get));
 
@@ -1287,12 +1287,12 @@ TEST_CASE("BasicWorker SET/GET example with RBAC permission handling", "[worker]
 
     // reader is not allowed to SET
     {
-        auto set = createClientMessage(mdp::Command::Set);
-        set.serviceName = "/a.service";
+        auto set            = createClientMessage(mdp::Command::Set);
+        set.serviceName     = "/a.service";
         set.clientRequestID = IoBuffer("1");
-        set.endpoint = mdp::Message::URI("/topic");
-        set.data = IoBuffer("42");
-        set.rbac = IoBuffer("RBAC=READER,1234");
+        set.endpoint        = mdp::Message::URI("/topic");
+        set.data            = IoBuffer("42");
+        set.rbac            = IoBuffer("RBAC=READER,1234");
 
         reader.send(std::move(set));
 
@@ -1305,11 +1305,11 @@ TEST_CASE("BasicWorker SET/GET example with RBAC permission handling", "[worker]
 
     // reader is allowed to GET
     {
-        auto get = createClientMessage(mdp::Command::Get);
-        get.serviceName = "/a.service";
+        auto get            = createClientMessage(mdp::Command::Get);
+        get.serviceName     = "/a.service";
         get.clientRequestID = IoBuffer("2");
-        get.endpoint = mdp::Message::URI("/topic");
-        get.rbac = IoBuffer("RBAC=READER,1234");
+        get.endpoint        = mdp::Message::URI("/topic");
+        get.rbac            = IoBuffer("RBAC=READER,1234");
 
         reader.send(std::move(get));
 
@@ -1325,12 +1325,12 @@ TEST_CASE("BasicWorker SET/GET example with RBAC permission handling", "[worker]
 
     // admin is allowed to SET
     {
-        auto set = createClientMessage(mdp::Command::Set);
-        set.serviceName = "/a.service";
+        auto set            = createClientMessage(mdp::Command::Set);
+        set.serviceName     = "/a.service";
         set.clientRequestID = IoBuffer("1");
-        set.endpoint = mdp::Message::URI("/topic");
-        set.data = IoBuffer("42");
-        set.rbac = IoBuffer("RBAC=ADMIN,1234");
+        set.endpoint        = mdp::Message::URI("/topic");
+        set.data            = IoBuffer("42");
+        set.rbac            = IoBuffer("RBAC=ADMIN,1234");
 
         admin.send(std::move(set));
 
@@ -1343,11 +1343,11 @@ TEST_CASE("BasicWorker SET/GET example with RBAC permission handling", "[worker]
 
     // admin is allowed to GET
     {
-        auto get = createClientMessage(mdp::Command::Get);
-        get.serviceName = "/a.service";
+        auto get            = createClientMessage(mdp::Command::Get);
+        get.serviceName     = "/a.service";
         get.clientRequestID = IoBuffer("2");
-        get.endpoint = mdp::Message::URI("/topic");
-        get.rbac = IoBuffer("RBAC=ADMIN,1234");
+        get.endpoint        = mdp::Message::URI("/topic");
+        get.rbac            = IoBuffer("RBAC=ADMIN,1234");
 
         admin.send(std::move(get));
 
@@ -1367,7 +1367,7 @@ TEST_CASE("NOTIFY example using the BasicWorker class", "[worker][notify_basic_w
 
     BasicWorker<"beverages"> worker(broker, TestIntHandler(10));
 
-    BrokerMessageNode  client(broker.context, ZMQ_XSUB);
+    BrokerMessageNode        client(broker.context, ZMQ_XSUB);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_PUBLISHER));
 
     RunInThread brokerRun(broker);
@@ -1391,7 +1391,7 @@ TEST_CASE("NOTIFY example using the BasicWorker class", "[worker][notify_basic_w
         {
             mdp::Message notify;
             notify.endpoint = mdp::Message::URI("/beer.time");
-            notify.data = IoBuffer("Have a beer");
+            notify.data     = IoBuffer("Have a beer");
             REQUIRE(worker.notify(std::move(notify)));
         }
         {
@@ -1410,7 +1410,7 @@ TEST_CASE("NOTIFY example using the BasicWorker class", "[worker][notify_basic_w
     {
         mdp::Message notify;
         notify.endpoint = mdp::Message::URI("/beer.error");
-        notify.error = "Fridge empty!";
+        notify.error    = "Fridge empty!";
         REQUIRE(worker.notify(std::move(notify)));
     }
 
@@ -1438,7 +1438,7 @@ TEST_CASE("NOTIFY example using the BasicWorker class", "[worker][notify_basic_w
         // race-free now (as know the beer* subscribe was processed by everyone)
         mdp::Message notify;
         notify.endpoint = mdp::Message::URI("/wine.italian");
-        notify.data = IoBuffer("Try our Chianti!");
+        notify.data     = IoBuffer("Try our Chianti!");
         REQUIRE(worker.notify(std::move(notify)));
     }
 
@@ -1460,19 +1460,19 @@ TEST_CASE("NOTIFY example using the BasicWorker class", "[worker][notify_basic_w
         {
             mdp::Message notify;
             notify.endpoint = mdp::Message::URI("/wine.portuguese");
-            notify.data = IoBuffer("New Vinho Verde arrived.");
+            notify.data     = IoBuffer("New Vinho Verde arrived.");
             REQUIRE(worker.notify(std::move(notify)));
         }
         {
             mdp::Message notify;
             notify.endpoint = mdp::Message::URI("/beer.offer");
-            notify.data = IoBuffer("Get our pilsner now!");
+            notify.data     = IoBuffer("Get our pilsner now!");
             REQUIRE(worker.notify(std::move(notify)));
         }
         {
             mdp::Message notify;
             notify.endpoint = mdp::Message::URI("/wine.portuguese");
-            notify.data = IoBuffer("New Vinho Verde arrived.");
+            notify.data     = IoBuffer("New Vinho Verde arrived.");
             REQUIRE(worker.notify(std::move(notify)));
         }
 
@@ -1501,22 +1501,22 @@ TEST_CASE("NOTIFY example using the BasicWorker class (via ROUTER socket)", "[wo
 
     BasicWorker<"beverages"> worker(broker, TestIntHandler(10));
 
-    MessageNode     client(broker.context);
+    MessageNode              client(broker.context);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
     RunInThread brokerRun(broker);
     RunInThread workerRun(worker);
 
     {
-        auto subscribe = createClientMessage(mdp::Command::Subscribe);
+        auto subscribe        = createClientMessage(mdp::Command::Subscribe);
         subscribe.serviceName = "beverages";
-        subscribe.endpoint = mdp::Message::URI("/wine");
+        subscribe.endpoint    = mdp::Message::URI("/wine");
         client.send(std::move(subscribe));
     }
     {
-        auto subscribe = createClientMessage(mdp::Command::Subscribe);
+        auto subscribe        = createClientMessage(mdp::Command::Subscribe);
         subscribe.serviceName = "beverages";
-        subscribe.endpoint = mdp::Message::URI("/beer");
+        subscribe.endpoint    = mdp::Message::URI("/beer");
         client.send(std::move(subscribe));
     }
 
@@ -1529,7 +1529,7 @@ TEST_CASE("NOTIFY example using the BasicWorker class (via ROUTER socket)", "[wo
         {
             mdp::Message notify;
             notify.endpoint = mdp::Message::URI("/beer");
-            notify.data = IoBuffer("Have a beer");
+            notify.data     = IoBuffer("Have a beer");
             REQUIRE(worker.notify(std::move(notify)));
         }
         {
@@ -1549,7 +1549,7 @@ TEST_CASE("NOTIFY example using the BasicWorker class (via ROUTER socket)", "[wo
         // race-free now (as know the /beer subscribe was processed by everyone)
         mdp::Message notify;
         notify.endpoint = mdp::Message::URI("/wine");
-        notify.data = IoBuffer("Try our Chianti!");
+        notify.data     = IoBuffer("Try our Chianti!");
         REQUIRE(worker.notify(std::move(notify)));
     }
 
@@ -1564,9 +1564,9 @@ TEST_CASE("NOTIFY example using the BasicWorker class (via ROUTER socket)", "[wo
 
     // unsubscribe from /beer
     {
-        auto unsubscribe = createClientMessage(mdp::Command::Unsubscribe);
+        auto unsubscribe        = createClientMessage(mdp::Command::Unsubscribe);
         unsubscribe.serviceName = "beverages";
-        unsubscribe.endpoint = mdp::Message::URI("/beer");
+        unsubscribe.endpoint    = mdp::Message::URI("/beer");
         client.send(std::move(unsubscribe));
     }
 
@@ -1575,19 +1575,19 @@ TEST_CASE("NOTIFY example using the BasicWorker class (via ROUTER socket)", "[wo
         {
             mdp::Message notify;
             notify.endpoint = mdp::Message::URI("/wine");
-            notify.data = IoBuffer("New Vinho Verde arrived.");
+            notify.data     = IoBuffer("New Vinho Verde arrived.");
             REQUIRE(worker.notify(std::move(notify)));
         }
         {
             mdp::Message notify;
             notify.endpoint = mdp::Message::URI("/beer");
-            notify.data = IoBuffer("Get our pilsner now!");
+            notify.data     = IoBuffer("Get our pilsner now!");
             REQUIRE(worker.notify(std::move(notify)));
         }
         {
             mdp::Message notify;
             notify.endpoint = mdp::Message::URI("/wine");
-            notify.data = IoBuffer("New Vinho Verde arrived.");
+            notify.data     = IoBuffer("New Vinho Verde arrived.");
             REQUIRE(worker.notify(std::move(notify)));
         }
 
@@ -1618,7 +1618,7 @@ TEST_CASE("SET/GET example using a lambda as the worker's request handler", "[wo
         static int value = 100;
 
         if (requestContext.request.command == mdp::Command::Get) {
-            const auto data = std::to_string(value);
+            const auto data           = std::to_string(value);
             requestContext.reply.data = IoBuffer(data.data(), data.size());
             return;
         }
@@ -1632,7 +1632,7 @@ TEST_CASE("SET/GET example using a lambda as the worker's request handler", "[wo
         if (result.ec == std::errc::invalid_argument) {
             requestContext.reply.error = "Not a valid int";
         } else {
-            value = parsedValue;
+            value                     = parsedValue;
             requestContext.reply.data = IoBuffer("Value set. All good!");
         }
     };

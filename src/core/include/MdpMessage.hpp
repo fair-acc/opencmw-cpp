@@ -30,8 +30,8 @@ enum class Command : unsigned char {
     Heartbeat   = 0x0a  ///< optional for client
 };
 
-constexpr auto clientProtocol     = std::string_view{ "MDPC03" };
-constexpr auto workerProtocol     = std::string_view{ "MDPW03" };
+constexpr auto clientProtocol = std::string_view{ "MDPC03" };
+constexpr auto workerProtocol = std::string_view{ "MDPW03" };
 
 /**
  * Converts an address URI to the format expected by ZeroMQ, i.e. replace mds:/ and mdp:/ by tcp:/
@@ -55,23 +55,22 @@ struct Settings {
  */
 template<MessageFormat Format>
 struct BasicMessage {
-    using timePoint = std::chrono::time_point<std::chrono::system_clock>;
-    using timeUnit  = std::chrono::milliseconds;
-    using URI       = opencmw::URI<opencmw::uri_check::STRICT>;
-
+    using timePoint                                                                                 = std::chrono::time_point<std::chrono::system_clock>;
+    using timeUnit                                                                                  = std::chrono::milliseconds;
+    using URI                                                                                       = opencmw::URI<opencmw::uri_check::STRICT>;
 
     std::conditional_t<Format == MessageFormat::WithSourceId, std::string, std::monostate> sourceId = {};
-    std::size_t id;
-    timePoint   arrivalTime;                        // UTC time when the message was sent/received by the client
-    timeUnit    timeout = std::chrono::seconds(10); // default request/reply timeout
-    std::string protocolName;                       // unique protocol name including version (e.g. 'MDPC03' or 'MDPW03')
-    Command     command = Command::Invalid;         // command type (GET, SET, SUBSCRIBE, UNSUBSCRIBE, PARTIAL, FINAL, NOTIFY, READY, DISCONNECT, HEARTBEAT)
-    std::string serviceName{ "/" };                 // service endpoint name (normally the URI path only), or client source ID (for broker <-> worker messages)
-    IoBuffer    clientRequestID;                    // stateful: worker mirrors clientRequestID; stateless: worker generates unique increasing IDs (to detect packet loss)
-    URI         endpoint{ "/" };                    // URI containing at least <path> and optionally <query> parameters
-    IoBuffer    data;                               // request/reply body -- opaque binary, e.g. YaS-, CmwLight-, JSON-, or HTML-based
-    std::string error;                              // UTF-8 strings containing  error code and/or stack-trace (e.g. "404 Not Found")
-    IoBuffer    rbac;                               // optional RBAC meta-info -- may contain token, role, signed message hash (implementation dependent)
+    std::size_t                                                                            id;
+    timePoint                                                                              arrivalTime;                        // UTC time when the message was sent/received by the client
+    timeUnit                                                                               timeout = std::chrono::seconds(10); // default request/reply timeout
+    std::string                                                                            protocolName;                       // unique protocol name including version (e.g. 'MDPC03' or 'MDPW03')
+    Command                                                                                command = Command::Invalid;         // command type (GET, SET, SUBSCRIBE, UNSUBSCRIBE, PARTIAL, FINAL, NOTIFY, READY, DISCONNECT, HEARTBEAT)
+    std::string                                                                            serviceName{ "/" };                 // service endpoint name (normally the URI path only), or client source ID (for broker <-> worker messages)
+    IoBuffer                                                                               clientRequestID;                    // stateful: worker mirrors clientRequestID; stateless: worker generates unique increasing IDs (to detect packet loss)
+    URI                                                                                    endpoint{ "/" };                    // URI containing at least <path> and optionally <query> parameters
+    IoBuffer                                                                               data;                               // request/reply body -- opaque binary, e.g. YaS-, CmwLight-, JSON-, or HTML-based
+    std::string                                                                            error;                              // UTF-8 strings containing  error code and/or stack-trace (e.g. "404 Not Found")
+    IoBuffer                                                                               rbac;                               // optional RBAC meta-info -- may contain token, role, signed message hash (implementation dependent)
 };
 
 using Message = BasicMessage<MessageFormat::WithoutSourceId>;
@@ -87,7 +86,7 @@ struct fmt::formatter<opencmw::mdp::BasicMessage<Format>> {
 
     template<typename FormatContext>
     auto format(const opencmw::mdp::BasicMessage<Format> &v, FormatContext &ctx) const {
-        return "TODO"; //fmt::format_to(ctx.out(), "{}", v.asString());
+        return "TODO"; // fmt::format_to(ctx.out(), "{}", v.asString());
     }
 };
 

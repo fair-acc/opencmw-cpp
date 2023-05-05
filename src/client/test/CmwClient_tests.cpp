@@ -33,7 +33,7 @@ TEST_CASE("Basic Client Get/Set Test", "[Client]") {
             REQUIRE(req.command == Command::Get);
             REQUIRE(req.data.empty());
             REQUIRE(req.clientRequestID.asString() == "1");
-            reply.data = opencmw::IoBuffer("42");
+            reply.data     = opencmw::IoBuffer("42");
             reply.endpoint = Message::URI::factory(uri).addQueryParameter("ctx", "test_ctx1").build();
         });
         Message result;
@@ -49,7 +49,7 @@ TEST_CASE("Basic Client Get/Set Test", "[Client]") {
             REQUIRE(req.command == Command::Set);
             REQUIRE(req.data.asString() == "100");
             REQUIRE(req.clientRequestID.asString() == "2");
-            reply.data = opencmw::IoBuffer();
+            reply.data     = opencmw::IoBuffer();
             reply.endpoint = Message::URI::factory(uri).addQueryParameter("ctx", "test_ctx2").build();
         });
 
@@ -69,9 +69,9 @@ TEST_CASE("Basic Client Subscription Test", "[Client]") {
     subscriptionClient.connect(uri);
     subscriptionClient.housekeeping(std::chrono::system_clock::now());
 
-    auto endpoint = URI<uri_check::STRICT>::UriFactory(uri).path("a.service").build();
+    auto        endpoint = URI<uri_check::STRICT>::UriFactory(uri).path("a.service").build();
 
-    std::string reqId = "2";
+    std::string reqId    = "2";
     subscriptionClient.subscribe(endpoint, reqId);
     std::this_thread::sleep_for(50ms); // allow for subscription to be established
 

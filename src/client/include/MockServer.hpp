@@ -92,41 +92,41 @@ public:
     }
 
     void notify(std::string_view topic, std::string_view value) {
-        auto       brokerName  = "";
-        auto       serviceName = "a.service";
+        auto                                                brokerName  = "";
+        auto                                                serviceName = "a.service";
         mdp::BasicMessage<mdp::MessageFormat::WithSourceId> notify;
-        notify.protocolName = mdp::clientProtocol;
-        notify.command = mdp::Command::Final;
-        notify.serviceName = serviceName;
-        notify.endpoint = mdp::Message::URI(std::string(topic));
-        notify.sourceId = std::string(topic);
+        notify.protocolName    = mdp::clientProtocol;
+        notify.command         = mdp::Command::Final;
+        notify.serviceName     = serviceName;
+        notify.endpoint        = mdp::Message::URI(std::string(topic));
+        notify.sourceId        = std::string(topic);
         notify.clientRequestID = IoBuffer(brokerName);
-        notify.data = IoBuffer(value.data(), value.size());
+        notify.data            = IoBuffer(value.data(), value.size());
         zmq::send(std::move(notify), _pubSocket.value()).assertSuccess();
     }
 
     void notify(std::string_view topic, std::string_view uri, std::string_view value) {
-        auto       brokerName  = "";
-        auto       serviceName = "a.service";
+        auto                                                brokerName  = "";
+        auto                                                serviceName = "a.service";
         mdp::BasicMessage<mdp::MessageFormat::WithSourceId> notify;
-        notify.protocolName = mdp::clientProtocol;
-        notify.command = mdp::Command::Final;
-        notify.serviceName = serviceName;
-        notify.endpoint = mdp::Message::URI(std::string(uri));
-        notify.sourceId = topic;
+        notify.protocolName    = mdp::clientProtocol;
+        notify.command         = mdp::Command::Final;
+        notify.serviceName     = serviceName;
+        notify.endpoint        = mdp::Message::URI(std::string(uri));
+        notify.sourceId        = topic;
         notify.clientRequestID = IoBuffer(brokerName);
-        notify.data = IoBuffer(value.data(), value.size());
+        notify.data            = IoBuffer(value.data(), value.size());
         zmq::send(std::move(notify), _pubSocket.value()).assertSuccess();
     }
 
     static mdp::Message replyFromRequest(const mdp::Message &request) noexcept {
         mdp::Message reply;
-        reply.protocolName = request.protocolName;
-        reply.command = mdp::Command::Final;
-        reply.serviceName = request.serviceName;
+        reply.protocolName    = request.protocolName;
+        reply.command         = mdp::Command::Final;
+        reply.serviceName     = request.serviceName;
         reply.clientRequestID = request.clientRequestID;
-        reply.endpoint = request.endpoint;
-        reply.rbac = request.rbac;
+        reply.endpoint        = request.endpoint;
+        reply.rbac            = request.rbac;
         return reply;
     }
 };
