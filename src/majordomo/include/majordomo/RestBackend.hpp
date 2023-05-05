@@ -353,11 +353,11 @@ public:
 
         mdp::Message subscribeMessage;
         subscribeMessage.protocolName = mdp::clientProtocol;
-        subscribeMessage.command = mdp::Command::Subscribe;
-        subscribeMessage.serviceName = subscriptionInfo.serviceName;
-        subscribeMessage.endpoint = mdp::Message::URI(subscriptionInfo.topicName);
+        subscribeMessage.command      = mdp::Command::Subscribe;
+        subscribeMessage.serviceName  = subscriptionInfo.serviceName;
+        subscribeMessage.endpoint     = mdp::Message::URI(subscriptionInfo.topicName);
 
-        if (!zmq::send(std::move(subscribeMessage),connection->notificationSubscriptionSocket)) {
+        if (!zmq::send(std::move(subscribeMessage), connection->notificationSubscriptionSocket)) {
             std::terminate();
             return nullptr;
         }
@@ -625,16 +625,16 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         }
 
         mdp::Message message;
-        message.protocolName = mdp::clientProtocol;
-        message.command = mdpMessageCommand;
-        message.serviceName = std::string(service);
+        message.protocolName      = mdp::clientProtocol;
+        message.command           = mdpMessageCommand;
+        message.serviceName       = std::string(service);
 
         const auto acceptedFormat = detail::acceptedMimeForRequest(request);
         uri                       = std::move(uri).addQueryParameter("contentType", std::string(acceptedFormat));
 
         auto topic                = std::string(service) + uri.toString();
 
-        message.endpoint = mdp::Message::URI(topic);
+        message.endpoint          = mdp::Message::URI(topic);
 
         if (request.is_multipart_form_data()) {
             if (content_reader_ != nullptr) {
@@ -661,12 +661,12 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
 
                 std::string requestData(buffer.asString());
                 // Json serialiser (rightfully) does not like bool values in string
-                static auto replacerRegex = std::regex(R"regex("opencmw_unquoted_value[(](.*)[)]")regex");
-                requestData               = std::regex_replace(requestData, replacerRegex, "$1");
-                auto requestDataBegin     = std::find(requestData.cbegin(), requestData.cend(), '{');
+                static auto replacerRegex   = std::regex(R"regex("opencmw_unquoted_value[(](.*)[)]")regex");
+                requestData                 = std::regex_replace(requestData, replacerRegex, "$1");
+                auto       requestDataBegin = std::find(requestData.cbegin(), requestData.cend(), '{');
 
-                const auto req = std::string_view(requestDataBegin, requestData.cend());
-                message.data = IoBuffer(req.data(), req.size());
+                const auto req              = std::string_view(requestDataBegin, requestData.cend());
+                message.data                = IoBuffer(req.data(), req.size());
             }
         } else if (!bodyOverride.empty()) {
             message.data = IoBuffer(bodyOverride.data(), bodyOverride.size());
@@ -694,7 +694,7 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
             response.set_header("X-OPENCMW-TOPIC", responseMessage->endpoint.str().data());
             response.set_header("X-OPENCMW-SERVICE-NAME", responseMessage->serviceName.data());
             response.set_header("Access-Control-Allow-Origin", "*");
-        const auto data = responseMessage->data.asString();
+            const auto data = responseMessage->data.asString();
 
             if (request.method != "GET") {
                 response.set_content(data.data(), data.size(), MIME::TEXT.typeName().data());

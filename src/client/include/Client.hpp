@@ -25,10 +25,10 @@ enum class ConnectionState {
 };
 
 struct Connection {
-    std::string       _authority;
-    zmq::Socket       _socket;
-    ConnectionState   _connectionState               = ConnectionState::DISCONNECTED;
-    timePoint         _nextReconnectAttemptTimeStamp = std::chrono::system_clock::now();
+    std::string     _authority;
+    zmq::Socket     _socket;
+    ConnectionState _connectionState               = ConnectionState::DISCONNECTED;
+    timePoint       _nextReconnectAttemptTimeStamp = std::chrono::system_clock::now();
 
     Connection(const zmq::Context &context, const std::string_view authority, const int zmq_dealer_type)
         : _authority{ authority }, _socket{ context, zmq_dealer_type } {
@@ -61,8 +61,8 @@ class Client : public MDClientBase {
 public:
     explicit Client(const zmq::Context  &context,
             std::vector<zmq_pollitem_t> &pollItems,
-            const timeUnit              timeout  = 1s,
-            std::string                 clientId = "")
+            const timeUnit               timeout  = 1s,
+            std::string                  clientId = "")
         : _clientTimeout(timeout), _context(context), _clientId(std::move(clientId)), _sourceName(fmt::format("OpenCmwClient(clientId: {})", _clientId)), _pollItems(pollItems) {}
 
     void connect(const URI<STRICT> &uri) {
@@ -102,7 +102,7 @@ public:
     void set(const URI<STRICT> &uri, std::string_view req_id, const std::span<const std::byte> &request) override {
         const auto &con     = findConnection(uri);
         auto        message = createRequestTemplate(mdp::Command::Set, uri.relativeRefNoFragment().value(), req_id);
-        message.data = IoBuffer(reinterpret_cast<const char *>(request.data()), request.size());
+        message.data        = IoBuffer(reinterpret_cast<const char *>(request.data()), request.size());
         zmq::send(std::move(message), con._socket).assertSuccess();
     }
 
@@ -135,7 +135,7 @@ public:
         // subscription updates
         if (message.command == mdp::Command::Notify || message.command == mdp::Command::Final) {
             output.arrivalTime = std::chrono::system_clock::now();
-            const auto body = message.data.asString();
+            const auto body    = message.data.asString();
             output.data.resize(body.size());
             std::memcpy(output.data.data(), body.begin(), body.size());
             output.endpoint   = message.endpoint;
@@ -188,9 +188,9 @@ public:
 private:
     static mdp::Message createRequestTemplate(mdp::Command command, std::string_view serviceName, std::string_view req_id) {
         mdp::Message req;
-        req.protocolName = mdp::clientProtocol;
-        req.command = command;
-        req.serviceName = std::string(serviceName);
+        req.protocolName    = mdp::clientProtocol;
+        req.command         = command;
+        req.serviceName     = std::string(serviceName);
         req.clientRequestID = IoBuffer(req_id.data(), req_id.size());
 
         return req;
@@ -200,7 +200,7 @@ private:
 class SubscriptionClient : public MDClientBase {
     using timeUnit = std::chrono::milliseconds;
     const timeUnit                  _clientTimeout;
-    const zmq::Context       &_context;
+    const zmq::Context             &_context;
     const std::string               _clientId;
     const std::string               _sourceName;
     std::vector<detail::Connection> _connections;
@@ -278,12 +278,12 @@ public:
         // subscription updates
         if (message.command == mdp::Command::Notify || message.command == mdp::Command::Final) {
             output.arrivalTime = std::chrono::system_clock::now();
-            output.data = message.data;
+            output.data        = message.data;
             // output.serviceName = URI<uri_check::STRICT>(std::string{ message.serviceName() });
-            output.serviceName = message.sourceId; // temporary hack until serviceName -> 'requestedTopic' and 'topic' -> 'replyTopic'
-            output.endpoint    = message.endpoint;
+            output.serviceName     = message.sourceId; // temporary hack until serviceName -> 'requestedTopic' and 'topic' -> 'replyTopic'
+            output.endpoint        = message.endpoint;
             output.clientRequestID = message.clientRequestID;
-            output.id = 0; // review if this is still needed
+            output.id              = 0; // review if this is still needed
             return true;
         }
         return true;
@@ -406,7 +406,7 @@ public:
 
 private:
     void sendCmd(const URI<STRICT> &uri, mdp::Command commandType, std::size_t req_id, IoBuffer data = {}) const {
-        const bool              isSet = commandType == mdp::Command::Set;
+        const bool        isSet = commandType == mdp::Command::Set;
         zmq::MessageFrame cmdType{ std::string{ static_cast<char>(commandType) } };
         cmdType.send(_control_socket_send, ZMQ_SNDMORE).assertSuccess();
         zmq::MessageFrame reqId{ std::to_string(req_id) };

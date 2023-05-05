@@ -95,13 +95,13 @@ struct TestHandler {
 };
 
 namespace {
-    mdp::Message createClientMessage(mdp::Command command) {
-        mdp::Message message;
-        message.protocolName = mdp::clientProtocol;
-        message.command = command;
-        return message;
-    }
+mdp::Message createClientMessage(mdp::Command command) {
+    mdp::Message message;
+    message.protocolName = mdp::clientProtocol;
+    message.command      = command;
+    return message;
 }
+} // namespace
 
 TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][majordomoworker][simple_example]") {
     // We run both broker and worker inproc
@@ -130,9 +130,9 @@ TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][major
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
     { // Make sure the API description is returned
-        auto request = createClientMessage(mdp::Command::Get);
+        auto request        = createClientMessage(mdp::Command::Get);
         request.serviceName = "mmi.openapi";
-        request.data = IoBuffer("addressbook");
+        request.data        = IoBuffer("addressbook");
         client.send(std::move(request));
 
         const auto reply = client.tryReadOne();
@@ -147,11 +147,11 @@ TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][major
 
     {
         // Send a request for address with ID 42
-        auto request = createClientMessage(mdp::Command::Get);
-        request.serviceName = "addressbook";
+        auto request            = createClientMessage(mdp::Command::Get);
+        request.serviceName     = "addressbook";
         request.clientRequestID = IoBuffer("1");
-        request.endpoint = mdp::Message::URI("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json");
-        request.data = IoBuffer("{ \"id\": 42 }");
+        request.endpoint        = mdp::Message::URI("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json");
+        request.data            = IoBuffer("{ \"id\": 42 }");
         client.send(std::move(request));
 
         const auto reply = client.tryReadOne();
@@ -180,7 +180,7 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
 
     REQUIRE(waitUntilServiceAvailable(broker.context, "addressbook"));
 
-    MessageNode    client(broker.context);
+    MessageNode       client(broker.context);
     BrokerMessageNode subClient(broker.context, ZMQ_SUB);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
     REQUIRE(subClient.connect(opencmw::majordomo::INTERNAL_ADDRESS_PUBLISHER));
@@ -188,12 +188,12 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
     REQUIRE(subClient.subscribe(testSubscription));
 
     {
-        auto request = createClientMessage(mdp::Command::Get);
-        request.serviceName = "addressbook";
+        auto request            = createClientMessage(mdp::Command::Get);
+        request.serviceName     = "addressbook";
         request.clientRequestID = IoBuffer("1");
-        request.endpoint = mdp::Message::URI("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json");
-        request.data = IoBuffer("{ \"id\": 42 }");
-        request.rbac = IoBuffer("RBAC=ADMIN,1234");
+        request.endpoint        = mdp::Message::URI("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json");
+        request.data            = IoBuffer("{ \"id\": 42 }");
+        request.rbac            = IoBuffer("RBAC=ADMIN,1234");
         client.send(std::move(request));
 
         const auto reply = client.tryReadOne();
@@ -208,13 +208,13 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
 
     // GET with unknown role or empty role fails
     for (const auto &role : { "UNKNOWN", "" }) {
-        auto request = createClientMessage(mdp::Command::Get);
-        request.serviceName = "addressbook";
+        auto request            = createClientMessage(mdp::Command::Get);
+        request.serviceName     = "addressbook";
         request.clientRequestID = IoBuffer("1");
-        request.endpoint = mdp::Message::URI("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json");
-        request.data = IoBuffer("{ \"id\": 42 }");
-        const auto body = fmt::format("RBAC={},1234", role);
-        request.rbac = IoBuffer(body.data(), body.size());
+        request.endpoint        = mdp::Message::URI("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json");
+        request.data            = IoBuffer("{ \"id\": 42 }");
+        const auto body         = fmt::format("RBAC={},1234", role);
+        request.rbac            = IoBuffer(body.data(), body.size());
         client.send(std::move(request));
 
         const auto reply = client.tryReadOne();
@@ -228,12 +228,12 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
 
     // request non-existing entry
     {
-        auto request = createClientMessage(mdp::Command::Get);
-        request.serviceName = "addressbook";
+        auto request            = createClientMessage(mdp::Command::Get);
+        request.serviceName     = "addressbook";
         request.clientRequestID = IoBuffer("2");
-        request.endpoint = mdp::Message::URI("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json");
-        request.data = IoBuffer("{ \"id\": 4711 }");
-        request.rbac = IoBuffer("RBAC=ADMIN,1234");
+        request.endpoint        = mdp::Message::URI("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json");
+        request.data            = IoBuffer("{ \"id\": 4711 }");
+        request.rbac            = IoBuffer("RBAC=ADMIN,1234");
         client.send(std::move(request));
     }
 
@@ -248,12 +248,12 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
 
     // send empty request
     {
-        auto request = createClientMessage(mdp::Command::Get);
-        request.serviceName = "addressbook";
+        auto request            = createClientMessage(mdp::Command::Get);
+        request.serviceName     = "addressbook";
         request.clientRequestID = IoBuffer("3");
-        request.endpoint = mdp::Message::URI("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json");
-        request.data = IoBuffer("");
-        request.rbac = IoBuffer("RBAC=ADMIN,1234");
+        request.endpoint        = mdp::Message::URI("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json");
+        request.data            = IoBuffer("");
+        request.rbac            = IoBuffer("RBAC=ADMIN,1234");
         client.send(std::move(request));
     }
 
@@ -268,12 +268,12 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
 
     // send request with invalid JSON
     {
-        auto request = createClientMessage(mdp::Command::Get);
-        request.serviceName = "addressbook";
+        auto request            = createClientMessage(mdp::Command::Get);
+        request.serviceName     = "addressbook";
         request.clientRequestID = IoBuffer("4");
-        request.endpoint = mdp::Message::URI("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json");
-        request.data = IoBuffer("{ \"id\": 42 ]");
-        request.rbac = IoBuffer("RBAC=ADMIN,1234");
+        request.endpoint        = mdp::Message::URI("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json");
+        request.data            = IoBuffer("{ \"id\": 42 ]");
+        request.rbac            = IoBuffer("RBAC=ADMIN,1234");
         client.send(std::move(request));
     }
 
