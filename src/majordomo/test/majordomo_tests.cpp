@@ -1,6 +1,5 @@
 #include <majordomo/Broker.hpp>
 #include <majordomo/Constants.hpp>
-#include <majordomo/Message.hpp>
 #include <majordomo/MockClient.hpp>
 #include <majordomo/Worker.hpp>
 
@@ -17,156 +16,26 @@
 using namespace opencmw;
 using namespace opencmw::majordomo;
 using namespace std::chrono_literals;
-using BrokerMessage = BasicMdpMessage<MessageFormat::WithSourceId>;
 
-static constexpr auto dynamic_tag = opencmw::majordomo::MessageFrame::dynamic_bytes_tag{};
-static constexpr auto static_tag = opencmw::majordomo::MessageFrame::static_bytes_tag{};
-
-TEST_CASE("OpenCMW::Frame cloning", "[frame][cloning]") {
-    {
-        MessageFrame frame;
-        auto         clone = frame.clone();
-        REQUIRE(clone.data() == frame.data());
-        REQUIRE(clone.data() == "");
-    }
-    {
-        MessageFrame frame{ "Hello", MessageFrame::static_bytes_tag{} };
-        auto         clone = frame.clone();
-        REQUIRE(clone.data() == frame.data());
-        REQUIRE(clone.data() == "Hello");
-    }
-    {
-        MessageFrame frame{ std::make_unique<std::string>("Hello").release(), MessageFrame::dynamic_bytes_tag{} };
-        auto         clone = frame.clone();
-        REQUIRE(clone.data() == frame.data());
-        REQUIRE(clone.data() == "Hello");
-    }
-    {
-        MessageFrame frame{ "Hello", MessageFrame::dynamic_bytes_tag{} };
-        auto         clone = frame.clone();
-        REQUIRE(frame.data() == clone.data());
-    }
-}
-
-TEST_CASE("OpenCMW::Message basics", "[message]") {
-    {
-        auto msg = BrokerMessage::createClientMessage(Command::Final);
-        REQUIRE(msg.isClientMessage());
-        REQUIRE(msg.command() == Command::Final);
-
-        auto tag = MessageFrame::static_bytes_tag{};
-        msg.setTopic("/iamatopic", tag);
-        msg.setServiceName("service://abc", tag);
-        msg.setClientRequestId("request 1", tag);
-        msg.setBody("test body test body test body test body test body test body test body", tag);
-        msg.setError("fail!", tag);
-        msg.setRbacToken("password", tag);
-
-        REQUIRE(msg.isClientMessage());
-        REQUIRE(msg.command() == Command::Final);
-        REQUIRE(msg.topic() == "/iamatopic");
-        REQUIRE(msg.serviceName() == "service://abc");
-        REQUIRE(msg.clientRequestId() == "request 1");
-        REQUIRE(msg.body() == "test body test body test body test body test body test body test body");
-        REQUIRE(msg.error() == "fail!");
-        REQUIRE(msg.rbacToken() == "password");
-
-        REQUIRE(msg.isValid());
-        REQUIRE(msg.availableFrameCount() == 9);
-        REQUIRE(msg.frameAt(0).data() == "");
-        REQUIRE(msg.frameAt(1).data() == "MDPC03");
-        REQUIRE(msg.frameAt(2).data() == "\x4");
-        REQUIRE(msg.frameAt(3).data() == "service://abc");
-        REQUIRE(msg.frameAt(4).data() == "request 1");
-        REQUIRE(msg.frameAt(5).data() == "/iamatopic");
-        REQUIRE(msg.frameAt(6).data() == "test body test body test body test body test body test body test body");
-        REQUIRE(msg.frameAt(7).data() == "fail!");
-        REQUIRE(msg.frameAt(8).data() == "password");
-
-        // Test command encoding
-        REQUIRE(BrokerMessage::createClientMessage(Command::Get).frameAt(2).data() == "\x01");
-        REQUIRE(BrokerMessage::createClientMessage(Command::Set).frameAt(2).data() == "\x02");
-        REQUIRE(BrokerMessage::createClientMessage(Command::Partial).frameAt(2).data() == "\x03");
-        REQUIRE(BrokerMessage::createClientMessage(Command::Final).frameAt(2).data() == "\x04");
-        REQUIRE(BrokerMessage::createClientMessage(Command::Ready).frameAt(2).data() == "\x05");
-        REQUIRE(BrokerMessage::createClientMessage(Command::Disconnect).frameAt(2).data() == "\x06");
-        REQUIRE(BrokerMessage::createClientMessage(Command::Subscribe).frameAt(2).data() == "\x07");
-        REQUIRE(BrokerMessage::createClientMessage(Command::Unsubscribe).frameAt(2).data() == "\x08");
-        REQUIRE(BrokerMessage::createWorkerMessage(Command::Notify).frameAt(2).data() == "\x09");
-        REQUIRE(BrokerMessage::createWorkerMessage(Command::Heartbeat).frameAt(2).data() == "\x0a");
-
-        // make sure isValid detects command/protocol mismatches
-        REQUIRE(!BrokerMessage::createClientMessage(Command::Notify).isValid());
-        REQUIRE(!BrokerMessage::createWorkerMessage(Command::Subscribe).isValid());
-        REQUIRE(!BrokerMessage::createWorkerMessage(Command::Unsubscribe).isValid());
+namespace {
+    mdp::Message createClientMessage(mdp::Command command) {
+        mdp::Message message;
+        message.protocolName = mdp::clientProtocol;
+        message.command = command;
+        return message;
     }
 
-    {
-        auto msg = MdpMessage::createClientMessage(Command::Final);
-        REQUIRE(msg.isClientMessage());
-        REQUIRE(msg.command() == Command::Final);
-
-        auto tag = MessageFrame::static_bytes_tag{};
-        msg.setTopic("/iamatopic", tag);
-        msg.setServiceName("service://abc", tag);
-        msg.setClientRequestId("request 1", tag);
-        msg.setBody("test body test body test body test body test body test body test body", tag);
-        msg.setError("fail!", tag);
-        msg.setRbacToken("password", tag);
-
-        REQUIRE(msg.isClientMessage());
-        REQUIRE(msg.command() == Command::Final);
-        REQUIRE(msg.topic() == "/iamatopic");
-        REQUIRE(msg.serviceName() == "service://abc");
-        REQUIRE(msg.clientRequestId() == "request 1");
-        REQUIRE(msg.body() == "test body test body test body test body test body test body test body");
-        REQUIRE(msg.error() == "fail!");
-        REQUIRE(msg.rbacToken() == "password");
-
-        REQUIRE(msg.isValid());
-        REQUIRE(msg.availableFrameCount() == 8);
-        REQUIRE(msg.frameAt(0).data() == "MDPC03");
-        REQUIRE(msg.frameAt(1).data() == "\x4");
-        REQUIRE(msg.frameAt(2).data() == "service://abc");
-        REQUIRE(msg.frameAt(3).data() == "request 1");
-        REQUIRE(msg.frameAt(4).data() == "/iamatopic");
-        REQUIRE(msg.frameAt(5).data() == "test body test body test body test body test body test body test body");
-        REQUIRE(msg.frameAt(6).data() == "fail!");
-        REQUIRE(msg.frameAt(7).data() == "password");
-
-        // make sure isValid detects command/protocol mismatches
-        REQUIRE(!MdpMessage::createClientMessage(Command::Notify).isValid());
-        REQUIRE(!MdpMessage::createWorkerMessage(Command::Subscribe).isValid());
-        REQUIRE(!MdpMessage::createWorkerMessage(Command::Unsubscribe).isValid());
-        {
-            MdpMessage invalidCmd;
-            invalidCmd.setFrames({ std::make_unique<std::string>("MDPC03"),
-                    std::make_unique<std::string>("\x20"), // invalid
-                    std::make_unique<std::string>(),
-                    std::make_unique<std::string>(),
-                    std::make_unique<std::string>(),
-                    std::make_unique<std::string>(),
-                    std::make_unique<std::string>(),
-                    std::make_unique<std::string>() });
-            REQUIRE(!invalidCmd.isValid());
-
-            MdpMessage invalidProtocol;
-            invalidProtocol.setFrames({ std::make_unique<std::string>("MDPC666"),
-                    std::make_unique<std::string>("\x1"),
-                    std::make_unique<std::string>(),
-                    std::make_unique<std::string>(),
-                    std::make_unique<std::string>(),
-                    std::make_unique<std::string>(),
-                    std::make_unique<std::string>(),
-                    std::make_unique<std::string>() });
-            REQUIRE(!invalidProtocol.isValid());
-        }
+    mdp::Message createWorkerMessage(mdp::Command command) {
+        mdp::Message message;
+        message.protocolName = mdp::workerProtocol;
+        message.command = command;
+        return message;
     }
 }
 
 TEST_CASE("Test mmi.dns", "[broker][mmi][mmi_dns]") {
     using opencmw::majordomo::Broker;
-    using opencmw::majordomo::MdpMessage;
+    using opencmw::mdp::Message;
 
     auto settings              = testSettings();
     settings.heartbeatInterval = std::chrono::seconds(1);
@@ -186,14 +55,14 @@ TEST_CASE("Test mmi.dns", "[broker][mmi][mmi_dns]") {
     RunInThread brokerRun(broker);
 
     // register worker
-    TestNode<MdpMessage> worker(broker.context);
+    MessageNode worker(broker.context);
     REQUIRE(worker.connect(brokerAddress));
 
     {
-        auto ready = MdpMessage::createWorkerMessage(Command::Ready);
-        ready.setServiceName("/aDevice/aProperty", static_tag);
-        ready.setBody("API description", static_tag);
-        worker.send(ready);
+        auto ready = createWorkerMessage(mdp::Command::Ready);
+        ready.serviceName = "/aDevice/aProperty";
+        ready.data = IoBuffer("API description");
+        worker.send(std::move(ready));
     }
 
     REQUIRE(waitUntilServiceAvailable(broker.context, "/aDevice/aProperty"));
@@ -203,22 +72,21 @@ TEST_CASE("Test mmi.dns", "[broker][mmi][mmi_dns]") {
 
     { // list everything from primary broker
         zmq::Context         clientContext;
-        TestNode<MdpMessage> client(clientContext);
+        MessageNode client(clientContext);
         REQUIRE(client.connect(brokerAddress));
 
-        auto request = MdpMessage::createClientMessage(Command::Set);
-        request.setServiceName("mmi.dns", static_tag);
-        request.setBody("Hello World!", static_tag);
-        client.send(request);
+        auto request = createClientMessage(mdp::Command::Set);
+        request.serviceName = "mmi.dns";
+        request.data = IoBuffer("Hello World!");
+        client.send(std::move(request));
 
         const auto reply = client.tryReadOne();
 
         REQUIRE(reply.has_value());
-        REQUIRE(reply->isValid());
-        REQUIRE(reply->isClientMessage());
-        REQUIRE(reply->command() == Command::Final);
-        REQUIRE(reply->serviceName() == "mmi.dns");
-        REQUIRE(reply->body() == "[testbroker: https://127.0.0.1:8080,https://127.0.0.1:8080/aDevice/aProperty,https://127.0.0.1:8080/mmi.dns,"
+        REQUIRE(reply->protocolName == mdp::clientProtocol);
+        REQUIRE(reply->command == mdp::Command::Final);
+        REQUIRE(reply->serviceName == "mmi.dns");
+        REQUIRE(reply->data.asString() == "[testbroker: https://127.0.0.1:8080,https://127.0.0.1:8080/aDevice/aProperty,https://127.0.0.1:8080/mmi.dns,"
                                  "https://127.0.0.1:8080/mmi.echo,https://127.0.0.1:8080/mmi.openapi,https://127.0.0.1:8080/mmi.service,"
                                  "mdp://127.0.0.1:22346,mdp://127.0.0.1:22346/aDevice/aProperty,mdp://127.0.0.1:22346/mmi.dns,"
                                  "mdp://127.0.0.1:22346/mmi.echo,mdp://127.0.0.1:22346/mmi.openapi,mdp://127.0.0.1:22346/mmi.service]");
@@ -226,22 +94,21 @@ TEST_CASE("Test mmi.dns", "[broker][mmi][mmi_dns]") {
 
     { // list everything from DNS broker
         zmq::Context         clientContext;
-        TestNode<MdpMessage> client(clientContext);
+        MessageNode client(clientContext);
         REQUIRE(client.connect(dnsAddress));
 
-        auto request = MdpMessage::createClientMessage(Command::Set);
-        request.setServiceName("mmi.dns", static_tag);
-        request.setBody("Hello World!", static_tag);
-        client.send(request);
+        auto request = createClientMessage(mdp::Command::Set);
+        request.serviceName = "mmi.dns";
+        request.data = IoBuffer("Hello World!");
+        client.send(std::move(request));
 
         const auto reply = client.tryReadOne();
 
         REQUIRE(reply.has_value());
-        REQUIRE(reply->isValid());
-        REQUIRE(reply->isClientMessage());
-        REQUIRE(reply->command() == Command::Final);
-        REQUIRE(reply->serviceName() == "mmi.dns");
-        REQUIRE(reply->body() == "[dnsBroker: mdp://127.0.0.1:22345,mdp://127.0.0.1:22345/mmi.dns,mdp://127.0.0.1:22345/mmi.echo,"
+        REQUIRE(reply->protocolName == mdp::clientProtocol);
+        REQUIRE(reply->command == mdp::Command::Final);
+        REQUIRE(reply->serviceName == "mmi.dns");
+        REQUIRE(reply->data.asString() == "[dnsBroker: mdp://127.0.0.1:22345,mdp://127.0.0.1:22345/mmi.dns,mdp://127.0.0.1:22345/mmi.echo,"
                                  "mdp://127.0.0.1:22345/mmi.openapi,mdp://127.0.0.1:22345/mmi.service],"
                                  "[testbroker: https://127.0.0.1:8080,https://127.0.0.1:8080/aDevice/aProperty,https://127.0.0.1:8080/mmi.dns,"
                                  "https://127.0.0.1:8080/mmi.echo,https://127.0.0.1:8080/mmi.openapi,https://127.0.0.1:8080/mmi.service,"
@@ -251,189 +118,177 @@ TEST_CASE("Test mmi.dns", "[broker][mmi][mmi_dns]") {
 
     { // query for specific services
         zmq::Context         clientContext;
-        TestNode<MdpMessage> client(clientContext);
+        MessageNode client(clientContext);
         REQUIRE(client.connect(dnsAddress));
 
-        auto request = MdpMessage::createClientMessage(Command::Set);
-        request.setServiceName("mmi.dns", static_tag);
+        auto request = createClientMessage(mdp::Command::Set);
+        request.serviceName = "mmi.dns";
 
         // atm services must be prepended by "/" to form URIs that opencmw::URI can parse
         // send query with some crazy whitespace
-        request.setBody(" /mmi.dns  , /aDevice/aProperty", static_tag);
-        client.send(request);
+        request.data = IoBuffer(" /mmi.dns  , /aDevice/aProperty");
+        client.send(std::move(request));
 
         const auto reply = client.tryReadOne();
 
         REQUIRE(reply.has_value());
-        REQUIRE(reply->isValid());
-        REQUIRE(reply->isClientMessage());
-        REQUIRE(reply->command() == Command::Final);
-        REQUIRE(reply->serviceName() == "mmi.dns");
-        REQUIRE(reply->body() == "[/mmi.dns: https://127.0.0.1:8080/mmi.dns,mdp://127.0.0.1:22345/mmi.dns,mdp://127.0.0.1:22346/mmi.dns],[/aDevice/aProperty: https://127.0.0.1:8080/aDevice/aProperty,mdp://127.0.0.1:22346/aDevice/aProperty]");
+        REQUIRE(reply->protocolName == mdp::clientProtocol);
+        REQUIRE(reply->command == mdp::Command::Final);
+        REQUIRE(reply->serviceName == "mmi.dns");
+        REQUIRE(reply->data.asString() == "[/mmi.dns: https://127.0.0.1:8080/mmi.dns,mdp://127.0.0.1:22345/mmi.dns,mdp://127.0.0.1:22346/mmi.dns],[/aDevice/aProperty: https://127.0.0.1:8080/aDevice/aProperty,mdp://127.0.0.1:22346/aDevice/aProperty]");
     }
 }
 
 TEST_CASE("Test mmi.service", "[broker][mmi][mmi_service]") {
     using opencmw::majordomo::Broker;
-    using opencmw::majordomo::MdpMessage;
 
     Broker               broker("testbroker", testSettings());
     RunInThread          brokerRun(broker);
 
-    TestNode<MdpMessage> client(broker.context);
+    MessageNode client(broker.context);
     REQUIRE(client.connect(INTERNAL_ADDRESS_BROKER));
 
     { // ask for not yet existing service
-        auto request = MdpMessage::createClientMessage(Command::Get);
-        request.setServiceName("mmi.service", static_tag);
-        request.setBody("a.service", static_tag);
-        client.send(request);
+        auto request = createClientMessage(mdp::Command::Get);
+        request.serviceName = "mmi.service";
+        request.data = IoBuffer("a.service");
+        client.send(std::move(request));
 
         const auto reply = client.tryReadOne();
 
         REQUIRE(reply.has_value());
-        REQUIRE(reply->isValid());
-        REQUIRE(reply->isClientMessage());
-        REQUIRE(reply->command() == Command::Final);
-        REQUIRE(reply->serviceName() == "mmi.service");
-        REQUIRE(reply->body() == "404");
+        REQUIRE(reply->protocolName == mdp::clientProtocol);
+        REQUIRE(reply->command == mdp::Command::Final);
+        REQUIRE(reply->serviceName == "mmi.service");
+        REQUIRE(reply->data.asString() == "404");
     }
 
     // register worker as a.service
-    TestNode<MdpMessage> worker(broker.context);
+    MessageNode worker(broker.context);
     REQUIRE(worker.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
-    auto ready = MdpMessage::createWorkerMessage(Command::Ready);
-    ready.setServiceName("a.service", static_tag);
-    ready.setBody("API description", static_tag);
-    ready.setRbacToken("rbacToken", static_tag);
-    worker.send(ready);
+    auto ready = createWorkerMessage(mdp::Command::Ready);
+    ready.serviceName = "a.service";
+    ready.data = IoBuffer("API description");
+    ready.rbac = IoBuffer("rbacToken");
+    worker.send(std::move(ready));
 
     REQUIRE(waitUntilServiceAvailable(broker.context, "a.service"));
 
     { // service now exists
-        auto request = MdpMessage::createClientMessage(Command::Get);
-        request.setServiceName("mmi.service", static_tag);
-        request.setBody("a.service", static_tag);
-        client.send(request);
+        auto request = createClientMessage(mdp::Command::Get);
+        request.serviceName = "mmi.service";
+        request.data = IoBuffer("a.service");
+        client.send(std::move(request));
 
         const auto reply = client.tryReadOne();
 
         REQUIRE(reply.has_value());
-        REQUIRE(reply->isValid());
-        REQUIRE(reply->isClientMessage());
-        REQUIRE(reply->command() == Command::Final);
-        REQUIRE(reply->serviceName() == "mmi.service");
-        REQUIRE(reply->body() == "200");
+        REQUIRE(reply->protocolName == mdp::clientProtocol);
+        REQUIRE(reply->command == mdp::Command::Final);
+        REQUIRE(reply->serviceName == "mmi.service");
+        REQUIRE(reply->data.asString() == "200");
     }
 
     { // list services
-        auto request = MdpMessage::createClientMessage(Command::Get);
-        request.setServiceName("mmi.service", static_tag);
-        client.send(request);
+        auto request = createClientMessage(mdp::Command::Get);
+        request.serviceName = "mmi.service";
+        client.send(std::move(request));
 
         const auto reply = client.tryReadOne();
 
         REQUIRE(reply.has_value());
-        REQUIRE(reply->isValid());
-        REQUIRE(reply->command() == Command::Final);
-        REQUIRE(reply->serviceName() == "mmi.service");
-        REQUIRE(reply->body() == "a.service,mmi.dns,mmi.echo,mmi.openapi,mmi.service");
+        REQUIRE(reply->command == mdp::Command::Final);
+        REQUIRE(reply->serviceName == "mmi.service");
+        REQUIRE(reply->data.asString() == "a.service,mmi.dns,mmi.echo,mmi.openapi,mmi.service");
     }
 }
 
 TEST_CASE("Test mmi.echo", "[broker][mmi][mmi_echo]") {
     using opencmw::majordomo::Broker;
-    using opencmw::majordomo::MdpMessage;
 
     Broker               broker("testbroker", testSettings());
     RunInThread          brokerRun(broker);
 
-    TestNode<MdpMessage> client(broker.context);
+    MessageNode client(broker.context);
     REQUIRE(client.connect(INTERNAL_ADDRESS_BROKER));
 
-    auto request = MdpMessage::createClientMessage(Command::Get);
-    request.setServiceName("mmi.echo", static_tag);
-    request.setBody("Wie heisst der Buergermeister von Wesel", static_tag);
-    request.setRbacToken("rbac", static_tag);
+    auto request = createClientMessage(mdp::Command::Get);
+    request.serviceName = "mmi.echo";
+    request.data = IoBuffer("Wie heisst der Buergermeister von Wesel");
+    request.rbac = IoBuffer("rbac");
 
-    auto toSend = request.clone();
-    client.send(toSend);
+    client.send(mdp::Message{request});
 
     const auto reply = client.tryReadOne();
 
     REQUIRE(reply.has_value());
-    REQUIRE(reply->isValid());
-    REQUIRE(reply->isClientMessage());
-    REQUIRE(reply->command() == Command::Get);
-    REQUIRE(reply->serviceName() == request.serviceName());
-    REQUIRE(reply->clientRequestId() == request.clientRequestId());
-    REQUIRE(reply->topic() == request.topic());
-    REQUIRE(reply->body() == request.body());
-    REQUIRE(reply->error() == request.error());
-    REQUIRE(reply->rbacToken() == request.rbacToken());
+    REQUIRE(reply->protocolName == mdp::clientProtocol);
+    REQUIRE(reply->command == mdp::Command::Get);
+    REQUIRE(reply->serviceName == request.serviceName);
+    REQUIRE(reply->clientRequestID.asString() == request.clientRequestID.asString());
+    REQUIRE(reply->endpoint == request.endpoint);
+    REQUIRE(reply->data.asString() == request.data.asString());
+    REQUIRE(reply->error == request.error);
+    REQUIRE(reply->rbac.asString() == request.rbac.asString());
 }
 
 TEST_CASE("Test mmi.openapi", "[broker][mmi][mmi_openapi]") {
     using opencmw::majordomo::Broker;
-    using opencmw::majordomo::MdpMessage;
 
     Broker               broker("testbroker", testSettings());
     RunInThread          brokerRun(broker);
 
-    TestNode<MdpMessage> client(broker.context);
+    MessageNode client(broker.context);
     REQUIRE(client.connect(INTERNAL_ADDRESS_BROKER));
 
     { // request API of not yet existing service
-        auto request = MdpMessage::createClientMessage(Command::Get);
-        request.setServiceName("mmi.openapi", static_tag);
-        request.setBody("a.service", static_tag);
-        client.send(request);
+        auto request = createClientMessage(mdp::Command::Get);
+        request.serviceName = "mmi.openapi";
+        request.data = IoBuffer("a.service");
+        client.send(std::move(request));
 
         const auto reply = client.tryReadOne();
 
         REQUIRE(reply.has_value());
-        REQUIRE(reply->isValid());
-        REQUIRE(reply->isClientMessage());
-        REQUIRE(reply->command() == Command::Final);
-        REQUIRE(reply->serviceName() == "mmi.openapi");
-        REQUIRE(reply->body() == "");
-        REQUIRE(reply->error() == "Requested invalid service 'a.service'");
+        REQUIRE(reply->protocolName == mdp::clientProtocol);
+        REQUIRE(reply->command == mdp::Command::Final);
+        REQUIRE(reply->serviceName == "mmi.openapi");
+        REQUIRE(reply->data.asString() == "");
+        REQUIRE(reply->error == "Requested invalid service 'a.service'");
     }
 
     // register worker as a.service
-    TestNode<MdpMessage> worker(broker.context);
+    MessageNode worker(broker.context);
     REQUIRE(worker.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
-    auto ready = MdpMessage::createWorkerMessage(Command::Ready);
-    ready.setServiceName("a.service", static_tag);
-    ready.setBody("API description", static_tag);
-    ready.setRbacToken("rbacToken", static_tag);
-    worker.send(ready);
+    auto ready = createWorkerMessage(mdp::Command::Ready);
+    ready.serviceName = "a.service";
+    ready.data = IoBuffer("API description");
+    ready.rbac = IoBuffer("rbacToken");
+    worker.send(std::move(ready));
 
     REQUIRE(waitUntilServiceAvailable(broker.context, "a.service"));
 
     { // service now exists, API description is returned
-        auto request = MdpMessage::createClientMessage(Command::Get);
-        request.setServiceName("mmi.openapi", static_tag);
-        request.setBody("a.service", static_tag);
-        client.send(request);
+        auto request = createClientMessage(mdp::Command::Get);
+        request.serviceName = "mmi.openapi";
+        request.data = IoBuffer("a.service");
+        client.send(std::move(request));
 
         const auto reply = client.tryReadOne();
 
         REQUIRE(reply.has_value());
-        REQUIRE(reply->isValid());
-        REQUIRE(reply->isClientMessage());
-        REQUIRE(reply->command() == Command::Final);
-        REQUIRE(reply->serviceName() == "mmi.openapi");
-        REQUIRE(reply->body() == "API description");
-        REQUIRE(reply->error() == "");
+        REQUIRE(reply->protocolName == mdp::clientProtocol);
+        REQUIRE(reply->command == mdp::Command::Final);
+        REQUIRE(reply->serviceName == "mmi.openapi");
+        REQUIRE(reply->data.asString() == "API description");
+        REQUIRE(reply->error == "");
     }
 }
 
 TEST_CASE("Request answered with unknown service", "[broker][unknown_service]") {
     using opencmw::majordomo::Broker;
-    using opencmw::majordomo::MdpMessage;
 
     const auto address = URI<>("inproc://testrouter");
 
@@ -441,30 +296,29 @@ TEST_CASE("Request answered with unknown service", "[broker][unknown_service]") 
 
     REQUIRE(broker.bind(address, BindOption::Router));
 
-    TestNode<MdpMessage> client(broker.context);
+    MessageNode client(broker.context);
     REQUIRE(client.connect(address));
 
     RunInThread brokerRun(broker);
 
-    auto        request = MdpMessage::createClientMessage(Command::Get);
-    request.setServiceName("no.service", static_tag);
-    request.setClientRequestId("1", static_tag);
-    request.setTopic("/topic", static_tag);
-    request.setRbacToken("rbacToken", static_tag);
-    client.send(request);
+    auto        request = createClientMessage(mdp::Command::Get);
+    request.serviceName = "no.service";
+    request.clientRequestID = IoBuffer("1");
+    request.endpoint = mdp::Message::URI("/topic");
+    request.rbac = IoBuffer("rbacToken");
+    client.send(std::move(request));
 
     const auto reply = client.tryReadOne();
 
     REQUIRE(reply.has_value());
-    REQUIRE(reply->isValid());
-    REQUIRE(reply->isClientMessage());
-    REQUIRE(reply->command() == Command::Final);
-    REQUIRE(reply->serviceName() == "no.service");
-    REQUIRE(reply->clientRequestId() == "1");
-    REQUIRE(reply->topic() == "/mmi.service");
-    REQUIRE(reply->body().empty());
-    REQUIRE(reply->error() == "unknown service (error 501): 'no.service'");
-    REQUIRE(reply->rbacToken() == "RBAC=ADMIN,abcdef12345");
+    REQUIRE(reply->protocolName == mdp::clientProtocol);
+    REQUIRE(reply->command == mdp::Command::Final);
+    REQUIRE(reply->serviceName == "no.service");
+    REQUIRE(reply->clientRequestID.asString() == "1");
+    REQUIRE(reply->endpoint.str() == "/mmi.service");
+    REQUIRE(reply->data.empty());
+    REQUIRE(reply->error == "unknown service (error 501): 'no.service'");
+    REQUIRE(reply->rbac.asString() == "RBAC=ADMIN,abcdef12345");
 }
 
 TEST_CASE("Test toZeroMQEndpoint conversion", "[utils][toZeroMQEndpoint]") {
@@ -499,200 +353,190 @@ TEST_CASE("Bind broker to endpoints", "[broker][bind]") {
 
 TEST_CASE("One client/one worker roundtrip", "[broker][roundtrip]") {
     using opencmw::majordomo::Broker;
-    using opencmw::majordomo::MdpMessage;
 
     Broker               broker("testbroker", testSettings());
 
-    TestNode<MdpMessage> worker(broker.context);
+    MessageNode worker(broker.context);
     REQUIRE(worker.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
-    TestNode<MdpMessage> client(broker.context);
+    MessageNode client(broker.context);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
-    auto ready = MdpMessage::createWorkerMessage(Command::Ready);
-    ready.setServiceName("a.service", static_tag);
-    ready.setBody("API description", static_tag);
-    ready.setRbacToken("rbacToken", static_tag);
-    worker.send(ready);
+    auto ready = createWorkerMessage(mdp::Command::Ready);
+    ready.serviceName = "a.service";
+    ready.data = IoBuffer("API description");
+    ready.rbac = IoBuffer("rbacToken");
+    worker.send(std::move(ready));
 
     broker.processMessages();
 
-    auto request = MdpMessage::createClientMessage(Command::Get);
-    request.setServiceName("a.service", static_tag);
-    request.setClientRequestId("1", static_tag);
-    request.setTopic("/topic", static_tag);
-    request.setRbacToken("rbacToken", static_tag);
-    client.send(request);
+    auto request = createClientMessage(mdp::Command::Get);
+    request.serviceName = "a.service";
+    request.clientRequestID = IoBuffer("1");
+    request.endpoint = mdp::Message::URI("/topic");
+    request.rbac = IoBuffer("rbacToken");
+    client.send(std::move(request));
 
     broker.processMessages();
 
     const auto requestAtWorker = worker.tryReadOne();
     REQUIRE(requestAtWorker.has_value());
-    REQUIRE(requestAtWorker->isValid());
-    REQUIRE(requestAtWorker->isWorkerMessage());
-    REQUIRE(requestAtWorker->command() == Command::Get);
-    REQUIRE(!requestAtWorker->clientSourceId().empty());
-    REQUIRE(requestAtWorker->clientRequestId() == "1");
-    REQUIRE(requestAtWorker->topic() == "/topic");
-    REQUIRE(requestAtWorker->body().empty());
-    REQUIRE(requestAtWorker->error().empty());
-    REQUIRE(requestAtWorker->rbacToken() == "rbacToken");
+    REQUIRE(requestAtWorker->protocolName == mdp::workerProtocol);
+    REQUIRE(requestAtWorker->command == mdp::Command::Get);
+    REQUIRE(!requestAtWorker->serviceName.empty()); // clientSourceID
+    REQUIRE(requestAtWorker->clientRequestID.asString() == "1");
+    REQUIRE(requestAtWorker->endpoint.str() == "/topic");
+    REQUIRE(requestAtWorker->data.empty());
+    REQUIRE(requestAtWorker->error.empty());
+    REQUIRE(requestAtWorker->rbac.asString() == "rbacToken");
 
-    auto replyFromWorker = MdpMessage::createWorkerMessage(Command::Final);
-    replyFromWorker.setClientSourceId(requestAtWorker->clientSourceId(), dynamic_tag);
-    replyFromWorker.setClientRequestId("1", static_tag);
-    replyFromWorker.setTopic("/topic", static_tag);
-    replyFromWorker.setBody("reply body", static_tag);
-    replyFromWorker.setRbacToken("rbac_worker", static_tag);
-    worker.send(replyFromWorker);
+    auto replyFromWorker = createWorkerMessage(mdp::Command::Final);
+    replyFromWorker.serviceName = requestAtWorker->serviceName; // clientSourceID
+    replyFromWorker.clientRequestID = IoBuffer("1");
+    replyFromWorker.endpoint = mdp::Message::URI("/topic");
+    replyFromWorker.data = IoBuffer("reply body");
+    replyFromWorker.rbac = IoBuffer("rbac_worker");
+    worker.send(std::move(replyFromWorker));
 
     broker.processMessages();
 
     const auto reply = client.tryReadOne();
     REQUIRE(reply.has_value());
-    REQUIRE(reply->isValid());
-    REQUIRE(reply->isClientMessage());
-    REQUIRE(reply->command() == Command::Final);
-    REQUIRE(reply->serviceName() == "a.service");
-    REQUIRE(reply->clientRequestId() == "1");
-    REQUIRE(reply->topic() == "/topic");
-    REQUIRE(reply->body() == "reply body");
-    REQUIRE(reply->error().empty());
-    REQUIRE(reply->rbacToken() == "rbac_worker");
+    REQUIRE(reply->protocolName == mdp::clientProtocol);
+    REQUIRE(reply->command == mdp::Command::Final);
+    REQUIRE(reply->serviceName == "a.service");
+    REQUIRE(reply->clientRequestID.asString() == "1");
+    REQUIRE(reply->endpoint.str() == "/topic");
+    REQUIRE(reply->data.asString() == "reply body");
+    REQUIRE(reply->error.empty());
+    REQUIRE(reply->rbac.asString() == "rbac_worker");
 
     broker.cleanup();
 
     {
         const auto heartbeat = worker.tryReadOne();
         REQUIRE(heartbeat.has_value());
-        REQUIRE(heartbeat->isValid());
-        REQUIRE(heartbeat->isWorkerMessage());
-        REQUIRE(heartbeat->command() == Command::Heartbeat);
-        REQUIRE(heartbeat->serviceName() == "a.service");
-        REQUIRE(heartbeat->rbacToken() == "RBAC=ADMIN,abcdef12345");
+        REQUIRE(heartbeat->protocolName == mdp::workerProtocol);
+        REQUIRE(heartbeat->command == mdp::Command::Heartbeat);
+        REQUIRE(heartbeat->serviceName == "a.service");
+        REQUIRE(heartbeat->rbac.asString() == "RBAC=ADMIN,abcdef12345");
     }
 
     const auto disconnect = worker.tryReadOne();
     REQUIRE(disconnect.has_value());
-    REQUIRE(disconnect->isValid());
-    REQUIRE(disconnect->isWorkerMessage());
-    REQUIRE(disconnect->command() == Command::Disconnect);
-    REQUIRE(disconnect->serviceName() == "a.service");
-    REQUIRE(disconnect->clientRequestId().empty());
-    REQUIRE(disconnect->topic() == "/a.service");
-    REQUIRE(disconnect->body() == "broker shutdown");
-    REQUIRE(disconnect->error().empty());
-    REQUIRE(disconnect->rbacToken() == "RBAC=ADMIN,abcdef12345");
+    REQUIRE(disconnect->protocolName == mdp::workerProtocol);
+    REQUIRE(disconnect->command == mdp::Command::Disconnect);
+    REQUIRE(disconnect->serviceName == "a.service");
+    REQUIRE(disconnect->clientRequestID.empty());
+    REQUIRE(disconnect->endpoint.str() == "/a.service");
+    REQUIRE(disconnect->data.asString() == "broker shutdown");
+    REQUIRE(disconnect->error.empty());
+    REQUIRE(disconnect->rbac.asString() == "RBAC=ADMIN,abcdef12345");
 }
 
 TEST_CASE("Test service matching", "[broker][name-matcher]") {
     using opencmw::majordomo::Broker;
-    using opencmw::majordomo::MdpMessage;
 
     Broker               broker("testbroker", testSettings());
 
-    TestNode<MdpMessage> worker(broker.context);
+    MessageNode worker(broker.context);
     REQUIRE(worker.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
-    TestNode<MdpMessage> client(broker.context);
+    MessageNode client(broker.context);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
-    auto ready = MdpMessage::createWorkerMessage(Command::Ready);
-    ready.setServiceName("/DeviceA/dashboard", static_tag);
-    ready.setBody("An example worker serving different dashbards", static_tag);
-    ready.setRbacToken("rbacToken", static_tag);
-    worker.send(ready);
+    auto ready = createWorkerMessage(mdp::Command::Ready);
+    ready.serviceName = "/DeviceA/dashboard";
+    ready.data = IoBuffer("An example worker serving different dashbards");
+    ready.rbac = IoBuffer("rbacToken");
+    worker.send(std::move(ready));
 
     broker.processMessages();
 
     {
-        auto request = MdpMessage::createClientMessage(Command::Get);
-        request.setServiceName("/DeviceA/dashboard", static_tag);
-        request.setClientRequestId("1", static_tag);
-        request.setTopic("/DeviceA/dashboard", static_tag);
-        request.setRbacToken("rbacToken", static_tag);
-        client.send(request);
+        auto request = createClientMessage(mdp::Command::Get);
+        request.serviceName = "/DeviceA/dashboard";
+        request.clientRequestID = IoBuffer("1");
+        request.endpoint = mdp::Message::URI("/DeviceA/dashboard");
+        request.rbac = IoBuffer("rbacToken");
+        client.send(std::move(request));
 
         broker.processMessages();
 
         const auto requestAtWorker = worker.tryReadOneSkipHB(3);
         REQUIRE(requestAtWorker.has_value());
-        REQUIRE(requestAtWorker->isValid());
-        REQUIRE(requestAtWorker->isWorkerMessage());
-        REQUIRE(requestAtWorker->command() == Command::Get);
-        REQUIRE(!requestAtWorker->clientSourceId().empty());
-        REQUIRE(requestAtWorker->clientRequestId() == "1");
-        REQUIRE(requestAtWorker->topic() == "/DeviceA/dashboard");
-        REQUIRE(requestAtWorker->body().empty());
-        REQUIRE(requestAtWorker->error().empty());
-        REQUIRE(requestAtWorker->rbacToken() == "rbacToken");
+        REQUIRE(requestAtWorker->protocolName == mdp::workerProtocol);
+        REQUIRE(requestAtWorker->command == mdp::Command::Get);
+        REQUIRE(!requestAtWorker->serviceName.empty()); // clientSourceID
+        REQUIRE(requestAtWorker->clientRequestID.asString() == "1");
+        REQUIRE(requestAtWorker->endpoint.str() == "/DeviceA/dashboard");
+        REQUIRE(requestAtWorker->data.empty());
+        REQUIRE(requestAtWorker->error.empty());
+        REQUIRE(requestAtWorker->rbac.asString() == "rbacToken");
 
-        auto replyFromWorker = MdpMessage::createWorkerMessage(Command::Final);
-        replyFromWorker.setClientSourceId(requestAtWorker->clientSourceId(), dynamic_tag);
-        replyFromWorker.setClientRequestId("1", static_tag);
-        replyFromWorker.setTopic("/DeviceA/dashboard/default", static_tag);
-        replyFromWorker.setBody("Testreply", static_tag);
-        replyFromWorker.setRbacToken("rbac_worker", static_tag);
-        worker.send(replyFromWorker);
+        auto replyFromWorker = createWorkerMessage(mdp::Command::Final);
+        replyFromWorker.serviceName = requestAtWorker->serviceName; // clientSourceID
+        replyFromWorker.clientRequestID = IoBuffer("1");
+        replyFromWorker.endpoint = mdp::Message::URI("/DeviceA/dashboard/default");
+        replyFromWorker.data = IoBuffer("Testreply");
+        replyFromWorker.rbac = IoBuffer("rbac_worker");
+        worker.send(std::move(replyFromWorker));
 
         broker.processMessages();
 
         const auto reply = client.tryReadOneSkipHB(3);
         REQUIRE(reply.has_value());
-        REQUIRE(reply->isValid());
-        REQUIRE(reply->isClientMessage());
-        REQUIRE(reply->command() == Command::Final);
-        REQUIRE(reply->serviceName() == "/DeviceA/dashboard");
-        REQUIRE(reply->clientRequestId() == "1");
-        REQUIRE(reply->topic() == "/DeviceA/dashboard/default");
-        REQUIRE(reply->body() == "Testreply");
-        REQUIRE(reply->error().empty());
-        REQUIRE(reply->rbacToken() == "rbac_worker");
+        REQUIRE(reply->protocolName == mdp::clientProtocol);
+        REQUIRE(reply->command == mdp::Command::Final);
+        REQUIRE(reply->serviceName == "/DeviceA/dashboard");
+        REQUIRE(reply->clientRequestID.asString() == "1");
+        REQUIRE(reply->endpoint.str() == "/DeviceA/dashboard/default");
+        REQUIRE(reply->data.asString() == "Testreply");
+        REQUIRE(reply->error.empty());
+        REQUIRE(reply->rbac.asString() == "rbac_worker");
     }
 
     {
-        auto request = MdpMessage::createClientMessage(Command::Get);
-        request.setServiceName("/DeviceA/dashboard/main", static_tag);
-        request.setClientRequestId("2", static_tag);
-        request.setTopic("/DeviceA/dashboard/main?revision=12", static_tag);
-        request.setRbacToken("rbacToken", static_tag);
-        client.send(request);
+        auto request = createClientMessage(mdp::Command::Get);
+        request.serviceName = "/DeviceA/dashboard/main";
+        request.clientRequestID = IoBuffer("2");
+        request.endpoint = mdp::Message::URI("/DeviceA/dashboard/main?revision=12");
+        request.rbac = IoBuffer("rbacToken");
+        client.send(std::move(request));
 
         broker.processMessages();
 
         const auto requestAtWorker = worker.tryReadOneSkipHB(3);
         REQUIRE(requestAtWorker.has_value());
-        REQUIRE(requestAtWorker->isValid());
-        REQUIRE(requestAtWorker->isWorkerMessage());
-        REQUIRE(requestAtWorker->command() == Command::Get);
-        REQUIRE(!requestAtWorker->clientSourceId().empty());
-        REQUIRE(requestAtWorker->clientRequestId() == "2");
-        REQUIRE(requestAtWorker->topic() == "/DeviceA/dashboard/main?revision=12");
-        REQUIRE(requestAtWorker->body().empty());
-        REQUIRE(requestAtWorker->error().empty());
-        REQUIRE(requestAtWorker->rbacToken() == "rbacToken");
+        REQUIRE(requestAtWorker->protocolName == mdp::workerProtocol);
+        REQUIRE(requestAtWorker->command == mdp::Command::Get);
+        REQUIRE(!requestAtWorker->serviceName.empty()); // clientSourceID
+        REQUIRE(requestAtWorker->clientRequestID.asString() == "2");
+        REQUIRE(requestAtWorker->endpoint.str() == "/DeviceA/dashboard/main?revision=12");
+        REQUIRE(requestAtWorker->data.empty());
+        REQUIRE(requestAtWorker->error.empty());
+        REQUIRE(requestAtWorker->rbac.asString() == "rbacToken");
 
-        auto replyFromWorker = MdpMessage::createWorkerMessage(Command::Final);
-        replyFromWorker.setClientSourceId(requestAtWorker->clientSourceId(), dynamic_tag);
-        replyFromWorker.setClientRequestId("2", static_tag);
-        replyFromWorker.setTopic("/DeviceA/dashboard/main?revision=12", static_tag);
-        replyFromWorker.setBody("Testreply", static_tag);
-        replyFromWorker.setRbacToken("rbac_worker", static_tag);
-        worker.send(replyFromWorker);
+        auto replyFromWorker = createWorkerMessage(mdp::Command::Final);
+        replyFromWorker.serviceName = requestAtWorker->serviceName; // clientSourceID
+        replyFromWorker.clientRequestID = IoBuffer("2");
+        replyFromWorker.endpoint = mdp::Message::URI("/DeviceA/dashboard/main?revision=12");
+        replyFromWorker.data = IoBuffer("Testreply");
+        replyFromWorker.rbac = IoBuffer("rbac_worker");
+        worker.send(std::move(replyFromWorker));
 
         broker.processMessages();
 
         const auto reply = client.tryReadOneSkipHB(3);
         REQUIRE(reply.has_value());
-        REQUIRE(reply->isValid());
-        REQUIRE(reply->isClientMessage());
-        REQUIRE(reply->command() == Command::Final);
-        REQUIRE(reply->serviceName() == "/DeviceA/dashboard");
-        REQUIRE(reply->clientRequestId() == "2");
-        REQUIRE(reply->topic() == "/DeviceA/dashboard/main?revision=12");
-        REQUIRE(reply->body() == "Testreply");
-        REQUIRE(reply->error().empty());
-        REQUIRE(reply->rbacToken() == "rbac_worker");
+        REQUIRE(reply->protocolName == mdp::clientProtocol);
+        REQUIRE(reply->command == mdp::Command::Final);
+        REQUIRE(reply->serviceName == "/DeviceA/dashboard");
+        REQUIRE(reply->clientRequestID.asString() == "2");
+        REQUIRE(reply->endpoint.str() == "/DeviceA/dashboard/main?revision=12");
+        REQUIRE(reply->data.asString() == "Testreply");
+        REQUIRE(reply->error.empty());
+        REQUIRE(reply->rbac.asString() == "rbac_worker");
     }
 
     broker.cleanup();
@@ -700,21 +544,19 @@ TEST_CASE("Test service matching", "[broker][name-matcher]") {
     // verify that the broker shuts the worker down correctly
     const auto disconnect = worker.tryReadOneSkipHB(3);
     REQUIRE(disconnect.has_value());
-    REQUIRE(disconnect->isValid());
-    REQUIRE(disconnect->isWorkerMessage());
-    REQUIRE(disconnect->command() == Command::Disconnect);
-    REQUIRE(disconnect->serviceName() == "/DeviceA/dashboard");
-    REQUIRE(disconnect->clientRequestId().empty());
-    REQUIRE(disconnect->topic() == "//DeviceA/dashboard");
-    REQUIRE(disconnect->body() == "broker shutdown");
-    REQUIRE(disconnect->error().empty());
-    REQUIRE(disconnect->rbacToken() == "RBAC=ADMIN,abcdef12345");
+    REQUIRE(disconnect->protocolName == mdp::workerProtocol);
+    REQUIRE(disconnect->command == mdp::Command::Disconnect);
+    REQUIRE(disconnect->serviceName == "/DeviceA/dashboard");
+    REQUIRE(disconnect->clientRequestID.empty());
+    REQUIRE(disconnect->endpoint.str() == "//DeviceA/dashboard");
+    REQUIRE(disconnect->data.asString() == "broker shutdown");
+    REQUIRE(disconnect->error.empty());
+    REQUIRE(disconnect->rbac.asString() == "RBAC=ADMIN,abcdef12345");
 }
 
 TEST_CASE("Pubsub example using SUB client/DEALER worker", "[broker][pubsub_sub_dealer]") {
     using opencmw::majordomo::BindOption;
     using opencmw::majordomo::Broker;
-    using opencmw::majordomo::MdpMessage;
 
     const auto publisherAddress = URI<>("inproc://testpub");
 
@@ -722,45 +564,45 @@ TEST_CASE("Pubsub example using SUB client/DEALER worker", "[broker][pubsub_sub_
 
     REQUIRE(broker.bind(publisherAddress, BindOption::Pub));
 
-    TestNode<BrokerMessage> subscriber(broker.context, ZMQ_SUB);
+    BrokerMessageNode subscriber(broker.context, ZMQ_SUB);
     REQUIRE(subscriber.connect(publisherAddress, "/a.topic"));
     REQUIRE(subscriber.subscribe("/other.*"));
 
     broker.processMessages();
 
-    TestNode<MdpMessage> publisher(broker.context);
+    MessageNode publisher(broker.context);
     REQUIRE(publisher.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
     // send three notifications, two matching (one exact, one via wildcard), one not matching
     {
-        auto notify = MdpMessage::createWorkerMessage(Command::Notify);
-        notify.setServiceName("a.service", static_tag);
-        notify.setTopic("/a.topic", static_tag);
-        notify.setBody("Notification about /a.topic", static_tag);
-        notify.setRbacToken("rbac_worker", static_tag);
-        publisher.send(notify);
+        auto notify = createWorkerMessage(mdp::Command::Notify);
+        notify.serviceName = "a.service";
+        notify.endpoint = mdp::Message::URI("/a.topic");
+        notify.data = IoBuffer("Notification about /a.topic");
+        notify.rbac = IoBuffer("rbac_worker");
+        publisher.send(std::move(notify));
     }
 
     broker.processMessages();
 
     {
-        auto notify = MdpMessage::createWorkerMessage(Command::Notify);
-        notify.setServiceName("a.service", static_tag);
-        notify.setTopic("/a.topic_2", static_tag);
-        notify.setBody("Notification about /a.topic_2", static_tag);
-        notify.setRbacToken("rbac_worker", static_tag);
-        publisher.send(notify);
+        auto notify = createWorkerMessage(mdp::Command::Notify);
+        notify.serviceName = "a.service";
+        notify.endpoint = mdp::Message::URI("/a.topic_2");
+        notify.data = IoBuffer("Notification about /a.topic_2");
+        notify.rbac = IoBuffer("rbac_worker");
+        publisher.send(std::move(notify));
     }
 
     broker.processMessages();
 
     {
-        auto notify = MdpMessage::createWorkerMessage(Command::Notify);
-        notify.setServiceName("a.service", static_tag);
-        notify.setTopic("/other.topic", static_tag);
-        notify.setBody("Notification about /other.topic", static_tag);
-        notify.setRbacToken("rbac_worker", static_tag);
-        publisher.send(notify);
+        auto notify = createWorkerMessage(mdp::Command::Notify);
+        notify.serviceName = "a.service";
+        notify.endpoint = mdp::Message::URI("/other.topic");
+        notify.data = IoBuffer("Notification about /other.topic");
+        notify.rbac = IoBuffer("rbac_worker");
+        publisher.send(std::move(notify));
     }
 
     broker.processMessages();
@@ -770,33 +612,30 @@ TEST_CASE("Pubsub example using SUB client/DEALER worker", "[broker][pubsub_sub_
     {
         const auto reply = subscriber.tryReadOne();
         REQUIRE(reply.has_value());
-        REQUIRE(reply->isValid());
-        REQUIRE(reply->isClientMessage());
-        REQUIRE(reply->sourceId() == "/a.topic");
-        REQUIRE(reply->serviceName() == "a.service");
-        REQUIRE(reply->clientRequestId().empty());
-        REQUIRE(reply->body() == "Notification about /a.topic");
-        REQUIRE(reply->error().empty());
-        REQUIRE(reply->rbacToken() == "rbac_worker");
+        REQUIRE(reply->protocolName == mdp::clientProtocol);
+        REQUIRE(reply->sourceId == "/a.topic");
+        REQUIRE(reply->serviceName == "a.service");
+        REQUIRE(reply->clientRequestID.empty());
+        REQUIRE(reply->data.asString() == "Notification about /a.topic");
+        REQUIRE(reply->error.empty());
+        REQUIRE(reply->rbac.asString() == "rbac_worker");
     }
 
     {
         const auto reply = subscriber.tryReadOne();
         REQUIRE(reply.has_value());
-        REQUIRE(reply->isValid());
-        REQUIRE(reply->isClientMessage());
-        REQUIRE(reply->sourceId() == "/other.*");
-        REQUIRE(reply->serviceName() == "a.service");
-        REQUIRE(reply->clientRequestId().empty());
-        REQUIRE(reply->body() == "Notification about /other.topic");
-        REQUIRE(reply->error().empty());
-        REQUIRE(reply->rbacToken() == "rbac_worker");
+        REQUIRE(reply->protocolName == mdp::clientProtocol);
+        REQUIRE(reply->sourceId == "/other.*");
+        REQUIRE(reply->serviceName == "a.service");
+        REQUIRE(reply->clientRequestID.empty());
+        REQUIRE(reply->data.asString() == "Notification about /other.topic");
+        REQUIRE(reply->error.empty());
+        REQUIRE(reply->rbac.asString() == "rbac_worker");
     }
 }
 
 TEST_CASE("Broker sends heartbeats", "[broker][heartbeat]") {
     using opencmw::majordomo::Broker;
-    using opencmw::majordomo::MdpMessage;
     using Clock                      = std::chrono::steady_clock;
 
     constexpr auto heartbeatInterval = 50ms;
@@ -806,17 +645,17 @@ TEST_CASE("Broker sends heartbeats", "[broker][heartbeat]") {
     settings.heartbeatLiveness = 3;
     Broker               broker("testbroker", settings);
 
-    TestNode<MdpMessage> worker(broker.context);
+    MessageNode worker(broker.context);
 
     RunInThread          brokerRun(broker);
     REQUIRE(worker.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
     {
-        auto ready = MdpMessage::createWorkerMessage(Command::Ready);
-        ready.setServiceName("heartbeat.service", static_tag);
-        ready.setBody("API description", static_tag);
-        ready.setRbacToken("rbac_worker", static_tag);
-        worker.send(ready);
+        auto ready = createWorkerMessage(mdp::Command::Ready);
+        ready.serviceName = "heartbeat.service";
+        ready.data = IoBuffer("API description");
+        ready.rbac = IoBuffer("rbac_worker");
+        worker.send(std::move(ready));
     }
 
     const auto afterReady = Clock::now();
@@ -824,15 +663,15 @@ TEST_CASE("Broker sends heartbeats", "[broker][heartbeat]") {
     std::this_thread::sleep_for(heartbeatInterval * 0.75);
 
     {
-        auto heartbeat = MdpMessage::createWorkerMessage(Command::Heartbeat);
-        heartbeat.setServiceName("heartbeat.service", static_tag);
-        heartbeat.setRbacToken("rbac_worker", static_tag);
-        worker.send(heartbeat);
+        auto heartbeat = createWorkerMessage(mdp::Command::Heartbeat);
+        heartbeat.serviceName = "heartbeat.service";
+        heartbeat.rbac = IoBuffer("rbac_worker");
+        worker.send(std::move(heartbeat));
     }
 
     const auto heartbeat = worker.tryReadOne();
     REQUIRE(heartbeat.has_value());
-    REQUIRE(heartbeat->command() == Command::Heartbeat);
+    REQUIRE(heartbeat->command == mdp::Command::Heartbeat);
 
     const auto afterHeartbeat = Clock::now();
 
@@ -846,10 +685,10 @@ TEST_CASE("Broker sends heartbeats", "[broker][heartbeat]") {
     // i.e. that it purged us (silently). We allow two more heartbeats (liveness - 1).
 
     if (const auto maybeHeartbeat = worker.tryReadOne(heartbeatInterval * 2)) {
-        REQUIRE(maybeHeartbeat->command() == Command::Heartbeat);
+        REQUIRE(maybeHeartbeat->command == mdp::Command::Heartbeat);
 
         if (const auto maybeHeartbeat2 = worker.tryReadOne(heartbeatInterval * 2)) {
-            REQUIRE(maybeHeartbeat2->command() == Command::Heartbeat);
+            REQUIRE(maybeHeartbeat2->command == mdp::Command::Heartbeat);
         }
     }
 
@@ -858,7 +697,6 @@ TEST_CASE("Broker sends heartbeats", "[broker][heartbeat]") {
 
 TEST_CASE("Broker disconnects on unexpected heartbeat", "[broker][unexpected_heartbeat]") {
     using opencmw::majordomo::Broker;
-    using opencmw::majordomo::MdpMessage;
 
     constexpr auto heartbeatInterval = 50ms;
 
@@ -866,25 +704,24 @@ TEST_CASE("Broker disconnects on unexpected heartbeat", "[broker][unexpected_hea
     settings.heartbeatInterval = heartbeatInterval;
     Broker               broker("testbroker", settings);
 
-    TestNode<MdpMessage> worker(broker.context);
+    MessageNode worker(broker.context);
 
     RunInThread          brokerRun(broker);
     REQUIRE(worker.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
     // send heartbeat without initial ready - invalid
-    auto heartbeat = MdpMessage::createWorkerMessage(Command::Heartbeat);
-    heartbeat.setServiceName("heartbeat.service", static_tag);
-    heartbeat.setRbacToken("rbac_worker", static_tag);
-    worker.send(heartbeat);
+    auto heartbeat = createWorkerMessage(mdp::Command::Heartbeat);
+    heartbeat.serviceName = "heartbeat.service";
+    heartbeat.rbac = IoBuffer("rbac_worker");
+    worker.send(std::move(heartbeat));
 
     const auto disconnect = worker.tryReadOne();
     REQUIRE(disconnect.has_value());
-    REQUIRE(disconnect->command() == Command::Disconnect);
+    REQUIRE(disconnect->command == mdp::Command::Disconnect);
 }
 
 TEST_CASE("Test RBAC role priority handling", "[broker][rbac]") {
     using Broker = opencmw::majordomo::Broker<ADMIN, Role<"BOSS", Permission::RW>, Role<"USER", Permission::RW>, ANY>;
-    using opencmw::majordomo::MdpMessage;
     using opencmw::majordomo::MockClient;
     using namespace std::literals;
 
@@ -895,47 +732,49 @@ TEST_CASE("Test RBAC role priority handling", "[broker][rbac]") {
     Broker               broker("testbroker", settings);
     RunInThread          brokerRun(broker);
 
-    TestNode<MdpMessage> worker(broker.context);
+    MessageNode worker(broker.context);
     REQUIRE(worker.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
     {
-        auto ready = MdpMessage::createWorkerMessage(Command::Ready);
-        ready.setServiceName("a.service", static_tag);
-        ready.setBody("API description", static_tag);
-        ready.setRbacToken("rbac_worker", static_tag);
-        worker.send(ready);
+        auto ready = createWorkerMessage(mdp::Command::Ready);
+        ready.serviceName = "a.service";
+        ready.data = IoBuffer("API description");
+        ready.rbac = IoBuffer("rbac_worker");
+        worker.send(std::move(ready));
     }
 
     REQUIRE(waitUntilServiceAvailable(broker.context, "a.service"));
 
-    TestNode<MdpMessage> client(broker.context);
+    MessageNode client(broker.context);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
     constexpr auto roles           = std::array{ "ANY", "UNKNOWN", "USER", "BOSS", "ADMIN" };
 
     int            clientRequestId = 0;
     for (const auto &role : roles) {
-        auto msg = MdpMessage::createClientMessage(Command::Get);
-        msg.setClientRequestId(std::to_string(clientRequestId++), dynamic_tag);
-        msg.setServiceName("a.service", static_tag);
-        msg.setRbacToken(fmt::format("RBAC={},123456abcdef", role), dynamic_tag);
-        client.send(msg);
+        auto msg = createClientMessage(mdp::Command::Get);
+        const auto reqId = std::to_string(clientRequestId++);
+        msg.clientRequestID = IoBuffer(reqId.data(), reqId.size());
+        msg.serviceName = "a.service";
+        const auto rbac = fmt::format("RBAC={},123456abcdef", role);
+        msg.rbac = IoBuffer(rbac.data(), rbac.size());
+        client.send(std::move(msg));
     }
 
     {
         // read first message but don't reply immediately, this forces the broker to queue the following requests
         const auto msg = worker.tryReadOne();
         REQUIRE(msg.has_value());
-        REQUIRE(msg->clientRequestId() == "0");
+        REQUIRE(msg->clientRequestID.asString() == "0");
 
         // we give the broker time to read and queue the following requests
         std::this_thread::sleep_for(settings.heartbeatInterval * 0.7);
 
-        auto reply = MdpMessage::createWorkerMessage(Command::Final);
-        reply.setClientSourceId(msg->clientSourceId(), dynamic_tag);
-        reply.setClientRequestId(msg->clientRequestId(), dynamic_tag);
-        reply.setBody("Hello!", static_tag);
-        worker.send(reply);
+        auto reply = createWorkerMessage(mdp::Command::Final);
+        reply.serviceName = msg->serviceName; // clientSourceID
+        reply.clientRequestID = msg->clientRequestID;
+        reply.data = IoBuffer("Hello!");
+        worker.send(std::move(reply));
     }
 
     // the remaining messages must have been queued in the broker and thus be reordered:
@@ -944,13 +783,13 @@ TEST_CASE("Test RBAC role priority handling", "[broker][rbac]") {
     while (seenMessages.size() < roles.size() - 1) {
         const auto msg = worker.tryReadOne();
         REQUIRE(msg.has_value());
-        seenMessages.push_back(std::string(msg->clientRequestId()));
+        seenMessages.push_back(std::string(msg->clientRequestID.asString()));
 
-        auto reply = MdpMessage::createWorkerMessage(Command::Final);
-        reply.setClientSourceId(msg->clientSourceId(), dynamic_tag);
-        reply.setClientRequestId(msg->clientRequestId(), dynamic_tag);
-        reply.setBody("Hello!", static_tag);
-        worker.send(reply);
+        auto reply = createWorkerMessage(mdp::Command::Final);
+        reply.serviceName = msg->serviceName; // clientSourceID
+        reply.clientRequestID = msg->clientRequestID;
+        reply.data = IoBuffer("Hello!");
+        worker.send(std::move(reply));
     }
 
     REQUIRE(seenMessages == std::vector{ "4"s, "3"s, "2"s, "1"s });
@@ -958,49 +797,48 @@ TEST_CASE("Test RBAC role priority handling", "[broker][rbac]") {
 
 TEST_CASE("pubsub example using router socket (DEALER client)", "[broker][pubsub_router]") {
     using opencmw::majordomo::Broker;
-    using opencmw::majordomo::MdpMessage;
 
     Broker               broker("testbroker", testSettings());
 
-    TestNode<MdpMessage> subscriber(broker.context);
+    MessageNode subscriber(broker.context);
     REQUIRE(subscriber.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
-    TestNode<MdpMessage> publisherOne(broker.context);
+    MessageNode publisherOne(broker.context);
     REQUIRE(publisherOne.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
-    TestNode<MdpMessage> publisherTwo(broker.context);
+    MessageNode publisherTwo(broker.context);
     REQUIRE(publisherTwo.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
     // subscribe client to /cooking.italian
     {
-        auto subscribe = MdpMessage::createClientMessage(Command::Subscribe);
-        subscribe.setServiceName("first.service", static_tag);
-        subscribe.setTopic("/cooking.italian", static_tag);
-        subscribe.setRbacToken("rbacToken", static_tag);
-        subscriber.send(subscribe);
+        auto subscribe = createClientMessage(mdp::Command::Subscribe);
+        subscribe.serviceName = "first.service";
+        subscribe.endpoint = mdp::Message::URI("/cooking.italian");
+        subscribe.rbac = IoBuffer("rbacToken");
+        subscriber.send(std::move(subscribe));
     }
 
     broker.processMessages();
 
     // subscribe client to /cooking.indian
     {
-        auto subscribe = MdpMessage::createClientMessage(Command::Subscribe);
-        subscribe.setServiceName("second.service", static_tag);
-        subscribe.setTopic("/cooking.indian", static_tag);
-        subscribe.setRbacToken("rbacToken", static_tag);
-        subscriber.send(subscribe);
+        auto subscribe = createClientMessage(mdp::Command::Subscribe);
+        subscribe.serviceName = "second.service";
+        subscribe.endpoint = mdp::Message::URI("/cooking.indian");
+        subscribe.rbac = IoBuffer("rbacToken");
+        subscriber.send(std::move(subscribe));
     }
 
     broker.processMessages();
 
     // publisher 1 sends a notification for /cooking.italian
     {
-        auto pubMsg = MdpMessage::createWorkerMessage(Command::Notify);
-        pubMsg.setServiceName("first.service", static_tag);
-        pubMsg.setTopic("/cooking.italian", static_tag);
-        pubMsg.setBody("Original carbonara recipe here!", static_tag);
-        pubMsg.setRbacToken("rbac_worker_1", static_tag);
-        publisherOne.send(pubMsg);
+        auto pubMsg = createWorkerMessage(mdp::Command::Notify);
+        pubMsg.serviceName = "first.service";
+        pubMsg.endpoint = mdp::Message::URI("/cooking.italian");
+        pubMsg.data = IoBuffer("Original carbonara recipe here!");
+        pubMsg.rbac = IoBuffer("rbac_worker_1");
+        publisherOne.send(std::move(pubMsg));
     }
 
     broker.processMessages();
@@ -1009,25 +847,24 @@ TEST_CASE("pubsub example using router socket (DEALER client)", "[broker][pubsub
     {
         const auto reply = subscriber.tryReadOne();
         REQUIRE(reply.has_value());
-        REQUIRE(reply->isValid());
-        REQUIRE(reply->isClientMessage());
-        REQUIRE(reply->command() == Command::Final);
-        REQUIRE(reply->serviceName() == "first.service");
-        REQUIRE(reply->clientRequestId().empty());
-        REQUIRE(reply->topic() == "/cooking.italian");
-        REQUIRE(reply->body() == "Original carbonara recipe here!");
-        REQUIRE(reply->error().empty());
-        REQUIRE(reply->rbacToken() == "rbac_worker_1");
+        REQUIRE(reply->protocolName == mdp::clientProtocol);
+        REQUIRE(reply->command == mdp::Command::Final);
+        REQUIRE(reply->serviceName == "first.service");
+        REQUIRE(reply->clientRequestID.empty());
+        REQUIRE(reply->endpoint.str() == "/cooking.italian");
+        REQUIRE(reply->data.asString() == "Original carbonara recipe here!");
+        REQUIRE(reply->error.empty());
+        REQUIRE(reply->rbac.asString() == "rbac_worker_1");
     }
 
     // publisher 2 sends a notification for /cooking.indian
     {
-        auto pubMsg = MdpMessage::createWorkerMessage(Command::Notify);
-        pubMsg.setServiceName("second.service", static_tag);
-        pubMsg.setTopic("/cooking.indian", static_tag);
-        pubMsg.setBody("Try our Chicken Korma!", static_tag);
-        pubMsg.setRbacToken("rbac_worker_2", static_tag);
-        publisherTwo.send(pubMsg);
+        auto pubMsg = createWorkerMessage(mdp::Command::Notify);
+        pubMsg.serviceName = "second.service";
+        pubMsg.endpoint = mdp::Message::URI("/cooking.indian");
+        pubMsg.data = IoBuffer("Try our Chicken Korma!");
+        pubMsg.rbac = IoBuffer("rbac_worker_2");
+        publisherTwo.send(std::move(pubMsg));
     }
 
     broker.processMessages();
@@ -1036,48 +873,47 @@ TEST_CASE("pubsub example using router socket (DEALER client)", "[broker][pubsub
     {
         const auto reply = subscriber.tryReadOne();
         REQUIRE(reply.has_value());
-        REQUIRE(reply->isValid());
-        REQUIRE(reply->isClientMessage());
-        REQUIRE(reply->command() == Command::Final);
-        REQUIRE(reply->serviceName() == "second.service");
-        REQUIRE(reply->clientRequestId().empty());
-        REQUIRE(reply->topic() == "/cooking.indian");
-        REQUIRE(reply->body() == "Try our Chicken Korma!");
-        REQUIRE(reply->error().empty());
-        REQUIRE(reply->rbacToken() == "rbac_worker_2");
+        REQUIRE(reply->protocolName == mdp::clientProtocol);
+        REQUIRE(reply->command == mdp::Command::Final);
+        REQUIRE(reply->serviceName == "second.service");
+        REQUIRE(reply->clientRequestID.empty());
+        REQUIRE(reply->endpoint.str() == "/cooking.indian");
+        REQUIRE(reply->data.asString() == "Try our Chicken Korma!");
+        REQUIRE(reply->error.empty());
+        REQUIRE(reply->rbac.asString() == "rbac_worker_2");
     }
 
     // unsubscribe client from /cooking.italian
     {
-        auto unsubscribe = MdpMessage::createClientMessage(Command::Unsubscribe);
-        unsubscribe.setServiceName("first.service", static_tag);
-        unsubscribe.setTopic("/cooking.italian", static_tag);
-        unsubscribe.setRbacToken("rbacToken", static_tag);
-        subscriber.send(unsubscribe);
+        auto unsubscribe = createClientMessage(mdp::Command::Unsubscribe);
+        unsubscribe.serviceName = "first.service";
+        unsubscribe.endpoint = mdp::Message::URI("/cooking.italian");
+        unsubscribe.rbac = IoBuffer("rbacToken");
+        subscriber.send(std::move(unsubscribe));
     }
 
     broker.processMessages();
 
     // publisher 1 sends a notification for /cooking.italian
     {
-        auto pubMsg = MdpMessage::createWorkerMessage(Command::Notify);
-        pubMsg.setServiceName("first.service", static_tag);
-        pubMsg.setTopic("/cooking.italian", static_tag);
-        pubMsg.setBody("The best Margherita in town!", static_tag);
-        pubMsg.setRbacToken("rbac_worker_1", static_tag);
-        publisherOne.send(pubMsg);
+        auto pubMsg = createWorkerMessage(mdp::Command::Notify);
+        pubMsg.serviceName = "first.service";
+        pubMsg.endpoint = mdp::Message::URI("/cooking.italian");
+        pubMsg.data = IoBuffer("The best Margherita in town!");
+        pubMsg.rbac = IoBuffer("rbac_worker_1");
+        publisherOne.send(std::move(pubMsg));
     }
 
     broker.processMessages();
 
     // publisher 2 sends a notification for /cooking.indian
     {
-        auto pubMsg = MdpMessage::createWorkerMessage(Command::Notify);
-        pubMsg.setServiceName("second.service", static_tag);
-        pubMsg.setTopic("/cooking.indian", static_tag);
-        pubMsg.setBody("Sizzling tikkas in our Restaurant!", static_tag);
-        pubMsg.setRbacToken("rbac_worker_2", static_tag);
-        publisherTwo.send(pubMsg);
+        auto pubMsg = createWorkerMessage(mdp::Command::Notify);
+        pubMsg.serviceName = "second.service";
+        pubMsg.endpoint = mdp::Message::URI("/cooking.indian");
+        pubMsg.data = IoBuffer("Sizzling tikkas in our Restaurant!");
+        pubMsg.rbac = IoBuffer("rbac_worker_2");
+        publisherTwo.send(std::move(pubMsg));
     }
 
     broker.processMessages();
@@ -1088,31 +924,29 @@ TEST_CASE("pubsub example using router socket (DEALER client)", "[broker][pubsub
         const auto reply = subscriber.tryReadOne();
 
         REQUIRE(reply.has_value());
-        REQUIRE(reply->isValid());
-        REQUIRE(reply->isClientMessage());
-        REQUIRE(reply->command() == Command::Final);
-        REQUIRE(reply->serviceName() == "second.service");
-        REQUIRE(reply->clientRequestId().empty());
-        REQUIRE(reply->topic() == "/cooking.indian");
-        REQUIRE(reply->body() == "Sizzling tikkas in our Restaurant!");
-        REQUIRE(reply->error().empty());
-        REQUIRE(reply->rbacToken() == "rbac_worker_2");
+        REQUIRE(reply->protocolName == mdp::clientProtocol);
+        REQUIRE(reply->command == mdp::Command::Final);
+        REQUIRE(reply->serviceName == "second.service");
+        REQUIRE(reply->clientRequestID.empty());
+        REQUIRE(reply->endpoint.str() == "/cooking.indian");
+        REQUIRE(reply->data.asString() == "Sizzling tikkas in our Restaurant!");
+        REQUIRE(reply->error.empty());
+        REQUIRE(reply->rbac.asString() == "rbac_worker_2");
     }
 }
 
 TEST_CASE("pubsub example using PUB socket (SUB client)", "[broker][pubsub_subclient]") {
     using opencmw::majordomo::Broker;
-    using opencmw::majordomo::MdpMessage;
 
     Broker                  broker("testbroker", testSettings());
 
-    TestNode<BrokerMessage> subscriber(broker.context, ZMQ_SUB);
+    BrokerMessageNode subscriber(broker.context, ZMQ_SUB);
     REQUIRE(subscriber.connect(opencmw::majordomo::INTERNAL_ADDRESS_PUBLISHER));
 
-    TestNode<MdpMessage> publisherOne(broker.context);
+    MessageNode publisherOne(broker.context);
     REQUIRE(publisherOne.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
-    TestNode<MdpMessage> publisherTwo(broker.context);
+    MessageNode publisherTwo(broker.context);
     REQUIRE(publisherTwo.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
     subscriber.subscribe("/cooking.italian*");
@@ -1125,12 +959,12 @@ TEST_CASE("pubsub example using PUB socket (SUB client)", "[broker][pubsub_subcl
 
     // publisher 1 sends a notification for /cooking.italian.pasta
     {
-        auto pubMsg = MdpMessage::createWorkerMessage(Command::Notify);
-        pubMsg.setServiceName("first.service", static_tag);
-        pubMsg.setTopic("/cooking.italian.pasta", static_tag);
-        pubMsg.setBody("Original carbonara recipe here!", static_tag);
-        pubMsg.setRbacToken("rbac_worker_1", static_tag);
-        publisherOne.send(pubMsg);
+        auto pubMsg = createWorkerMessage(mdp::Command::Notify);
+        pubMsg.serviceName = "first.service";
+        pubMsg.endpoint = mdp::Message::URI("/cooking.italian.pasta");
+        pubMsg.data = IoBuffer("Original carbonara recipe here!");
+        pubMsg.rbac = IoBuffer("rbac_worker_1");
+        publisherOne.send(std::move(pubMsg));
     }
 
     broker.processMessages();
@@ -1139,26 +973,25 @@ TEST_CASE("pubsub example using PUB socket (SUB client)", "[broker][pubsub_subcl
     {
         const auto reply = subscriber.tryReadOne();
         REQUIRE(reply.has_value());
-        REQUIRE(reply->isValid());
-        REQUIRE(reply->isClientMessage());
-        REQUIRE(reply->sourceId() == "/cooking.italian*");
-        REQUIRE(reply->command() == Command::Final);
-        REQUIRE(reply->serviceName() == "first.service");
-        REQUIRE(reply->clientRequestId().empty());
-        REQUIRE(reply->topic() == "/cooking.italian.pasta");
-        REQUIRE(reply->body() == "Original carbonara recipe here!");
-        REQUIRE(reply->error().empty());
-        REQUIRE(reply->rbacToken() == "rbac_worker_1");
+        REQUIRE(reply->protocolName == mdp::clientProtocol);
+        REQUIRE(reply->sourceId == "/cooking.italian*");
+        REQUIRE(reply->command == mdp::Command::Final);
+        REQUIRE(reply->serviceName == "first.service");
+        REQUIRE(reply->clientRequestID.empty());
+        REQUIRE(reply->endpoint.str() == "/cooking.italian.pasta");
+        REQUIRE(reply->data.asString() == "Original carbonara recipe here!");
+        REQUIRE(reply->error.empty());
+        REQUIRE(reply->rbac.asString() == "rbac_worker_1");
     }
 
     // publisher 2 sends a notification for /cooking.indian.chicken
     {
-        auto pubMsg = MdpMessage::createWorkerMessage(Command::Notify);
-        pubMsg.setServiceName("second.service", static_tag);
-        pubMsg.setTopic("/cooking.indian.chicken", static_tag);
-        pubMsg.setBody("Try our Chicken Korma!", static_tag);
-        pubMsg.setRbacToken("rbac_worker_2", static_tag);
-        publisherTwo.send(pubMsg);
+        auto pubMsg = createWorkerMessage(mdp::Command::Notify);
+        pubMsg.serviceName = "second.service";
+        pubMsg.endpoint = mdp::Message::URI("/cooking.indian.chicken");
+        pubMsg.data = IoBuffer("Try our Chicken Korma!");
+        pubMsg.rbac = IoBuffer("rbac_worker_2");
+        publisherTwo.send(std::move(pubMsg));
     }
 
     broker.processMessages();
@@ -1167,16 +1000,15 @@ TEST_CASE("pubsub example using PUB socket (SUB client)", "[broker][pubsub_subcl
     {
         const auto reply = subscriber.tryReadOne();
         REQUIRE(reply.has_value());
-        REQUIRE(reply->isValid());
-        REQUIRE(reply->isClientMessage());
-        REQUIRE(reply->sourceId() == "/cooking.indian*");
-        REQUIRE(reply->command() == Command::Final);
-        REQUIRE(reply->serviceName() == "second.service");
-        REQUIRE(reply->clientRequestId().empty());
-        REQUIRE(reply->topic() == "/cooking.indian.chicken");
-        REQUIRE(reply->body() == "Try our Chicken Korma!");
-        REQUIRE(reply->error().empty());
-        REQUIRE(reply->rbacToken() == "rbac_worker_2");
+        REQUIRE(reply->protocolName == mdp::clientProtocol);
+        REQUIRE(reply->sourceId == "/cooking.indian*");
+        REQUIRE(reply->command == mdp::Command::Final);
+        REQUIRE(reply->serviceName == "second.service");
+        REQUIRE(reply->clientRequestID.empty());
+        REQUIRE(reply->endpoint.str() == "/cooking.indian.chicken");
+        REQUIRE(reply->data.asString() == "Try our Chicken Korma!");
+        REQUIRE(reply->error.empty());
+        REQUIRE(reply->rbac.asString() == "rbac_worker_2");
     }
 
     subscriber.unsubscribe("/cooking.italian*");
@@ -1185,24 +1017,24 @@ TEST_CASE("pubsub example using PUB socket (SUB client)", "[broker][pubsub_subcl
 
     // publisher 1 sends a notification for /cooking.italian.pizza
     {
-        auto pubMsg = MdpMessage::createWorkerMessage(Command::Notify);
-        pubMsg.setServiceName("first.service", static_tag);
-        pubMsg.setTopic("/cooking.italian.pizza", static_tag);
-        pubMsg.setBody("The best Margherita in town!", static_tag);
-        pubMsg.setRbacToken("rbac_worker_1", static_tag);
-        publisherOne.send(pubMsg);
+        auto pubMsg = createWorkerMessage(mdp::Command::Notify);
+        pubMsg.serviceName = "first.service";
+        pubMsg.endpoint = mdp::Message::URI("/cooking.italian.pizza");
+        pubMsg.data = IoBuffer("The best Margherita in town!");
+        pubMsg.rbac = IoBuffer("rbac_worker_1");
+        publisherOne.send(std::move(pubMsg));
     }
 
     broker.processMessages();
 
     // publisher 2 sends a notification for /cooking.indian.tikkas
     {
-        auto pubMsg = MdpMessage::createWorkerMessage(Command::Notify);
-        pubMsg.setServiceName("second.service", static_tag);
-        pubMsg.setTopic("/cooking.indian.tikkas", static_tag);
-        pubMsg.setBody("Sizzling tikkas in our Restaurant!", static_tag);
-        pubMsg.setRbacToken("rbac_worker_2", static_tag);
-        publisherTwo.send(pubMsg);
+        auto pubMsg = createWorkerMessage(mdp::Command::Notify);
+        pubMsg.serviceName = "second.service";
+        pubMsg.endpoint = mdp::Message::URI("/cooking.indian.tikkas");
+        pubMsg.data = IoBuffer("Sizzling tikkas in our Restaurant!");
+        pubMsg.rbac = IoBuffer("rbac_worker_2");
+        publisherTwo.send(std::move(pubMsg));
     }
 
     broker.processMessages();
@@ -1212,20 +1044,17 @@ TEST_CASE("pubsub example using PUB socket (SUB client)", "[broker][pubsub_subcl
     {
         const auto reply = subscriber.tryReadOne();
         REQUIRE(reply.has_value());
-        REQUIRE(reply->isValid());
-        REQUIRE(reply->isClientMessage());
-        REQUIRE(reply->sourceId() == "/cooking.indian*");
-        REQUIRE(reply->command() == Command::Final);
-        REQUIRE(reply->serviceName() == "second.service");
-        REQUIRE(reply->clientRequestId().empty());
-        REQUIRE(reply->topic() == "/cooking.indian.tikkas");
-        REQUIRE(reply->body() == "Sizzling tikkas in our Restaurant!");
-        REQUIRE(reply->error().empty());
-        REQUIRE(reply->rbacToken() == "rbac_worker_2");
+        REQUIRE(reply->protocolName == mdp::clientProtocol);
+        REQUIRE(reply->sourceId == "/cooking.indian*");
+        REQUIRE(reply->command == mdp::Command::Final);
+        REQUIRE(reply->serviceName == "second.service");
+        REQUIRE(reply->clientRequestID.empty());
+        REQUIRE(reply->endpoint.str() == "/cooking.indian.tikkas");
+        REQUIRE(reply->data.asString() == "Sizzling tikkas in our Restaurant!");
+        REQUIRE(reply->error.empty());
+        REQUIRE(reply->rbac.asString() == "rbac_worker_2");
     }
 }
-
-using opencmw::majordomo::MdpMessage;
 
 TEST_CASE("BasicWorker connects to non-existing broker", "[worker]") {
     const zmq::Context       context;
@@ -1251,8 +1080,8 @@ TEST_CASE("BasicWorker run loop quits when broker quits", "[worker]") {
 
 TEST_CASE("BasicWorker connection basics", "[worker][basic_worker_connection]") {
     const zmq::Context      context;
-    TestNode<BrokerMessage> brokerRouter(context, ZMQ_ROUTER);
-    TestNode<BrokerMessage> brokerPub(context, ZMQ_PUB);
+    BrokerMessageNode brokerRouter(context, ZMQ_ROUTER);
+    BrokerMessageNode brokerPub(context, ZMQ_PUB);
     const auto              brokerAddress = opencmw::URI<opencmw::STRICT>("inproc://test/");
     const auto              routerAddress = opencmw::URI<opencmw::STRICT>::factory(brokerAddress).path(opencmw::majordomo::SUFFIX_ROUTER).build();
     const auto              pubAddress    = opencmw::URI<opencmw::STRICT>::factory(brokerAddress).path(opencmw::majordomo::SUFFIX_SUBSCRIBE).build();
@@ -1273,37 +1102,36 @@ TEST_CASE("BasicWorker connection basics", "[worker][basic_worker_connection]") 
     {
         const auto ready = brokerRouter.tryReadOne();
         REQUIRE(ready.has_value());
-        REQUIRE(ready->isValid());
-        REQUIRE(ready->command() == Command::Ready);
-        REQUIRE(ready->serviceName() == "a.service");
-        workerId = ready->sourceId();
+        REQUIRE(ready->command == mdp::Command::Ready);
+        REQUIRE(ready->serviceName == "a.service");
+        workerId = ready->sourceId;
     }
 
     // worker must send a heartbeat
     {
         const auto heartbeat = brokerRouter.tryReadOne(settings.heartbeatInterval * 23 / 10);
         REQUIRE(heartbeat.has_value());
-        REQUIRE(heartbeat->isValid());
-        REQUIRE(heartbeat->command() == Command::Heartbeat);
-        REQUIRE(heartbeat->serviceName() == "a.service");
-        REQUIRE(heartbeat->sourceId() == workerId);
+        REQUIRE(heartbeat->command == mdp::Command::Heartbeat);
+        REQUIRE(heartbeat->serviceName == "a.service");
+        REQUIRE(heartbeat->sourceId == workerId);
     }
 
     // not receiving heartbeats, the worker reconnects and sends a new READY message
     {
         const auto ready = brokerRouter.tryReadOne(settings.heartbeatInterval * (settings.heartbeatLiveness + 1) + settings.workerReconnectInterval);
         REQUIRE(ready.has_value());
-        REQUIRE(ready->isValid());
-        REQUIRE(ready->command() == Command::Ready);
-        REQUIRE(ready->serviceName() == "a.service");
-        workerId = ready->sourceId();
+        REQUIRE(ready->command == mdp::Command::Ready);
+        REQUIRE(ready->serviceName == "a.service");
+        workerId = ready->sourceId;
     }
 
     // send heartbeat to worker
     {
-        auto heartbeat = BrokerMessage::createWorkerMessage(Command::Heartbeat);
-        heartbeat.setSourceId(workerId, dynamic_tag);
-        brokerRouter.send(heartbeat);
+        BrokerMessage heartbeat;
+        heartbeat.protocolName = mdp::workerProtocol;
+        heartbeat.command = mdp::Command::Heartbeat;
+        heartbeat.sourceId = workerId;
+        brokerRouter.send(std::move(heartbeat));
     }
 
     worker.shutdown();
@@ -1312,23 +1140,21 @@ TEST_CASE("BasicWorker connection basics", "[worker][basic_worker_connection]") 
     {
         const auto disconnect = brokerRouter.tryReadOne();
         REQUIRE(disconnect.has_value());
-        REQUIRE(disconnect->isValid());
-        REQUIRE(disconnect->command() == Command::Disconnect);
-        REQUIRE(disconnect->serviceName() == "a.service");
-        REQUIRE(disconnect->sourceId() == workerId);
+        REQUIRE(disconnect->command == mdp::Command::Disconnect);
+        REQUIRE(disconnect->serviceName == "a.service");
+        REQUIRE(disconnect->sourceId == workerId);
     }
 }
 
 TEST_CASE("SET/GET example using the BasicWorker class", "[worker][getset_basic_worker]") {
     using opencmw::majordomo::Broker;
-    using opencmw::majordomo::MdpMessage;
 
     Broker                                                                       broker("testbroker", testSettings());
 
     BasicWorker<"a.service", opencmw::majordomo::description<"API description">> worker(broker, TestIntHandler(10));
     REQUIRE(worker.serviceDescription() == "API description");
 
-    TestNode<MdpMessage> client(broker.context);
+    MessageNode client(broker.context);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
     RunInThread brokerRun(broker);
@@ -1338,72 +1164,69 @@ TEST_CASE("SET/GET example using the BasicWorker class", "[worker][getset_basic_
     // an "unknown service" error, retry until we get the expected reply
     bool replyReceived = false;
     while (!replyReceived) {
-        auto request = MdpMessage::createClientMessage(Command::Get);
-        request.setServiceName("a.service", static_tag);
-        request.setClientRequestId("1", static_tag);
-        request.setTopic("/topic", static_tag);
-        request.setRbacToken("rbacToken", static_tag);
-        client.send(request);
+        auto request = createClientMessage(mdp::Command::Get);
+        request.serviceName = "a.service";
+        request.clientRequestID = IoBuffer("1");
+        request.endpoint = mdp::Message::URI("/topic");
+        request.rbac = IoBuffer("rbacToken");
+        client.send(std::move(request));
 
         const auto reply = client.tryReadOne();
 
         REQUIRE(reply.has_value());
-        REQUIRE(reply->isValid());
-        REQUIRE(reply->isClientMessage());
-        REQUIRE(reply->command() == Command::Final);
-        REQUIRE(reply->clientRequestId() == "1");
+        REQUIRE(reply->protocolName == mdp::clientProtocol);
+        REQUIRE(reply->command == mdp::Command::Final);
+        REQUIRE(reply->clientRequestID.asString() == "1");
 
-        if (!reply->error().empty()) {
-            REQUIRE(reply->error().find("error 501") != std::string_view::npos);
+        if (!reply->error.empty()) {
+            REQUIRE(reply->error.find("error 501") != std::string_view::npos);
         } else {
-            REQUIRE(reply->serviceName() == "a.service");
-            REQUIRE(reply->topic() == "/topic");
-            REQUIRE(reply->body() == "10");
-            REQUIRE(reply->error().empty());
-            REQUIRE(reply->rbacToken() == "rbacToken");
+            REQUIRE(reply->serviceName == "a.service");
+            REQUIRE(reply->endpoint.str() == "/topic");
+            REQUIRE(reply->data.asString() == "10");
+            REQUIRE(reply->error.empty());
+            REQUIRE(reply->rbac.asString() == "rbacToken");
             replyReceived = true;
         }
     }
 
     {
-        auto request = MdpMessage::createClientMessage(Command::Set);
-        request.setServiceName("a.service", static_tag);
-        request.setClientRequestId("2", static_tag);
-        request.setTopic("/topic", static_tag);
-        request.setBody("42", static_tag);
-        request.setRbacToken("rbacToken", static_tag);
+        auto request = createClientMessage(mdp::Command::Set);
+        request.serviceName = "a.service";
+        request.clientRequestID = IoBuffer("2");
+        request.endpoint = mdp::Message::URI("/topic");
+        request.data = IoBuffer("42");
+        request.rbac = IoBuffer("rbacToken");
 
-        client.send(request);
+        client.send(std::move(request));
 
         const auto reply = client.tryReadOne();
 
         REQUIRE(reply.has_value());
-        REQUIRE(reply->isValid());
-        REQUIRE(reply->isClientMessage());
-        REQUIRE(reply->command() == Command::Final);
-        REQUIRE(reply->clientRequestId() == "2");
-        REQUIRE(reply->body() == "Value set. All good!");
-        REQUIRE(reply->error().empty());
+        REQUIRE(reply->protocolName == mdp::clientProtocol);
+        REQUIRE(reply->command == mdp::Command::Final);
+        REQUIRE(reply->clientRequestID.asString() == "2");
+        REQUIRE(reply->data.asString() == "Value set. All good!");
+        REQUIRE(reply->error.empty());
     }
 
     {
-        auto request = MdpMessage::createClientMessage(Command::Get);
-        request.setServiceName("a.service", static_tag);
-        request.setClientRequestId("3", static_tag);
-        request.setTopic("/topic", static_tag);
-        request.setRbacToken("rbacToken", static_tag);
-        client.send(request);
+        auto request = createClientMessage(mdp::Command::Get);
+        request.serviceName = "a.service";
+        request.clientRequestID = IoBuffer("3");
+        request.endpoint = mdp::Message::URI("/topic");
+        request.rbac = IoBuffer("rbacToken");
+        client.send(std::move(request));
 
         const auto reply = client.tryReadOne();
 
         REQUIRE(reply.has_value());
-        REQUIRE(reply->isValid());
-        REQUIRE(reply->isClientMessage());
-        REQUIRE(reply->command() == Command::Final);
-        REQUIRE(reply->clientRequestId() == "3");
-        REQUIRE(reply->topic() == "/topic");
-        REQUIRE(reply->body() == "42");
-        REQUIRE(reply->error().empty());
+        REQUIRE(reply->protocolName == mdp::clientProtocol);
+        REQUIRE(reply->command == mdp::Command::Final);
+        REQUIRE(reply->clientRequestID.asString() == "3");
+        REQUIRE(reply->endpoint.str() == "/topic");
+        REQUIRE(reply->data.asString() == "42");
+        REQUIRE(reply->error.empty());
     }
 }
 
@@ -1411,7 +1234,6 @@ TEST_CASE("BasicWorker SET/GET example with RBAC permission handling", "[worker]
     using WRITER = Role<"WRITER", Permission::WO>;
     using READER = Role<"READER", Permission::RO>;
     using opencmw::majordomo::description;
-    using opencmw::majordomo::MdpMessage;
 
     Broker                                                                          broker("testbroker", testSettings());
     BasicWorker<"/a.service", description<"API description">, rbac<WRITER, READER>> worker(broker, TestIntHandler(10));
@@ -1422,124 +1244,118 @@ TEST_CASE("BasicWorker SET/GET example with RBAC permission handling", "[worker]
 
     REQUIRE(waitUntilServiceAvailable(broker.context, "/a.service"));
 
-    TestNode<MdpMessage> writer(broker.context);
+    MessageNode writer(broker.context);
     REQUIRE(writer.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
     // writer is allowed to SET
     {
-        auto set = MdpMessage::createClientMessage(Command::Set);
-        set.setServiceName("/a.service", static_tag);
-        set.setClientRequestId("1", static_tag);
-        set.setTopic("/topic", static_tag);
-        set.setBody("42", static_tag);
-        set.setRbacToken("RBAC=WRITER,1234", static_tag);
+        auto set = createClientMessage(mdp::Command::Set);
+        set.serviceName = "/a.service";
+        set.clientRequestID = IoBuffer("1");
+        set.endpoint = mdp::Message::URI("/topic");
+        set.data = IoBuffer("42");
+        set.rbac = IoBuffer("RBAC=WRITER,1234");
 
-        writer.send(set);
+        writer.send(std::move(set));
 
         const auto reply = writer.tryReadOne();
         REQUIRE(reply.has_value());
-        REQUIRE(reply->isValid());
-        REQUIRE(reply->clientRequestId() == "1");
-        REQUIRE(reply->body() == "Value set. All good!");
-        REQUIRE(reply->error().empty());
+        REQUIRE(reply->clientRequestID.asString() == "1");
+        REQUIRE(reply->data.asString() == "Value set. All good!");
+        REQUIRE(reply->error.empty());
     }
 
     // writer is not allowed to GET
     {
-        auto get = MdpMessage::createClientMessage(Command::Get);
-        get.setServiceName("/a.service", static_tag);
-        get.setClientRequestId("2", static_tag);
-        get.setTopic("/topic", static_tag);
-        get.setRbacToken("RBAC=WRITER,1234", static_tag);
+        auto get = createClientMessage(mdp::Command::Get);
+        get.serviceName = "/a.service";
+        get.clientRequestID = IoBuffer("2");
+        get.endpoint = mdp::Message::URI("/topic");
+        get.rbac = IoBuffer("RBAC=WRITER,1234");
 
-        writer.send(get);
+        writer.send(std::move(get));
 
         const auto reply = writer.tryReadOne();
         REQUIRE(reply.has_value());
-        REQUIRE(reply->isValid());
-        REQUIRE(reply->clientRequestId() == "2");
-        REQUIRE(reply->body().empty());
-        REQUIRE(reply->error() == "GET access denied to role 'WRITER'");
+        REQUIRE(reply->clientRequestID.asString() == "2");
+        REQUIRE(reply->data.empty());
+        REQUIRE(reply->error == "GET access denied to role 'WRITER'");
     }
 
-    TestNode<MdpMessage> reader(broker.context);
+    MessageNode reader(broker.context);
     REQUIRE(reader.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
     // reader is not allowed to SET
     {
-        auto set = MdpMessage::createClientMessage(Command::Set);
-        set.setServiceName("/a.service", static_tag);
-        set.setClientRequestId("1", static_tag);
-        set.setTopic("/topic", static_tag);
-        set.setBody("42", static_tag);
-        set.setRbacToken("RBAC=READER,1234", static_tag);
+        auto set = createClientMessage(mdp::Command::Set);
+        set.serviceName = "/a.service";
+        set.clientRequestID = IoBuffer("1");
+        set.endpoint = mdp::Message::URI("/topic");
+        set.data = IoBuffer("42");
+        set.rbac = IoBuffer("RBAC=READER,1234");
 
-        reader.send(set);
+        reader.send(std::move(set));
 
         const auto reply = reader.tryReadOne();
         REQUIRE(reply.has_value());
-        REQUIRE(reply->isValid());
-        REQUIRE(reply->clientRequestId() == "1");
-        REQUIRE(reply->body().empty());
-        REQUIRE(reply->error() == "SET access denied to role 'READER'");
+        REQUIRE(reply->clientRequestID.asString() == "1");
+        REQUIRE(reply->data.empty());
+        REQUIRE(reply->error == "SET access denied to role 'READER'");
     }
 
     // reader is allowed to GET
     {
-        auto get = MdpMessage::createClientMessage(Command::Get);
-        get.setServiceName("/a.service", static_tag);
-        get.setClientRequestId("2", static_tag);
-        get.setTopic("/topic", static_tag);
-        get.setRbacToken("RBAC=READER,1234", static_tag);
+        auto get = createClientMessage(mdp::Command::Get);
+        get.serviceName = "/a.service";
+        get.clientRequestID = IoBuffer("2");
+        get.endpoint = mdp::Message::URI("/topic");
+        get.rbac = IoBuffer("RBAC=READER,1234");
 
-        reader.send(get);
+        reader.send(std::move(get));
 
         const auto reply = reader.tryReadOne();
         REQUIRE(reply.has_value());
-        REQUIRE(reply->isValid());
-        REQUIRE(reply->clientRequestId() == "2");
-        REQUIRE(reply->body() == "42");
-        REQUIRE(reply->error().empty());
+        REQUIRE(reply->clientRequestID.asString() == "2");
+        REQUIRE(reply->data.asString() == "42");
+        REQUIRE(reply->error.empty());
     }
 
-    TestNode<MdpMessage> admin(broker.context);
+    MessageNode admin(broker.context);
     REQUIRE(admin.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
     // admin is allowed to SET
     {
-        auto set = MdpMessage::createClientMessage(Command::Set);
-        set.setServiceName("/a.service", static_tag);
-        set.setClientRequestId("1", static_tag);
-        set.setTopic("/topic", static_tag);
-        set.setBody("42", static_tag);
-        set.setRbacToken("RBAC=ADMIN,1234", static_tag);
+        auto set = createClientMessage(mdp::Command::Set);
+        set.serviceName = "/a.service";
+        set.clientRequestID = IoBuffer("1");
+        set.endpoint = mdp::Message::URI("/topic");
+        set.data = IoBuffer("42");
+        set.rbac = IoBuffer("RBAC=ADMIN,1234");
 
-        admin.send(set);
+        admin.send(std::move(set));
 
         const auto reply = admin.tryReadOne();
         REQUIRE(reply.has_value());
-        REQUIRE(reply->isValid());
-        REQUIRE(reply->clientRequestId() == "1");
-        REQUIRE(reply->body() == "Value set. All good!");
-        REQUIRE(reply->error().empty());
+        REQUIRE(reply->clientRequestID.asString() == "1");
+        REQUIRE(reply->data.asString() == "Value set. All good!");
+        REQUIRE(reply->error.empty());
     }
 
     // admin is allowed to GET
     {
-        auto get = MdpMessage::createClientMessage(Command::Get);
-        get.setServiceName("/a.service", static_tag);
-        get.setClientRequestId("2", static_tag);
-        get.setTopic("/topic", static_tag);
-        get.setRbacToken("RBAC=ADMIN,1234", static_tag);
+        auto get = createClientMessage(mdp::Command::Get);
+        get.serviceName = "/a.service";
+        get.clientRequestID = IoBuffer("2");
+        get.endpoint = mdp::Message::URI("/topic");
+        get.rbac = IoBuffer("RBAC=ADMIN,1234");
 
-        admin.send(get);
+        admin.send(std::move(get));
 
         const auto reply = admin.tryReadOne();
         REQUIRE(reply.has_value());
-        REQUIRE(reply->isValid());
-        REQUIRE(reply->clientRequestId() == "2");
-        REQUIRE(reply->body() == "42");
-        REQUIRE(reply->error().empty());
+        REQUIRE(reply->clientRequestID.asString() == "2");
+        REQUIRE(reply->data.asString() == "42");
+        REQUIRE(reply->error.empty());
     }
 }
 
@@ -1551,7 +1367,7 @@ TEST_CASE("NOTIFY example using the BasicWorker class", "[worker][notify_basic_w
 
     BasicWorker<"beverages"> worker(broker, TestIntHandler(10));
 
-    TestNode<BrokerMessage>  client(broker.context, ZMQ_XSUB);
+    BrokerMessageNode  client(broker.context, ZMQ_XSUB);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_PUBLISHER));
 
     RunInThread brokerRun(broker);
@@ -1580,14 +1396,13 @@ TEST_CASE("NOTIFY example using the BasicWorker class", "[worker][notify_basic_w
         }
         {
             const auto notification = client.tryReadOne(std::chrono::milliseconds(20));
-            if (notification && notification->serviceName() != "mmi.service") {
+            if (notification && notification->serviceName != "mmi.service") {
                 seenNotification = true;
-                REQUIRE(notification->isValid());
-                REQUIRE(notification->isClientMessage());
-                REQUIRE(notification->command() == Command::Final);
-                REQUIRE(notification->sourceId() == "/beer*");
-                REQUIRE(notification->topic() == "/beer.time");
-                REQUIRE(notification->body() == "Have a beer");
+                REQUIRE(notification->protocolName == mdp::clientProtocol);
+                REQUIRE(notification->command == mdp::Command::Final);
+                REQUIRE(notification->sourceId == "/beer*");
+                REQUIRE(notification->endpoint.str() == "/beer.time");
+                REQUIRE(notification->data.asString() == "Have a beer");
             }
         }
     }
@@ -1606,16 +1421,15 @@ TEST_CASE("NOTIFY example using the BasicWorker class", "[worker][notify_basic_w
             continue;
 
         // there might be extra messages from above, ignore them
-        if (notification->topic() == "/beer.time") {
+        if (notification->endpoint.str() == "/beer.time") {
             continue;
         }
 
-        REQUIRE(notification->isValid());
-        REQUIRE(notification->isClientMessage());
-        REQUIRE(notification->command() == Command::Final);
-        REQUIRE(notification->sourceId() == "/beer*");
-        REQUIRE(notification->topic() == "/beer.error");
-        REQUIRE(notification->error() == "Fridge empty!");
+        REQUIRE(notification->protocolName == mdp::clientProtocol);
+        REQUIRE(notification->command == mdp::Command::Final);
+        REQUIRE(notification->sourceId == "/beer*");
+        REQUIRE(notification->endpoint.str() == "/beer.error");
+        REQUIRE(notification->error == "Fridge empty!");
         seenError = true;
     }
 
@@ -1631,12 +1445,11 @@ TEST_CASE("NOTIFY example using the BasicWorker class", "[worker][notify_basic_w
     {
         const auto notification = client.tryReadOne();
         REQUIRE(notification.has_value());
-        REQUIRE(notification->isValid());
-        REQUIRE(notification->isClientMessage());
-        REQUIRE(notification->command() == Command::Final);
-        REQUIRE(notification->sourceId() == "/wine*");
-        REQUIRE(notification->topic() == "/wine.italian");
-        REQUIRE(notification->body() == "Try our Chianti!");
+        REQUIRE(notification->protocolName == mdp::clientProtocol);
+        REQUIRE(notification->command == mdp::Command::Final);
+        REQUIRE(notification->sourceId == "/wine*");
+        REQUIRE(notification->endpoint.str() == "/wine.italian");
+        REQUIRE(notification->data.asString() == "Try our Chianti!");
     }
 
     // unsubscribe from /beer*
@@ -1665,47 +1478,46 @@ TEST_CASE("NOTIFY example using the BasicWorker class", "[worker][notify_basic_w
 
         const auto msg1 = client.tryReadOne();
         REQUIRE(msg1.has_value());
-        REQUIRE(msg1->sourceId() == "/wine*");
+        REQUIRE(msg1->sourceId == "/wine*");
 
         const auto msg2 = client.tryReadOne();
         REQUIRE(msg2.has_value());
-        if (msg2->sourceId() == "/wine*") {
+        if (msg2->sourceId == "/wine*") {
             break;
         }
 
-        REQUIRE(msg2->sourceId() == "/beer*");
+        REQUIRE(msg2->sourceId == "/beer*");
 
         const auto msg3 = client.tryReadOne();
         REQUIRE(msg3.has_value());
-        REQUIRE(msg3->sourceId() == "/wine*");
+        REQUIRE(msg3->sourceId == "/wine*");
     }
 }
 
 TEST_CASE("NOTIFY example using the BasicWorker class (via ROUTER socket)", "[worker][notify_basic_worker_router]") {
     using opencmw::majordomo::Broker;
-    using opencmw::majordomo::MdpMessage;
 
     Broker                   broker("testbroker", testSettings());
 
     BasicWorker<"beverages"> worker(broker, TestIntHandler(10));
 
-    TestNode<MdpMessage>     client(broker.context);
+    MessageNode     client(broker.context);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
     RunInThread brokerRun(broker);
     RunInThread workerRun(worker);
 
     {
-        auto subscribe = MdpMessage::createClientMessage(Command::Subscribe);
-        subscribe.setServiceName("beverages", static_tag);
-        subscribe.setTopic("/wine", static_tag);
-        client.send(subscribe);
+        auto subscribe = createClientMessage(mdp::Command::Subscribe);
+        subscribe.serviceName = "beverages";
+        subscribe.endpoint = mdp::Message::URI("/wine");
+        client.send(std::move(subscribe));
     }
     {
-        auto subscribe = MdpMessage::createClientMessage(Command::Subscribe);
-        subscribe.setServiceName("beverages", static_tag);
-        subscribe.setTopic("/beer", static_tag);
-        client.send(subscribe);
+        auto subscribe = createClientMessage(mdp::Command::Subscribe);
+        subscribe.serviceName = "beverages";
+        subscribe.endpoint = mdp::Message::URI("/beer");
+        client.send(std::move(subscribe));
     }
 
     bool seenNotification = false;
@@ -1722,13 +1534,12 @@ TEST_CASE("NOTIFY example using the BasicWorker class (via ROUTER socket)", "[wo
         }
         {
             const auto notification = client.tryReadOne(std::chrono::milliseconds(20));
-            if (notification && notification->serviceName() != "mmi.service") {
+            if (notification && notification->serviceName != "mmi.service") {
                 seenNotification = true;
-                REQUIRE(notification->isValid());
-                REQUIRE(notification->isClientMessage());
-                REQUIRE(notification->command() == Command::Final);
-                REQUIRE(notification->topic() == "/beer");
-                REQUIRE(notification->body() == "Have a beer");
+                REQUIRE(notification->protocolName == mdp::clientProtocol);
+                REQUIRE(notification->command == mdp::Command::Final);
+                REQUIRE(notification->endpoint.str() == "/beer");
+                REQUIRE(notification->data.asString() == "Have a beer");
             }
         }
     }
@@ -1745,19 +1556,18 @@ TEST_CASE("NOTIFY example using the BasicWorker class (via ROUTER socket)", "[wo
     {
         const auto notification = client.tryReadOne();
         REQUIRE(notification.has_value());
-        REQUIRE(notification->isValid());
-        REQUIRE(notification->isClientMessage());
-        REQUIRE(notification->command() == Command::Final);
-        REQUIRE(notification->topic() == "/wine");
-        REQUIRE(notification->body() == "Try our Chianti!");
+        REQUIRE(notification->protocolName == mdp::clientProtocol);
+        REQUIRE(notification->command == mdp::Command::Final);
+        REQUIRE(notification->endpoint.str() == "/wine");
+        REQUIRE(notification->data.asString() == "Try our Chianti!");
     }
 
     // unsubscribe from /beer
     {
-        auto unsubscribe = MdpMessage::createClientMessage(Command::Unsubscribe);
-        unsubscribe.setServiceName("beverages", static_tag);
-        unsubscribe.setTopic("/beer", static_tag);
-        client.send(unsubscribe);
+        auto unsubscribe = createClientMessage(mdp::Command::Unsubscribe);
+        unsubscribe.serviceName = "beverages";
+        unsubscribe.endpoint = mdp::Message::URI("/beer");
+        client.send(std::move(unsubscribe));
     }
 
     // loop until we get two consecutive messages about wine, it means that the beer unsubscribe was processed
@@ -1783,18 +1593,18 @@ TEST_CASE("NOTIFY example using the BasicWorker class (via ROUTER socket)", "[wo
 
         const auto msg1 = client.tryReadOne();
         REQUIRE(msg1.has_value());
-        REQUIRE(msg1->topic() == "/wine");
+        REQUIRE(msg1->endpoint.str() == "/wine");
 
         const auto msg2 = client.tryReadOne();
         REQUIRE(msg2.has_value());
-        if (msg2->topic() == "/wine") {
+        if (msg2->endpoint.str() == "/wine") {
             break;
         }
 
-        REQUIRE(msg2->topic() == "/beer");
+        REQUIRE(msg2->endpoint.str() == "/beer");
         const auto msg3 = client.tryReadOne();
         REQUIRE(msg3.has_value());
-        REQUIRE(msg3->topic() == "/wine");
+        REQUIRE(msg3->endpoint.str() == "/wine");
     }
 }
 
@@ -1861,7 +1671,6 @@ TEST_CASE("SET/GET example using a lambda as the worker's request handler", "[wo
 
 TEST_CASE("Worker's request handler throws an exception", "[worker][handler_exception]") {
     using opencmw::majordomo::Broker;
-    using opencmw::majordomo::MdpMessage;
     using opencmw::majordomo::MockClient;
 
     Broker broker("testbroker", testSettings());
@@ -1889,7 +1698,6 @@ TEST_CASE("Worker's request handler throws an exception", "[worker][handler_exce
 
 TEST_CASE("Worker's request handler throws an unexpected exception", "[worker][handler_unexpected_exception]") {
     using opencmw::majordomo::Broker;
-    using opencmw::majordomo::MdpMessage;
     using opencmw::majordomo::MockClient;
 
     Broker broker("testbroker", testSettings());

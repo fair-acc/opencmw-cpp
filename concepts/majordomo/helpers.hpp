@@ -12,7 +12,6 @@
 
 // OpenCMW Majordomo
 #include <majordomo/base64pp.hpp>
-#include <majordomo/Message.hpp>
 #include <majordomo/RestBackend.hpp>
 #include <majordomo/Worker.hpp>
 
@@ -20,6 +19,9 @@ CMRC_DECLARE(testImages);
 CMRC_DECLARE(assets);
 
 namespace majordomo = opencmw::majordomo;
+namespace mdp = opencmw::mdp;
+namespace zmq = opencmw::zmq;
+
 using namespace std::chrono_literals;
 using namespace std::string_literals;
 
@@ -264,7 +266,7 @@ inline opencmw::majordomo::Settings testSettings() {
     return settings;
 }
 
-template<typename MessageType>
+template<opencmw::mdp::MessageFormat Format>
 class TestNode {
 public:
     opencmw::zmq::Socket _socket;
@@ -298,12 +300,12 @@ public:
         return opencmw::zmq::invoke(zmq_setsockopt, _socket, ZMQ_UNSUBSCRIBE, subscription.data(), subscription.size()).isValid();
     }
 
-    bool sendRawFrame(const std::string &data) {
-        opencmw::majordomo::MessageFrame f(data, opencmw::majordomo::MessageFrame::dynamic_bytes_tag{});
+    bool sendRawFrame(std::string data) {
+        opencmw::zmq::MessageFrame f(std::move(data));
         return f.send(_socket, 0).isValid(); // blocking for simplicity
     }
 
-    std::optional<MessageType> tryReadOne(std::chrono::milliseconds timeout = std::chrono::milliseconds(3000)) {
+    std::optional<mdp::BasicMessage<Format>> tryReadOne(std::chrono::milliseconds timeout = std::chrono::milliseconds(3000)) {
         std::array<zmq_pollitem_t, 1> pollerItems;
         pollerItems[0].socket = _socket.zmq_ptr;
         pollerItems[0].events = ZMQ_POLLIN;
@@ -313,13 +315,13 @@ public:
             return {};
         }
 
-        return MessageType::receive(_socket);
+        return zmq::receive<Format>(_socket);
     }
 
-    std::optional<MessageType> tryReadOneSkipHB(int retries, std::chrono::milliseconds timeout = std::chrono::milliseconds(3000)) {
+    std::optional<mdp::BasicMessage<Format>> tryReadOneSkipHB(int retries, std::chrono::milliseconds timeout = std::chrono::milliseconds(3000)) {
         int  i      = 0;
         auto result = tryReadOne(timeout);
-        while (!result || !result->isValid() || result->command() == opencmw::majordomo::Command::Heartbeat) {
+        while (!result || result->command == opencmw::mdp::Command::Heartbeat) {
             if (i++ >= retries) {
                 return {};
             }
@@ -328,13 +330,16 @@ public:
         return result;
     }
 
-    void send(MessageType &message) {
-        message.send(_socket).assertSuccess();
+    void send(mdp::BasicMessage<Format> &&message) {
+        zmq::send(std::move(message), _socket).assertSuccess();
     }
 };
 
+using MessageNode = TestNode<opencmw::mdp::MessageFormat::WithoutSourceId>;
+using BrokerMessageNode = TestNode<opencmw::mdp::MessageFormat::WithSourceId>;
+
 inline bool waitUntilServiceAvailable(const opencmw::zmq::Context &context, std::string_view serviceName, const opencmw::URI<opencmw::STRICT> &brokerAddress = opencmw::majordomo::INTERNAL_ADDRESS_BROKER) {
-    TestNode<opencmw::majordomo::MdpMessage> client(context);
+    MessageNode client(context);
     if (!client.connect(brokerAddress)) {
         return false;
     }
@@ -343,17 +348,19 @@ inline bool waitUntilServiceAvailable(const opencmw::zmq::Context &context, std:
     const auto     startTime = std::chrono::system_clock::now();
 
     while (std::chrono::system_clock::now() - startTime < timeout) {
-        auto request = opencmw::majordomo::MdpMessage::createClientMessage(opencmw::majordomo::Command::Get);
-        request.setServiceName("mmi.service", opencmw::majordomo::MessageFrame::static_bytes_tag{});
-        request.setBody(serviceName, opencmw::majordomo::MessageFrame::dynamic_bytes_tag{});
-        client.send(request);
+        opencmw::mdp::Message request;
+        request.protocolName = opencmw::mdp::clientProtocol;
+        request.command = opencmw::mdp::Command::Get;
+        request.serviceName = "mmi.service";
+        request.data = opencmw::IoBuffer(serviceName.data(), serviceName.size());
+        client.send(std::move(request));
 
         auto reply = client.tryReadOne();
         if (!reply) { // no reply at all? something went seriously wrong
             return false;
         }
 
-        if (reply->body() == "200") {
+        if (reply->data.asString() == "200") {
             return true;
         }
     }

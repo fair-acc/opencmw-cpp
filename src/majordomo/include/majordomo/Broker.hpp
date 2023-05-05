@@ -79,7 +79,7 @@ struct fmt::formatter<opencmw::majordomo::detail::DnsServiceItem> {
 namespace opencmw::majordomo {
 
 // TODO transitional, rename to BrokerMessage
-using BrokerMessageNG = mdp::BasicMessage<mdp::MessageFormat::WithSourceId>;
+using BrokerMessage = mdp::BasicMessage<mdp::MessageFormat::WithSourceId>;
 
 enum class BindOption {
     DetectFromURI, ///< detect from uri which socket is meant (@see bind)
@@ -183,7 +183,7 @@ private:
     struct Client {
         const zmq::Socket         &socket;
         const std::string         id;
-        std::deque<BrokerMessageNG> requests;
+        std::deque<BrokerMessage> requests;
         Timestamp                 expiry;
 
         explicit Client(const zmq::Socket &s, const std::string &id_, Timestamp expiry_)
@@ -202,17 +202,17 @@ private:
     };
 
     struct Service {
-        using QueueEntry    = std::pair<std::string_view, std::deque<BrokerMessageNG>>;
+        using QueueEntry    = std::pair<std::string_view, std::deque<BrokerMessage>>;
         using PriorityQueue = std::array<QueueEntry, std::max(sizeof...(Roles), static_cast<std::size_t>(1))>;
         static constexpr PriorityQueue makePriorityQueue() {
             if constexpr (sizeof...(Roles) == 0) {
-                return { QueueEntry{ "", std::deque<BrokerMessageNG>{} } };
+                return { QueueEntry{ "", std::deque<BrokerMessage>{} } };
             } else {
-                return { QueueEntry{ Roles::name(), std::deque<BrokerMessageNG>{} }... };
+                return { QueueEntry{ Roles::name(), std::deque<BrokerMessage>{} }... };
             }
         }
 
-        std::function<BrokerMessageNG(BrokerMessageNG &&)> internalHandler;
+        std::function<BrokerMessage(BrokerMessage &&)> internalHandler;
         std::string                                    name;
         std::string                                    description;
         std::deque<Worker *>                           waiting;
@@ -229,18 +229,18 @@ private:
             , description(std::move(description_)) {
         }
 
-        explicit Service(std::string name_, std::function<BrokerMessageNG(BrokerMessageNG &&)> internalHandler_)
+        explicit Service(std::string name_, std::function<BrokerMessage(BrokerMessage &&)> internalHandler_)
             : internalHandler{ std::move(internalHandler_) }
             , name{ std::move(name_) } {
         }
 
-        void putMessage(BrokerMessageNG &&message) {
+        void putMessage(BrokerMessage &&message) {
             const auto role = parse_rbac::role(message.rbac.asString());
             queueForRole(role).emplace_back(std::move(message));
             requestCount++;
         }
 
-        BrokerMessageNG takeNextMessage() {
+        BrokerMessage takeNextMessage() {
             auto queueIt = std::find_if(requestsByPriority.begin(), requestsByPriority.end(), [](const auto &v) { return !v.second.empty(); });
             assert(queueIt != requestsByPriority.end());
             auto msg = std::move(queueIt->second.front());
@@ -293,7 +293,7 @@ public:
         , _pubSocket(context, ZMQ_XPUB)
         , _subSocket(context, ZMQ_SUB)
         , _dnsSocket(context, ZMQ_DEALER) {
-        addInternalService("mmi.dns", [this](BrokerMessageNG &&message) {
+        addInternalService("mmi.dns", [this](BrokerMessage &&message) {
             using namespace std::literals;
             message.command = mdp::Command::Final;
 
@@ -329,9 +329,9 @@ public:
             return message;
         });
 
-        addInternalService("mmi.echo", [](BrokerMessageNG &&message) { return message; });
+        addInternalService("mmi.echo", [](BrokerMessage &&message) { return message; });
 
-        addInternalService("mmi.service", [this](BrokerMessageNG &&message) {
+        addInternalService("mmi.service", [this](BrokerMessage &&message) {
             message.command = mdp::Command::Final;
             if (message.data.empty()) {
 #if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
@@ -357,7 +357,7 @@ public:
             return message;
         });
 
-        addInternalService("mmi.openapi", [this](BrokerMessageNG &&message) {
+        addInternalService("mmi.openapi", [this](BrokerMessage &&message) {
             message.command = mdp::Command::Final;
             const auto serviceName = std::string(message.data.asString());
             const auto serviceIt   = _services.find(serviceName);
@@ -627,7 +627,7 @@ private:
         return it->second;
     }
 
-    void addInternalService(std::string serviceName, std::function<BrokerMessageNG(BrokerMessageNG &&)> handler) {
+    void addInternalService(std::string serviceName, std::function<BrokerMessage(BrokerMessage &&)> handler) {
         _services.try_emplace(serviceName, std::move(serviceName), std::move(handler));
     }
 
@@ -678,7 +678,7 @@ private:
         }
     }
 
-    void dispatchMessageToMatchingSubscribers(BrokerMessageNG &&message) {
+    void dispatchMessageToMatchingSubscribers(BrokerMessage &&message) {
         SubscriptionData subscription(message.serviceName, message.endpoint.str(), {});
 
         // TODO avoid clone() for last message sent out
@@ -784,7 +784,7 @@ private:
 
         sendDnsHeartbeats(false);
 
-        BrokerMessageNG challenge;
+        BrokerMessage challenge;
         challenge.protocolName = mdp::clientProtocol;
         challenge.command = mdp::Command::Heartbeat;
         challenge.clientRequestID = IoBuffer("dnsChallenge");
@@ -814,7 +814,7 @@ private:
 
         for (auto &[name, service] : _services) {
             for (auto &worker : service.waiting) {
-                BrokerMessageNG heartbeat;
+                BrokerMessage heartbeat;
                 heartbeat.protocolName = mdp::workerProtocol;
                 heartbeat.command = mdp::Command::Heartbeat;
                 heartbeat.sourceId = worker->id;
@@ -827,7 +827,7 @@ private:
         _heartbeatAt = Clock::now() + settings.heartbeatInterval;
     }
 
-    void processWorker(const zmq::Socket &socket, BrokerMessageNG &&message) {
+    void processWorker(const zmq::Socket &socket, BrokerMessage &&message) {
         const auto &serviceId  = message.sourceId;
         const auto knownWorker = _workers.contains(serviceId);
         auto      &worker      = _workers.try_emplace(serviceId, socket, serviceId, message.serviceName, updatedWorkerExpiry()).first->second;
@@ -838,7 +838,7 @@ private:
             workerWaiting(worker);
             registerNewService(message.serviceName);
             // notify potential listeners
-            BrokerMessageNG      notify;
+            BrokerMessage      notify;
             notify.serviceName = INTERNAL_SERVICE_NAMES;
             notify.endpoint = INTERNAL_SERVICE_NAMES_URI;
             notify.clientRequestID = IoBuffer(brokerName.data(), brokerName.size());
@@ -897,7 +897,7 @@ private:
     }
 
     void disconnectWorker(Worker &worker) {
-        BrokerMessageNG disconnect;
+        BrokerMessage disconnect;
         disconnect.protocolName = mdp::workerProtocol;
         disconnect.command = mdp::Command::Disconnect;
         disconnect.sourceId = worker.id;

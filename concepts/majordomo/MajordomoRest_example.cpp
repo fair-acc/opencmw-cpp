@@ -12,6 +12,7 @@
 #include "helpers.hpp"
 
 namespace majordomo = opencmw::majordomo;
+namespace mdp = opencmw::mdp;
 
 int main(int argc, char **argv) {
     using opencmw::URI;
@@ -94,7 +95,7 @@ int main(int argc, char **argv) {
     waitUntilServiceAvailable(primaryBroker.context, "addressbook");
 
     // Fake message publisher - sends messages on notifier.service
-    TestNode<majordomo::MdpMessage> publisher(primaryBroker.context);
+    TestNode<mdp::MessageFormat::WithoutSourceId> publisher(primaryBroker.context);
     publisher.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER);
 
     for (int i = 0; true; ++i) {
