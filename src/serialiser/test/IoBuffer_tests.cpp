@@ -42,7 +42,7 @@ TEST_CASE("IoBuffer(const char*) - constructor", "[IoBuffer]") {
         REQUIRE(a.asString() == "Hello World!");
         REQUIRE(a.size() == 12);
         REQUIRE(!a.empty());
-        opencmw::IoBuffer     null(nullptr);
+        opencmw::IoBuffer null(nullptr);
         REQUIRE(null.asString() == "");
         REQUIRE(null.size() == 0);
         REQUIRE(null.empty());

@@ -121,12 +121,12 @@ TEST_CASE("Test for some previous issues", "[URI]") {
     using namespace opencmw;
     using QueryMap = std::unordered_map<std::string, std::optional<std::string>>;
 
-     // in the case of small-string optimization, the string_view accessors returned invalid data after movedFrom was destroyed
+    // in the case of small-string optimization, the string_view accessors returned invalid data after movedFrom was destroyed
     {
         URI<STRICT> movedTo("/");
         {
             auto movedFrom = URI<STRICT>("s://u:p@h:1/p#f");
-            movedTo = std::move(movedFrom);
+            movedTo        = std::move(movedFrom);
         }
         CHECK(movedTo.str() == "s://u:p@h:1/p#f");
         CHECK(movedTo.scheme() == "s");
