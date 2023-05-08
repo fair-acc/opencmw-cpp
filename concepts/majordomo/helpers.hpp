@@ -105,9 +105,9 @@ struct TestAddressHandler {
      * The handler function that the handler is required to implement.
      */
     void operator()(const opencmw::majordomo::RequestContext &rawCtx, const SimpleContext & /*requestContext*/, const AddressRequest &request, SimpleContext & /*replyContext*/, AddressEntry &output) {
-        if (rawCtx.request.command == opencmw::mdp::Command::Get) {
+        if (rawCtx.request.command == mdp::Command::Get) {
             output = _entry;
-        } else if (rawCtx.request.command == opencmw::mdp::Command::Set) {
+        } else if (rawCtx.request.command == mdp::Command::Set) {
             _entry = AddressEntry{
                 .name         = request.name,
                 .street       = request.street,
@@ -132,7 +132,7 @@ struct HelloWorldHandler {
         out.byteReturnType    = 42;
 
         out.timingCtx         = opencmw::TimingCtx(3, {}, {}, {}, duration_cast<microseconds>(now.time_since_epoch()));
-        if (rawCtx.request.command == opencmw::mdp::Command::Set) {
+        if (rawCtx.request.command == mdp::Command::Set) {
             customFilter = in.customFilter;
         }
         out.lsaContext           = customFilter;
@@ -266,21 +266,21 @@ inline opencmw::majordomo::Settings testSettings() {
     return settings;
 }
 
-template<opencmw::mdp::MessageFormat Format>
+template<mdp::MessageFormat Format>
 class TestNode {
 public:
-    opencmw::zmq::Socket _socket;
+    zmq::Socket _socket;
 
-    explicit TestNode(const opencmw::zmq::Context &context, int socket_type = ZMQ_DEALER)
+    explicit TestNode(const zmq::Context &context, int socket_type = ZMQ_DEALER)
         : _socket(context, socket_type) {
     }
 
     bool bind(const opencmw::URI<opencmw::STRICT> &address) {
-        return opencmw::zmq::invoke(zmq_bind, _socket, opencmw::mdp::toZeroMQEndpoint(address).data()).isValid();
+        return zmq::invoke(zmq_bind, _socket, mdp::toZeroMQEndpoint(address).data()).isValid();
     }
 
     bool connect(const opencmw::URI<opencmw::STRICT> &address, std::string_view subscription = "") {
-        auto result = opencmw::zmq::invoke(zmq_connect, _socket, opencmw::mdp::toZeroMQEndpoint(address).data());
+        auto result = zmq::invoke(zmq_connect, _socket, mdp::toZeroMQEndpoint(address).data());
         if (!result) return false;
 
         if (!subscription.empty()) {
@@ -292,16 +292,16 @@ public:
 
     bool subscribe(std::string_view subscription) {
         assert(!subscription.empty());
-        return opencmw::zmq::invoke(zmq_setsockopt, _socket, ZMQ_SUBSCRIBE, subscription.data(), subscription.size()).isValid();
+        return zmq::invoke(zmq_setsockopt, _socket, ZMQ_SUBSCRIBE, subscription.data(), subscription.size()).isValid();
     }
 
     bool unsubscribe(std::string_view subscription) {
         assert(!subscription.empty());
-        return opencmw::zmq::invoke(zmq_setsockopt, _socket, ZMQ_UNSUBSCRIBE, subscription.data(), subscription.size()).isValid();
+        return zmq::invoke(zmq_setsockopt, _socket, ZMQ_UNSUBSCRIBE, subscription.data(), subscription.size()).isValid();
     }
 
     bool sendRawFrame(std::string data) {
-        opencmw::zmq::MessageFrame f(std::move(data));
+        zmq::MessageFrame f(std::move(data));
         return f.send(_socket, 0).isValid(); // blocking for simplicity
     }
 
@@ -310,7 +310,7 @@ public:
         pollerItems[0].socket = _socket.zmq_ptr;
         pollerItems[0].events = ZMQ_POLLIN;
 
-        const auto result     = opencmw::zmq::invoke(zmq_poll, pollerItems.data(), static_cast<int>(pollerItems.size()), timeout.count());
+        const auto result     = zmq::invoke(zmq_poll, pollerItems.data(), static_cast<int>(pollerItems.size()), timeout.count());
         if (!result.isValid() || result.value() == 0) {
             return {};
         }
@@ -321,7 +321,7 @@ public:
     std::optional<mdp::BasicMessage<Format>> tryReadOneSkipHB(int retries, std::chrono::milliseconds timeout = std::chrono::milliseconds(3000)) {
         int  i      = 0;
         auto result = tryReadOne(timeout);
-        while (!result || result->command == opencmw::mdp::Command::Heartbeat) {
+        while (!result || result->command == mdp::Command::Heartbeat) {
             if (i++ >= retries) {
                 return {};
             }
@@ -335,10 +335,10 @@ public:
     }
 };
 
-using MessageNode       = TestNode<opencmw::mdp::MessageFormat::WithoutSourceId>;
-using BrokerMessageNode = TestNode<opencmw::mdp::MessageFormat::WithSourceId>;
+using MessageNode       = TestNode<mdp::MessageFormat::WithoutSourceId>;
+using BrokerMessageNode = TestNode<mdp::MessageFormat::WithSourceId>;
 
-inline bool waitUntilServiceAvailable(const opencmw::zmq::Context &context, std::string_view serviceName, const opencmw::URI<opencmw::STRICT> &brokerAddress = opencmw::majordomo::INTERNAL_ADDRESS_BROKER) {
+inline bool waitUntilServiceAvailable(const zmq::Context &context, std::string_view serviceName, const opencmw::URI<opencmw::STRICT> &brokerAddress = opencmw::majordomo::INTERNAL_ADDRESS_BROKER) {
     MessageNode client(context);
     if (!client.connect(brokerAddress)) {
         return false;
@@ -348,9 +348,9 @@ inline bool waitUntilServiceAvailable(const opencmw::zmq::Context &context, std:
     const auto     startTime = std::chrono::system_clock::now();
 
     while (std::chrono::system_clock::now() - startTime < timeout) {
-        opencmw::mdp::Message request;
-        request.protocolName = opencmw::mdp::clientProtocol;
-        request.command      = opencmw::mdp::Command::Get;
+        mdp::Message request;
+        request.protocolName = mdp::clientProtocol;
+        request.command      = mdp::Command::Get;
         request.serviceName  = "mmi.service";
         request.data         = opencmw::IoBuffer(serviceName.data(), serviceName.size());
         client.send(std::move(request));
@@ -377,13 +377,13 @@ public:
     }
 
     void operator()(opencmw::majordomo::RequestContext &context) {
-        if (context.request.command == opencmw::mdp::Command::Get) {
+        if (context.request.command == mdp::Command::Get) {
             const auto body    = std::to_string(_x);
             context.reply.data = opencmw::IoBuffer(body.data(), body.size());
             return;
         }
 
-        assert(context.request.command == opencmw::mdp::Command::Set);
+        assert(context.request.command == mdp::Command::Set);
 
         const auto request = context.request.data.asString();
         int        value   = 0;

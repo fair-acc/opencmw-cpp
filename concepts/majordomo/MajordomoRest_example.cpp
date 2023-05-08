@@ -96,13 +96,13 @@ int main(int argc, char **argv) {
 
     // Fake message publisher - sends messages on notifier.service
     TestNode<mdp::MessageFormat::WithoutSourceId> publisher(primaryBroker.context);
-    publisher.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER);
+    publisher.connect(majordomo::INTERNAL_ADDRESS_BROKER);
 
     for (int i = 0; true; ++i) {
         {
             std::cerr << "Sending new number (step " << i << ")\n";
-            opencmw::mdp::Message notifyMessage;
-            notifyMessage.endpoint = opencmw::mdp::Message::URI("/wine");
+            mdp::Message notifyMessage;
+            notifyMessage.endpoint = mdp::Message::URI("/wine");
             const auto data        = std::to_string(i);
             notifyMessage.data     = opencmw::IoBuffer(data.data(), data.size());
 

@@ -11,6 +11,7 @@
 #include <string_view>
 #include <thread>
 
+namespace mdp = opencmw::mdp;
 using namespace opencmw::majordomo;
 using namespace std::chrono_literals;
 
@@ -40,10 +41,10 @@ public:
     explicit AcquisitionWorker(const BrokerType &broker)
         : super_t(broker, {}) {
         super_t::setCallback([this](const RequestContext &rawCtx, const FilterContext &filterIn, const Empty & /*in - unused*/, FilterContext &filterOut, Reply &out) {
-            if (rawCtx.request.command == opencmw::mdp::Command::Get) {
+            if (rawCtx.request.command == mdp::Command::Get) {
                 fmt::print("worker received 'get' request\n");
                 handleGetRequest(filterIn, filterOut, out);
-            } else if (rawCtx.request.command == opencmw::mdp::Command::Set) {
+            } else if (rawCtx.request.command == mdp::Command::Set) {
                 fmt::print("worker received 'set' request\n");
                 // do some set action
             }
