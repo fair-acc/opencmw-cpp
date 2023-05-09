@@ -18,9 +18,6 @@ TEST_CASE("SET/GET of MockServer", "[mock-server][lambda_handler]") {
     // REQUIRE(client.connect(INTERNAL_ADDRESS_BROKER));
 
     client.get("a.service", {}, [](auto &&message) {
-#if 0 // TODO
-        fmt::print("A: {}\n", message);
-#endif
         REQUIRE(message.error == "");
         REQUIRE(message.data.asString() == "100");
     });
@@ -31,9 +28,6 @@ TEST_CASE("SET/GET of MockServer", "[mock-server][lambda_handler]") {
     REQUIRE(client.tryRead(3s));
 
     client.set("a.service", IoBuffer("42"), [](auto &&message) {
-#if 0 // TODO
-        fmt::print("B: {}\n", message);
-#endif
         REQUIRE(message.error == "");
         REQUIRE(message.data.asString() == "Value set. All good!");
     });
@@ -45,9 +39,6 @@ TEST_CASE("SET/GET of MockServer", "[mock-server][lambda_handler]") {
     REQUIRE(client.tryRead(3s));
 
     client.get("a.service", {}, [](auto &&message) {
-#if 0 // TODO
-        fmt::print("C: {}\n", message);
-#endif
         REQUIRE(message.error == "");
         REQUIRE(message.data.asString() == "42");
     });
