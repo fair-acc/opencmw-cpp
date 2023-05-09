@@ -78,7 +78,6 @@ struct fmt::formatter<opencmw::majordomo::detail::DnsServiceItem> {
 
 namespace opencmw::majordomo {
 
-// TODO transitional, rename to BrokerMessage
 using BrokerMessage = mdp::BasicMessage<mdp::MessageFormat::WithSourceId>;
 
 enum class BindOption {
