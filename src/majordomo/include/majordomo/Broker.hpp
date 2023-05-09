@@ -20,13 +20,13 @@
 
 #include <MdpMessage.hpp>
 #include <opencmw.hpp>
-#include <ZmqMessage.hpp>
 
 #include <IoSerialiserJson.hpp>
 
 #include <majordomo/Constants.hpp>
 #include <majordomo/Settings.hpp>
 #include <majordomo/SubscriptionMatcher.hpp>
+#include <zmq/Message.hpp>
 #include <QuerySerialiser.hpp>
 
 using namespace std::string_literals;

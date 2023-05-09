@@ -9,7 +9,7 @@
 #include <MdpMessage.hpp>
 #include <opencmw.hpp>
 #include <URI.hpp>
-#include <ZmqMessage.hpp>
+#include <zmq/Message.hpp>
 
 namespace opencmw::client {
 

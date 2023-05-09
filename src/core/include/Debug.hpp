@@ -3,17 +3,8 @@
 #define OPENCMW_MAJORDOMO_DEBUG_H
 
 #include <ctime>
-#include <filesystem>
 #include <iostream>
 #include <mutex>
-#if defined(__clang__)
-#include <experimental/source_location>
-namespace std {
-typedef std::experimental::source_location source_location;
-}
-#else
-#include <source_location>
-#endif
 
 #include <fmt/format.h>
 
@@ -50,12 +41,6 @@ struct DebugImpl {
 inline auto
 log() {
     return DebugImpl{};
-}
-
-inline auto withLocation(const std::source_location location = std::source_location::current()) {
-    std::error_code error;
-    auto            relative = std::filesystem::relative(location.file_name(), error);
-    return log() << (relative.string() /*location.file_name()*/) << ":" << location.line() << " in " << location.function_name() << " --> ";
 }
 
 } // namespace opencmw::debug

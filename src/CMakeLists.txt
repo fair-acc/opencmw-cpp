@@ -13,6 +13,7 @@ if (USE_LIBCPP)
         message(WARN "Disabled majordomo and client module because they are not compatible with libc++")
 else()
         add_subdirectory(majordomo)
+        add_subdirectory(zmq)
 endif()
 
 # installation

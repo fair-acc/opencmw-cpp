@@ -1,10 +1,11 @@
-#ifndef OPENCMW_CPP_ZMQPTR_H
-#define OPENCMW_CPP_ZMQPTR_H
+#ifndef OPENCMW_ZMQ_PTR_H
+#define OPENCMW_ZMQ_PTR_H
 
 // A few thin RAII-only wrappers for ZMQ structures
 
 #include <cassert>
 #include <cstring>
+#include <filesystem>
 #include <string>
 #include <type_traits>
 
@@ -21,13 +22,20 @@ typedef std::experimental::source_location source_location;
 #include <source_location>
 #endif
 
-#include "Debug.hpp"
-
 #ifndef ENABLE_RESULT_CHECKS
 #define ENABLE_RESULT_CHECKS 1
 #endif
 
 namespace opencmw::zmq {
+
+namespace debug {
+    // this is generic, but currently only used in ZMQ context and doesn't build with Emscripten, so keep it here
+    inline auto withLocation(const std::source_location location = std::source_location::current()) {
+        std::error_code error;
+        auto            relative = std::filesystem::relative(location.file_name(), error);
+        return opencmw::debug::log() << (relative.string() /*location.file_name()*/) << ":" << location.line() << " in " << location.function_name() << " --> ";
+    }
+}
 
 template<typename T>
 class [[nodiscard]] Result {

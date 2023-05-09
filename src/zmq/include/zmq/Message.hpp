@@ -1,9 +1,9 @@
-#ifndef OPENCMW_CPP_ZMQMESSAGE_HPP
-#define OPENCMW_CPP_ZMQMESSAGE_HPP
+#ifndef OPENCMW_ZMQ_MESSAGE_HPP
+#define OPENCMW_ZMQ_MESSAGE_HPP
 
 #include <MdpMessage.hpp>
 
-#include "ZmqPtr.hpp"
+#include "Ptr.hpp"
 
 #include <optional>
 
