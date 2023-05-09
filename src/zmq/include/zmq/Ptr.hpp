@@ -29,13 +29,13 @@ typedef std::experimental::source_location source_location;
 namespace opencmw::zmq {
 
 namespace debug {
-    // this is generic, but currently only used in ZMQ context and doesn't build with Emscripten, so keep it here
-    inline auto withLocation(const std::source_location location = std::source_location::current()) {
-        std::error_code error;
-        auto            relative = std::filesystem::relative(location.file_name(), error);
-        return opencmw::debug::log() << (relative.string() /*location.file_name()*/) << ":" << location.line() << " in " << location.function_name() << " --> ";
-    }
+// this is generic, but currently only used in ZMQ context and doesn't build with Emscripten, so keep it here
+inline auto withLocation(const std::source_location location = std::source_location::current()) {
+    std::error_code error;
+    auto            relative = std::filesystem::relative(location.file_name(), error);
+    return opencmw::debug::log() << (relative.string() /*location.file_name()*/) << ":" << location.line() << " in " << location.function_name() << " --> ";
 }
+} // namespace debug
 
 template<typename T>
 class [[nodiscard]] Result {
