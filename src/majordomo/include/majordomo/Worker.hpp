@@ -22,11 +22,11 @@
 #include <majordomo/Constants.hpp>
 #include <majordomo/Rbac.hpp>
 #include <majordomo/Settings.hpp>
-#include <zmq/Message.hpp>
 #include <MdpMessage.hpp>
 #include <MIME.hpp>
 #include <MustacheSerialiser.hpp>
 #include <opencmw.hpp>
+#include <zmq/Message.hpp>
 #include <QuerySerialiser.hpp>
 
 namespace opencmw::majordomo {
