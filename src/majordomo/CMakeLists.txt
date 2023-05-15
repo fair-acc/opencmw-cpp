@@ -12,7 +12,6 @@ add_library(majordomo INTERFACE
 target_include_directories(majordomo INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include/>)
 target_link_libraries(majordomo
         INTERFACE
-            utils
             core
             serialiser
             zmq

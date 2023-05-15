@@ -2,9 +2,9 @@
 add_library(client INTERFACE include/MockServer.hpp include/Client.hpp include/ClientContext.hpp include/RestClient.hpp)
 target_include_directories(client INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include/>)
 if (NOT EMSCRIPTEN)
-    target_link_libraries(client INTERFACE utils pthread core disruptor serialiser majordomo zmq)
+    target_link_libraries(client INTERFACE pthread core disruptor serialiser majordomo zmq)
 else ()
-    target_link_libraries(client INTERFACE utils pthread core serialiser)
+    target_link_libraries(client INTERFACE pthread core serialiser)
 endif ()
 set_target_properties(client PROPERTIES PUBLIC_HEADER "include/MockServer.hpp;include/Client.hpp;include/ClientContext.hpp;include/RestClient.hpp")
 
