@@ -22,12 +22,12 @@
 #include <opencmw.hpp>
 
 #include <IoSerialiserJson.hpp>
+#include <QuerySerialiser.hpp>
 
 #include <majordomo/Constants.hpp>
 #include <majordomo/Settings.hpp>
 #include <majordomo/SubscriptionMatcher.hpp>
-#include <zmq/Message.hpp>
-#include <QuerySerialiser.hpp>
+#include <utils/ZmqUtils.hpp>
 
 using namespace std::string_literals;
 

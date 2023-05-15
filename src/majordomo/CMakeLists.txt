@@ -15,7 +15,6 @@ target_link_libraries(majordomo
             utils
             core
             serialiser
-            zmq
             httplib::httplib
             #OpenSSL::SSL
             pthread

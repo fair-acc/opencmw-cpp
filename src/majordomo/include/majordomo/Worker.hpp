@@ -26,8 +26,8 @@
 #include <MIME.hpp>
 #include <MustacheSerialiser.hpp>
 #include <opencmw.hpp>
-#include <zmq/Message.hpp>
 #include <QuerySerialiser.hpp>
+#include <utils/ZmqUtils.hpp>
 
 namespace opencmw::majordomo {
 
