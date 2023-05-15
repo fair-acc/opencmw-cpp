@@ -7,7 +7,6 @@
 #include <unordered_map>
 
 #include <majordomo/Broker.hpp>
-#include <majordomo/Message.hpp>
 #include <majordomo/Settings.hpp>
 #include <majordomo/Worker.hpp>
 
@@ -23,46 +22,46 @@ namespace opencmw::majordomo {
 class MockServer {
     static int                    INSTANCE_COUNT;
     const int                     id;
-    const Context                &_context;
+    const zmq::Context           &_context;
     std::string                   _address;
     std::string                   _subAddress;
-    std::optional<Socket>         _socket;
-    std::optional<Socket>         _pubSocket;
+    std::optional<zmq::Socket>    _socket;
+    std::optional<zmq::Socket>    _pubSocket;
     std::array<zmq_pollitem_t, 1> _pollerItems{};
     Settings                      _settings;
 
 public:
-    explicit MockServer(const Context &context)
+    explicit MockServer(const zmq::Context &context)
         : id(INSTANCE_COUNT++), _context(context), _address{ fmt::format("inproc://MockServer{}", id) }, _subAddress{ fmt::format("inproc://MockServerSub{}", id) } {
         bind();
     }
 
     virtual ~MockServer() = default;
 
-    const Context            &context() { return _context; };
+    const zmq::Context       &context() { return _context; };
 
     [[nodiscard]] std::string address() { return _address; };
     [[nodiscard]] std::string addressSub() { return _subAddress; };
 
     template<typename Callback>
     bool processRequest(Callback handler) {
-        const auto result           = zmq_invoke(zmq_poll, _pollerItems.data(), static_cast<int>(_pollerItems.size()), _settings.heartbeatInterval.count());
+        const auto result           = zmq::invoke(zmq_poll, _pollerItems.data(), static_cast<int>(_pollerItems.size()), _settings.heartbeatInterval.count());
         bool       anythingReceived = false;
         int        loopCount        = 0;
         do {
-            auto maybeMessage = MdpMessage::receive(_socket.value());
+            auto maybeMessage = zmq::receive<mdp::MessageFormat::WithoutSourceId>(_socket.value());
             if (!maybeMessage) { // empty message
                 anythingReceived = false;
                 break;
             }
             anythingReceived = true;
             auto &message    = maybeMessage.value();
-            if (!message.isValid() || !message.isClientMessage()) {
-                throw std::logic_error("mock server received invalid message");
+            if (message.protocolName != mdp::clientProtocol) {
+                throw std::logic_error("mock server received unexpected worker message");
             }
             auto reply = replyFromRequest(message);
             handler(message, reply);
-            reply.send(_socket.value()).assertSuccess();
+            zmq::send(std::move(reply), _socket.value()).assertSuccess();
 
             loopCount++;
         } while (anythingReceived);
@@ -72,7 +71,7 @@ public:
 
     void bind() {
         _socket.emplace(_context, ZMQ_DEALER);
-        if (const auto result = zmq_invoke(zmq_bind, *_socket, _address.data()); result.isValid()) {
+        if (const auto result = zmq::invoke(zmq_bind, *_socket, _address.data()); result.isValid()) {
             _pollerItems[0].socket = _socket->zmq_ptr;
             _pollerItems[0].events = ZMQ_POLLIN;
         } else {
@@ -80,7 +79,7 @@ public:
             _socket.reset();
         }
         _pubSocket.emplace(_context, ZMQ_XPUB);
-        if (auto result = zmq_invoke(zmq_bind, *_pubSocket, _subAddress.data()); !result.isValid()) {
+        if (auto result = zmq::invoke(zmq_bind, *_pubSocket, _subAddress.data()); !result.isValid()) {
             fmt::print("error: {}\n", zmq_strerror(result.error()));
             _pubSocket.reset();
         }
@@ -93,40 +92,41 @@ public:
     }
 
     void notify(std::string_view topic, std::string_view value) {
-        auto       brokerName  = "";
-        auto       serviceName = "a.service";
-        const auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
-        auto       notify      = BasicMdpMessage<MessageFormat::WithSourceId>::createClientMessage(Command::Final);
-        notify.setServiceName(serviceName, dynamic_tag);
-        notify.setTopic(topic, dynamic_tag);
-        notify.setSourceId(topic, dynamic_tag);
-        notify.setClientRequestId(brokerName, dynamic_tag);
-        notify.setBody(value, dynamic_tag);
-        notify.send(_pubSocket.value()).assertSuccess();
+        auto                                                brokerName  = "";
+        auto                                                serviceName = "a.service";
+        mdp::BasicMessage<mdp::MessageFormat::WithSourceId> notify;
+        notify.protocolName    = mdp::clientProtocol;
+        notify.command         = mdp::Command::Final;
+        notify.serviceName     = serviceName;
+        notify.endpoint        = mdp::Message::URI(std::string(topic));
+        notify.sourceId        = std::string(topic);
+        notify.clientRequestID = IoBuffer(brokerName);
+        notify.data            = IoBuffer(value.data(), value.size());
+        zmq::send(std::move(notify), _pubSocket.value()).assertSuccess();
     }
 
     void notify(std::string_view topic, std::string_view uri, std::string_view value) {
-        auto       brokerName  = "";
-        auto       serviceName = "a.service";
-        const auto dynamic_tag = MessageFrame::dynamic_bytes_tag{};
-        auto       notify      = BasicMdpMessage<MessageFormat::WithSourceId>::createClientMessage(Command::Final);
-        notify.setServiceName(serviceName, dynamic_tag);
-        notify.setTopic(uri, dynamic_tag);
-        notify.setSourceId(topic, dynamic_tag);
-        notify.setClientRequestId(brokerName, dynamic_tag);
-        notify.setBody(value, dynamic_tag);
-        notify.send(_pubSocket.value()).assertSuccess();
+        auto                                                brokerName  = "";
+        auto                                                serviceName = "a.service";
+        mdp::BasicMessage<mdp::MessageFormat::WithSourceId> notify;
+        notify.protocolName    = mdp::clientProtocol;
+        notify.command         = mdp::Command::Final;
+        notify.serviceName     = serviceName;
+        notify.endpoint        = mdp::Message::URI(std::string(uri));
+        notify.sourceId        = topic;
+        notify.clientRequestID = IoBuffer(brokerName);
+        notify.data            = IoBuffer(value.data(), value.size());
+        zmq::send(std::move(notify), _pubSocket.value()).assertSuccess();
     }
 
-    static MdpMessage replyFromRequest(const MdpMessage &request) noexcept {
-        MdpMessage reply;
-        reply.setProtocol(request.protocol());
-        reply.setCommand(Command::Final);
-        reply.setServiceName(request.serviceName(), MessageFrame::dynamic_bytes_tag{});
-        reply.setClientSourceId(request.clientSourceId(), MessageFrame::dynamic_bytes_tag{});
-        reply.setClientRequestId(request.clientRequestId(), MessageFrame::dynamic_bytes_tag{});
-        reply.setTopic(request.topic(), MessageFrame::dynamic_bytes_tag{});
-        reply.setRbacToken(request.rbacToken(), MessageFrame::dynamic_bytes_tag{});
+    static mdp::Message replyFromRequest(const mdp::Message &request) noexcept {
+        mdp::Message reply;
+        reply.protocolName    = request.protocolName;
+        reply.command         = mdp::Command::Final;
+        reply.serviceName     = request.serviceName;
+        reply.clientRequestID = request.clientRequestID;
+        reply.endpoint        = request.endpoint;
+        reply.rbac            = request.rbac;
         return reply;
     }
 };

@@ -160,11 +160,15 @@ private:
     }
 
 public:
-    [[nodiscard]] explicit IoBuffer(const std::size_t &initialCapacity = 0, Allocator allocator = Allocator(Reallocator::defaultReallocator())) noexcept
+    [[nodiscard]] explicit IoBuffer(const std::size_t &initialCapacity, Allocator allocator = Allocator(Reallocator::defaultReallocator())) noexcept
         : _allocator{ allocator } {
         if (initialCapacity > 0) {
             reallocate(initialCapacity);
         }
+    }
+
+    [[nodiscard]] IoBuffer() noexcept
+        : IoBuffer(std::size_t{ 0 }) {
     }
 
     [[nodiscard]] explicit IoBuffer(const char *data)

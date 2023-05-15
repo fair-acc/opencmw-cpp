@@ -6,66 +6,60 @@
 #include <concepts/majordomo/helpers.hpp>
 
 TEST_CASE("SET/GET of MockServer", "[mock-server][lambda_handler]") {
+    using namespace opencmw;
     using namespace opencmw::majordomo;
     using namespace std::chrono_literals;
 
-    Context    context{};
-    MockServer server(context);
+    zmq::Context context{};
+    MockServer   server(context);
 
-    MockClient client(server.context());
+    MockClient   client(server.context());
     REQUIRE(client.connect(opencmw::URI<>(server.address())));
     // REQUIRE(client.connect(INTERNAL_ADDRESS_BROKER));
 
-    client.get("a.service", "", [](auto &&message) {
-        fmt::print("A: {}\n", message);
-        REQUIRE(message.error() == "");
-        REQUIRE(message.body() == "100");
+    client.get("a.service", {}, [](auto &&message) {
+        REQUIRE(message.error == "");
+        REQUIRE(message.data.asString() == "100");
     });
     server.processRequest([](auto &&req, auto &reply) {
-        REQUIRE(req.command() == Command::Get);
-        reply.setBody(std::to_string(100), MessageFrame::dynamic_bytes_tag{});
+        REQUIRE(req.command == mdp::Command::Get);
+        reply.data = IoBuffer("100");
     });
     REQUIRE(client.tryRead(3s));
 
-    client.set("a.service", "42", [](auto &&message) {
-        fmt::print("B: {}\n", message);
-        REQUIRE(message.error() == "");
-        REQUIRE(message.body() == "Value set. All good!");
+    client.set("a.service", IoBuffer("42"), [](auto &&message) {
+        REQUIRE(message.error == "");
+        REQUIRE(message.data.asString() == "Value set. All good!");
     });
     server.processRequest([](auto &&req, auto &reply) {
-        REQUIRE(req.command() == Command::Set);
-        REQUIRE(req.body() == "42");
-        reply.setBody("Value set. All good!", MessageFrame::static_bytes_tag{});
+        REQUIRE(req.command == mdp::Command::Set);
+        REQUIRE(req.data.asString() == "42");
+        reply.data = IoBuffer("Value set. All good!");
     });
     REQUIRE(client.tryRead(3s));
 
-    client.get("a.service", "", [](auto &&message) {
-        fmt::print("C: {}\n", message);
-        REQUIRE(message.error() == "");
-        REQUIRE(message.body() == "42");
+    client.get("a.service", {}, [](auto &&message) {
+        REQUIRE(message.error == "");
+        REQUIRE(message.data.asString() == "42");
     });
 
     server.processRequest([](auto &&req, auto &reply) {
-        REQUIRE(req.command() == Command::Get);
-        reply.setBody(std::to_string(42), MessageFrame::dynamic_bytes_tag{});
+        REQUIRE(req.command == mdp::Command::Get);
+        reply.data = IoBuffer("42");
     });
 
     REQUIRE(client.tryRead(3s));
 }
 
 TEST_CASE("MockServer Subscription Test", "[mock-server][lambda_handler]") {
-    using opencmw::majordomo::BasicMdpMessage;
-    using opencmw::majordomo::Command;
-    using opencmw::majordomo::Context;
-    using opencmw::majordomo::MessageFormat;
-    using opencmw::majordomo::MessageFrame;
     using opencmw::majordomo::MockServer;
+    using namespace opencmw;
     using namespace std::chrono_literals;
 
-    Context                                                context{};
-    MockServer                                             server(context);
+    zmq::Context      context{};
+    MockServer        server(context);
 
-    TestNode<BasicMdpMessage<MessageFormat::WithSourceId>> client(context, ZMQ_SUB);
+    BrokerMessageNode client(context, ZMQ_SUB);
     REQUIRE(client.connect(opencmw::URI<>(server.addressSub())));
 
     client.subscribe("a.service");
@@ -78,17 +72,17 @@ TEST_CASE("MockServer Subscription Test", "[mock-server][lambda_handler]") {
         auto reply = client.tryReadOne();
         fmt::print("{}\n", reply.has_value());
         REQUIRE(reply);
-        REQUIRE(reply->body() == "100");
-        REQUIRE(reply->command() == Command::Final);
-        REQUIRE(reply->topic() == "a.service");
+        REQUIRE(reply->data.asString() == "100");
+        REQUIRE(reply->command == mdp::Command::Final);
+        REQUIRE(reply->endpoint.str() == "a.service");
     }
     {
         auto reply = client.tryReadOne();
         fmt::print("{}\n", reply.has_value());
         REQUIRE(reply);
-        REQUIRE(reply->body() == "23");
-        REQUIRE(reply->command() == Command::Final);
-        REQUIRE(reply->topic() == "a.service");
+        REQUIRE(reply->data.asString() == "23");
+        REQUIRE(reply->command == mdp::Command::Final);
+        REQUIRE(reply->endpoint.str() == "a.service");
     }
 
     server.notify("a.service", "10");
@@ -96,8 +90,8 @@ TEST_CASE("MockServer Subscription Test", "[mock-server][lambda_handler]") {
         auto reply = client.tryReadOne();
         fmt::print("{}\n", reply.has_value());
         REQUIRE(reply);
-        REQUIRE(reply->body() == "10");
-        REQUIRE(reply->command() == Command::Final);
-        REQUIRE(reply->topic() == "a.service");
+        REQUIRE(reply->data.asString() == "10");
+        REQUIRE(reply->command == mdp::Command::Final);
+        REQUIRE(reply->endpoint.str() == "a.service");
     }
 }

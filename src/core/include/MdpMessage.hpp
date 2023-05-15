@@ -5,6 +5,10 @@
 #include <opencmw.hpp>
 #include <URI.hpp>
 
+#include <chrono>
+#include <type_traits>
+#include <variant>
+
 namespace opencmw::mdp {
 
 enum class MessageFormat {
@@ -26,26 +30,53 @@ enum class Command : unsigned char {
     Heartbeat   = 0x0a  ///< optional for client
 };
 
+constexpr auto clientProtocol = std::string_view{ "MDPC03" };
+constexpr auto workerProtocol = std::string_view{ "MDPW03" };
+
+/**
+ * Converts an address URI to the format expected by ZeroMQ, i.e. replace mds:/ and mdp:/ by tcp:/
+ */
+inline std::string toZeroMQEndpoint(const opencmw::URI<> &uri) {
+    if (uri.scheme() == "mdp" || uri.scheme() == "mds") {
+        return opencmw::URI<>::factory(uri).scheme("tcp").toString();
+    }
+
+    return uri.str();
+}
+
+struct Settings {
+    int                       highWaterMark     = 0;
+    int                       heartbeatLiveness = 3;
+    std::chrono::milliseconds heartbeatInterval = std::chrono::milliseconds(1000);
+};
+
 /**
  * @brief Domain object representation of the Majordomo Protocol (MDP) message
  */
-struct Message {
+template<MessageFormat Format>
+struct BasicMessage {
     using timePoint = std::chrono::time_point<std::chrono::system_clock>;
     using timeUnit  = std::chrono::milliseconds;
     using URI       = opencmw::URI<opencmw::uri_check::STRICT>;
 
+    // sourceId is only needed for the WithSourceId format
+    std::conditional_t<Format == MessageFormat::WithSourceId, std::string, std::monostate> sourceId = {}; ///< ID of source client used only by broker
+
+    // common fields
     std::size_t id;
-    timePoint   arrivalTime;                        // UTC time when the message was sent/received by the client
-    timeUnit    timeout = std::chrono::seconds(10); // default request/reply timeout
-    std::string protocolName;                       // unique protocol name including version (e.g. 'MDPC03' or 'MDPW03')
-    Command     command = Command::Invalid;         // command type (GET, SET, SUBSCRIBE, UNSUBSCRIBE, PARTIAL, FINAL, NOTIFY, READY, DISCONNECT, HEARTBEAT)
-    URI         serviceName{ "/" };                 // service endpoint name (normally the URI path only)
-    IoBuffer    clientRequestID;                    // stateful: worker mirrors clientRequestID; stateless: worker generates unique increasing IDs (to detect packet loss)
-    URI         endpoint{ "/" };                    // URI containing at least <path> and optionally <query> parameters
-    IoBuffer    data;                               // request/reply body -- opaque binary, e.g. YaS-, CmwLight-, JSON-, or HTML-based
-    std::string error;                              // UTF-8 strings containing  error code and/or stack-trace (e.g. "404 Not Found")
-    IoBuffer    rbac;                               // optional RBAC meta-info -- may contain token, role, signed message hash (implementation dependent)
+    timePoint   arrivalTime;                        ///< UTC time when the message was sent/received by the client
+    timeUnit    timeout = std::chrono::seconds(10); ///< default request/reply timeout
+    std::string protocolName;                       ///< unique protocol name including version (e.g. 'MDPC03' or 'MDPW03')
+    Command     command = Command::Invalid;         ///< command type (GET, SET, SUBSCRIBE, UNSUBSCRIBE, PARTIAL, FINAL, NOTIFY, READY, DISCONNECT, HEARTBEAT)
+    std::string serviceName{ "/" };                 ///< service endpoint name (normally the URI path only), or client source ID (for broker <-> worker messages)
+    IoBuffer    clientRequestID;                    ///< stateful: worker mirrors clientRequestID; stateless: worker generates unique increasing IDs (to detect packet loss)
+    URI         endpoint{ "/" };                    ///< URI containing at least <path> and optionally <query> parameters
+    IoBuffer    data;                               ///< request/reply body -- opaque binary, e.g. YaS-, CmwLight-, JSON-, or HTML-based
+    std::string error;                              ///< UTF-8 strings containing  error code and/or stack-trace (e.g. "404 Not Found")
+    IoBuffer    rbac;                               ///< optional RBAC meta-info -- may contain token, role, signed message hash (implementation dependent)
 };
+
+using Message = BasicMessage<MessageFormat::WithoutSourceId>;
 
 } // namespace opencmw::mdp
 

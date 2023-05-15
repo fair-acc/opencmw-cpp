@@ -7,28 +7,28 @@
 #include <unordered_map>
 
 #include <majordomo/Broker.hpp>
-#include <majordomo/Message.hpp>
 
+#include <MdpMessage.hpp>
 #include <URI.hpp>
 
 namespace opencmw::majordomo {
 
 class MockClient {
-    const Context                &_context;
-    std::optional<Socket>         _socket;
+    const zmq::Context           &_context;
+    std::optional<zmq::Socket>    _socket;
     std::string                   _brokerUrl;
     int                           _nextRequestId = 0;
     std::array<zmq_pollitem_t, 1> _pollerItems;
 
     // Maps request IDs to callbacks
-    std::unordered_map<int, std::function<void(MdpMessage)>> _callbacks;
+    std::unordered_map<int, std::function<void(mdp::Message)>> _callbacks;
 
 public:
     struct Request {
         int id;
     };
 
-    explicit MockClient(const Context &context)
+    explicit MockClient(const zmq::Context &context)
         : _context(context) {
     }
 
@@ -37,7 +37,7 @@ public:
     [[nodiscard]] auto connect(const opencmw::URI<> &brokerUrl) {
         _socket.emplace(_context, ZMQ_DEALER);
 
-        const auto result = zmq_invoke(zmq_connect, *_socket, toZeroMQEndpoint(brokerUrl).data());
+        const auto result = zmq::invoke(zmq_connect, *_socket, mdp::toZeroMQEndpoint(brokerUrl).data());
         if (result.isValid()) {
             _pollerItems[0].socket = _socket->zmq_ptr;
             _pollerItems[0].events = ZMQ_POLLIN;
@@ -53,46 +53,40 @@ public:
         return true;
     }
 
-    virtual void handleResponse(MdpMessage && /*message*/) {}
+    virtual void handleResponse(mdp::Message && /*message*/) {}
 
-    template<typename BodyType>
-    Request get(const std::string_view &serviceName, BodyType request) {
-        auto [handle, message] = createRequestTemplate(Command::Get, serviceName);
-        message.setBody(std::forward<BodyType>(request), MessageFrame::dynamic_bytes_tag{});
-        message.send(*_socket).assertSuccess();
+    Request      get(const std::string_view &serviceName, IoBuffer request) {
+        auto [handle, message] = createRequestTemplate(mdp::Command::Get, serviceName);
+        message.data           = std::move(request);
+        zmq::send(std::move(message), *_socket).assertSuccess();
         return handle;
     }
 
-    template<typename BodyType, typename Callback>
-    Request get(const std::string_view &serviceName, BodyType request, Callback fnc) {
-        auto r = get(serviceName, std::forward<BodyType>(request));
+    template<typename Callback>
+    Request get(const std::string_view &serviceName, IoBuffer request, Callback fnc) {
+        auto r = get(serviceName, std::move(request));
         _callbacks.emplace(r.id, std::move(fnc));
         return r;
     }
 
-    template<typename BodyType>
-    Request set(std::string_view serviceName, BodyType request) {
-        auto [handle, message] = createRequestTemplate(Command::Set, serviceName);
-        message.setBody(std::forward<BodyType>(request), MessageFrame::dynamic_bytes_tag{});
-        message.send(*_socket).assertSuccess();
+    Request set(std::string_view serviceName, IoBuffer request) {
+        auto [handle, message] = createRequestTemplate(mdp::Command::Set, serviceName);
+        message.data           = std::move(request);
+        zmq::send(std::move(message), *_socket).assertSuccess();
         return handle;
     }
 
-    template<typename BodyType, typename Callback>
-    Request set(std::string_view serviceName, BodyType request, Callback fnc) {
-        auto r = set(serviceName, request);
+    template<typename Callback>
+    Request set(std::string_view serviceName, IoBuffer request, Callback fnc) {
+        auto r = set(serviceName, std::move(request));
         _callbacks.emplace(r.id, std::move(fnc));
         return r;
     }
 
-    bool handleMessage(MdpMessage &&message) {
-        if (!message.isValid()) {
-            return false;
-        }
-
+    bool handleMessage(mdp::Message &&message) {
         // TODO handle client HEARTBEAT etc.
 
-        const auto idStr = message.clientRequestId();
+        const auto idStr = message.clientRequestID.asString();
         int        id;
         auto       asInt   = std::from_chars(idStr.begin(), idStr.end(), id);
 
@@ -114,12 +108,12 @@ public:
     }
 
     bool tryRead(std::chrono::milliseconds timeout) {
-        const auto result = zmq_invoke(zmq_poll, _pollerItems.data(), static_cast<int>(_pollerItems.size()), timeout.count());
+        const auto result = zmq::invoke(zmq_poll, _pollerItems.data(), static_cast<int>(_pollerItems.size()), timeout.count());
         if (!result.isValid()) {
             return false;
         }
 
-        if (auto message = MdpMessage::receive(*_socket)) {
+        if (auto message = zmq::receive<mdp::MessageFormat::WithoutSourceId>(*_socket)) {
             return handleMessage(std::move(*message));
         }
 
@@ -127,10 +121,13 @@ public:
     }
 
 private:
-    std::pair<Request, MdpMessage> createRequestTemplate(Command command, std::string_view serviceName) {
-        auto req = std::make_pair(makeRequestHandle(), MdpMessage::createClientMessage(command));
-        req.second.setServiceName(serviceName, MessageFrame::dynamic_bytes_tag{});
-        req.second.setClientRequestId(std::to_string(req.first.id), MessageFrame::dynamic_bytes_tag{});
+    std::pair<Request, mdp::Message> createRequestTemplate(mdp::Command command, std::string_view serviceName) {
+        auto req                   = std::make_pair(makeRequestHandle(), mdp::Message());
+        req.second.protocolName    = mdp::clientProtocol;
+        req.second.command         = command;
+        req.second.serviceName     = std::string(serviceName);
+        const auto requestID       = std::to_string(req.first.id);
+        req.second.clientRequestID = IoBuffer(requestID.data(), requestID.size());
         return req;
     }
 

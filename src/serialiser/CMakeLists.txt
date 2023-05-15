@@ -1,6 +1,6 @@
 add_library(serialiser INTERFACE include/IoSerialiserYAML.hpp)
 target_include_directories(serialiser INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include/>)
-target_link_libraries(serialiser INTERFACE refl-cpp::refl-cpp core utils)
+target_link_libraries(serialiser INTERFACE refl-cpp::refl-cpp core)
 # if (NOT EMSCRIPTEN AND USE_LIBCPP AND CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 16.0.0)
 #         target_link_libraries(serialiser INTERFACE -lc++abi -lc++experimental)
 # endif()

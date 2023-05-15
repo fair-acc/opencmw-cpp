@@ -14,26 +14,27 @@
 
 #include <fmt/format.h>
 
+#include <Debug.hpp>
 #include <IoSerialiserCmwLight.hpp>
 #include <IoSerialiserJson.hpp>
 #include <IoSerialiserYaS.hpp>
 #include <majordomo/Broker.hpp>
 #include <majordomo/Constants.hpp>
-#include <majordomo/Debug.hpp>
 #include <majordomo/Rbac.hpp>
 #include <majordomo/Settings.hpp>
-#include <majordomo/Utils.hpp>
+#include <MdpMessage.hpp>
 #include <MIME.hpp>
 #include <MustacheSerialiser.hpp>
 #include <opencmw.hpp>
+#include <zmq/ZmqUtils.hpp>
 #include <QuerySerialiser.hpp>
 
 namespace opencmw::majordomo {
 
 struct RequestContext {
-    const MdpMessage request;
-    MdpMessage       reply;
-    MIME::MimeType   mimeType = MIME::BINARY;
+    const mdp::Message request = {};
+    mdp::Message       reply;
+    MIME::MimeType     mimeType = MIME::BINARY;
 };
 
 namespace worker_detail {
@@ -68,17 +69,17 @@ class BasicWorker {
     using Roles        = opencmw::tuple_unique<opencmw::tuple_cat_t<DefaultRoles, find_roles<Meta...>>>;
 
     struct NotificationHandler {
-        Socket    socket;
-        Timestamp lastUsed;
+        zmq::Socket socket;
+        Timestamp   lastUsed;
 
-        explicit NotificationHandler(const Context &context, std::string_view notifyAddress)
+        explicit NotificationHandler(const zmq::Context &context, std::string_view notifyAddress)
             : socket(context, ZMQ_PUSH) {
-            zmq_invoke(zmq_connect, socket, notifyAddress.data()).assertSuccess();
+            zmq::invoke(zmq_connect, socket, notifyAddress.data()).assertSuccess();
         }
 
-        bool send(MdpMessage &&message) {
+        bool send(mdp::Message &&message) {
             lastUsed = Clock::now();
-            return message.send(socket).isValid();
+            return zmq::send(std::move(message), socket).isValid();
         }
     };
 
@@ -88,25 +89,25 @@ class BasicWorker {
     std::atomic<bool>                                        _shutdownRequested = false;
     int                                                      _liveness          = 0;
     Timestamp                                                _heartbeatAt;
-    const Context                                           &_context;
-    std::optional<Socket>                                    _workerSocket;
-    std::optional<Socket>                                    _pubSocket;
+    const zmq::Context                                      &_context;
+    std::optional<zmq::Socket>                               _workerSocket;
+    std::optional<zmq::Socket>                               _pubSocket;
     std::array<zmq_pollitem_t, 3>                            _pollerItems;
     SubscriptionMatcher                                      _subscriptionMatcher;
     mutable std::mutex                                       _activeSubscriptionsLock;
     std::unordered_set<SubscriptionData>                     _activeSubscriptions;
-    Socket                                                   _notifyListenerSocket;
+    zmq::Socket                                              _notifyListenerSocket;
     std::unordered_map<std::thread::id, NotificationHandler> _notificationHandlers;
     std::shared_mutex                                        _notificationHandlersLock;
     const std::string                                        _notifyAddress;
-    static constexpr auto                                    _defaultRbacToken = std::string_view("RBAC=NONE,");
+    const IoBuffer                                           _defaultRbacToken = IoBuffer("RBAC=NONE,");
 
 public:
     static constexpr std::string_view name = serviceName.data();
 
-    explicit BasicWorker(opencmw::URI<STRICT> brokerAddress, std::function<void(RequestContext &)> handler, const Context &context, Settings settings = {})
+    explicit BasicWorker(opencmw::URI<STRICT> brokerAddress, std::function<void(RequestContext &)> handler, const zmq::Context &context, Settings settings = {})
         : _handler{ std::move(handler) }, _settings{ std::move(settings) }, _brokerAddress{ std::move(brokerAddress) }, _context(context), _notifyListenerSocket(_context, ZMQ_PULL), _notifyAddress(makeNotifyAddress()) {
-        zmq_invoke(zmq_bind, _notifyListenerSocket, _notifyAddress.data()).assertSuccess();
+        zmq::invoke(zmq_bind, _notifyListenerSocket, _notifyAddress.data()).assertSuccess();
     }
 
     template<typename BrokerType>
@@ -137,17 +138,17 @@ public:
         _shutdownRequested = true;
     }
 
-    bool notify(MdpMessage &&message) {
-        message.setProtocol(Protocol::Worker);
-        message.setCommand(Command::Notify);
-        message.setServiceName(serviceName.data(), MessageFrame::static_bytes_tag{});
-        message.setRbacToken(_defaultRbacToken, MessageFrame::dynamic_bytes_tag{});
+    bool notify(mdp::Message &&message) {
+        message.protocolName = mdp::workerProtocol;
+        message.command      = mdp::Command::Notify;
+        message.serviceName  = serviceName.data(); // TODO unnecessary copy
+        message.rbac         = _defaultRbacToken;
         return notificationHandlerForThisThread().send(std::move(message));
     }
 
     void disconnect() {
-        auto msg = createMessage(Command::Disconnect);
-        msg.send(*_workerSocket).assertSuccess();
+        auto msg = createMessage(mdp::Command::Disconnect);
+        zmq::send(std::move(msg), *_workerSocket).assertSuccess();
         _workerSocket.reset();
         _pubSocket.reset();
     }
@@ -174,14 +175,13 @@ public:
             }
 
             if (Clock::now() > _heartbeatAt) {
-                auto heartbeat = createMessage(Command::Heartbeat);
-                heartbeat.send(*_workerSocket).assertSuccess();
+                zmq::send(createMessage(mdp::Command::Heartbeat), *_workerSocket).assertSuccess();
                 _heartbeatAt = Clock::now() + _settings.heartbeatInterval;
 
                 cleanupNotificationHandlers();
             }
         } while (!_shutdownRequested
-                 && zmq_invoke(zmq_poll, _pollerItems.data(), static_cast<int>(_pollerItems.size()), heartbeatIntervalMs).isValid());
+                 && zmq::invoke(zmq_poll, _pollerItems.data(), static_cast<int>(_pollerItems.size()), heartbeatIntervalMs).isValid());
 
         disconnect();
     }
@@ -220,28 +220,29 @@ private:
         std::erase_if(_notificationHandlers, isExpired);
     }
 
-    MdpMessage createMessage(Command command) const noexcept {
-        auto message = MdpMessage::createWorkerMessage(command);
-        message.setServiceName(serviceName.data(), MessageFrame::static_bytes_tag{});
-        message.setRbacToken(_defaultRbacToken, MessageFrame::dynamic_bytes_tag{});
+    mdp::Message createMessage(mdp::Command command) const noexcept {
+        mdp::Message message;
+        message.protocolName = mdp::workerProtocol;
+        message.command      = command;
+        message.serviceName  = serviceName.data(); // TODO unnecessary copy
+        message.rbac         = _defaultRbacToken;
         return message;
     }
 
-    MdpMessage replyFromRequest(const MdpMessage &request) const noexcept {
-        MdpMessage reply;
-        reply.setProtocol(request.protocol());
-        reply.setCommand(Command::Final);
-        reply.setServiceName(request.serviceName(), MessageFrame::dynamic_bytes_tag{});
-        reply.setClientSourceId(request.clientSourceId(), MessageFrame::dynamic_bytes_tag{});
-        reply.setClientRequestId(request.clientRequestId(), MessageFrame::dynamic_bytes_tag{});
-        reply.setTopic(request.topic(), MessageFrame::dynamic_bytes_tag{});
-        reply.setRbacToken(request.rbacToken(), MessageFrame::dynamic_bytes_tag{});
+    mdp::Message replyFromRequest(const mdp::Message &request) const noexcept {
+        mdp::Message reply;
+        reply.protocolName    = request.protocolName;
+        reply.command         = mdp::Command::Final;
+        reply.serviceName     = request.serviceName; // serviceName == clientSourceId
+        reply.clientRequestID = request.clientRequestID;
+        reply.endpoint        = request.endpoint;
+        reply.rbac            = request.rbac;
         return reply;
     }
 
     bool receiveSubscriptionMessage() {
-        MessageFrame frame;
-        const auto   result = frame.receive(*_pubSocket, ZMQ_DONTWAIT);
+        zmq::MessageFrame frame;
+        const auto        result = frame.receive(*_pubSocket, ZMQ_DONTWAIT);
 
         if (!result) {
             return false;
@@ -272,9 +273,9 @@ private:
     }
 
     bool receiveNotificationMessage() {
-        if (auto message = MdpMessage::receive(_notifyListenerSocket)) {
+        if (auto message = zmq::receive<mdp::MessageFormat::WithoutSourceId>(_notifyListenerSocket)) {
             // const auto topic                    = URI<RELAXED>(std::string(message->topic()));
-            const SubscriptionData currentSubscription(message->serviceName(), message->topic(), {});
+            const SubscriptionData currentSubscription(message->serviceName, message->endpoint.str(), {});
             const auto             matchesNotificationTopic = [this, &currentSubscription](const auto &activeSubscription) {
                 return _subscriptionMatcher(currentSubscription, activeSubscription);
             };
@@ -282,7 +283,7 @@ private:
             // TODO what to do here if worker is disconnected?
             std::lock_guard lockGuard(_activeSubscriptionsLock);
             if (_workerSocket && std::any_of(_activeSubscriptions.begin(), _activeSubscriptions.end(), matchesNotificationTopic)) {
-                message->send(*_workerSocket).assertSuccess();
+                zmq::send(std::move(*message), *_workerSocket).assertSuccess();
             }
             return true;
         }
@@ -291,7 +292,7 @@ private:
     }
 
     bool receiveDealerMessage() {
-        if (auto message = MdpMessage::receive(*_workerSocket)) {
+        if (auto message = zmq::receive<mdp::MessageFormat::WithoutSourceId>(*_workerSocket)) {
             handleDealerMessage(std::move(*message));
             return true;
         }
@@ -299,25 +300,20 @@ private:
         return false;
     }
 
-    void handleDealerMessage(MdpMessage &&message) {
+    void handleDealerMessage(mdp::Message &&message) {
         _liveness = _settings.heartbeatLiveness;
 
-        if (!message.isValid()) {
-            return;
-        }
-
-        if (message.isWorkerMessage()) {
-            switch (message.command()) {
-            case Command::Get:
-            case Command::Set: {
-                auto reply = processRequest(std::move(message));
-                reply.send(*_workerSocket).assertSuccess();
+        if (message.protocolName == mdp::workerProtocol) {
+            switch (message.command) {
+            case mdp::Command::Get:
+            case mdp::Command::Set: {
+                zmq::send(processRequest(std::move(message)), *_workerSocket).assertSuccess();
                 return;
             }
-            case Command::Heartbeat:
+            case mdp::Command::Heartbeat:
                 return;
-            case Command::Disconnect:
-                if (message.body() == "broker shutdown") {
+            case mdp::Command::Disconnect:
+                if (message.data.asString() == "broker shutdown") {
                     _shutdownRequested = true;
                 } else {
                     connectToBroker();
@@ -347,17 +343,17 @@ private:
     static constexpr auto _permissionsByRole = permissionMap();
     static constexpr auto _defaultPermission = _permissionsByRole.data.back().second;
 
-    MdpMessage            processRequest(MdpMessage &&request) noexcept {
-        const auto clientRole = parse_rbac::role(request.rbacToken());
+    mdp::Message          processRequest(mdp::Message &&request) noexcept {
+        const auto clientRole = parse_rbac::role(request.rbac.asString());
         const auto permission = _permissionsByRole.at(clientRole, _defaultPermission);
 
-        if (request.command() == Command::Get && !(permission == Permission::RW || permission == Permission::RO)) {
-            auto errorReply = replyFromRequest(request);
-            errorReply.setError(fmt::format("GET access denied to role '{}'", clientRole), MessageFrame::dynamic_bytes_tag{});
+        if (request.command == mdp::Command::Get && !(permission == Permission::RW || permission == Permission::RO)) {
+            auto errorReply  = replyFromRequest(request);
+            errorReply.error = fmt::format("GET access denied to role '{}'", clientRole);
             return errorReply;
-        } else if (request.command() == Command::Set && !(permission == Permission::RW || permission == Permission::WO)) {
-            auto errorReply = replyFromRequest(request);
-            errorReply.setError(fmt::format("SET access denied to role '{}'", clientRole), MessageFrame::dynamic_bytes_tag{});
+        } else if (request.command == mdp::Command::Set && !(permission == Permission::RW || permission == Permission::WO)) {
+            auto errorReply  = replyFromRequest(request);
+            errorReply.error = fmt::format("SET access denied to role '{}'", clientRole);
             return errorReply;
         }
 
@@ -367,12 +363,12 @@ private:
             std::invoke(_handler, context);
             return std::move(context.reply);
         } catch (const std::exception &e) {
-            auto errorReply = replyFromRequest(context.request);
-            errorReply.setError(fmt::format("Caught exception for service '{}'\nrequest message: {}\nexception: {}", serviceName.data(), context.request.body(), e.what()), MessageFrame::dynamic_bytes_tag{});
+            auto errorReply  = replyFromRequest(context.request);
+            errorReply.error = fmt::format("Caught exception for service '{}'\nrequest message: {}\nexception: {}", serviceName.data(), context.request.data, e.what());
             return errorReply;
         } catch (...) {
-            auto errorReply = replyFromRequest(context.request);
-            errorReply.setError(fmt::format("Caught unexpected exception for service '{}'\nrequest message: {}", serviceName.data(), context.request.body()), MessageFrame::dynamic_bytes_tag{});
+            auto errorReply  = replyFromRequest(context.request);
+            errorReply.error = fmt::format("Caught unexpected exception for service '{}'\nrequest message: {}", serviceName.data(), context.request.data);
             return errorReply;
         }
     }
@@ -386,21 +382,21 @@ private:
         _workerSocket.emplace(_context, ZMQ_DEALER);
 
         const auto routerEndpoint = opencmw::URI<STRICT>::factory(_brokerAddress).path(opencmw::majordomo::SUFFIX_ROUTER).build();
-        if (!zmq_invoke(zmq_connect, *_workerSocket, toZeroMQEndpoint(routerEndpoint).data()).isValid()) {
+        if (!zmq::invoke(zmq_connect, *_workerSocket, mdp::toZeroMQEndpoint(routerEndpoint).data()).isValid()) {
             return false;
         }
 
         _pubSocket.emplace(_context, ZMQ_XPUB);
 
         const auto subEndpoint = opencmw::URI<STRICT>::factory(_brokerAddress).path(opencmw::majordomo::SUFFIX_SUBSCRIBE).build();
-        if (!zmq_invoke(zmq_connect, *_pubSocket, toZeroMQEndpoint(subEndpoint).data()).isValid()) {
+        if (!zmq::invoke(zmq_connect, *_pubSocket, mdp::toZeroMQEndpoint(subEndpoint).data()).isValid()) {
             _workerSocket.reset();
             return false;
         }
 
-        auto ready = createMessage(Command::Ready);
-        ready.setBody(serviceDescription(), MessageFrame::dynamic_bytes_tag{});
-        ready.send(*_workerSocket).assertSuccess();
+        auto ready = createMessage(mdp::Command::Ready);
+        ready.data = IoBuffer(serviceDescription().data());
+        zmq::send(std::move(ready), *_workerSocket).assertSuccess();
 
         _pollerItems[0].socket = _workerSocket->zmq_ptr;
         _pollerItems[0].events = ZMQ_POLLIN;
@@ -420,13 +416,12 @@ private:
 
 namespace worker_detail {
 template<ReflectableClass I, typename Protocol>
-inline I deserialiseRequest(const MdpMessage &request) {
-    IoBuffer buffer;
-    buffer.put<IoBuffer::MetaInfo::WITHOUT>(request.body());
+inline I deserialiseRequest(const mdp::Message &request) {
     I input;
 
-    if (!request.body().empty()) {
-        const auto result = opencmw::deserialise<Protocol, opencmw::ProtocolCheck::ALWAYS>(buffer, input);
+    if (!request.data.empty()) {
+        IoBuffer   tmp(request.data);
+        const auto result = opencmw::deserialise<Protocol, opencmw::ProtocolCheck::ALWAYS>(tmp, input);
         if (!result.exceptions.empty()) {
             throw result.exceptions.front();
         }
@@ -453,17 +448,17 @@ template<typename Protocol>
 inline void serialiseAndWriteToBody(RequestContext &rawCtx, const ReflectableClass auto &output) {
     IoBuffer buffer;
     opencmw::serialise<Protocol>(buffer, output);
-    rawCtx.reply.setBody(buffer.asString(), MessageFrame::dynamic_bytes_tag{});
+    rawCtx.reply.data = std::move(buffer);
 }
 
 inline void writeResult(std::string_view workerName, RequestContext &rawCtx, const auto &replyContext, const auto &output) {
-    auto        replyQuery  = query::serialise(replyContext);
-    const auto  baseUri     = URI<RELAXED>(std::string(rawCtx.reply.topic().empty() ? rawCtx.request.topic() : rawCtx.reply.topic()));
-    const auto  topicUriOld = URI<RELAXED>::factory(baseUri).setQuery(std::move(replyQuery)).build();
-    const auto  topicUriNew = URI<RELAXED>::factory(baseUri).build();
-    const auto &topicUri    = topicUriOld;
+    auto        replyQuery   = query::serialise(replyContext);
+    const auto  baseUri      = rawCtx.reply.endpoint.empty() ? rawCtx.request.endpoint : rawCtx.reply.endpoint;
+    const auto  topicUriOld  = mdp::Message::URI::factory(baseUri).setQuery(std::move(replyQuery)).build();
+    const auto  topicUriNew  = mdp::Message::URI::factory(baseUri).build();
+    const auto &topicUri     = topicUriOld;
 
-    rawCtx.reply.setTopic(topicUri.str(), MessageFrame::dynamic_bytes_tag{});
+    rawCtx.reply.endpoint    = topicUri;
     const auto replyMimetype = query::getMimeType(replyContext);
     const auto mimeType      = replyMimetype != MIME::UNKNOWN ? replyMimetype : rawCtx.mimeType;
     if (mimeType == MIME::JSON) {
@@ -481,7 +476,9 @@ inline void writeResult(std::string_view workerName, RequestContext &rawCtx, con
         mustache::serialise(cmrc::assets::get_filesystem(), std::string(workerName), stream,
                 std::pair<std::string, const decltype(output) &>{ "result"s, output },
                 std::pair<std::string, const RequestContext &>{ "rawCtx"s, rawCtx });
-        rawCtx.reply.setBody(stream.str(), MessageFrame::dynamic_bytes_tag{});
+        // TODO move the data?
+        const auto buf    = stream.str();
+        rawCtx.reply.data = IoBuffer(buf.data(), buf.size());
         return;
     }
 
@@ -489,11 +486,11 @@ inline void writeResult(std::string_view workerName, RequestContext &rawCtx, con
 }
 
 inline void writeResultFull(std::string_view workerName, RequestContext &rawCtx, const auto &requestContext, const auto &replyContext, const auto &input, const auto &output) {
-    auto       replyQuery = query::serialise(replyContext);
-    const auto baseUri    = URI<RELAXED>(std::string(rawCtx.reply.topic().empty() ? rawCtx.request.topic() : rawCtx.reply.topic()));
-    const auto topicUri   = URI<RELAXED>::factory(baseUri).setQuery(std::move(replyQuery)).build();
+    auto       replyQuery    = query::serialise(replyContext);
+    const auto baseUri       = rawCtx.reply.endpoint.empty() ? rawCtx.request.endpoint : rawCtx.reply.endpoint;
+    const auto topicUri      = mdp::Message::URI::factory(baseUri).setQuery(std::move(replyQuery)).build();
 
-    rawCtx.reply.setTopic(topicUri.str(), MessageFrame::dynamic_bytes_tag{});
+    rawCtx.reply.endpoint    = topicUri;
     const auto replyMimetype = query::getMimeType(replyContext);
     const auto mimeType      = replyMimetype != MIME::UNKNOWN ? replyMimetype : rawCtx.mimeType;
     if (mimeType == MIME::JSON) {
@@ -515,13 +512,15 @@ inline void writeResultFull(std::string_view workerName, RequestContext &rawCtx,
                     std::pair<std::string, const decltype(input) &>{ "input"s, input },
                     std::pair<std::string, const decltype(requestContext) &>{ "requestContext"s, requestContext },
                     std::pair<std::string, const decltype(replyContext) &>{ "replyContext"s, replyContext });
-            rawCtx.reply.setBody(stream.str(), MessageFrame::dynamic_bytes_tag{});
+            const auto buf = stream.str();
+            // TODO move data?
+            rawCtx.reply.data = IoBuffer(buf.data(), buf.size());
         } catch (const ProtocolException &e) {
-            rawCtx.reply.setError(e.what(), MessageFrame::dynamic_bytes_tag{});
+            rawCtx.reply.error = e.what();
         } catch (const std::exception &e) {
-            rawCtx.reply.setError(e.what(), MessageFrame::dynamic_bytes_tag{});
+            rawCtx.reply.error = e.what();
         } catch (...) {
-            rawCtx.reply.setError("Unexpected exception", MessageFrame::static_bytes_tag{});
+            rawCtx.reply.error = "Unexpected exception";
         }
 
         return;
@@ -541,7 +540,7 @@ struct HandlerImpl {
     }
 
     void operator()(RequestContext &rawCtx) {
-        const auto  reqTopic          = opencmw::URI<RELAXED>(std::string(rawCtx.request.topic()));
+        const auto  reqTopic          = rawCtx.request.endpoint;
         const auto  queryMap          = reqTopic.queryParamMap();
 
         ContextType requestCtx        = query::deserialise<ContextType>(queryMap);
@@ -571,7 +570,7 @@ public:
     using HandlerImpl      = worker_detail::HandlerImpl<Worker, ContextType, InputType, OutputType>;
     using CallbackFunction = typename HandlerImpl::CallbackFunction;
 
-    explicit Worker(URI<STRICT> brokerAddress, CallbackFunction callback, const Context &context, Settings settings = {})
+    explicit Worker(URI<STRICT> brokerAddress, CallbackFunction callback, const zmq::Context &context, Settings settings = {})
         : BasicWorker<serviceName, Meta...>(std::move(brokerAddress), HandlerImpl(std::move(callback)), context, settings) {
         query::registerTypes(ContextType(), *this);
     }
@@ -588,7 +587,7 @@ public:
 
     bool notify(std::string_view path, const ContextType &context, const OutputType &reply) {
         RequestContext rawCtx;
-        rawCtx.reply.setTopic(path, MessageFrame::dynamic_bytes_tag{});
+        rawCtx.reply.endpoint = mdp::Message::URI(std::string(path));
         worker_detail::writeResult(Worker::name, rawCtx, context, reply);
         return BasicWorker<serviceName, Meta...>::notify(std::move(rawCtx.reply));
     }

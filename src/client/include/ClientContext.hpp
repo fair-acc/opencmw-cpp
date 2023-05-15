@@ -9,7 +9,6 @@
 #include <vector>
 
 #include <disruptor/Disruptor.hpp>
-#include <majordomo/Broker.hpp>
 #include <MdpMessage.hpp>
 #include <URI.hpp>
 

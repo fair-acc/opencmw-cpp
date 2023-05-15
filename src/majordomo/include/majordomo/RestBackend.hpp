@@ -20,6 +20,7 @@
 #pragma GCC diagnostic pop
 
 // Core
+#include <MdpMessage.hpp>
 #include <MIME.hpp>
 #include <URI.hpp>
 
@@ -29,9 +30,6 @@
 
 // Majordomo
 #include <majordomo/Broker.hpp>
-#include <majordomo/Message.hpp>
-#include <majordomo/ZmqPtr.hpp>
-
 #include <refl.hpp>
 
 #include <cmrc/cmrc.hpp>
@@ -215,8 +213,8 @@ struct SubscriptionInfo {
 };
 
 struct Connection {
-    Socket           notificationSubscriptionSocket;
-    Socket           requestResponseSocket;
+    zmq::Socket      notificationSubscriptionSocket;
+    zmq::Socket      requestResponseSocket;
     SubscriptionInfo subscriptionInfo;
 
     using Timestamp    = std::chrono::time_point<std::chrono::system_clock>;
@@ -242,7 +240,7 @@ private:
     }
 
 public:
-    Connection(const Context &context, SubscriptionInfo _subscriptionInfo)
+    Connection(const zmq::Context &context, SubscriptionInfo _subscriptionInfo)
         : notificationSubscriptionSocket(context, ZMQ_DEALER)
         , requestResponseSocket(context, ZMQ_SUB)
         , subscriptionInfo(std::move(_subscriptionInfo)) {}
@@ -351,13 +349,15 @@ public:
 
         auto *connection = it->second.get();
 
-        zmq_invoke(zmq_connect, connection->notificationSubscriptionSocket, INTERNAL_ADDRESS_BROKER.str()).template onFailure<opencmw::startup_error>("Can not connect REST worker to Majordomo broker");
+        zmq::invoke(zmq_connect, connection->notificationSubscriptionSocket, INTERNAL_ADDRESS_BROKER.str()).template onFailure<opencmw::startup_error>("Can not connect REST worker to Majordomo broker");
 
-        auto subscribeMessage = MdpMessage::createClientMessage(Command::Subscribe);
-        subscribeMessage.setServiceName(subscriptionInfo.serviceName, MessageFrame::dynamic_bytes_tag{});
-        subscribeMessage.setTopic(subscriptionInfo.topicName, MessageFrame::dynamic_bytes_tag{});
+        mdp::Message subscribeMessage;
+        subscribeMessage.protocolName = mdp::clientProtocol;
+        subscribeMessage.command      = mdp::Command::Subscribe;
+        subscribeMessage.serviceName  = subscriptionInfo.serviceName;
+        subscribeMessage.endpoint     = mdp::Message::URI(subscriptionInfo.topicName);
 
-        if (!subscribeMessage.send(connection->notificationSubscriptionSocket)) {
+        if (!zmq::send(std::move(subscribeMessage), connection->notificationSubscriptionSocket)) {
             std::terminate();
             return nullptr;
         }
@@ -416,7 +416,7 @@ public:
                             ++i;
                         }
 
-                        auto pollCount = zmq_invoke(zmq_poll, pollItems.data(), static_cast<int>(pollItems.size()),
+                        auto pollCount = zmq::invoke(zmq_poll, pollItems.data(), static_cast<int>(pollItems.size()),
                                 std::chrono::duration_cast<std::chrono::milliseconds>(UPDATER_POLLING_TIME).count());
                         if (!pollCount) {
                             std::terminate();
@@ -430,8 +430,8 @@ public:
                             if (events & ZMQ_POLLIN) {
                                 auto *currentConnection = connections[i];
                                 auto  connectionLock    = currentConnection->writeLock();
-                                if (auto responseMessage = MdpMessage::receive(currentConnection->notificationSubscriptionSocket)) {
-                                    currentConnection->addCachedReply(connectionLock, std::string(responseMessage->body()));
+                                if (auto responseMessage = zmq::receive<mdp::MessageFormat::WithoutSourceId>(currentConnection->notificationSubscriptionSocket)) {
+                                    currentConnection->addCachedReply(connectionLock, std::string(responseMessage->data.asString()));
                                 }
                             }
                         }
@@ -596,17 +596,17 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         detail::Connection connection(restBackend._broker.context, {});
         pollItem.events = ZMQ_POLLIN;
 
-        zmq_invoke(zmq_connect, connection.notificationSubscriptionSocket, INTERNAL_ADDRESS_BROKER.str()).template onFailure<opencmw::startup_error>("Can not connect REST worker to Majordomo broker");
-        zmq_invoke(zmq_connect, connection.requestResponseSocket, INTERNAL_ADDRESS_PUBLISHER.str()).template onFailure<opencmw::startup_error>("Can not connect REST worker to Majordomo broker");
+        zmq::invoke(zmq_connect, connection.notificationSubscriptionSocket, INTERNAL_ADDRESS_BROKER.str()).template onFailure<opencmw::startup_error>("Can not connect REST worker to Majordomo broker");
+        zmq::invoke(zmq_connect, connection.requestResponseSocket, INTERNAL_ADDRESS_PUBLISHER.str()).template onFailure<opencmw::startup_error>("Can not connect REST worker to Majordomo broker");
 
         return std::move(connection).unsafeMove();
     }
 
     bool respondWithPubSub(const httplib::Request &request, httplib::Response &response, const std::string_view &service, detail::RestMethod restMethod, const httplib::ContentReader *content_reader_ = nullptr) {
         // clang-format off
-        const Command mdpMessageCommand =
-                 restMethod == detail::RestMethod::Post      ? Command::Set :
-                                                 /* default */ Command::Get;
+        const mdp::Command mdpMessageCommand =
+                 restMethod == detail::RestMethod::Post      ? mdp::Command::Set :
+                                                 /* default */ mdp::Command::Get;
         // clang-format on
 
         auto        uri = URI<>::factory();
@@ -624,15 +624,17 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
             }
         }
 
-        auto message = MdpMessage::createClientMessage(mdpMessageCommand);
-        message.setServiceName(service, MessageFrame::dynamic_bytes_tag{});
+        mdp::Message message;
+        message.protocolName      = mdp::clientProtocol;
+        message.command           = mdpMessageCommand;
+        message.serviceName       = std::string(service);
 
         const auto acceptedFormat = detail::acceptedMimeForRequest(request);
         uri                       = std::move(uri).addQueryParameter("contentType", std::string(acceptedFormat));
 
         auto topic                = std::string(service) + uri.toString();
 
-        message.setTopic(topic, MessageFrame::dynamic_bytes_tag{});
+        message.endpoint          = mdp::Message::URI(topic);
 
         if (request.is_multipart_form_data()) {
             if (content_reader_ != nullptr) {
@@ -659,44 +661,45 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
 
                 std::string requestData(buffer.asString());
                 // Json serialiser (rightfully) does not like bool values in string
-                static auto replacerRegex = std::regex(R"regex("opencmw_unquoted_value[(](.*)[)]")regex");
-                requestData               = std::regex_replace(requestData, replacerRegex, "$1");
-                auto requestDataBegin     = std::find(requestData.cbegin(), requestData.cend(), '{');
+                static auto replacerRegex   = std::regex(R"regex("opencmw_unquoted_value[(](.*)[)]")regex");
+                requestData                 = std::regex_replace(requestData, replacerRegex, "$1");
+                auto       requestDataBegin = std::find(requestData.cbegin(), requestData.cend(), '{');
 
-                message.setBody(std::string_view(requestDataBegin, requestData.cend()), MessageFrame::dynamic_bytes_tag{});
+                const auto req              = std::string_view(requestDataBegin, requestData.cend());
+                message.data                = IoBuffer(req.data(), req.size());
             }
         } else if (!bodyOverride.empty()) {
-            message.setBody(bodyOverride, MessageFrame::dynamic_bytes_tag{});
-
+            message.data = IoBuffer(bodyOverride.data(), bodyOverride.size());
         } else if (!request.body.empty()) {
-            message.setBody(request.body, MessageFrame::dynamic_bytes_tag{});
+            message.data = IoBuffer(request.body.data(), request.body.size());
         }
 
         auto connection = connect();
 
-        if (!message.send(connection.notificationSubscriptionSocket)) {
+        if (!zmq::send(std::move(message), connection.notificationSubscriptionSocket)) {
             return detail::respondWithError(response, "Error: Failed to send a message to the broker\n");
         }
 
         pollItem.socket = connection.notificationSubscriptionSocket.zmq_ptr;
-        auto pollResult = zmq_invoke(zmq_poll, &pollItem, 1, std::chrono::duration_cast<std::chrono::milliseconds>(REST_POLLING_TIME).count());
+        auto pollResult = zmq::invoke(zmq_poll, &pollItem, 1, std::chrono::duration_cast<std::chrono::milliseconds>(REST_POLLING_TIME).count());
         if (!pollResult || pollResult.value() == 0) {
             detail::respondWithError(response, "Error: No response from broker\n");
-        } else if (auto responseMessage = MdpMessage::receive(connection.notificationSubscriptionSocket); !responseMessage) {
+        } else if (auto responseMessage = zmq::receive<mdp::MessageFormat::WithoutSourceId>(connection.notificationSubscriptionSocket); !responseMessage) {
             detail::respondWithError(response, "Error: Empty response from broker\n");
-        } else if (!responseMessage->error().empty()) {
-            detail::respondWithError(response, responseMessage->error());
+        } else if (!responseMessage->error.empty()) {
+            detail::respondWithError(response, responseMessage->error);
         } else {
             response.status = HTTP_OK;
 
-            response.set_header("X-OPENCMW-TOPIC", responseMessage->topic().data());
-            response.set_header("X-OPENCMW-SERVICE-NAME", responseMessage->serviceName().data());
+            response.set_header("X-OPENCMW-TOPIC", responseMessage->endpoint.str().data());
+            response.set_header("X-OPENCMW-SERVICE-NAME", responseMessage->serviceName.data());
             response.set_header("Access-Control-Allow-Origin", "*");
+            const auto data = responseMessage->data.asString();
 
             if (request.method != "GET") {
-                response.set_content(responseMessage->body().data(), MIME::TEXT.typeName().data());
+                response.set_content(data.data(), data.size(), MIME::TEXT.typeName().data());
             } else {
-                response.set_content(responseMessage->body().data(), acceptedFormat.data());
+                response.set_content(data.data(), data.size(), acceptedFormat.data());
             }
         }
         return true;

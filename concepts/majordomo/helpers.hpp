@@ -19,6 +19,9 @@ CMRC_DECLARE(testImages);
 CMRC_DECLARE(assets);
 
 namespace majordomo = opencmw::majordomo;
+namespace mdp       = opencmw::mdp;
+namespace zmq       = opencmw::zmq;
+
 using namespace std::chrono_literals;
 using namespace std::string_literals;
 
@@ -102,9 +105,9 @@ struct TestAddressHandler {
      * The handler function that the handler is required to implement.
      */
     void operator()(const opencmw::majordomo::RequestContext &rawCtx, const SimpleContext & /*requestContext*/, const AddressRequest &request, SimpleContext & /*replyContext*/, AddressEntry &output) {
-        if (rawCtx.request.command() == majordomo::Command::Get) {
+        if (rawCtx.request.command == mdp::Command::Get) {
             output = _entry;
-        } else if (rawCtx.request.command() == majordomo::Command::Set) {
+        } else if (rawCtx.request.command == mdp::Command::Set) {
             _entry = AddressEntry{
                 .name         = request.name,
                 .street       = request.street,
@@ -129,7 +132,7 @@ struct HelloWorldHandler {
         out.byteReturnType    = 42;
 
         out.timingCtx         = opencmw::TimingCtx(3, {}, {}, {}, duration_cast<microseconds>(now.time_since_epoch()));
-        if (rawCtx.request.command() == majordomo::Command::Set) {
+        if (rawCtx.request.command == mdp::Command::Set) {
             customFilter = in.customFilter;
         }
         out.lsaContext           = customFilter;
@@ -183,7 +186,7 @@ public:
 
         super_t::setCallback([this](majordomo::RequestContext &rawCtx, const SimpleContext &, const majordomo::Empty &, SimpleContext &, BinaryData &out) {
             using namespace opencmw;
-            const auto topicPath  = URI<RELAXED>(std::string(rawCtx.request.topic())).path().value_or("");
+            const auto topicPath  = rawCtx.request.endpoint.path().value_or("");
             const auto path       = ::detail::stripPrefix(topicPath, "/");
             out.resourceName      = ::detail::stripPrefix(::detail::stripPrefix(path, PROPERTY_NAME), "/");
             out.image.base64      = base64pp::encode(imageData[selectedImage]);
@@ -210,28 +213,6 @@ public:
 
     FileServerRestBackend(majordomo::Broker<Roles...> &broker, const VirtualFS &vfs, std::filesystem::path serverRoot, opencmw::URI<> restAddress = opencmw::URI<>::factory().scheme(DEFAULT_REST_SCHEME).hostName("0.0.0.0").port(majordomo::DEFAULT_REST_PORT).build())
         : super_t(broker, vfs, restAddress), _serverRoot(std::move(serverRoot)) {
-    }
-
-    static majordomo::MdpMessage deserializeSemicolonFormattedMessage(std::string_view method, std::string_view serialized) {
-        // clang-format off
-        auto result = majordomo::MdpMessage::createClientMessage(
-                method == "SUB" ? majordomo::Command::Subscribe :
-                method == "PUT" ? majordomo::Command::Set :
-                /* default */     majordomo::Command::Get);
-        // clang-format on
-
-        // For the time being, just use ';' as frame separator. Not meant
-        // to be a safe long-term solution:
-        auto       currentBegin = serialized.cbegin();
-        const auto bodyEnd      = serialized.cend();
-        auto       currentEnd   = std::find(currentBegin, serialized.cend(), ';');
-
-        for (std::size_t i = 2; i < result.requiredFrameCount(); ++i) {
-            result.setFrameData(i, std::string_view(currentBegin, currentEnd), majordomo::MessageFrame::dynamic_bytes_tag{});
-            currentBegin = (currentEnd != bodyEnd) ? currentEnd + 1 : bodyEnd;
-            currentEnd   = std::find(currentBegin, serialized.cend(), ';');
-        }
-        return result;
     }
 
     void registerHandlers() override {
@@ -285,21 +266,21 @@ inline opencmw::majordomo::Settings testSettings() {
     return settings;
 }
 
-template<typename MessageType>
+template<mdp::MessageFormat Format>
 class TestNode {
 public:
-    opencmw::majordomo::Socket _socket;
+    zmq::Socket _socket;
 
-    explicit TestNode(const opencmw::majordomo::Context &context, int socket_type = ZMQ_DEALER)
+    explicit TestNode(const zmq::Context &context, int socket_type = ZMQ_DEALER)
         : _socket(context, socket_type) {
     }
 
     bool bind(const opencmw::URI<opencmw::STRICT> &address) {
-        return zmq_invoke(zmq_bind, _socket, opencmw::majordomo::toZeroMQEndpoint(address).data()).isValid();
+        return zmq::invoke(zmq_bind, _socket, mdp::toZeroMQEndpoint(address).data()).isValid();
     }
 
     bool connect(const opencmw::URI<opencmw::STRICT> &address, std::string_view subscription = "") {
-        auto result = zmq_invoke(zmq_connect, _socket, opencmw::majordomo::toZeroMQEndpoint(address).data());
+        auto result = zmq::invoke(zmq_connect, _socket, mdp::toZeroMQEndpoint(address).data());
         if (!result) return false;
 
         if (!subscription.empty()) {
@@ -311,36 +292,36 @@ public:
 
     bool subscribe(std::string_view subscription) {
         assert(!subscription.empty());
-        return zmq_invoke(zmq_setsockopt, _socket, ZMQ_SUBSCRIBE, subscription.data(), subscription.size()).isValid();
+        return zmq::invoke(zmq_setsockopt, _socket, ZMQ_SUBSCRIBE, subscription.data(), subscription.size()).isValid();
     }
 
     bool unsubscribe(std::string_view subscription) {
         assert(!subscription.empty());
-        return zmq_invoke(zmq_setsockopt, _socket, ZMQ_UNSUBSCRIBE, subscription.data(), subscription.size()).isValid();
+        return zmq::invoke(zmq_setsockopt, _socket, ZMQ_UNSUBSCRIBE, subscription.data(), subscription.size()).isValid();
     }
 
-    bool sendRawFrame(const std::string &data) {
-        opencmw::majordomo::MessageFrame f(data, opencmw::majordomo::MessageFrame::dynamic_bytes_tag{});
+    bool sendRawFrame(std::string data) {
+        zmq::MessageFrame f(std::move(data));
         return f.send(_socket, 0).isValid(); // blocking for simplicity
     }
 
-    std::optional<MessageType> tryReadOne(std::chrono::milliseconds timeout = std::chrono::milliseconds(3000)) {
+    std::optional<mdp::BasicMessage<Format>> tryReadOne(std::chrono::milliseconds timeout = std::chrono::milliseconds(3000)) {
         std::array<zmq_pollitem_t, 1> pollerItems;
         pollerItems[0].socket = _socket.zmq_ptr;
         pollerItems[0].events = ZMQ_POLLIN;
 
-        const auto result     = opencmw::majordomo::zmq_invoke(zmq_poll, pollerItems.data(), static_cast<int>(pollerItems.size()), timeout.count());
+        const auto result     = zmq::invoke(zmq_poll, pollerItems.data(), static_cast<int>(pollerItems.size()), timeout.count());
         if (!result.isValid() || result.value() == 0) {
             return {};
         }
 
-        return MessageType::receive(_socket);
+        return zmq::receive<Format>(_socket);
     }
 
-    std::optional<MessageType> tryReadOneSkipHB(int retries, std::chrono::milliseconds timeout = std::chrono::milliseconds(3000)) {
+    std::optional<mdp::BasicMessage<Format>> tryReadOneSkipHB(int retries, std::chrono::milliseconds timeout = std::chrono::milliseconds(3000)) {
         int  i      = 0;
         auto result = tryReadOne(timeout);
-        while (!result || !result->isValid() || result->command() == opencmw::majordomo::Command::Heartbeat) {
+        while (!result || result->command == mdp::Command::Heartbeat) {
             if (i++ >= retries) {
                 return {};
             }
@@ -349,13 +330,16 @@ public:
         return result;
     }
 
-    void send(MessageType &message) {
-        message.send(_socket).assertSuccess();
+    void send(mdp::BasicMessage<Format> &&message) {
+        zmq::send(std::move(message), _socket).assertSuccess();
     }
 };
 
-inline bool waitUntilServiceAvailable(const opencmw::majordomo::Context &context, std::string_view serviceName, const opencmw::URI<opencmw::STRICT> &brokerAddress = opencmw::majordomo::INTERNAL_ADDRESS_BROKER) {
-    TestNode<opencmw::majordomo::MdpMessage> client(context);
+using MessageNode       = TestNode<mdp::MessageFormat::WithoutSourceId>;
+using BrokerMessageNode = TestNode<mdp::MessageFormat::WithSourceId>;
+
+inline bool waitUntilServiceAvailable(const zmq::Context &context, std::string_view serviceName, const opencmw::URI<opencmw::STRICT> &brokerAddress = opencmw::majordomo::INTERNAL_ADDRESS_BROKER) {
+    MessageNode client(context);
     if (!client.connect(brokerAddress)) {
         return false;
     }
@@ -364,26 +348,25 @@ inline bool waitUntilServiceAvailable(const opencmw::majordomo::Context &context
     const auto     startTime = std::chrono::system_clock::now();
 
     while (std::chrono::system_clock::now() - startTime < timeout) {
-        auto request = opencmw::majordomo::MdpMessage::createClientMessage(opencmw::majordomo::Command::Get);
-        request.setServiceName("mmi.service", opencmw::majordomo::MessageFrame::static_bytes_tag{});
-        request.setBody(serviceName, opencmw::majordomo::MessageFrame::dynamic_bytes_tag{});
-        client.send(request);
+        mdp::Message request;
+        request.protocolName = mdp::clientProtocol;
+        request.command      = mdp::Command::Get;
+        request.serviceName  = "mmi.service";
+        request.data         = opencmw::IoBuffer(serviceName.data(), serviceName.size());
+        client.send(std::move(request));
 
         auto reply = client.tryReadOne();
         if (!reply) { // no reply at all? something went seriously wrong
             return false;
         }
 
-        if (reply->body() == "200") {
+        if (reply->data.asString() == "200") {
             return true;
         }
     }
 
     return false;
 }
-
-constexpr auto static_tag  = opencmw::majordomo::MessageFrame::static_bytes_tag{};
-constexpr auto dynamic_tag = opencmw::majordomo::MessageFrame::dynamic_bytes_tag{};
 
 class TestIntHandler {
     int _x = 10;
@@ -394,22 +377,23 @@ public:
     }
 
     void operator()(opencmw::majordomo::RequestContext &context) {
-        if (context.request.command() == opencmw::majordomo::Command::Get) {
-            context.reply.setBody(std::to_string(_x), opencmw::majordomo::MessageFrame::dynamic_bytes_tag{});
+        if (context.request.command == mdp::Command::Get) {
+            const auto body    = std::to_string(_x);
+            context.reply.data = opencmw::IoBuffer(body.data(), body.size());
             return;
         }
 
-        assert(context.request.command() == opencmw::majordomo::Command::Set);
+        assert(context.request.command == mdp::Command::Set);
 
-        const auto request = context.request.body();
+        const auto request = context.request.data.asString();
         int        value   = 0;
         const auto result  = std::from_chars(request.begin(), request.end(), value);
 
         if (result.ec == std::errc::invalid_argument) {
-            context.reply.setError("Not a valid int", opencmw::majordomo::MessageFrame::static_bytes_tag{});
+            context.reply.error = "Not a valid int";
         } else {
-            _x = value;
-            context.reply.setBody("Value set. All good!", opencmw::majordomo::MessageFrame::static_bytes_tag{});
+            _x                 = value;
+            context.reply.data = opencmw::IoBuffer("Value set. All good!");
         }
     }
 };
