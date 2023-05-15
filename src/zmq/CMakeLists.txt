@@ -1,7 +1,6 @@
 # setup header only library
 add_library(zmq INTERFACE
-    include/zmq/Message.hpp
-    include/zmq/Ptr.hpp
+    include/zmq/ZmqUtils.hpp
 )
 
 target_include_directories(zmq INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include/>)
