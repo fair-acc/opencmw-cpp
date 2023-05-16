@@ -30,7 +30,7 @@ elseif (EMSCRIPTEN)
     # clang does not work with stdlib++ ranges, we have to use libc++
     # add_compile_options(-stdlib=libc++)
     # add_link_options(-stdlib=libc++ -lc++abi)
-    message(WARN "You are building with Emscripten Clang. Be advised that support is limited to working in conjunction with"
+    message(WARNING "You are building with Emscripten Clang. Be advised that support is limited to working in conjunction with"
             " libc++ and certain modules. libc++ has been enabled.")
     add_compile_options(-Wno-shorten-64-to-32 -fwasm-exceptions)
     add_link_options(-fwasm-exceptions -sFETCH=1)
@@ -40,7 +40,7 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         message(FATAL_ERROR "Clang>=15.0.0 required, but clang ${CMAKE_CXX_COMPILER_VERSION} detected.")
     endif ()
 else ()
-    message(WARN "No version check for your compiler (${CMAKE_CXX_COMPILER_ID}) implemented, "
+    message(WARNING "No version check for your compiler (${CMAKE_CXX_COMPILER_ID}) implemented, "
             "in case of build problems consider updating your compiler or check if you can switch to gcc or clang")
 endif ()
 
