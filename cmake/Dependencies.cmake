@@ -19,9 +19,7 @@ FetchContent_Declare(
         fmt
         GIT_REPOSITORY https://github.com/fmtlib/fmt.git
         GIT_TAG 8a21e328b8dcb62a2901c499598366a0f5f3f4a5 # magic, working version
-        PATCH_COMMAND git config user.name 'Anonymous'
-        COMMAND git config user.email '<>'
-        COMMAND git cherry-pick 90b68783fff695d6ad26a56550272edd43c57b44
+        PATCH_COMMAND git cherry-pick --no-commit 90b68783fff695d6ad26a56550272edd43c57b44
 )
 
 # dependency of mp-units, building examples, tests, etc is off by default
