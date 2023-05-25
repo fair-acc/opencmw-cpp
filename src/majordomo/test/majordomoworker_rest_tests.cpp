@@ -70,4 +70,33 @@ TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][major
 
         auto httpThreadJSON = makeGetRequestResponseCheckerThread("/addressbook?ctx=FAIR.SELECTOR.ALL&contentType=application%json", "1882");
     }
+
+    SECTION("post data as multipart") {
+        std::jthread putRequestThread{
+            [] {
+                // set a value on the server
+                httplib::Client postRequest("http://localhost:8080");
+                postRequest.set_keep_alive(true);
+
+                httplib::MultipartFormDataItems items{
+                    { "name", "Kalle", "name_file", "text" },
+                    { "street", "calle", "street_file", "text" },
+                    // { "streetNumber", "8", "number_file", "number" }, // `error(22) parsing number at buffer position: 41"` , deserialiser finds "8" instead of 8
+                    { "postalCode", "14005", "postal_code_file", "text" },
+                    { "city", "ciudad", "city_file", "text" }
+                    // "isCurrent", "true", "is_current_file", "text" }, // does not work because true will be quoted. which is not a valid boolean
+                    //{ "isCurrent", "false", "is_current_file", "boolean" }, // content type boolean might not exist, anyway, content_type is not taken into account anyway
+                };
+
+                auto r = postRequest.Put("/addressbook?ctx=FAIR.SELECTOR.ALL&contentType=application%2Fjavascript", items);
+
+                REQUIRE(r);
+                CAPTURE(r->reason);
+                CAPTURE(r->body);
+                REQUIRE(r->status == 200);
+
+                auto httpThreadJSON = makeGetRequestResponseCheckerThread("/addressbook?ctx=FAIR.SELECTOR.ALL&contentType=application%2Fjavascript", "Kalle");
+            }
+        };
+    }
 }
