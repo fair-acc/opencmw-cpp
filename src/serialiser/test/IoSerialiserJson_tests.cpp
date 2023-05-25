@@ -278,4 +278,25 @@ TEST_CASE("consumeWhitespace", "[JsonSerialiser]") {
     REQUIRE(buffer.position() == 11);
 }
 
+struct TestStruct {
+    Annotated<long, units::isq::si::time<units::isq::si::microsecond>> member;
+
+    bool operator==(const TestStruct& other) {
+        return member == other.member;
+    }
+};
+ENABLE_REFLECTION_FOR(TestStruct, member)
+
+TEST_CASE("Annotated Members", "[JsonSerialiser]") {
+    TestStruct testObject{300}, outObject;
+    std::string serializedObject;
+    IoBuffer out;
+
+    serialise<Json>(out, testObject);
+    serializedObject = out.asString();
+
+    deserialise<Json, ProtocolCheck::ALWAYS>(out, outObject);
+
+    REQUIRE((testObject == outObject));
+}
 #pragma clang diagnostic pop
