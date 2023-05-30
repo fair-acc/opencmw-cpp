@@ -25,7 +25,7 @@ std::jthread makeGetRequestResponseCheckerThread(const std::string &address, con
         const auto response = http.Get(address.data());
 
 #define requireWithSource(arg) \
-    if (!(arg)) opencmw::zmq::debug::withLocation(location) << "<- call got a failed requirement:"; \
+    if (!(arg)) opencmw::debug::withLocation(location) << "<- call got a failed requirement:"; \
     REQUIRE(arg)
         requireWithSource(response);
         requireWithSource(response->status == 200);
@@ -58,7 +58,16 @@ TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][major
 
     REQUIRE(waitUntilServiceAvailable(broker.context, "addressbook"));
 
-    auto httpThreadJSON = makeGetRequestResponseCheckerThread("/addressbook?ctx=FAIR.SELECTOR.ALL&contentType=application%2Fjavascript", "Santa Claus");
+    SECTION("request Address information as JSON and as HTML") {
+        auto httpThreadJSON = makeGetRequestResponseCheckerThread("/addressbook?ctx=FAIR.SELECTOR.ALL&contentType=application%2Fjavascript", "Santa Claus");
 
-    auto httpThreadHTML = makeGetRequestResponseCheckerThread("/addressbook?ctx=FAIR.SELECTOR.ALL&contentType=text%2Fhtml", "<td class=\"propTable-fValue\">Elf Road</td>");
+        auto httpThreadHTML = makeGetRequestResponseCheckerThread("/addressbook?ctx=FAIR.SELECTOR.ALL&contentType=text%2Fhtml", "<td class=\"propTable-fValue\">Elf Road</td>");
+    }
+
+    SECTION("post data") {
+        httplib::Client postData{"http://localhost:8080"};
+        postData.Post("/addressbook?ctx=FAIR.SELECTOR.ALL&contentType=application%2Fjavascript", "{\"streetNumber\": 1882}", "application/json");
+
+        auto httpThreadJSON = makeGetRequestResponseCheckerThread("/addressbook?ctx=FAIR.SELECTOR.ALL&contentType=application%2Fjavascript", "1882");
+    }
 }

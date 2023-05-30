@@ -110,8 +110,8 @@ enum class RestMethod {
 };
 
 std::string_view acceptedMimeForRequest(const auto &request) {
-    static constexpr std::array<std::string_view, 3> acceptableMimeTypes = {
-        MIME::JSON.typeName(), MIME::HTML.typeName(), "application/x-opencmw-test-format"
+    static constexpr std::array<std::string_view, 4> acceptableMimeTypes = {
+        MIME::JSON.typeName(), MIME::HTML.typeName(), "application/x-opencmw-test-format", MIME::BINARY.typeName() // if YaS is preferred, we should probably accept it for requests
     };
     auto accepted = [](auto format) {
         const auto it = std::find(acceptableMimeTypes.cbegin(), acceptableMimeTypes.cend(), format);
@@ -120,6 +120,12 @@ std::string_view acceptedMimeForRequest(const auto &request) {
                 it);
     };
 
+    if (request.has_header("Content-Type")) {
+        std::string format = request.get_header_value("Content-Type");
+        if (const auto [found, where] = accepted(format); found) {
+            return *where;
+        }
+    }
     if (request.has_param("contentType")) {
         std::string format = request.get_param_value("contentType");
         if (const auto [found, where] = accepted(format); found) {
@@ -611,6 +617,8 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
 
         auto        uri = URI<>::factory();
         std::string bodyOverride;
+        std::string contentType;
+        int contentLength{0};
         for (const auto &[key, value] : request.params) {
             if (key == "_bodyOverride") {
                 bodyOverride = value;
@@ -621,6 +629,14 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
 
             } else {
                 uri = std::move(uri).addQueryParameter(key, value);
+            }
+        }
+
+        for (const auto &[key, value] : request.headers) {
+            if (key == "Content-Length") {
+                contentLength = std::stoi(value);
+            } else if (key == "Content-Type") {
+                contentType = value;
             }
         }
 
@@ -672,6 +688,10 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
             message.data = IoBuffer(bodyOverride.data(), bodyOverride.size());
         } else if (!request.body.empty()) {
             message.data = IoBuffer(request.body.data(), request.body.size());
+        } else if (contentType != "" && contentLength > 0 && content_reader_ != nullptr) {
+            std::string body;
+            (*content_reader_)([&body](const char* data, size_t datalength){ body = std::string{data, datalength}; return true;});
+            message.data = IoBuffer(body.data(), body.size());
         }
 
         auto connection = connect();
