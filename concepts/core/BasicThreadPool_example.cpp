@@ -14,7 +14,7 @@ int main() {
 
     opencmw::BasicThreadPool<opencmw::CPU_BOUND> poolWork("CustomCpuPool", 1, 1); // pool for CPU-bound tasks with exactly 1 thread
     opencmw::BasicThreadPool<opencmw::IO_BOUND>  poolIO("CustomIOPool", 1, 1000); // pool for IO-bound (potentially blocking) tasks with at least 1 and a max of 1000 threads
-    poolIO.keepAliveDuration() = seconds(10);                                     // keeps idling threads alive for 10 seconds
+    poolIO.keepAliveDuration = seconds(10);                                       // keeps idling threads alive for 10 seconds
     poolIO.waitUntilInitialised();                                                // wait until the pool is initialised (optional)
     assert(poolIO.isInitialised());                                               // check if the pool is initialised
 
