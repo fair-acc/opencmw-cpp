@@ -108,7 +108,7 @@ if (ENABLE_TESTING)
     enable_testing()
     message("Building Tests.")
     if (ENABLE_COVERAGE)
-        if (UNIX AND NOT APPLE) # Linux
+        if (UNIX AND NOT APPLE AND NOT EMSCRIPTEN) # Linux
             message("Coverage reporting enabled")
             include(cmake/CodeCoverage.cmake) # https://github.com/bilke/cmake-modules/blob/master/CodeCoverage.cmake
             # (License: BSL-1.0)
