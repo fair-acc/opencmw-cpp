@@ -62,15 +62,15 @@ TEST_CASE("ThreadPool: Thread count tests", "[ThreadPool][MinMaxThreads]") {
         std::uint32_t min, max;
     };
     std::array<bounds_def, 5> bounds{
-            bounds_def{1, 1},
-            bounds_def{1, 4},
-            bounds_def{2, 2},
-            bounds_def{2, 8},
-            bounds_def{4, 8}
+        bounds_def{ 1, 1 },
+        bounds_def{ 1, 4 },
+        bounds_def{ 2, 2 },
+        bounds_def{ 2, 8 },
+        bounds_def{ 4, 8 }
     };
 
-    for (const auto [minThreads, maxThreads]: bounds) {
-        for (const auto taskCount: {2, 8, 32}) {
+    for (const auto [minThreads, maxThreads] : bounds) {
+        for (const auto taskCount : { 2, 8, 32 }) {
             fmt::print("## Test with min={} and max={} and taskCount={}\n", minThreads, maxThreads, taskCount);
             std::atomic<int> counter{ 0 };
 

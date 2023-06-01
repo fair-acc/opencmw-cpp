@@ -245,8 +245,8 @@ class BasicThreadPool {
     const uint32_t               _maxThreads;
 
 public:
-    std::chrono::microseconds    sleepDuration       = std::chrono::milliseconds(1);
-    std::chrono::milliseconds    keepAliveDuration = std::chrono::seconds(10);
+    std::chrono::microseconds sleepDuration     = std::chrono::milliseconds(1);
+    std::chrono::milliseconds keepAliveDuration = std::chrono::seconds(10);
 
     BasicThreadPool(const std::string_view &name = generateName(), uint32_t min = std::thread::hardware_concurrency(), uint32_t max = std::thread::hardware_concurrency())
         : _poolName(name), _minThreads(min), _maxThreads(max) {
@@ -267,23 +267,23 @@ public:
 
     BasicThreadPool(const BasicThreadPool &) = delete;
     BasicThreadPool(BasicThreadPool &&)      = delete;
-    BasicThreadPool           &operator=(const BasicThreadPool &) = delete;
-    BasicThreadPool           &operator=(BasicThreadPool &&) = delete;
+    BasicThreadPool          &operator=(const BasicThreadPool &) = delete;
+    BasicThreadPool          &operator=(BasicThreadPool &&) = delete;
 
-    [[nodiscard]] std::string  poolName() const noexcept { return _poolName; }
-    [[nodiscard]] uint32_t     minThreads() const noexcept { return _minThreads; };
-    [[nodiscard]] uint32_t     maxThreads() const noexcept { return _maxThreads; };
+    [[nodiscard]] std::string poolName() const noexcept { return _poolName; }
+    [[nodiscard]] uint32_t    minThreads() const noexcept { return _minThreads; };
+    [[nodiscard]] uint32_t    maxThreads() const noexcept { return _maxThreads; };
 
-    [[nodiscard]] std::size_t  numThreads() const noexcept { return std::atomic_load_explicit(&_numThreads, std::memory_order_acquire); }
-    [[nodiscard]] std::size_t  numTasksRunning() const noexcept { return std::atomic_load_explicit(&_numTasksRunning, std::memory_order_acquire); }
-    [[nodiscard]] std::size_t  numTasksQueued() const { return std::atomic_load_explicit(&_numTaskedQueued, std::memory_order_acquire); }
-    [[nodiscard]] std::size_t  numTasksRecycled() const { return _recycledTasks.size(); }
-    [[nodiscard]] bool         isInitialised() const { return _initialised.load(std::memory_order::acquire); }
-    void                       waitUntilInitialised() const { _initialised.wait(false); }
-    void                       requestShutdown() {
+    [[nodiscard]] std::size_t numThreads() const noexcept { return std::atomic_load_explicit(&_numThreads, std::memory_order_acquire); }
+    [[nodiscard]] std::size_t numTasksRunning() const noexcept { return std::atomic_load_explicit(&_numTasksRunning, std::memory_order_acquire); }
+    [[nodiscard]] std::size_t numTasksQueued() const { return std::atomic_load_explicit(&_numTaskedQueued, std::memory_order_acquire); }
+    [[nodiscard]] std::size_t numTasksRecycled() const { return _recycledTasks.size(); }
+    [[nodiscard]] bool        isInitialised() const { return _initialised.load(std::memory_order::acquire); }
+    void                      waitUntilInitialised() const { _initialised.wait(false); }
+    void                      requestShutdown() {
         _shutdown = true;
         _condition.notify_all();
-        for (auto &t: _threads) {
+        for (auto &t : _threads) {
             t.join();
         }
     }
@@ -511,7 +511,7 @@ private:
                 running = false;
             } else if (timeDiffSinceLastUsed > keepAliveDuration) { // decrease to the minimum of _minThreads in a thread safe way
                 unsigned long nThreads = numThreads();
-                while(nThreads > minThreads()) { // compare and swap loop
+                while (nThreads > minThreads()) { // compare and swap loop
                     if (_numThreads.compare_exchange_weak(nThreads, nThreads - 1, std::memory_order_acq_rel)) {
                         _numThreads.notify_all();
                         if (nThreads == 1) { // cleanup last thread
@@ -533,6 +533,6 @@ inline std::atomic<uint64_t> BasicThreadPool<T>::_taskID = 0U;
 static_assert(ThreadPool<BasicThreadPool<IO_BOUND>>);
 static_assert(ThreadPool<BasicThreadPool<CPU_BOUND>>);
 
-}
+} // namespace opencmw
 
 #endif // THREADPOOL_HPP
