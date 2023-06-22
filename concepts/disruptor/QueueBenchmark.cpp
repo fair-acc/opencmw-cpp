@@ -80,7 +80,7 @@ double                         testBlockingQueue(const std::uint64_t nLoop, cons
     std::ranges::for_each(producers, [](auto &thread) { thread.join(); });
     std::ranges::for_each(consumers, [](auto &thread) { thread.join(); });
     if (nConsumer != 0 && nProduced != nConsumed / nConsumer) {
-        fmt::print("BlockingQueue producer {} vs. consumer {} mismatch\n", nProduced, nConsumed / nConsumer);
+        fmt::print("BlockingQueue producer {} vs. consumer {} mismatch\n", nProduced.load(), nConsumed.load() / nConsumer);
     }
 
     const auto opsPerSecond = static_cast<double>(nLoop) * (1e3 / time_elapsed.count());
@@ -167,7 +167,7 @@ double testDisruptor(const std::uint64_t nLoop, const std::uint64_t nProducer, c
     std::ranges::for_each(consumers, [](auto &thread) { thread.join(); });
 
     if (nConsumer != 0 && nProduced != nConsumed / nConsumer) {
-        fmt::print("RingBuffer producer {} vs. consumer {} mismatch\n", nProduced, nConsumed / nConsumer);
+        fmt::print("RingBuffer producer {} vs. consumer {} mismatch\n", nProduced.load(), nConsumed.load() / nConsumer);
     }
 
     const auto opsPerSecond = static_cast<double>(nLoop) * (1e3 / time_elapsed.count());

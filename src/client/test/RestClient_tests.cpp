@@ -214,9 +214,9 @@ TEST_CASE("Basic Rest Client Subscribe/Unsubscribe Test", "[Client]") {
         auto acceptType = req.headers.find("accept");
         if (acceptType == req.headers.end() || MIME::EVENT_STREAM.typeName() != acceptType->second) { // non-SSE request -> return default response
 #if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
-            res.set_content(fmt::format("update counter = {}", updateCounter), MIME::TEXT);
+            res.set_content(fmt::format("update counter = {}", updateCounter.load()), MIME::TEXT);
 #else
-            res.set_content(fmt::format("update counter = {}", updateCounter), std::string(MIME::TEXT.typeName()));
+            res.set_content(fmt::format("update counter = {}", updateCounter.load()), std::string(MIME::TEXT.typeName()));
 #endif
             return;
         } else {

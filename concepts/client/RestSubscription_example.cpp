@@ -44,9 +44,9 @@ int main() {
         auto acceptType = req.headers.find("accept");
         if (acceptType == req.headers.end() || opencmw::MIME::EVENT_STREAM.typeName() != acceptType->second) { // non-SSE request -> return default response
 #if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
-            res.set_content(fmt::format("update counter = {}", updateCounter), opencmw::MIME::TEXT);
+            res.set_content(fmt::format("update counter = {}", updateCounter.load()), opencmw::MIME::TEXT);
 #else
-            res.set_content(fmt::format("update counter = {}", updateCounter), std::string(opencmw::MIME::TEXT.typeName()));
+            res.set_content(fmt::format("update counter = {}", updateCounter.load()), std::string(opencmw::MIME::TEXT.typeName()));
 #endif
             return;
         } else {
