@@ -67,7 +67,7 @@ struct rest_test_step {
         _command.command  = command;
         _command.data     = opencmw::IoBuffer(new_data.data(), new_data.size());
         _command.endpoint = endpoint;
-        _command.callback = [this](const opencmw::mdp::Message &reply) {
+        _command.callback = [this](const opencmw::mdp::Message &/*reply*/) {
             next_step();
         };
     }
@@ -114,7 +114,7 @@ struct rest_test_runner {
     std::atomic_bool all_done = false;
 
     template<typename Step, typename... Steps>
-    rest_test_runner(Step &step, Steps &...steps) {
+    explicit rest_test_runner(Step &step, Steps &...steps) {
         (step >> ... >> steps).finally([this](rest_test_state &&state) {
             fmt::print("All tests finished.\n");
             if (!state.all_ok) {

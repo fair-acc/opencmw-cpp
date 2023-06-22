@@ -305,4 +305,17 @@ concept MultiArrayType = is_multi_array<T>;
 
 } // namespace opencmw
 
+template<opencmw::MultiArrayType multiArrayType>
+struct fmt::formatter<multiArrayType> {
+    template<typename ParseContext>
+    constexpr auto parse(ParseContext &ctx) {
+        return ctx.begin();
+    }
+
+    template<typename FormatContext>
+    auto format(multiArrayType const &value, FormatContext &ctx) const {
+        return fmt::format_to(ctx.out(), "MultiArray[{}]: [{}]", value.dimensions(), value.elements());
+    }
+};
+
 #endif // OPENCMW_CPP_MULTI_ARRAY_HPP

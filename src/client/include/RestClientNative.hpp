@@ -270,7 +270,7 @@ private:
             if (const httplib::Result &result = client.Get(endpoint.relativeRef()->data(), preferredHeader)) {
                 returnMdpMessage(cmd, result);
             } else {
-                std::stringstream errorStr(fmt::format("\"{}\"", result.error()));
+                std::stringstream errorStr(fmt::format("\"{}\"", static_cast<int>(result.error())));
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
                 if (auto sslResult = client.get_openssl_verify_result(); sslResult) {
                     errorStr << fmt::format(" - SSL error: '{}'", X509_verify_cert_error_string(sslResult));
@@ -347,7 +347,7 @@ private:
                     } else {                                      // failed or server is down -> wait until retry
                         std::this_thread::sleep_for(cmd.timeout); // time-out until potential retry
                         if (_run) {
-                            returnMdpMessage(cmd, result, fmt::format("Long-Polling-GET request failed for {}: {}", cmd.endpoint.str(), result.error()));
+                            returnMdpMessage(cmd, result, fmt::format("Long-Polling-GET request failed for {}: {}", cmd.endpoint.str(), static_cast<int>(result.error())));
                         }
                     }
                 }
