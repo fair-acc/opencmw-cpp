@@ -169,7 +169,7 @@ int main() {
         }
     }).join();
 
-    fmt::print("received client updates: {} for 'A' and {} for 'A,B'\n", receivedA, receivedAB);
+    fmt::print("received client updates: {} for 'A' and {} for 'A,B'\n", receivedA.load(), receivedAB.load());
     client.stop();
     // workers terminate when broker shuts down
     brokerThread.join();

@@ -285,18 +285,18 @@ inline struct SchedulingParameter getProcessSchedulingParameter(const int pid = 
 inline void setProcessSchedulingParameter(Policy scheduler, int priority, const int pid = detail::getPid()) {
 #if defined(_POSIX_VERSION) && not defined(__EMSCRIPTEN__)
     if (pid <= 0) {
-        throw std::system_error(THREAD_UNINITIALISED, thread_exception(), fmt::format("setProcessSchedulingParameter({}, {}, {}) -- invalid pid", scheduler, priority, pid));
+        throw std::system_error(THREAD_UNINITIALISED, thread_exception(), fmt::format("setProcessSchedulingParameter({}, {}, {}) -- invalid pid", static_cast<int>(scheduler), priority, pid));
     }
     const int minPriority = sched_get_priority_min(scheduler);
     const int maxPriority = sched_get_priority_max(scheduler);
     if (priority < minPriority || priority > maxPriority) {
-        throw std::system_error(THREAD_VALUE_RANGE, thread_exception(), fmt::format("setProcessSchedulingParameter({}, {}, {}) -- requested priority out-of-range [{}, {}]", scheduler, priority, pid, minPriority, maxPriority));
+        throw std::system_error(THREAD_VALUE_RANGE, thread_exception(), fmt::format("setProcessSchedulingParameter({}, {}, {}) -- requested priority out-of-range [{}, {}]", static_cast<int>(scheduler), priority, pid, minPriority, maxPriority));
     }
     struct sched_param param {
         .sched_priority = priority
     };
     if (int rc = sched_setscheduler(pid, scheduler, &param); rc != 0) {
-        throw std::system_error(rc, thread_exception(), fmt::format("setProcessSchedulingParameter({}, {}, {}) - sched_setscheduler return code: {}", scheduler, priority, pid, rc));
+        throw std::system_error(rc, thread_exception(), fmt::format("setProcessSchedulingParameter({}, {}, {}) - sched_setscheduler return code: {}", static_cast<int>(scheduler), priority, pid, rc));
     }
 #endif
 }
@@ -322,18 +322,18 @@ inline void setThreadSchedulingParameter(Policy scheduler, int priority, thread_
 #if defined(_POSIX_VERSION) && not defined(__EMSCRIPTEN__)
     const pthread_t handle = detail::getPosixHandler(thread...);
     if (handle == 0U) {
-        throw std::system_error(THREAD_UNINITIALISED, thread_exception(), fmt::format("setThreadSchedulingParameter({}, {}, thread_type) -- invalid thread", scheduler, priority));
+        throw std::system_error(THREAD_UNINITIALISED, thread_exception(), fmt::format("setThreadSchedulingParameter({}, {}, thread_type) -- invalid thread", static_cast<int>(scheduler), priority));
     }
     const int minPriority = sched_get_priority_min(scheduler);
     const int maxPriority = sched_get_priority_max(scheduler);
     if (priority < minPriority || priority > maxPriority) {
-        throw std::system_error(THREAD_VALUE_RANGE, thread_exception(), fmt::format("setThreadSchedulingParameter({}, {}, {}) -- requested priority out-of-range [{}, {}]", scheduler, priority, detail::getThreadName(handle), minPriority, maxPriority));
+        throw std::system_error(THREAD_VALUE_RANGE, thread_exception(), fmt::format("setThreadSchedulingParameter({}, {}, {}) -- requested priority out-of-range [{}, {}]", static_cast<int>(scheduler), priority, detail::getThreadName(handle), minPriority, maxPriority));
     }
     struct sched_param param {
         .sched_priority = priority
     };
     if (int rc = pthread_setschedparam(handle, scheduler, &param); rc != 0) {
-        throw std::system_error(rc, thread_exception(), fmt::format("setThreadSchedulingParameter({}, {}, {}) - pthread_setschedparam return code: {}", scheduler, priority, detail::getThreadName(handle), rc));
+        throw std::system_error(rc, thread_exception(), fmt::format("setThreadSchedulingParameter({}, {}, {}) - pthread_setschedparam return code: {}", static_cast<int>(scheduler), priority, detail::getThreadName(handle), rc));
     }
 #endif
 }
