@@ -202,8 +202,14 @@ struct IoSerialiser<CmwLight, std::set<MemberType>> {
 
     constexpr static void serialise(IoBuffer &buffer, FieldDescription auto const & /*field*/, const std::set<MemberType> &value) noexcept {
         buffer.put(static_cast<int32_t>(value.size()));
-        for (const auto v : value) {
-            buffer.put(v);
+        if constexpr (std::is_arithmetic_v<MemberType>) {
+            for (const auto v : value) {
+                buffer.put(v);
+            }
+        } else {
+            for (const auto &v : value) {
+                buffer.put(v);
+            }
         }
     }
 

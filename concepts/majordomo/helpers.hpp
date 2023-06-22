@@ -127,7 +127,9 @@ struct HelloWorldHandler {
         using namespace std::chrono;
         const auto now        = system_clock::now();
         const auto sinceEpoch = system_clock::to_time_t(now);
-        out.name              = fmt::format("Hello World! The local time is: {}", std::put_time(std::localtime(&sinceEpoch), "%Y-%m-%d %H:%M:%S"));
+        std::stringstream buffer{};
+        buffer << std::put_time(std::localtime(&sinceEpoch), "%Y-%m-%d %H:%M:%S");
+        out.name              = fmt::format("Hello World! The local time is: {}", buffer.str());
         out.byteArray         = in.name; // doesn't really make sense atm
         out.byteReturnType    = 42;
 

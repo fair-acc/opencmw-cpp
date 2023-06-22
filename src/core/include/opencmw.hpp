@@ -671,7 +671,7 @@ inline std::ostream &operator<<(std::ostream &os, const T &value) {
 //                        os << fmt::format("{}{}=", (index > 0) ? ", " : "", get_display_name(member));
                     }
                     ClassInfoIndentInc(os);
-                    os << fmt::format("{}", member(value));
+                    os << fmt::format("{}", getAnnotatedMember(unwrapPointer(member(value))));
                     ClassInfoIndentDec(os);
                     os << (verbose ? "\n" : ""); // calls this operator<< if necessary
                 });
@@ -758,6 +758,19 @@ struct fmt::formatter<T> {
         std::stringstream ss;    // N.B. std::stringstream construct to avoid recursion with 'operator<<' definition
         ss << value << std::flush;
         return fmt::format_to(ctx.out(), "{}", ss.str());
+    }
+};
+
+template<std::size_t N>
+struct fmt::formatter<refl::const_string<N>> {
+    template<typename ParseContext>
+    constexpr auto parse(ParseContext &ctx) {
+        return ctx.begin();
+    }
+
+    template<typename FormatContext>
+    auto format(refl::const_string<N> const &value, FormatContext &ctx) const {
+        return fmt::format_to(ctx.out(), "{:.{}}", value.data, value.size);
     }
 };
 
