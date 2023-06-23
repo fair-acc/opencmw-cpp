@@ -125,15 +125,15 @@ struct HelloWorldHandler {
 
     void        operator()(majordomo::RequestContext &rawCtx, const SimpleContext &requestContext, const SimpleRequest &in, SimpleContext &replyContext, SimpleReply &out) {
         using namespace std::chrono;
-        const auto now        = system_clock::now();
-        const auto sinceEpoch = system_clock::to_time_t(now);
+        const auto        now        = system_clock::now();
+        const auto        sinceEpoch = system_clock::to_time_t(now);
         std::stringstream buffer{};
         buffer << std::put_time(std::localtime(&sinceEpoch), "%Y-%m-%d %H:%M:%S");
-        out.name              = fmt::format("Hello World! The local time is: {}", buffer.str());
-        out.byteArray         = in.name; // doesn't really make sense atm
-        out.byteReturnType    = 42;
+        out.name           = fmt::format("Hello World! The local time is: {}", buffer.str());
+        out.byteArray      = in.name; // doesn't really make sense atm
+        out.byteReturnType = 42;
 
-        out.timingCtx         = opencmw::TimingCtx(3, {}, {}, {}, duration_cast<microseconds>(now.time_since_epoch()));
+        out.timingCtx      = opencmw::TimingCtx(3, {}, {}, {}, duration_cast<microseconds>(now.time_since_epoch()));
         if (rawCtx.request.command == mdp::Command::Set) {
             customFilter = in.customFilter;
         }

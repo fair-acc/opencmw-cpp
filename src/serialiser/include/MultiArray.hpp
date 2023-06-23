@@ -318,5 +318,4 @@ struct fmt::formatter<multiArrayType> {
     }
 };
 
-
 #endif // OPENCMW_CPP_MULTI_ARRAY_HPP
