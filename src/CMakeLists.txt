@@ -2,6 +2,7 @@ add_subdirectory(core)
 add_subdirectory(serialiser)
 add_subdirectory(client)
 add_subdirectory(disruptor)
+add_subdirectory(services)
 
 if (EMSCRIPTEN)
         message("Disabled majordomo and mdp client module because they are not compatible with emscripten builds")
