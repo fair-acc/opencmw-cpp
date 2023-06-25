@@ -2,6 +2,7 @@ add_subdirectory(core)
 add_subdirectory(serialiser)
 add_subdirectory(client)
 add_subdirectory(disruptor)
+add_subdirectory(services)
 
 if (USE_LIBCPP)
         # does not work, because <source_location> and std::jthread is missing also ranges support is not complete
