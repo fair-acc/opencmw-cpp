@@ -18,8 +18,8 @@
 class FileDeleter {
 public:
     // make sure to delete datastorage file when finishing
-    explicit FileDeleter(std::string_view fileName = "dns_data_storage.yas")
-        : filename(fileName) {
+    explicit FileDeleter(std::string_view filename = "dns_data_storage.yas")
+        : filename(filename) {
         deleteFile();
     }
     ~FileDeleter() {
