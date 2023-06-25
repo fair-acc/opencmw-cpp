@@ -25,7 +25,7 @@ std::jthread makeGetRequestResponseCheckerThread(const std::string &address, con
         const auto response = http.Get(address.data());
 
 #define requireWithSource(arg) \
-    if (!(arg)) opencmw::debug::withLocation(location) << "<- call got a failed requirement:"; \
+    if (!(arg)) opencmw::zmq::debug::withLocation(location) << "<- call got a failed requirement:"; \
     REQUIRE(arg)
         requireWithSource(response);
         requireWithSource(response->status == 200);
