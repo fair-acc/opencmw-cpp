@@ -618,7 +618,7 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         auto        uri = URI<>::factory();
         std::string bodyOverride;
         std::string contentType;
-        int contentLength{0};
+        int         contentLength{ 0 };
         for (const auto &[key, value] : request.params) {
             if (key == "_bodyOverride") {
                 bodyOverride = value;
@@ -690,7 +690,7 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
             message.data = IoBuffer(request.body.data(), request.body.size());
         } else if (contentType != "" && contentLength > 0 && content_reader_ != nullptr) {
             std::string body;
-            (*content_reader_)([&body](const char* data, size_t datalength){ body = std::string{data, datalength}; return true;});
+            (*content_reader_)([&body](const char *data, size_t datalength) { body = std::string{data, datalength}; return true; });
             message.data = IoBuffer(body.data(), body.size());
         }
 

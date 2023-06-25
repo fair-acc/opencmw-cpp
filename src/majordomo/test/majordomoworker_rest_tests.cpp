@@ -65,7 +65,7 @@ TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][major
     }
 
     SECTION("post data") {
-        httplib::Client postData{"http://localhost:8080"};
+        httplib::Client postData{ "http://localhost:8080" };
         postData.Post("/addressbook?ctx=FAIR.SELECTOR.ALL&contentType=application%2Fjavascript", "{\"streetNumber\": 1882}", "application/json");
 
         auto httpThreadJSON = makeGetRequestResponseCheckerThread("/addressbook?ctx=FAIR.SELECTOR.ALL&contentType=application%2Fjavascript", "1882");
