@@ -1,0 +1,27 @@
+add_library(services INTERFACE
+        include/services/dns.hpp
+        include/services/dns_client.hpp
+        include/services/dns_storage.hpp
+        include/services/dns_types.hpp)
+
+target_include_directories(services INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include/>)
+target_link_libraries(services INTERFACE  serialiser client )
+
+if(NOT EMSCRIPTEN)
+    target_link_libraries(services INTERFACE majordomo)
+endif()
+
+install(
+        TARGETS services
+        EXPORT opencmwTargets
+        PUBLIC_HEADER DESTINATION include/opencmw
+)
+
+if(ENABLE_TESTING)
+    add_subdirectory(test)
+endif()
+
+
+message("COPY ${CMAKE_SOURCE_DIR}/demo_sslcert/demo_private.key DESTINATION ${CMAKE_CURRENT_BINARY_DIR}" )
+file(COPY "${CMAKE_SOURCE_DIR}/demo_sslcert/demo_private.key" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+file(COPY "${CMAKE_SOURCE_DIR}/demo_sslcert/demo_public.crt" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")

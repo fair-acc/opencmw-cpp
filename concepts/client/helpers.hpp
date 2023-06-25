@@ -113,7 +113,7 @@ struct rest_test_runner {
 
     template<typename Step, typename... Steps>
     explicit rest_test_runner(Step &step, Steps &...steps) {
-        (step >> ... >> steps).finally([this](rest_test_state &&state) {
+        (step >> ... >> steps).finally([](rest_test_state &&state) {
             fmt::print("All tests finished.\n");
             if (!state.all_ok) {
                 for (const auto &line : state.log) {
