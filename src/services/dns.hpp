@@ -100,7 +100,7 @@ protected:
     bool loadDataFromFile(const char *filePath);
     bool saveDataToFile(const char *filePath);
     // Disallow copy construction and assignment
-    DataStorage(const DataStorage &)                         = delete;
+    DataStorage(const DataStorage &)  = delete;
     DataStorage              &operator=(const DataStorage &) = delete;
 
     std::mutex                _mutex;
