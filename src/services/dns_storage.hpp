@@ -21,15 +21,9 @@ class DataStorage {
 public:
     using StorageEntryType = TimeToLive<EntryType>;
 
-    static DataStorage &getInstance() {
-        static DataStorage instance;
-        return instance;
-    }
-
     StorageEntryType addEntry(const EntryType &entry) {
         // check if we already have this entry
-        auto            now = StorageEntryType::clock::now();
-        std::lock_guard lock(_mutex);
+        auto now = StorageEntryType::clock::now();
 
         // invalidate previous entries of this signal
         std::for_each(_entries.begin(), _entries.end(), [&entry, &now](auto &e) { if(e.ttl > now && e == entry) e.ttl = StorageEntryType::clock::time_point::min(); });
@@ -66,7 +60,6 @@ public:
         return c;
     }
 
-protected:
     DataStorage() {
         loadDataFromFile(filePath);
     };
@@ -74,13 +67,9 @@ protected:
         saveDataToFile(filePath);
     }
 
-    bool loadDataFromFile(const char *filePath);
-    bool saveDataToFile(const char *filePath);
-    // Disallow copy construction and assignment
-    DataStorage(const DataStorage &)      = delete;
-    DataStorage                  &operator=(const DataStorage &) = delete;
+    bool                          loadDataFromFile(const char *filePath);
+    bool                          saveDataToFile(const char *filePath);
 
-    std::mutex                    _mutex;
     std::vector<StorageEntryType> _entries;
     const char                   *filePath = "./dns_data_storage.yas";
 };
@@ -103,9 +92,8 @@ bool DataStorage<EntryType, FilterType, SerialiseType>::loadDataFromFile(const c
     IoBuffer      ioBuffer{ buffer.data(), buffer.size() };
     SerialiseType resp;
     opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::ALWAYS>(ioBuffer, resp);
-    auto            newEntries = resp.toEntries();
+    auto newEntries = resp.toEntries();
 
-    std::lock_guard lock(_mutex);
     std::for_each(newEntries.begin(), newEntries.end(), [&](const auto &entry) {
         _entries.push_back({ entry });
     });
@@ -114,7 +102,6 @@ bool DataStorage<EntryType, FilterType, SerialiseType>::loadDataFromFile(const c
 
 template<class EntryType, class FilterType, class SerialiseType>
 bool DataStorage<EntryType, FilterType, SerialiseType>::saveDataToFile(const char *filePath) {
-    std::lock_guard        lock(_mutex);
     std::vector<EntryType> entries;
     std::for_each(_entries.begin(), _entries.end(), [&entries](auto &e) { entries.push_back({ e }); });
     SerialiseType k{ entries };

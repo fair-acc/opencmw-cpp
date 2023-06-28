@@ -19,14 +19,17 @@ namespace dns {
 using dnsWorker = majordomo::Worker<"dns", Context, Entry, QueryResponse, majordomo::description<"Register and Query Signals">>;
 
 class DnsWorker {
+protected:
+    DataStorage datastorage;
+
 public:
     void operator()(majordomo::RequestContext &rawCtx, const Context &ctx, const Entry &in, Context &replyContext, QueryResponse &response) {
         if (rawCtx.request.command == mdp::Command::Set) {
-            auto out = DataStorage::getInstance().addEntry(in);
+            auto out = datastorage.addEntry(in);
             response = { { out } };
         } else if (rawCtx.request.command == mdp::Command::Get) {
-            auto &entries = DataStorage::getInstance().getEntries();
-            auto  result  = DataStorage::getInstance().queryEntries(ctx);
+            auto &entries = datastorage.getEntries();
+            auto  result  = datastorage.queryEntries(ctx);
             response      = { result };
         }
     }

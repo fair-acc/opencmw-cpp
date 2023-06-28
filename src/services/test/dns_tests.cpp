@@ -31,8 +31,7 @@ public:
 };
 
 FileDeleter dsFd; // delete DataStorage file when finishing
-// make sure our static instance is initialised before the test instances, because the test instances leave files that will be read by the static instance
-auto &instance = opencmw::service::dns::DataStorage::getInstance();
+
 #else
 class FileDeleter {
 public:
@@ -96,6 +95,7 @@ TEST_CASE("type tests", "[DNS") {
 
 #ifndef __EMSCRIPTEN__
 TEST_CASE("run services", "[DNS]") {
+    FileDeleter                        fd;
     opencmw::service::RunDefaultBroker broker;
     broker.runWorker<dnsWorker, DnsWorker>();
     broker.startBroker();
@@ -152,6 +152,7 @@ TEST_CASE("data storage - Renewing Entries") {
 
 #ifndef __EMSCRIPTEN__
 TEST_CASE("client", "[DNS]") {
+    FileDeleter                        fd;
     opencmw::service::RunDefaultBroker broker;
     broker.runWorker<dnsWorker, DnsWorker>();
     broker.startBroker();
@@ -159,7 +160,7 @@ TEST_CASE("client", "[DNS]") {
     DnsClient client;
 
     auto      services = client.queryServices();
-    REQUIRE(services.size() == DataStorage::getInstance().getActiveEntriesCount());
+    REQUIRE(services.size() == 0);
 
     auto ret = client.registerService(a);
     REQUIRE(ret.signal_rate == a.signal_rate);
@@ -169,10 +170,11 @@ TEST_CASE("client", "[DNS]") {
     REQUIRE(ret == c);
 
     services = client.queryServices();
-    REQUIRE(services.size() == DataStorage::getInstance().getActiveEntriesCount());
+    // TODO REQUIRE(services.size() == storage.getActiveEntriesCount());
 }
 
 TEST_CASE("query", "[DNS]") {
+    FileDeleter                        fd;
     opencmw::service::RunDefaultBroker broker;
     broker.runWorker<dnsWorker, DnsWorker>();
     broker.startBroker();
@@ -180,22 +182,22 @@ TEST_CASE("query", "[DNS]") {
     SECTION("query") {
         auto services = queryServices();
         REQUIRE(services.size() == 0);
-        DataStorage::getInstance().addEntry(a);
+        registerService(a);
         services = queryServices();
         REQUIRE(services.size() == 1);
         REQUIRE(services.at(0) == a);
-        DataStorage::getInstance().addEntry(b);
-        services     = queryServices();
+        registerService(b);
+        registerService(c);
+        services = queryServices();
 
-        auto entries = DataStorage::getInstance().getEntries();
-        REQUIRE(entries.size() == services.size());
-        REQUIRE(std::ranges::equal(entries, services));
+        REQUIRE(3 == services.size());
+        REQUIRE(std::ranges::equal(services, std::vector<Entry>{ a, b, c }));
     }
 
     SECTION("query with filters") {
         auto services = queryServices({ .signal_name = "C" });
         REQUIRE(services.size() == 0);
-        DataStorage::getInstance().addEntry(c);
+        registerService(c);
         services = queryServices({ .signal_name = "C" });
         REQUIRE(services.size() == 1);
         REQUIRE(services[0] == c);
