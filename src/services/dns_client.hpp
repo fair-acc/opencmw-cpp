@@ -4,6 +4,7 @@
 #include "dns_types.hpp"
 #include "RestClient.hpp"
 #include <IoSerialiserYaS.hpp>
+#include <QuerySerialiser.hpp>
 #include <URI.hpp>
 
 namespace opencmw {
@@ -20,14 +21,9 @@ public:
 
     std::vector<Entry> queryServices(const Entry &filter = {}) {
         auto uri = URI<>::factory();
-        uri      = std::move(uri).addQueryParameter("protocol", filter.protocol);
-        uri      = std::move(uri).addQueryParameter("hostname", filter.hostname);
-        uri      = std::move(uri).addQueryParameter("service_type", filter.service_type);
-        uri      = std::move(uri).addQueryParameter("service_name", filter.service_name);
-        uri      = std::move(uri).addQueryParameter("signal_name", filter.signal_name);
-        uri      = std::move(uri).addQueryParameter("signal_type", filter.signal_type);
-        uri      = std::move(uri).addQueryParameter("signal_unit", filter.signal_unit);
-        uri      = std::move(uri).addQueryParameter("signal_rate", std::to_string(filter.signal_rate));
+
+        auto queryPara = opencmw::query::serialise(filter);
+        uri = std::move(uri).setQuery(queryPara);
 
         client::Command cmd;
         cmd.command  = mdp::Command::Get;
