@@ -152,12 +152,22 @@ TEST_CASE("data storage - Renewing Entries") {
 
 #ifndef __EMSCRIPTEN__
 TEST_CASE("client", "[DNS]") {
-    FileDeleter                        fd;
+    FileDeleter fd;
     opencmw::service::RunDefaultBroker broker;
     broker.runWorker<dnsWorker, DnsWorker>();
     broker.startBroker();
 
     DnsClient client;
+
+    //client.query
+}
+TEST_CASE("rest client", "[DNS]") {
+    FileDeleter                        fd;
+    opencmw::service::RunDefaultBroker broker;
+    broker.runWorker<dnsWorker, DnsWorker>();
+    broker.startBroker();
+
+    DnsRestClient client;
 
     auto      services = client.queryServices();
     REQUIRE(services.size() == 0);
