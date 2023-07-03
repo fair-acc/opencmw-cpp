@@ -13,11 +13,11 @@ namespace service {
 namespace dns {
 
 class DnsClient : public opencmw::client::Client {
-    URI<STRICT> endpoint;
+    URI<STRICT>                 endpoint;
     std::vector<zmq_pollitem_t> _pollItems;
-    zmq::Context _context;
-public:
+    zmq::Context                _context;
 
+public:
     DnsClient(std::string uri = "http://localhost:8080/dns")
         : client::Client(_context, _pollItems)
         , endpoint(uri) {
@@ -40,7 +40,7 @@ public:
             done.store(true, std::memory_order_release);
             done.notify_all();
         };
-        //request(cmd);
+        // request(cmd);
 
         done.wait(false);
         if (!done.load(std::memory_order_acquire) == true) {
@@ -72,7 +72,7 @@ public:
             done.store(true, std::memory_order_release);
             done.notify_all();
         };
-        //request(cmd);
+        // request(cmd);
 
         done.wait(false);
         if (!done.load(std::memory_order_acquire) == true) {
@@ -99,10 +99,10 @@ public:
     }
 
     std::vector<Entry> queryServices(const Entry &filter = {}) {
-        auto uri = URI<>::factory();
+        auto uri       = URI<>::factory();
 
         auto queryPara = opencmw::query::serialise(filter);
-        uri = std::move(uri).setQuery(queryPara);
+        uri            = std::move(uri).setQuery(queryPara);
 
         client::Command cmd;
         cmd.command  = mdp::Command::Get;
