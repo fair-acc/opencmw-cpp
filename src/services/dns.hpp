@@ -35,14 +35,14 @@ public:
     }
 };
 
-Entry registerService(const std::vector<Entry> &entries) {
-    IoBuffer outBuffer;
-    FlatEntryList entrylist{entries};
+Entry registerSignal(const std::vector<Entry> &entries) {
+    IoBuffer      outBuffer;
+    FlatEntryList entrylist{ entries };
     opencmw::serialise<opencmw::YaS>(outBuffer, entrylist);
     std::string contentType{ MIME::BINARY.typeName() };
     std::string body{ outBuffer.asString() };
 
-    // send request to register Service
+    // send request to register Signal
     httplib::Client client{
         "http://localhost:8080",
     };
@@ -66,7 +66,7 @@ Entry registerService(const std::vector<Entry> &entries) {
     return res.toEntries().front();
 }
 
-auto queryServices = [](const Entry &a = {}) {
+std::vector<Entry> querySignals(const Entry &a = {}) {
     // send request to register Service
     httplib::Client client{
         "http://localhost:8080",

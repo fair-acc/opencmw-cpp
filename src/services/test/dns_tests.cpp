@@ -165,8 +165,8 @@ TEST_CASE("client", "[DNS]") {
     client::ClientContext clientContext{ std::move(clients) };
 
     DnsClient             client{ clientContext, URI<>{ "mdp://dns_server/dns" } };
-    client.registerService({a});
-    auto s = client.queryServices();
+    client.registerSignal({ a });
+    auto s = client.querySignal();
     REQUIRE(s.size() == 1);
     REQUIRE(s[0] == a);
     clientContext.stop();
@@ -180,17 +180,17 @@ TEST_CASE("rest client", "[DNS]") {
 
     DnsRestClient client;
 
-    auto          services = client.queryServices();
+    auto          services = client.querySignal();
     REQUIRE(services.size() == 0);
 
-    auto ret = client.registerService({a});
+    auto ret = client.registerSignal({ a });
     REQUIRE(ret.signal_rate == a.signal_rate);
-    ret = client.registerService({b});
+    ret = client.registerSignal({ b });
     REQUIRE(ret == b);
-    ret = client.registerService({c});
+    ret = client.registerSignal({ c });
     REQUIRE(ret == c);
 
-    services = client.queryServices();
+    services = client.querySignal();
     // TODO REQUIRE(services.size() == storage.getActiveEntriesCount());
 }
 
@@ -201,25 +201,25 @@ TEST_CASE("query", "[DNS]") {
     broker.startBroker();
 
     SECTION("query") {
-        auto services = queryServices();
+        auto services = querySignals();
         REQUIRE(services.size() == 0);
-        registerService({a});
-        services = queryServices();
+        registerSignal({ a });
+        services = querySignals();
         REQUIRE(services.size() == 1);
         REQUIRE(services.at(0) == a);
-        registerService({b});
-        registerService({c});
-        services = queryServices();
+        registerSignal({ b });
+        registerSignal({ c });
+        services = querySignals();
 
         REQUIRE(3 == services.size());
         REQUIRE(std::ranges::equal(services, std::vector<Entry>{ a, b, c }));
     }
 
     SECTION("query with filters") {
-        auto services = queryServices({ .signal_name = "C" });
+        auto services = querySignals({ .signal_name = "C" });
         REQUIRE(services.size() == 0);
-        registerService({c});
-        services = queryServices({ .signal_name = "C" });
+        registerSignal({ c });
+        services = querySignals({ .signal_name = "C" });
         REQUIRE(services.size() == 1);
         REQUIRE(services[0] == c);
     }

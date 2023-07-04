@@ -28,19 +28,20 @@ public:
         , endpoint(endpoint) {
     }
 
-    void queryServicesAsync(auto callback, const Entry &filter = {}) {
+    void querySignalAsync(auto callback, const Entry &filter = {}) {
         auto uri = URI<>::factory(endpoint);
         uri      = std::move(uri).setQuery(query::serialise(filter));
 
         clientContext.get(uri.build(), callback);
     }
-    std::vector<Entry> queryServices(const Entry &filter = {}) {
+
+    std::vector<Entry> querySignal(const Entry &filter = {}) {
         std::mutex              mutex;
         std::condition_variable cv;
         std::atomic_bool        received{ false };
         FlatEntryList           resp;
 
-        queryServicesAsync([&received, &resp, &cv](const mdp::Message &message) {
+        querySignalAsync([&received, &resp, &cv](const mdp::Message &message) {
             IoBuffer buf{ message.data };
             deserialise<YaS, ProtocolCheck::ALWAYS>(buf, resp);
             received = true;
@@ -55,23 +56,23 @@ public:
         return resp.toEntries();
     }
 
-    void registerServiceAsync(auto callback, const std::vector<Entry> &entries) {
-        auto     uri = URI<>::factory(endpoint);
+    void registerSignalAsync(auto callback, const std::vector<Entry> &entries) {
+        auto          uri = URI<>::factory(endpoint);
 
-        IoBuffer buf;
-        FlatEntryList entrylist{entries};
+        IoBuffer      buf;
+        FlatEntryList entrylist{ entries };
         opencmw::serialise<YaS>(buf, entrylist);
 
         clientContext.set(endpoint, callback, std::move(buf));
     }
 
-    std::vector<Entry> registerService(const std::vector<Entry> &entries) {
+    std::vector<Entry> registerSignal(const std::vector<Entry> &entries) {
         std::atomic_bool        received{ false };
         FlatEntryList           resp;
         std::mutex              mutex;
         std::condition_variable cv;
 
-        registerServiceAsync([&received, &resp, &cv](const mdp::Message &message) {
+        registerSignalAsync([&received, &resp, &cv](const mdp::Message &message) {
             IoBuffer buf{ message.data };
             deserialise<YaS, ProtocolCheck::ALWAYS>(buf, resp);
             received = true;
@@ -99,7 +100,7 @@ public:
         : opencmw::client::RestClient(opencmw::client::DefaultContentTypeHeader(MIME::BINARY)), endpoint(uri) {
     }
 
-    std::vector<Entry> queryServices(const Entry &filter = {}) {
+    std::vector<Entry> querySignal(const Entry &filter = {}) {
         auto uri       = URI<>::factory();
 
         auto queryPara = opencmw::query::serialise(filter);
@@ -131,9 +132,9 @@ public:
         return res.toEntries();
     }
 
-    Entry registerService(const std::vector<Entry> &entry) {
+    Entry registerSignal(const std::vector<Entry> &entry) {
         IoBuffer outBuffer;
-        opencmw::serialise<opencmw::YaS>(outBuffer, FlatEntryList{entry});
+        opencmw::serialise<opencmw::YaS>(outBuffer, FlatEntryList{ entry });
         std::string     contentType{ MIME::BINARY.typeName() };
 
         client::Command cmd;
