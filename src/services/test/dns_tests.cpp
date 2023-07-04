@@ -39,7 +39,9 @@ public:
 };
 #endif // __EMSCRIPTEN__
 
+using namespace opencmw;
 using namespace opencmw::service::dns;
+using namespace std::chrono_literals;
 
 Entry a{ "http", "localhost", 8080, "group a", "unknown", "A", "ms", 0.123456, "" };
 Entry b{ "http", "localhost", 8080, "group a", "unknown", "B", "ms", 2.3223, "" };
@@ -154,12 +156,31 @@ TEST_CASE("data storage - Renewing Entries") {
 TEST_CASE("client", "[DNS]") {
     FileDeleter                        fd;
     opencmw::service::RunDefaultBroker broker;
+    auto                               addr = broker.getBroker().bind(URI<>{ "inproc://dns_server" }, majordomo::BindOption::Router);
     broker.runWorker<dnsWorker, DnsWorker>();
     broker.startBroker();
 
-    DnsClient client;
+    std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
+    clients.emplace_back(std::make_unique<client::MDClientCtx>(broker.getBroker().context, 20ms, "dnsTestClient"));
+    client::ClientContext clientContext{ std::move(clients) };
 
-    auto      services = client.queryServices();
+    DnsClient             client{ clientContext, URI<>{ "mdp://dns_server/dns" } };
+    client.registerService(a);
+    auto s = client.queryServices();
+    REQUIRE(s.size() == 1);
+    REQUIRE(s[0] == a);
+    clientContext.stop();
+}
+
+TEST_CASE("rest client", "[DNS]") {
+    FileDeleter                        fd;
+    opencmw::service::RunDefaultBroker broker;
+    broker.runWorker<dnsWorker, DnsWorker>();
+    broker.startBroker();
+
+    DnsRestClient client;
+
+    auto          services = client.queryServices();
     REQUIRE(services.size() == 0);
 
     auto ret = client.registerService(a);

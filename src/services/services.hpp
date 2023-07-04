@@ -18,6 +18,10 @@ protected:
     std::mutex                         _setup;
 
 public:
+    majordomo::Broker<> &getBroker() {
+        return _broker;
+    }
+
     template<typename WorkerT, typename HandlerT>
     void runWorker() {
         std::lock_guard         m{ _setup };
