@@ -71,9 +71,9 @@ public:
 };
 
 TEST_CASE("type tests", "[DNS") {
-    SECTION("QueryResponse") {
+    SECTION("FlatEntryList") {
         std::vector<Entry> entries{ a, b, c };
-        QueryResponse      response{ { a, b, c } };
+        FlatEntryList      response{ { a, b, c } };
         auto               newEntries = response.toEntries();
         REQUIRE(newEntries[0] == a);
         REQUIRE(newEntries[1] == b);
@@ -165,7 +165,7 @@ TEST_CASE("client", "[DNS]") {
     client::ClientContext clientContext{ std::move(clients) };
 
     DnsClient             client{ clientContext, URI<>{ "mdp://dns_server/dns" } };
-    client.registerService(a);
+    client.registerService({a});
     auto s = client.queryServices();
     REQUIRE(s.size() == 1);
     REQUIRE(s[0] == a);
@@ -183,11 +183,11 @@ TEST_CASE("rest client", "[DNS]") {
     auto          services = client.queryServices();
     REQUIRE(services.size() == 0);
 
-    auto ret = client.registerService(a);
+    auto ret = client.registerService({a});
     REQUIRE(ret.signal_rate == a.signal_rate);
-    ret = client.registerService(b);
+    ret = client.registerService({b});
     REQUIRE(ret == b);
-    ret = client.registerService(c);
+    ret = client.registerService({c});
     REQUIRE(ret == c);
 
     services = client.queryServices();
@@ -203,12 +203,12 @@ TEST_CASE("query", "[DNS]") {
     SECTION("query") {
         auto services = queryServices();
         REQUIRE(services.size() == 0);
-        registerService(a);
+        registerService({a});
         services = queryServices();
         REQUIRE(services.size() == 1);
         REQUIRE(services.at(0) == a);
-        registerService(b);
-        registerService(c);
+        registerService({b});
+        registerService({c});
         services = queryServices();
 
         REQUIRE(3 == services.size());
@@ -218,7 +218,7 @@ TEST_CASE("query", "[DNS]") {
     SECTION("query with filters") {
         auto services = queryServices({ .signal_name = "C" });
         REQUIRE(services.size() == 0);
-        registerService(c);
+        registerService({c});
         services = queryServices({ .signal_name = "C" });
         REQUIRE(services.size() == 1);
         REQUIRE(services[0] == c);

@@ -46,7 +46,7 @@ struct Context : QueryEntry {
     MIME::MimeType contextType{ MIME::BINARY };
 };
 
-struct QueryResponse {
+struct FlatEntryList {
     std::vector<std::string> protocol;
     std::vector<std::string> hostname;
     std::vector<int>         port;
@@ -58,8 +58,8 @@ struct QueryResponse {
     std::vector<float>       signal_rate;
     std::vector<std::string> signal_type;
 
-    QueryResponse() = default;
-    QueryResponse(const std::vector<Entry> &entries) {
+    FlatEntryList() = default;
+    FlatEntryList(const std::vector<Entry> &entries) {
 #define _insert_into(field) \
     field.reserve(entries.size()); \
     std::transform(entries.begin(), entries.end(), std::back_inserter(field), [](const Entry &entry) { \
@@ -114,6 +114,6 @@ struct QueryResponse {
 ENABLE_REFLECTION_FOR(opencmw::service::dns::Entry, _ENTRY_FIELDS_);
 ENABLE_REFLECTION_FOR(opencmw::service::dns::QueryEntry, _ENTRY_FIELDS_);
 ENABLE_REFLECTION_FOR(opencmw::service::dns::Context, contextType, _ENTRY_FIELDS_);
-ENABLE_REFLECTION_FOR(opencmw::service::dns::QueryResponse, _ENTRY_FIELDS_); // everything is a vector<T> here
+ENABLE_REFLECTION_FOR(opencmw::service::dns::FlatEntryList, _ENTRY_FIELDS_); // everything is a vector<T> here
 
 #endif // _DNS_TYPES_HPP_

@@ -21,6 +21,15 @@ class DataStorage {
 public:
     using StorageEntryType = TimeToLive<EntryType>;
 
+    std::vector<EntryType> addEntries(const std::vector<EntryType> &entries) {
+        std::vector<EntryType> addedEntries;
+
+        std::transform(entries.begin(), entries.end(), std::back_inserter(addedEntries), [this](const EntryType &entry) {
+            return addEntry(entry);
+        });
+
+        return addedEntries;
+    }
     StorageEntryType addEntry(const EntryType &entry) {
         // check if we already have this entry
         auto now = StorageEntryType::clock::now();
@@ -118,7 +127,7 @@ bool DataStorage<EntryType, FilterType, SerialiseType>::saveDataToFile(const cha
 
 namespace dns {
 using StorageEntry = TimeToLive<Entry>;
-using DataStorage  = opencmw::service::DataStorage<Entry, opencmw::service::dns::QueryEntry, QueryResponse>;
+using DataStorage  = opencmw::service::DataStorage<Entry, opencmw::service::dns::QueryEntry, FlatEntryList>;
 } // namespace dns
 
 }
