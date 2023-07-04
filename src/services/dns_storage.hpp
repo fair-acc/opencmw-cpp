@@ -21,7 +21,7 @@ class DataStorage {
 public:
     using StorageEntryType = TimeToLive<EntryType>;
 
-    std::vector<EntryType> addEntries(const std::vector<EntryType>& entries) {
+    std::vector<EntryType> addEntries(const std::vector<EntryType> &entries) {
         std::vector<EntryType> addedEntries;
 
         std::transform(entries.begin(), entries.end(), std::back_inserter(addedEntries), [this](const EntryType &entry) {
