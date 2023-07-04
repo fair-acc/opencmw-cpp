@@ -16,17 +16,17 @@ namespace opencmw {
 namespace service {
 namespace dns {
 
-using dnsWorker = majordomo::Worker<"dns", Context, Entry, QueryResponse, majordomo::description<"Register and Query Signals">>;
+using dnsWorker = majordomo::Worker<"dns", Context, FlatEntryList, FlatEntryList, majordomo::description<"Register and Query Signals">>;
 
 class DnsWorker {
 protected:
     DataStorage datastorage;
 
 public:
-    void operator()(majordomo::RequestContext &rawCtx, const Context &ctx, const Entry &in, Context &replyContext, QueryResponse &response) {
+    void operator()(majordomo::RequestContext &rawCtx, const Context &ctx, const FlatEntryList &in, Context &replyContext, FlatEntryList &response) {
         if (rawCtx.request.command == mdp::Command::Set) {
-            auto out = datastorage.addEntry(in);
-            response = { { out } };
+            auto out = datastorage.addEntries(in.toEntries());
+            response = out;
         } else if (rawCtx.request.command == mdp::Command::Get) {
             auto &entries = datastorage.getEntries();
             auto  result  = datastorage.queryEntries(ctx);
@@ -35,9 +35,10 @@ public:
     }
 };
 
-Entry registerService(const Entry &entry) {
+Entry registerService(const std::vector<Entry> &entries) {
     IoBuffer outBuffer;
-    opencmw::serialise<opencmw::YaS>(outBuffer, entry);
+    FlatEntryList entrylist{entries};
+    opencmw::serialise<opencmw::YaS>(outBuffer, entrylist);
     std::string contentType{ MIME::BINARY.typeName() };
     std::string body{ outBuffer.asString() };
 
@@ -55,7 +56,7 @@ Entry registerService(const Entry &entry) {
     IoBuffer inBuffer;
     inBuffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>(response->body);
 
-    QueryResponse res;
+    FlatEntryList res;
     try {
         opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::ALWAYS>(inBuffer, res);
     } catch (const ProtocolException &exc) {
@@ -82,7 +83,7 @@ auto queryServices = [](const Entry &a = {}) {
     IoBuffer inBuffer;
     inBuffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>(response->body);
 
-    QueryResponse res;
+    FlatEntryList res;
     try {
         opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::ALWAYS>(inBuffer, res);
     } catch (const ProtocolException &exc) {

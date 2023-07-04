@@ -32,7 +32,7 @@ public:
         std::mutex              mutex;
         std::condition_variable cv;
         std::atomic_bool        received{ false };
-        QueryResponse           resp;
+        FlatEntryList           resp;
 
         queryServicesAsync([&received, &resp, &cv](const mdp::Message &message) {
             IoBuffer buf{ message.data };
@@ -49,18 +49,19 @@ public:
         return resp.toEntries();
     }
 
-    void registerServiceAsync(auto callback, const Entry &entry) {
+    void registerServiceAsync(auto callback, const std::vector<Entry> &entries) {
         auto     uri = URI<>::factory(endpoint);
 
         IoBuffer buf;
-        opencmw::serialise<YaS>(buf, entry);
+        FlatEntryList entrylist{entries};
+        opencmw::serialise<YaS>(buf, entrylist);
 
         clientContext.set(endpoint, callback, std::move(buf));
     }
 
-    std::vector<Entry> registerService(const Entry &entry) {
+    std::vector<Entry> registerService(const std::vector<Entry> &entries) {
         std::atomic_bool        received{ false };
-        QueryResponse           resp;
+        FlatEntryList           resp;
         std::mutex              mutex;
         std::condition_variable cv;
 
@@ -70,7 +71,7 @@ public:
             received = true;
             cv.notify_one();
         },
-                entry);
+                entries);
 
         {
             std::unique_lock<std::mutex> lock(mutex);
@@ -116,14 +117,14 @@ public:
             throw std::runtime_error{ answer.error };
         }
 
-        QueryResponse res;
+        FlatEntryList res;
         opencmw::deserialise<YaS, ProtocolCheck::ALWAYS>(answer.data, res);
         return res.toEntries();
     }
 
-    Entry registerService(const Entry &entry) {
+    Entry registerService(const std::vector<Entry> &entry) {
         IoBuffer outBuffer;
-        opencmw::serialise<opencmw::YaS>(outBuffer, entry);
+        opencmw::serialise<opencmw::YaS>(outBuffer, FlatEntryList{entry});
         std::string     contentType{ MIME::BINARY.typeName() };
 
         client::Command cmd;
@@ -148,7 +149,7 @@ public:
             throw std::runtime_error{ answer.error };
         }
 
-        QueryResponse res;
+        FlatEntryList res;
         if (!answer.data.empty()) {
             opencmw::deserialise<YaS, ProtocolCheck::ALWAYS>(answer.data, res);
         }
