@@ -1,12 +1,10 @@
 add_subdirectory(core)
 add_subdirectory(serialiser)
 add_subdirectory(client)
-add_subdirectory(services)
 add_subdirectory(disruptor)
 
-if (USE_LIBCPP)
-        # does not work, because <source_location> and std::jthread is missing also ranges support is not complete
-        message(WARNING "Disabled majordomo and mdp client module because they are not compatible with libc++")
+if (EMSCRIPTEN)
+        message("Disabled majordomo and mdp client module because they are not compatible with emscripten builds")
 else()
         add_subdirectory(majordomo)
         add_subdirectory(zmq)

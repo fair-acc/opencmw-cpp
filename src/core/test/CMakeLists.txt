@@ -3,7 +3,7 @@ include(Catch)
 
 set(core_test_sources catch_main.cpp 00_opencmw_basic_tests.cpp collection_tests.cpp URI_tests.cpp MIME_tests.cpp ReaderWriterLock_tests.cpp SpinWait_tests.cpp TimingCtx_tests.cpp)
 
-if(NOT USE_LIBCPP)
+if(NOT EMSCRIPTEN)
     list(APPEND core_test_sources ThreadAffinity_tests.cpp ThreadPool_tests.cpp)
 endif()
 
