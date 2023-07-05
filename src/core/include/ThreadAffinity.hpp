@@ -91,7 +91,7 @@ namespace detail {
 
     inline int getPid() { return getpid(); }
 #else
-    int getPid() {
+    inline int getPid() {
         return 0;
     }
 #endif
@@ -184,7 +184,7 @@ inline std::vector<bool> getThreadAffinity(thread_type auto &...thread) {
     return detail::getAffinityMask(cpuSet);
 }
 #else
-std::vector<bool> getThreadAffinity(thread_type auto &...) {
+inline std::vector<bool> getThreadAffinity(thread_type auto &...) {
     return std::vector<bool>(std::thread::hardware_concurrency()); // cannot set affinity for non-posix threads
 }
 #endif
@@ -203,7 +203,7 @@ inline constexpr void setThreadAffinity(const T &threadMap, thread_type auto &..
     }
 }
 #else
-constexpr bool setThreadAffinity(const T &threadMap, thread_type auto &...) {
+inline constexpr bool setThreadAffinity(const T &threadMap, thread_type auto &...) {
     return false; // cannot set affinity for non-posix threads
 }
 #endif
