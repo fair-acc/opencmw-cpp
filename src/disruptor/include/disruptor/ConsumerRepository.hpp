@@ -52,7 +52,8 @@ public:
         for (const auto &consumerInfo : _consumerInfos) {
             if ((includeStopped || consumerInfo->isRunning()) && consumerInfo->isEndOfChain()) {
                 auto sequences = consumerInfo->sequences();
-                std::ranges::copy(sequences, std::back_inserter(lastSequence));
+                // std::ranges::copy(sequences, std::back_inserter(lastSequence));
+                std::copy(sequences.begin(), sequences.end(), std::back_inserter(lastSequence));
             }
         }
 

@@ -25,7 +25,8 @@ namespace util {
 inline std::vector<std::shared_ptr<Sequence>> getSequencesFor(const std::vector<std::shared_ptr<IEventProcessor>> &processors) {
     // Ah C++20 ranges, no conversions to vector yet
     std::vector<std::shared_ptr<Sequence>> sequences(processors.size());
-    std::ranges::transform(processors, sequences.begin(), [](const auto &processor) { return processor->sequence(); });
+    // std::ranges::transform(processors, sequences.begin(), [](const auto &processor) { return processor->sequence(); });
+    std::transform(processors.begin(), processors.end(), sequences.begin(), [](const auto &processor) { return processor->sequence(); });
     return sequences;
 }
 
