@@ -161,7 +161,7 @@ public:
     template<typename... Args>
     explicit(false) RestClient(Args... initArgs)
         : _name(detail::find_argument_value<false, std::string>([] { return "RestClient"; }, initArgs...)), //
-        _mimeType(detail::find_argument_value<true, DefaultContentTypeHeader>([this] { return MIME::JSON; }, initArgs...))
+        _mimeType(detail::find_argument_value<true, DefaultContentTypeHeader>([] { return MIME::JSON; }, initArgs...))
         , _minIoThreads(detail::find_argument_value<true, MinIoThreads>([] { return MinIoThreads(); }, initArgs...))
         , _maxIoThreads(detail::find_argument_value<true, MaxIoThreads>([] { return MaxIoThreads(); }, initArgs...))
         , _thread_pool(detail::find_argument_value<true, ThreadPoolType>([this] { return std::make_shared<BasicThreadPool<IO_BOUND>>(_name, _minIoThreads, _maxIoThreads); }, initArgs...))

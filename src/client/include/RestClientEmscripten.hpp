@@ -9,6 +9,7 @@
 #include <unordered_set>
 
 #include <ClientCommon.hpp>
+#include <ClientContext.hpp>
 #include <MIME.hpp>
 #include <URI.hpp>
 
@@ -107,9 +108,9 @@ struct SubscriptionPayload : FetchPayload {
         : FetchPayload(std::move(_command))
         , _mimeType(std::move(mimeType)) {}
 
-    SubscriptionPayload(const SubscriptionPayload &other)     = delete;
-    SubscriptionPayload(SubscriptionPayload &&other) noexcept = default;
-    SubscriptionPayload &operator=(const SubscriptionPayload &other) = delete;
+    SubscriptionPayload(const SubscriptionPayload &other)                = delete;
+    SubscriptionPayload(SubscriptionPayload &&other) noexcept            = default;
+    SubscriptionPayload &operator=(const SubscriptionPayload &other)     = delete;
     SubscriptionPayload &operator=(SubscriptionPayload &&other) noexcept = default;
 
     void                 requestNext() {
@@ -169,7 +170,7 @@ struct SubscriptionPayload : FetchPayload {
 };
 } // namespace detail
 
-class RestClient {
+class RestClient : public ClientBase {
     std::string       _name;
     MIME::MimeType    _mimeType;
     std::atomic<bool> _run = true;
@@ -192,7 +193,9 @@ public:
         : _name(detail::find_argument_value<false, std::string>([] { return "RestClient"; }, initArgs...))
         , _mimeType(detail::find_argument_value<true, DefaultContentTypeHeader>([this] { return MIME::JSON; }, initArgs...)) {
     }
-    ~RestClient(){ /* RestClient::stop(); TODO */ };
+    ~RestClient() { RestClient::stop(); };
+
+    void                      stop() override{};
 
     std::vector<std::string>  protocols() noexcept { return { "http", "https" }; }
 

@@ -1,7 +1,6 @@
 add_subdirectory(core)
 add_subdirectory(serialiser)
 add_subdirectory(client)
-add_subdirectory(services)
 add_subdirectory(disruptor)
 
 if (USE_LIBCPP)
