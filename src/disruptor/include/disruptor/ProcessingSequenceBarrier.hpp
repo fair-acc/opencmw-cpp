@@ -76,12 +76,13 @@ public:
     }
 
 private:
-    std::shared_ptr<std::vector<std::shared_ptr<Sequence>>> getDependentSequence(const std::shared_ptr<Sequence> &cursor, const std::vector<std::shared_ptr<Sequence>> &dependentSequences) const noexcept {
+    [[nodiscard]] std::shared_ptr<std::vector<std::shared_ptr<Sequence>>> getDependentSequence(const std::shared_ptr<Sequence> &cursor, const std::vector<std::shared_ptr<Sequence>> &dependentSequences) const noexcept {
         auto updatedSequences = std::make_shared<std::vector<std::shared_ptr<Sequence>>>();
 
         updatedSequences->resize(dependentSequences.size() + 1);
         (*updatedSequences)[0] = cursor;
-        std::ranges::copy(dependentSequences.begin(), dependentSequences.end(), updatedSequences->begin() + 1);
+        // std::ranges::copy(dependentSequences.begin(), dependentSequences.end(), updatedSequences->begin() + 1);
+        std::copy(dependentSequences.begin(), dependentSequences.end(), updatedSequences->begin() + 1);
 
         return updatedSequences;
     }

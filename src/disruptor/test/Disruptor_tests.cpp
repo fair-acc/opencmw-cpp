@@ -147,12 +147,13 @@ TEST_CASE("Disruptor stress test", "[Disruptor]") {
 
     const auto time_start = std::chrono::system_clock::now();
     {
-        std::vector<std::jthread> threads;
+        std::vector<std::thread> threads;
         threads.reserve(publishers.size());
         for (auto &&publisher : publishers) {
             threads.emplace_back([publisher] { publisher->run(); });
         }
         std::cerr << "Waiting for publisher threads to finish...\n";
+        std::for_each(threads.begin(), threads.end(), [](auto &thread) { thread.join(); });
     }
     std::cerr << "Joined threads.\n";
     const auto                                      time_end     = std::chrono::system_clock::now();
