@@ -45,7 +45,3 @@ target_link_libraries(rest_client_only_tests PUBLIC opencmw_project_warnings ope
 target_include_directories(rest_client_only_tests PRIVATE ${CMAKE_SOURCE_DIR})
 # This test requires a different kind of invocation as it needs the server running
 # catch_discover_tests(rest_client_only_tests)
-
-if (EMSCRIPTEN)
-    set(CMAKE_EXECUTABLE_SUFFIX ".html")
-endif ()

@@ -18,6 +18,3 @@ target_link_libraries(RestSubscription_client
         opencmw_project_warnings
         )
 
-if (EMSCRIPTEN)
-    set(CMAKE_EXECUTABLE_SUFFIX ".html")
-endif ()

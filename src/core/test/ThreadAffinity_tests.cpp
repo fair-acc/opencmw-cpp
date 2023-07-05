@@ -35,7 +35,7 @@ TEST_CASE("basic thread affinity", "[ThreadAffinity]") {
     using namespace opencmw;
     std::atomic<bool>    run         = true;
     const auto           dummyAction = [&run]() { while (run) { std::this_thread::sleep_for(std::chrono::milliseconds(50)); } };
-    std::jthread         testThread(dummyAction);
+    std::thread          testThread(dummyAction);
 
     constexpr std::array threadMap = { true, false, false, false };
     thread::setThreadAffinity(threadMap, testThread);
@@ -46,7 +46,7 @@ TEST_CASE("basic thread affinity", "[ThreadAffinity]") {
             equal = false;
         }
     }
-    REQUIRE_MESSAGE(equal, fmt::format("set {{{}}} affinity map does not match get {{{}}} map", fmt::join(threadMap, ", "), fmt::join(affinity, ", ")));
+    REQUIRE_MESSAGE(equal, fmt::format("set {{{}}} affinity map does not match get {{{}}} map", fmt::join(threadMap.begin(), threadMap.end(), ", "), fmt::join(affinity.begin(), affinity.end(), ", ")));
 
     // tests w/o thread argument
     constexpr std::array threadMapOn = { true, true };
@@ -57,13 +57,15 @@ TEST_CASE("basic thread affinity", "[ThreadAffinity]") {
             equal = false;
         }
     }
-    REQUIRE_MESSAGE(equal, fmt::format("set {{{}}} affinity map does not match get {{{}}} map", fmt::join(threadMap, ", "), fmt::join(affinity, ", ")));
+    REQUIRE_MESSAGE(equal, fmt::format("set {{{}}} affinity map does not match get {{{}}} map", fmt::join(threadMap.begin(), threadMap.end(), ", "), fmt::join(affinity.begin(), affinity.end(), ", ")));
 
-    std::jthread bogusThread;
+    std::thread bogusThread;
     REQUIRE_THROWS_AS(thread::getThreadAffinity(bogusThread), std::system_error);
     REQUIRE_THROWS_AS(thread::setThreadAffinity(threadMapOn, bogusThread), std::system_error);
 
     run = false;
+    bogusThread.join();
+    testThread.join();
 }
 
 TEST_CASE("basic process affinity", "[ThreadAffinity]") {
@@ -80,7 +82,7 @@ TEST_CASE("basic process affinity", "[ThreadAffinity]") {
             equal = false;
         }
     }
-    REQUIRE_MESSAGE(equal, fmt::format("set {{{}}} affinity map does not match get {{{}}} map", fmt::join(threadMap, ", "), fmt::join(affinity, ", ")));
+    REQUIRE_MESSAGE(equal, fmt::format("set {{{}}} affinity map does not match get {{{}}} map", fmt::join(threadMap.begin(), threadMap.end(), ", "), fmt::join(affinity.begin(), affinity.end(), ", ")));
     constexpr std::array threadMapOn = { true, true, true, true };
     thread::setProcessAffinity(threadMapOn);
     REQUIRE_THROWS_AS(thread::getProcessAffinity(-1), std::system_error);
@@ -98,16 +100,18 @@ TEST_CASE("ThreadName", "[ThreadAffinity]") {
 
     std::atomic<bool> run         = true;
     const auto        dummyAction = [&run]() { while (run) { std::this_thread::sleep_for(std::chrono::milliseconds(20)); } };
-    std::jthread      testThread(dummyAction);
+    std::thread       testThread(dummyAction);
     REQUIRE("" != thread::getThreadName(testThread));
     REQUIRE_NOTHROW(thread::setThreadName("testThreadName", testThread));
     thread::setThreadName("testThreadName", testThread);
     REQUIRE("testThreadName" == thread::getThreadName(testThread));
 
-    std::jthread uninitialisedTestThread;
+    std::thread uninitialisedTestThread;
     REQUIRE_THROWS_AS(thread::getThreadName(uninitialisedTestThread), std::system_error);
     REQUIRE_THROWS_AS(thread::setThreadName("name", uninitialisedTestThread), std::system_error);
     run = false;
+    testThread.join();
+    uninitialisedTestThread.join();
 }
 
 TEST_CASE("ProcessName", "[ThreadAffinity]") {
@@ -153,8 +157,8 @@ TEST_CASE("ThreadSchedulingParameter", "[ThreadAffinity]") {
 
     std::atomic<bool>     run         = true;
     const auto            dummyAction = [&run]() { while (run) { std::this_thread::sleep_for(std::chrono::milliseconds(50)); } };
-    std::jthread          testThread(dummyAction);
-    std::jthread          bogusThread;
+    std::thread           testThread(dummyAction);
+    std::thread           bogusThread;
 
     using namespace opencmw::thread;
     struct SchedulingParameter param = getThreadSchedulingParameter(testThread);
@@ -175,4 +179,6 @@ TEST_CASE("ThreadSchedulingParameter", "[ThreadAffinity]") {
     REQUIRE_THROWS_AS(setThreadSchedulingParameter(ROUND_ROBIN, 5, bogusThread), std::system_error);
 
     run = false;
+    testThread.join();
+    bogusThread.join();
 }
