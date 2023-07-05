@@ -6,8 +6,7 @@
 #include <fstream>
 #include <IoSerialiserYaS.hpp>
 
-namespace opencmw {
-namespace service {
+namespace opencmw::service {
 
 // ttl cannot be serialised, that's why it lives in this subclass
 template<typename T>
@@ -16,10 +15,12 @@ struct TimeToLive : T {
     std::chrono::time_point<clock> ttl{ clock::now() + std::chrono::hours{ 1 } }; // kill entry if it has not been renewed before this point in time
 };
 
-template<class EntryType, class FilterType, class SerialiseType>
+template<class EntryType, class _FilterType, class _SerialiseType>
 class DataStorage {
 public:
     using StorageEntryType = TimeToLive<EntryType>;
+    using FilterType = _FilterType;
+    using SerialiseType = _SerialiseType;
 
     std::vector<EntryType> addEntries(const std::vector<EntryType> &entries) {
         std::vector<EntryType> addedEntries;
@@ -48,8 +49,8 @@ public:
         return newEntry;
     }
 
-    template<class ReturnEntryType = EntryType, class _FilterType = FilterType>
-    std::vector<ReturnEntryType> queryEntries(_FilterType filter = {}) const {
+    template<class ReturnEntryType = EntryType, class _FilterT = FilterType>
+    std::vector<ReturnEntryType> queryEntries(_FilterT filter = {}) const {
         std::vector<ReturnEntryType> result;
         auto                         now = StorageEntryType::clock::now();
         std::copy_if(_entries.begin(), _entries.end(), std::back_inserter(result),
@@ -63,7 +64,7 @@ public:
         return _entries;
     }
 
-    int getActiveEntriesCount() const {
+    long getActiveEntriesCount() const {
         auto now = StorageEntryType::clock::now();
         auto c   = std::count_if(_entries.begin(), _entries.end(), [&now](auto &e) { return e.ttl > now; });
         return c;
@@ -130,6 +131,5 @@ using StorageEntry = TimeToLive<Entry>;
 using DataStorage  = opencmw::service::DataStorage<Entry, opencmw::service::dns::QueryEntry, FlatEntryList>;
 } // namespace dns
 
-}
 } // namespace opencmw::service
 #endif //_DNS_STORAGE_HPP

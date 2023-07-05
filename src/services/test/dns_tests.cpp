@@ -15,14 +15,14 @@
 class FileDeleter {
 public:
     // make sure to delete datastorage file when finishing
-    FileDeleter(std::string filename = "dns_data_storage.yas")
+    explicit FileDeleter(std::string_view filename = "dns_data_storage.yas")
         : filename(filename) {
         deleteFile();
     }
     ~FileDeleter() {
         deleteFile();
     }
-    void deleteFile() {
+    void deleteFile() const {
         if (std::filesystem::exists(filename)) {
             std::filesystem::remove(filename);
         }
@@ -30,7 +30,7 @@ public:
     std::string filename;
 };
 
-FileDeleter dsFd; // delete DataStorage file when finishing
+[[maybe_unused]] FileDeleter dsFd; // delete DataStorage file when finishing
 
 #else
 class FileDeleter {
@@ -43,9 +43,9 @@ using namespace opencmw;
 using namespace opencmw::service::dns;
 using namespace std::chrono_literals;
 
-Entry a{ "http", "localhost", 8080, "group a", "unknown", "A", "ms", 0.123456, "" };
-Entry b{ "http", "localhost", 8080, "group a", "unknown", "B", "ms", 2.3223, "" };
-Entry c{ "http", "localhost", 8080, "test", "unknown", "C", "ms", 3.333, "" };
+Entry a{ "http", "localhost", 8080, "group a", "unknown", "A", "ms", 0.123456f, "" };
+Entry b{ "http", "localhost", 8080, "group a", "unknown", "B", "ms", 2.3223f, "" };
+Entry c{ "http", "localhost", 8080, "test", "unknown", "C", "ms", 3.333f, "" };
 
 class TestDataStorage : public DataStorage {
 public:
@@ -64,10 +64,9 @@ public:
     std::vector<StorageEntry> &entries() {
         return _entries;
     }
-    TestDataStorage(std::string filename = "test_.yas") {
+    explicit TestDataStorage() {
         clear();
     }
-    ~TestDataStorage() {}
 };
 
 TEST_CASE("type tests", "[DNS") {
@@ -181,7 +180,7 @@ TEST_CASE("rest client", "[DNS]") {
     DnsRestClient client;
 
     auto          services = client.querySignal();
-    REQUIRE(services.size() == 0);
+    REQUIRE(services.empty());
 
     auto ret = client.registerSignal({ a });
     REQUIRE(ret.signal_rate == a.signal_rate);
@@ -191,7 +190,7 @@ TEST_CASE("rest client", "[DNS]") {
     REQUIRE(ret == c);
 
     services = client.querySignal();
-    // TODO REQUIRE(services.size() == storage.getActiveEntriesCount());
+    REQUIRE(std::ranges::equal(services, std::vector<Entry>{ a, b, c }));
 }
 
 TEST_CASE("query", "[DNS]") {
@@ -202,7 +201,7 @@ TEST_CASE("query", "[DNS]") {
 
     SECTION("query") {
         auto services = querySignals();
-        REQUIRE(services.size() == 0);
+        REQUIRE(services.empty());
         registerSignal({ a });
         services = querySignals();
         REQUIRE(services.size() == 1);
@@ -217,7 +216,7 @@ TEST_CASE("query", "[DNS]") {
 
     SECTION("query with filters") {
         auto services = querySignals({ .signal_name = "C" });
-        REQUIRE(services.size() == 0);
+        REQUIRE(services.empty());
         registerSignal({ c });
         services = querySignals({ .signal_name = "C" });
         REQUIRE(services.size() == 1);
@@ -300,7 +299,7 @@ TEST_CASE("data storage - persistence", "[DNS]") {
 
         REQUIRE(std::filesystem::exists(filename));
         ds.clear();
-        REQUIRE(ds.getEntries().size() == 0);
+        REQUIRE(ds.getEntries().empty());
         auto bret = ds.load(filename);
         REQUIRE(bret);
         REQUIRE(ds.getEntries().size() == 3);
@@ -344,7 +343,7 @@ struct RandomEntry : Entry {
         signal_name  = makeRandom<std::string>(14);
         signal_type  = makeRandom<std::string>(14);
         signal_unit  = makeRandom<std::string>(14);
-        signal_rate  = 0.42222;
+        signal_rate  = 0.42222f;
     }
 };
 

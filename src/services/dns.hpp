@@ -23,12 +23,11 @@ protected:
     DataStorage datastorage;
 
 public:
-    void operator()(majordomo::RequestContext &rawCtx, const Context &ctx, const FlatEntryList &in, Context &replyContext, FlatEntryList &response) {
+    void operator()(majordomo::RequestContext &rawCtx, const Context &ctx, const FlatEntryList &in, [[maybe_unused]] Context &replyContext, FlatEntryList &response) {
         if (rawCtx.request.command == mdp::Command::Set) {
             auto out = datastorage.addEntries(in.toEntries());
             response = out;
         } else if (rawCtx.request.command == mdp::Command::Get) {
-            auto &entries = datastorage.getEntries();
             auto  result  = datastorage.queryEntries(ctx);
             response      = { result };
         }
@@ -91,7 +90,7 @@ std::vector<Entry> querySignals(const Entry &a = {}) {
     }
 
     return res.toEntries();
-};
+}
 
 }
 }
