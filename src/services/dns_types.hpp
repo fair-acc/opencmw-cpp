@@ -1,12 +1,10 @@
-#ifndef _DNS_TYPES_HPP_
-#define _DNS_TYPES_HPP_
+#ifndef DNS_TYPES_HPP
+#define DNS_TYPES_HPP
 
 #include <MIME.hpp>
 #include <opencmw.hpp>
 
-namespace opencmw {
-namespace service {
-namespace dns {
+namespace opencmw::service::dns {
 
 struct Entry {
     std::string protocol;
@@ -24,18 +22,19 @@ struct Entry {
 };
 
 struct QueryEntry : Entry {
-    bool operator==(const Entry &entry) const {
-#define _check_string(name) \
-    if (name != "" && name != entry.name) return false;
+    // don't need a virtual here, as this type is explicitly used and we don't need the overhead
+    bool operator==(const Entry &entry) const noexcept {
+#define check_string(name) \
+    if (!name.empty() && name != entry.name) return false;
 
-        _check_string(protocol);
-        _check_string(hostname);
-        _check_string(service_name);
-        _check_string(service_type);
-        _check_string(signal_name);
-        _check_string(signal_type);
-#undef _check_string
-        if (port != -1 && port != entry.port) return false;
+        check_string(protocol)
+                check_string(hostname)
+                        check_string(service_name)
+                                check_string(service_type)
+                                        check_string(signal_name)
+                                                check_string(signal_type)
+#undef check_string
+                                                        if (port != -1 && port != entry.port) return false;
         if (!std::isnan(signal_rate) && signal_rate != entry.signal_rate) return false;
 
         return true;
@@ -43,7 +42,7 @@ struct QueryEntry : Entry {
 };
 
 struct Context : QueryEntry {
-    MIME::MimeType contextType{ MIME::BINARY };
+    [[maybe_unused]] MIME::MimeType contextType{ MIME::BINARY };
 };
 
 struct FlatEntryList {
@@ -59,25 +58,25 @@ struct FlatEntryList {
     std::vector<std::string> signal_type;
 
     FlatEntryList() = default;
-    FlatEntryList(const std::vector<Entry> &entries) {
-#define _insert_into(field) \
+    FlatEntryList(const std::vector<Entry> &entries) { // NOLINT(google-explicit-constructor, google-runtime-int)
+#define insert_into(field) \
     field.reserve(entries.size()); \
     std::transform(entries.begin(), entries.end(), std::back_inserter(field), [](const Entry &entry) { \
         return entry.field; \
     });
-        _insert_into(protocol);
-        _insert_into(hostname);
-        _insert_into(port);
-        _insert_into(service_name);
-        _insert_into(service_type);
-        _insert_into(signal_name);
-        _insert_into(signal_unit);
-        _insert_into(signal_rate);
-        _insert_into(signal_type);
-#undef _insert_into
+        insert_into(protocol)
+                insert_into(hostname)
+                        insert_into(port)
+                                insert_into(service_name)
+                                        insert_into(service_type)
+                                                insert_into(signal_name)
+                                                        insert_into(signal_unit)
+                                                                insert_into(signal_rate)
+                                                                        insert_into(signal_type)
+#undef insert_into
     }
 
-    std::vector<Entry> toEntries() const {
+    [[nodiscard]] std::vector<Entry> toEntries() const {
         const std::size_t size = protocol.size();
         assert(hostname.size() == size
                 && port.size() == size
@@ -92,7 +91,7 @@ struct FlatEntryList {
         res.reserve(size);
 
         for (std::size_t i = 0; i < size; ++i) {
-            res.push_back({ protocol[i],
+            res.emplace_back(Entry{ protocol[i],
                     hostname[i],
                     port[i],
                     service_name[i],
@@ -107,13 +106,12 @@ struct FlatEntryList {
     }
 };
 
-}
-}
 } // namespace opencmw::service::dns
-#define _ENTRY_FIELDS_ protocol, hostname, port, service_name, service_type, signal_name, signal_unit, signal_rate, signal_type
-ENABLE_REFLECTION_FOR(opencmw::service::dns::Entry, _ENTRY_FIELDS_);
-ENABLE_REFLECTION_FOR(opencmw::service::dns::QueryEntry, _ENTRY_FIELDS_);
-ENABLE_REFLECTION_FOR(opencmw::service::dns::Context, contextType, _ENTRY_FIELDS_);
-ENABLE_REFLECTION_FOR(opencmw::service::dns::FlatEntryList, _ENTRY_FIELDS_); // everything is a vector<T> here
+#define ENTRY_FIELDS protocol, hostname, port, service_name, service_type, signal_name, signal_unit, signal_rate, signal_type
+ENABLE_REFLECTION_FOR(opencmw::service::dns::Entry, ENTRY_FIELDS)
+ENABLE_REFLECTION_FOR(opencmw::service::dns::QueryEntry, ENTRY_FIELDS)
+ENABLE_REFLECTION_FOR(opencmw::service::dns::Context, contextType, ENTRY_FIELDS)
+ENABLE_REFLECTION_FOR(opencmw::service::dns::FlatEntryList, ENTRY_FIELDS) // everything is a vector<T> here
+#undef ENTRY_FIELDS
 
-#endif // _DNS_TYPES_HPP_
+#endif // DNS_TYPES_HPP

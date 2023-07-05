@@ -1,4 +1,3 @@
-
 #define CATCH_CONFIG_MAIN // This tells the catch header to generate a main
 #define CATCH_CONFIG_ENABLE_BENCHMARKING 1
 
@@ -8,15 +7,19 @@
 #include <string>
 
 #ifndef __EMSCRIPTEN__
-#include "../services.hpp"
+#include <Client.hpp>
+// Concepts and tests use common types
+#include <concepts/majordomo/helpers.hpp>
+#include <majordomo/Broker.hpp>
+#include <majordomo/RestBackend.hpp>
 #endif
 
 #ifndef __EMSCRIPTEN__
 class FileDeleter {
 public:
     // make sure to delete datastorage file when finishing
-    explicit FileDeleter(std::string_view filename = "dns_data_storage.yas")
-        : filename(filename) {
+    explicit FileDeleter(std::string_view fileName = "dns_data_storage.yas")
+        : filename(fileName) {
         deleteFile();
     }
     ~FileDeleter() {
@@ -43,9 +46,9 @@ using namespace opencmw;
 using namespace opencmw::service::dns;
 using namespace std::chrono_literals;
 
-Entry a{ "http", "localhost", 8080, "group a", "unknown", "A", "ms", 0.123456f, "" };
-Entry b{ "http", "localhost", 8080, "group a", "unknown", "B", "ms", 2.3223f, "" };
-Entry c{ "http", "localhost", 8080, "test", "unknown", "C", "ms", 3.333f, "" };
+Entry entry_a{ "http", "localhost", 8080, "group a", "unknown", "A", "ms", 0.123456f, "" };
+Entry entry_b{ "http", "localhost", 8080, "group a", "unknown", "B", "ms", 2.3223f, "" };
+Entry entry_c{ "http", "localhost", 8080, "test", "unknown", "C", "ms", 3.333f, "" };
 
 class TestDataStorage : public DataStorage {
 public:
@@ -71,12 +74,12 @@ public:
 
 TEST_CASE("type tests", "[DNS") {
     SECTION("FlatEntryList") {
-        std::vector<Entry> entries{ a, b, c };
-        FlatEntryList      response{ { a, b, c } };
+        std::vector<Entry> entries{ entry_a, entry_b, entry_c };
+        FlatEntryList      response{ { entry_a, entry_b, entry_c } };
         auto               newEntries = response.toEntries();
-        REQUIRE(newEntries[0] == a);
-        REQUIRE(newEntries[1] == b);
-        REQUIRE(newEntries[2] == c);
+        REQUIRE(newEntries[0] == entry_a);
+        REQUIRE(newEntries[1] == entry_b);
+        REQUIRE(newEntries[2] == entry_c);
     }
     SECTION("QueryEntry") {
         QueryEntry qa;
@@ -85,42 +88,33 @@ TEST_CASE("type tests", "[DNS") {
         qb.signal_name = "B";
         QueryEntry qh;
         qh.protocol = "http";
-        REQUIRE(QueryEntry{} == a); // should match all
-        REQUIRE(qa == a);
-        REQUIRE(qb != a);
-        REQUIRE(qb == b);
-        REQUIRE(qh == a);
-        REQUIRE(qh == b);
+        REQUIRE(QueryEntry{} == entry_a); // should match all
+        REQUIRE(qa == entry_a);
+        REQUIRE(qb != entry_a);
+        REQUIRE(qb == entry_b);
+        REQUIRE(qh == entry_a);
+        REQUIRE(qh == entry_b);
     }
 }
-
-#ifndef __EMSCRIPTEN__
-TEST_CASE("run services", "[DNS]") {
-    FileDeleter                        fd;
-    opencmw::service::RunDefaultBroker broker;
-    broker.runWorker<dnsWorker, DnsWorker>();
-    broker.startBroker();
-}
-#endif
 
 TEST_CASE("data storage - Adding Entries", "[DNS]") {
     TestDataStorage ds;
 
     REQUIRE(ds.getActiveEntriesCount() == 0);
-    ds.addEntry(a);
+    ds.addEntry(entry_a);
     REQUIRE(ds.getActiveEntriesCount() == 1);
-    ds.addEntry(b);
+    ds.addEntry(entry_b);
     REQUIRE(ds.getActiveEntriesCount() == 2);
     auto entries = ds.getEntries();
-    REQUIRE(entries[0] == a);
-    REQUIRE(entries[1] == b);
+    REQUIRE(entries[0] == entry_a);
+    REQUIRE(entries[1] == entry_b);
 }
 
 TEST_CASE("data storage - Querying Entries") {
     TestDataStorage ds;
-    ds.addEntry(a);
-    ds.addEntry(b);
-    ds.addEntry(c);
+    ds.addEntry(entry_a);
+    ds.addEntry(entry_b);
+    ds.addEntry(entry_c);
     REQUIRE(ds.getActiveEntriesCount() == 3);
     QueryEntry qc;
     qc.signal_name = "C";
@@ -129,98 +123,126 @@ TEST_CASE("data storage - Querying Entries") {
 
     auto entries         = ds.queryEntries(qc);
     REQUIRE(entries.size() == 1);
-    REQUIRE(entries[0] == c);
+    REQUIRE(entries[0] == entry_c);
 
     entries = ds.queryEntries(qGroupA);
     REQUIRE(entries.size() == 2);
-    REQUIRE(entries[0] == a);
-    REQUIRE(entries[1] == b);
+    REQUIRE(entries[0] == entry_a);
+    REQUIRE(entries[1] == entry_b);
 }
 
 TEST_CASE("data storage - Renewing Entries") {
     TestDataStorage ds;
-    ds.addEntry(a);
-    ds.addEntry(b);
-    ds.addEntry(a);
+    ds.addEntry(entry_a);
+    ds.addEntry(entry_b);
     auto now = StorageEntry::clock::now();
+    ds.addEntry(entry_a);
 
     REQUIRE(ds.getActiveEntriesCount() == 2);
 
-    auto entries = ds.queryEntries(a);
-    REQUIRE(entries.size() == 1);
-    REQUIRE(entries[0] == a);
+    auto entries = ds.entries();
+    REQUIRE(entries.size() == 2);
+    auto e = std::find(entries.begin(), entries.end(), entry_a);
+    REQUIRE(e != entries.end());
+    REQUIRE(e->ttl > now);
 }
 
 #ifndef __EMSCRIPTEN__
+
+TEST_CASE("run services", "[DNS]") {
+    FileDeleter                                                 fd;
+    majordomo::Broker<>                                         broker{ "Broker", {} };
+    std::string                                                 rootPath{ "./" };
+    auto                                                        fs = cmrc::assets::get_filesystem();
+    majordomo::RestBackend<majordomo::PLAIN_HTTP, decltype(fs)> rest_backend{ broker, fs };
+    DnsWorkerType                                               dnsWorker{ broker, {} };
+
+    RunInThread                                                 restThread(rest_backend);
+    RunInThread                                                 brokerThread(broker);
+    RunInThread                                                 dnsThread(dnsWorker);
+}
+
 TEST_CASE("client", "[DNS]") {
-    FileDeleter                        fd;
-    opencmw::service::RunDefaultBroker broker;
-    auto                               addr = broker.getBroker().bind(URI<>{ "inproc://dns_server" }, majordomo::BindOption::Router);
-    broker.runWorker<dnsWorker, DnsWorker>();
-    broker.startBroker();
+    FileDeleter                                                 fd;
+    majordomo::Broker<>                                         broker{ "Broker", {} };
+    std::string                                                 rootPath{ "./" };
+    auto                                                        fs = cmrc::assets::get_filesystem();
+    majordomo::RestBackend<majordomo::PLAIN_HTTP, decltype(fs)> rest_backend{ broker, fs };
+    DnsWorkerType                                               dnsWorker{ broker, DnsHandler{} };
+    broker.bind(URI<>{ "inproc://dns_server" }, majordomo::BindOption::Router);
+
+    RunInThread                                               restThread(rest_backend);
+    RunInThread                                               dnsThread(dnsWorker);
+    RunInThread                                               brokerThread(broker);
 
     std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
-    clients.emplace_back(std::make_unique<client::MDClientCtx>(broker.getBroker().context, 20ms, "dnsTestClient"));
+    clients.emplace_back(std::make_unique<client::MDClientCtx>(broker.context, 20ms, "dnsTestClient"));
+    clients.emplace_back(std::make_unique<client::RestClient>(opencmw::client::DefaultContentTypeHeader(MIME::BINARY)));
     client::ClientContext clientContext{ std::move(clients) };
 
-    DnsClient             client{ clientContext, URI<>{ "mdp://dns_server/dns" } };
-    client.registerSignal({ a });
-    auto s = client.querySignal();
-    REQUIRE(s.size() == 1);
-    REQUIRE(s[0] == a);
+    { // MDP
+        DnsClient client{ clientContext, URI<>{ "mdp://dns_server/dns" } };
+        client.registerSignal(entry_a);
+        auto s = client.querySignals();
+        REQUIRE(s.size() == 1);
+        REQUIRE(s[0] == entry_a);
+    }
+
+    { // HTTP
+        DnsClient client{ clientContext, URI<>{ "http://localhost:8080/dns" } };
+        auto      services = client.querySignals();
+        REQUIRE(services.size() == 1);
+
+        auto ret = client.registerSignal(entry_a);
+        REQUIRE(ret.signal_rate == entry_a.signal_rate);
+        auto rets = client.registerSignals({ entry_b, entry_c });
+        REQUIRE(rets[0] == entry_b);
+        REQUIRE(rets[1] == entry_c);
+
+        services = client.querySignals();
+        REQUIRE(std::ranges::equal(services, std::vector<Entry>{ entry_a, entry_b, entry_c }));
+    }
+
     clientContext.stop();
 }
 
-TEST_CASE("rest client", "[DNS]") {
-    FileDeleter                        fd;
-    opencmw::service::RunDefaultBroker broker;
-    broker.runWorker<dnsWorker, DnsWorker>();
-    broker.startBroker();
-
-    DnsRestClient client;
-
-    auto          services = client.querySignal();
-    REQUIRE(services.empty());
-
-    auto ret = client.registerSignal({ a });
-    REQUIRE(ret.signal_rate == a.signal_rate);
-    ret = client.registerSignal({ b });
-    REQUIRE(ret == b);
-    ret = client.registerSignal({ c });
-    REQUIRE(ret == c);
-
-    services = client.querySignal();
-    REQUIRE(std::ranges::equal(services, std::vector<Entry>{ a, b, c }));
-}
-
 TEST_CASE("query", "[DNS]") {
-    FileDeleter                        fd;
-    opencmw::service::RunDefaultBroker broker;
-    broker.runWorker<dnsWorker, DnsWorker>();
-    broker.startBroker();
+    FileDeleter                                                 fd;
+    majordomo::Broker<>                                         broker{ "Broker", {} };
+    auto                                                        fs = cmrc::assets::get_filesystem();
+    majordomo::RestBackend<majordomo::PLAIN_HTTP, decltype(fs)> rest_backend{ broker, fs };
+    DnsWorkerType                                               dnsWorker{ broker, DnsHandler{} };
+
+    RunInThread                                                 restThread(rest_backend);
+    RunInThread                                                 brokerThread(broker);
+    RunInThread                                                 dnsThread(dnsWorker);
+
+    REQUIRE(waitUntilServiceAvailable(broker.context, "dns"));
 
     SECTION("query") {
         auto services = querySignals();
         REQUIRE(services.empty());
-        registerSignal({ a });
+        registerSignals({ entry_a });
         services = querySignals();
         REQUIRE(services.size() == 1);
-        REQUIRE(services.at(0) == a);
-        registerSignal({ b });
-        registerSignal({ c });
+        REQUIRE(services.at(0) == entry_a);
+        registerSignals({ entry_b });
+        registerSignals({ entry_c });
         services = querySignals();
 
         REQUIRE(3 == services.size());
-        REQUIRE(std::ranges::equal(services, std::vector<Entry>{ a, b, c }));
+        REQUIRE(std::ranges::equal(services, std::vector<Entry>{ entry_a, entry_b, entry_c }));
     }
 
     SECTION("query with filters") {
-        auto services = querySignals({ .signal_name = "C" });
+        QueryEntry qc;
+        qc.signal_name = "C";
+        auto services  = querySignals(qc);
         REQUIRE(services.empty());
-        registerSignal({ c });
-        services = querySignals({ .signal_name = "C" });
+        registerSignals({ entry_c });
+        services = querySignals(qc);
         REQUIRE(services.size() == 1);
-        REQUIRE(services[0] == c);
+        REQUIRE(services[0] == entry_c);
     }
 }
 #endif // __EMSCRIPTEN__
@@ -229,15 +251,15 @@ TEST_CASE("registering", "[DNS]") {
     SECTION("registering service") {
         TestDataStorage ds;
 
-        ds.addEntry(a);
+        ds.addEntry(entry_a);
         REQUIRE(ds.queryEntries().size() == 1);
-        REQUIRE(ds.queryEntries()[0] == a);
+        REQUIRE(ds.queryEntries()[0] == entry_a);
     }
     SECTION("unregistering service when not reregistered") {
         TestDataStorage ds;
-        ds.addEntry(a);
-        ds.addEntry(b);
-        ds.addEntry(c);
+        ds.addEntry(entry_a);
+        ds.addEntry(entry_b);
+        ds.addEntry(entry_c);
 
         auto &entries      = ds.entries();
 
@@ -246,27 +268,33 @@ TEST_CASE("registering", "[DNS]") {
 
         auto activeEntries = ds.queryEntries();
         REQUIRE(activeEntries.size() == 1);
-        REQUIRE(activeEntries[0] == b);
+        REQUIRE(activeEntries[0] == entry_b);
     }
 
     SECTION("reregistering service") {
         TestDataStorage ds;
-        ds.addEntry(a);
-        ds.addEntry(b);
-        ds.addEntry(c);
+        ds.addEntry(entry_a);
+        ds.addEntry(entry_b);
+        ds.addEntry(entry_c);
         auto &entries  = ds.entries();
 
         entries[0].ttl = std::chrono::system_clock::now();
         entries[2].ttl = std::chrono::system_clock::now();
         auto ttl       = entries[2].ttl;
         auto reEntry   = entries[2];
+#ifdef __EMSCRIPTEN__
+        std::this_thread::sleep_for(0.5s); // seems that the clock resultion results in fReEntry->ttl == ttl
+#endif
         ds.addEntry(reEntry);
 
         REQUIRE(ds.getActiveEntriesCount() == 2);
         auto activeEntries = ds.queryEntries();
         REQUIRE(activeEntries.size() == 2);
-        REQUIRE(std::find(activeEntries.begin(), activeEntries.end(), reEntry) != activeEntries.end());
-        REQUIRE(std::find(activeEntries.begin(), activeEntries.end(), b) != activeEntries.end());
+        entries       = ds.entries();
+        auto fReEntry = std::find(entries.begin(), entries.end(), reEntry);
+        REQUIRE(fReEntry != entries.end());
+        REQUIRE(fReEntry->ttl > ttl);
+        REQUIRE(std::find(activeEntries.begin(), activeEntries.end(), entry_b) != activeEntries.end());
     }
 }
 
@@ -275,7 +303,7 @@ TEST_CASE("data storage - persistence", "[DNS]") {
         const char     *filename = "test1.yas";
         FileDeleter     fd{ filename };
         TestDataStorage ds;
-        ds.addEntry(a);
+        ds.addEntry(entry_a);
         REQUIRE(ds.save(filename));
 
         REQUIRE(std::filesystem::exists(filename));
@@ -292,9 +320,9 @@ TEST_CASE("data storage - persistence", "[DNS]") {
             std::filesystem::remove(filename);
         }
         TestDataStorage ds;
-        ds.addEntry(a);
-        ds.addEntry(b);
-        ds.addEntry(c);
+        ds.addEntry(entry_a);
+        ds.addEntry(entry_b);
+        ds.addEntry(entry_c);
         REQUIRE(ds.save(filename));
 
         REQUIRE(std::filesystem::exists(filename));
@@ -304,20 +332,17 @@ TEST_CASE("data storage - persistence", "[DNS]") {
         REQUIRE(bret);
         REQUIRE(ds.getEntries().size() == 3);
         auto entries = ds.getEntries();
-        REQUIRE(entries[0] == a);
-        REQUIRE(entries[1] == b);
-        REQUIRE(entries[2] == c);
+        REQUIRE(entries[0] == entry_a);
+        REQUIRE(entries[1] == entry_b);
+        REQUIRE(entries[2] == entry_c);
     }
 }
 
 template<typename T>
-T makeRandom(uint32_t size);
-
-template<>
-uint32_t makeRandom(uint32_t size) {
-    std::random_device                      rd;
-    std::mt19937                            generator(rd());
-    std::uniform_int_distribution<uint32_t> distribution(0, size);
+T makeRandom(uint32_t size) {
+    std::random_device               rd;
+    std::mt19937                     generator(rd());
+    std::uniform_int_distribution<T> distribution(0, static_cast<T>(size));
 
     return distribution(generator);
 }
@@ -328,7 +353,7 @@ std::string makeRandom(uint32_t size) {
 
     std::string randomString(size, ' ');
     std::generate(randomString.begin(), randomString.end(), [&]() {
-        return characters[makeRandom<uint32_t>(characters.length() - 1)];
+        return characters[makeRandom<uint32_t>(static_cast<uint32_t>(characters.length() - 1))];
     });
 
     return randomString;
@@ -337,7 +362,7 @@ struct RandomEntry : Entry {
     RandomEntry() {
         protocol     = makeRandom<std::string>(14);
         hostname     = makeRandom<std::string>(14);
-        port         = makeRandom<uint32_t>(65000);
+        port         = makeRandom<int>(65000);
         service_name = makeRandom<std::string>(14);
         service_type = makeRandom<std::string>(14);
         signal_name  = makeRandom<std::string>(14);
@@ -348,7 +373,7 @@ struct RandomEntry : Entry {
 };
 
 #ifndef __EMSCRIPTEN__
-TEST_CASE("data storage - benchmarking", "[DNS]") {
+TEST_CASE("data storage - benchmarking", "[!benchmark][DNS]") {
     std::vector<Entry> entries{ 1000 };
     std::generate(entries.begin(), entries.end(), []() {
         return RandomEntry{};

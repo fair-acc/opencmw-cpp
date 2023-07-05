@@ -1,5 +1,5 @@
-#ifndef _DNS_STORAGE_HPP_
-#define _DNS_STORAGE_HPP_
+#ifndef DNS_STORAGE_HPP
+#define DNS_STORAGE_HPP
 
 #include "dns_types.hpp"
 #include <filesystem>
@@ -15,12 +15,12 @@ struct TimeToLive : T {
     std::chrono::time_point<clock> ttl{ clock::now() + std::chrono::hours{ 1 } }; // kill entry if it has not been renewed before this point in time
 };
 
-template<class EntryType, class _FilterType, class _SerialiseType>
+template<class EntryType, class EntryFilterType, class EntrySerialiseType>
 class DataStorage {
 public:
     using StorageEntryType = TimeToLive<EntryType>;
-    using FilterType = _FilterType;
-    using SerialiseType = _SerialiseType;
+    using FilterType       = EntryFilterType;
+    using SerialiseType    = EntrySerialiseType;
 
     std::vector<EntryType> addEntries(const std::vector<EntryType> &entries) {
         std::vector<EntryType> addedEntries;
@@ -49,8 +49,8 @@ public:
         return newEntry;
     }
 
-    template<class ReturnEntryType = EntryType, class _FilterT = FilterType>
-    std::vector<ReturnEntryType> queryEntries(_FilterT filter = {}) const {
+    template<class ReturnEntryType = EntryType, class FilterT = FilterType>
+    std::vector<ReturnEntryType> queryEntries(FilterT filter = {}) const {
         std::vector<ReturnEntryType> result;
         auto                         now = StorageEntryType::clock::now();
         std::copy_if(_entries.begin(), _entries.end(), std::back_inserter(result),
@@ -64,7 +64,7 @@ public:
         return _entries;
     }
 
-    long getActiveEntriesCount() const {
+    [[nodiscard]] long getActiveEntriesCount() const {
         auto now = StorageEntryType::clock::now();
         auto c   = std::count_if(_entries.begin(), _entries.end(), [&now](auto &e) { return e.ttl > now; });
         return c;
@@ -85,17 +85,17 @@ public:
 };
 
 template<class EntryType, class FilterType, class SerialiseType>
-bool DataStorage<EntryType, FilterType, SerialiseType>::loadDataFromFile(const char *filePath) {
-    if (!std::filesystem::exists(filePath)) return false;
+bool DataStorage<EntryType, FilterType, SerialiseType>::loadDataFromFile(const char *filepath) {
+    if (!std::filesystem::exists(filepath)) return false;
 
-    std::ifstream file(filePath, std::ios::binary);
+    std::ifstream file(filepath, std::ios::binary);
     if (!file.is_open()) return false;
 
     file.seekg(0, std::ios::end);
-    std::size_t fileSize = file.tellg();
+    auto fileSize = file.tellg();
     file.seekg(0, std::ios::beg);
 
-    std::vector<uint8_t> buffer(fileSize);
+    std::vector<uint8_t> buffer(static_cast<unsigned long>(fileSize));
     file.read(reinterpret_cast<char *>(buffer.data()), fileSize);
     file.close();
 
@@ -111,17 +111,17 @@ bool DataStorage<EntryType, FilterType, SerialiseType>::loadDataFromFile(const c
 }
 
 template<class EntryType, class FilterType, class SerialiseType>
-bool DataStorage<EntryType, FilterType, SerialiseType>::saveDataToFile(const char *filePath) {
+bool DataStorage<EntryType, FilterType, SerialiseType>::saveDataToFile(const char *filepath) {
     std::vector<EntryType> entries;
     std::for_each(_entries.begin(), _entries.end(), [&entries](auto &e) { entries.push_back({ e }); });
     SerialiseType k{ entries };
     IoBuffer      outBuffer;
     opencmw::serialise<opencmw::YaS>(outBuffer, k);
 
-    std::ofstream os{ filePath, std::ios::binary };
+    std::ofstream os{ filepath, std::ios::binary };
     if (!os.is_open()) return false;
 
-    os.write((const char *) outBuffer.data(), outBuffer.size());
+    os.write(reinterpret_cast<const char *>(outBuffer.data()), static_cast<long>(outBuffer.size()));
 
     return true;
 }
@@ -132,4 +132,4 @@ using DataStorage  = opencmw::service::DataStorage<Entry, opencmw::service::dns:
 } // namespace dns
 
 } // namespace opencmw::service
-#endif //_DNS_STORAGE_HPP
+#endif // DNS_STORAGE_HPP
