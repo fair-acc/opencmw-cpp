@@ -12,13 +12,11 @@
 
 #include <atomic>
 
-namespace opencmw {
-namespace service {
-namespace dns {
+namespace opencmw::service::dns {
 
-using dnsWorker = majordomo::Worker<"dns", Context, FlatEntryList, FlatEntryList, majordomo::description<"Register and Query Signals">>;
+using DnsWorkerType = majordomo::Worker<"dns", Context, FlatEntryList, FlatEntryList, majordomo::description<"Register and Query Signals">>;
 
-class DnsWorker {
+class DnsHandler {
 protected:
     DataStorage datastorage;
 
@@ -28,13 +26,13 @@ public:
             auto out = datastorage.addEntries(in.toEntries());
             response = out;
         } else if (rawCtx.request.command == mdp::Command::Get) {
-            auto  result  = datastorage.queryEntries(ctx);
-            response      = { result };
+            auto result = datastorage.queryEntries(ctx);
+            response    = { result };
         }
     }
 };
 
-Entry registerSignal(const std::vector<Entry> &entries) {
+Entry registerSignals(const std::vector<Entry> &entries, std::string scheme_host_port = "http://localhost:8080") {
     IoBuffer      outBuffer;
     FlatEntryList entrylist{ entries };
     opencmw::serialise<opencmw::YaS>(outBuffer, entrylist);
@@ -43,7 +41,7 @@ Entry registerSignal(const std::vector<Entry> &entries) {
 
     // send request to register Signal
     httplib::Client client{
-        "http://localhost:8080",
+        scheme_host_port
     };
 
     auto response = client.Post("dns", body, contentType);
@@ -65,10 +63,10 @@ Entry registerSignal(const std::vector<Entry> &entries) {
     return res.toEntries().front();
 }
 
-std::vector<Entry> querySignals(const Entry &a = {}) {
+std::vector<Entry> querySignals(const Entry &a = {}, std::string scheme_host_port = "http://localhost:8080") {
     // send request to register Service
     httplib::Client client{
-        "http://localhost:8080",
+        scheme_host_port
     };
 
     auto response = client.Get("dns", httplib::Params{ { "protocol", a.protocol }, { "hostname", a.hostname }, { "port", std::to_string(a.port) }, { "service_name", a.service_name }, { "service_type", a.service_type }, { "signal_name", a.signal_name }, { "signal_unit", a.signal_unit }, { "signal_rate", std::to_string(a.signal_rate) }, { "signal_type", a.signal_type } },
@@ -92,8 +90,6 @@ std::vector<Entry> querySignals(const Entry &a = {}) {
     return res.toEntries();
 }
 
-}
-}
 } // namespace opencmw::service::dns
 
 #endif // __EMSCRIPTEN__
