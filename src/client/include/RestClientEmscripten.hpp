@@ -108,9 +108,9 @@ struct SubscriptionPayload : FetchPayload {
         : FetchPayload(std::move(_command))
         , _mimeType(std::move(mimeType)) {}
 
-    SubscriptionPayload(const SubscriptionPayload &other)                = delete;
-    SubscriptionPayload(SubscriptionPayload &&other) noexcept            = default;
-    SubscriptionPayload &operator=(const SubscriptionPayload &other)     = delete;
+    SubscriptionPayload(const SubscriptionPayload &other)     = delete;
+    SubscriptionPayload(SubscriptionPayload &&other) noexcept = default;
+    SubscriptionPayload &operator=(const SubscriptionPayload &other) = delete;
     SubscriptionPayload &operator=(SubscriptionPayload &&other) noexcept = default;
 
     void                 requestNext() {
