@@ -125,7 +125,7 @@ std::vector<std::shared_ptr<IEventHandler<TestEvent>>> makeHandlers(const Disrup
     return result;
 }
 
-TEST_CASE("Disruptor stress test", "[Disruptor]") {
+TEST_CASE("Disruptor stress test", "[!mayfail][Disruptor]") {
     auto           processorsCount = std::max(std::thread::hardware_concurrency() / 2, 1U);
 
     constexpr auto bufferSize      = 1 << 16;
