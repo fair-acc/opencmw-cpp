@@ -1,12 +1,12 @@
-#include <services/dns_client.hpp>
-#include <services/dns.hpp>
 #include <Client.hpp>
-#include <majordomo/RestBackend.hpp>
-#include <majordomo/base64pp.hpp>
-#include <majordomo/Broker.hpp>
-#include <majordomo/Worker.hpp>
 #include <concepts/majordomo/helpers.hpp>
 #include <IoSerialiserYaS.hpp>
+#include <majordomo/base64pp.hpp>
+#include <majordomo/Broker.hpp>
+#include <majordomo/RestBackend.hpp>
+#include <majordomo/Worker.hpp>
+#include <services/dns.hpp>
+#include <services/dns_client.hpp>
 #include <URI.hpp>
 #include <utility>
 
@@ -34,13 +34,13 @@ void run_dns_server(std::string_view address) {
     majordomo::Broker<>                                         broker{ "Broker", {} };
     std::string                                                 rootPath{ "./" };
     auto                                                        fs = cmrc::assets::get_filesystem();
-    majordomo::RestBackend<majordomo::PLAIN_HTTP, decltype(fs)> rest_backend{ broker, fs, URI<>{std::string{address}}};
+    majordomo::RestBackend<majordomo::PLAIN_HTTP, decltype(fs)> rest_backend{ broker, fs, URI<>{ std::string{ address } } };
     DnsWorkerType                                               dnsWorker{ broker, DnsHandler{} };
     broker.bind(URI<>{ "inproc://dns_server" }, majordomo::BindOption::Router);
 
-    RunInThread                                               restThread(rest_backend);
-    RunInThread                                               dnsThread(dnsWorker);
-    RunInThread                                               brokerThread(broker);
+    RunInThread restThread(rest_backend);
+    RunInThread dnsThread(dnsWorker);
+    RunInThread brokerThread(broker);
 
     fmt::print("DNS service running, press ENTER to terminate\n");
     getchar();
@@ -50,18 +50,17 @@ void run_dns_server(std::string_view address) {
     if (std::filesystem::exists(filename)) {
         std::filesystem::remove(filename);
     }
-
 }
 #endif
 
 void register_device(DnsClient &client, std::string_view signal) {
-    Entry entry_a{.protocol = "http", .hostname = "test.example.com", .port=1337, .service_name = "test", .service_type = "", .signal_name = std::string{signal}, .signal_unit = "", .signal_rate = 1e3, .signal_type = ""};
+    Entry entry_a{ .protocol = "http", .hostname = "test.example.com", .port = 1337, .service_name = "test", .service_type = "", .signal_name = std::string{ signal }, .signal_unit = "", .signal_rate = 1e3, .signal_type = "" };
     client.registerSignal(entry_a);
 }
 
 void query_devices(DnsClient &client, std::string_view query) {
-    Entry query_filter{.signal_name = std::string{query}};
-    auto result = client.querySignals(query_filter);
+    Entry query_filter{ .signal_name = std::string{ query } };
+    auto  result = client.querySignals(query_filter);
     for (auto &entry : result) {
         fmt::print("- {}\n", entry);
     }
@@ -70,7 +69,7 @@ void query_devices(DnsClient &client, std::string_view query) {
 int main(int argc, char *argv[]) {
     using opencmw::URI;
     const std::vector<std::string_view> args(argv + 1, argv + argc);
-    std::string_view command = args[0];
+    std::string_view                    command = args[0];
     if (command == "server") {
 #if defined(EMSCRIPTEN)
         fmt::print("unable to run server on emscripten\n");
@@ -86,7 +85,7 @@ int main(int argc, char *argv[]) {
         clients.emplace_back(std::make_unique<client::MDClientCtx>(context, 20ms, "dnsTestClient"));
         clients.emplace_back(std::make_unique<client::RestClient>(opencmw::client::DefaultContentTypeHeader(MIME::BINARY)));
         client::ClientContext clientContext{ std::move(clients) };
-        DnsClient dns_client{ clientContext, URI<>{std::string{argv[1]}} };
+        DnsClient             dns_client{ clientContext, URI<>{ std::string{ argv[1] } } };
         if (command == "register") {
             fmt::print("registering example device {}\n", args[2]);
             register_device(dns_client, args[2]);
@@ -100,4 +99,3 @@ int main(int argc, char *argv[]) {
         clientContext.stop();
     }
 }
-
