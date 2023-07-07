@@ -191,20 +191,20 @@ public:
     template<typename... Args>
     explicit(false) RestClient(Args... initArgs)
         : _name(detail::find_argument_value<false, std::string>([] { return "RestClient"; }, initArgs...))
-        , _mimeType(detail::find_argument_value<true, DefaultContentTypeHeader>([this] { return MIME::JSON; }, initArgs...)) {
+        , _mimeType(detail::find_argument_value<true, DefaultContentTypeHeader>([] { return MIME::JSON; }, initArgs...)) {
     }
     ~RestClient() { RestClient::stop(); };
 
     void                      stop() override{};
 
-    std::vector<std::string>  protocols() noexcept { return { "http", "https" }; }
+    std::vector<std::string>  protocols() noexcept override { return { "http", "https" }; }
 
     [[nodiscard]] std::string name() const noexcept { return _name; }
     // [[nodiscard]] ThreadPoolType threadPool() const noexcept { return _thread_pool; }
     [[nodiscard]] MIME::MimeType defaultMimeType() const noexcept { return _mimeType; }
     [[nodiscard]] std::string    clientCertificate() const noexcept { return _caCertificate; }
 
-    void                         request(Command cmd) {
+    void                         request(Command cmd) override {
         switch (cmd.command) {
         case mdp::Command::Get:
         case mdp::Command::Set:
