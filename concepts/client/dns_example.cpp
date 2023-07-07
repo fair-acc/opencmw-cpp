@@ -32,11 +32,11 @@ void run_dns_server(std::string_view httpAddress, std::string_view mdpAddress) {
     auto                                                        fs = cmrc::assets::get_filesystem();
     majordomo::RestBackend<majordomo::PLAIN_HTTP, decltype(fs)> rest_backend{ broker, fs, URI<>{ std::string{ httpAddress } } };
     DnsWorkerType                                               dnsWorker{ broker, DnsHandler{} };
-    broker.bind(URI<>{ std::string{mdpAddress} }, majordomo::BindOption::Router);
+    broker.bind(URI<>{ std::string{ mdpAddress } }, majordomo::BindOption::Router);
 
-    RunInThread                                               restThread(rest_backend);
-    RunInThread                                               dnsThread(dnsWorker);
-    RunInThread                                               brokerThread(broker);
+    RunInThread restThread(rest_backend);
+    RunInThread dnsThread(dnsWorker);
+    RunInThread brokerThread(broker);
 
     fmt::print("DNS service running, press ENTER to terminate\n");
     getchar();
@@ -46,18 +46,17 @@ void run_dns_server(std::string_view httpAddress, std::string_view mdpAddress) {
     if (std::filesystem::exists(filename)) {
         std::filesystem::remove(filename);
     }
-
 }
 #endif
 
 void register_device(DnsClient &client, std::string_view signal) {
-    Entry entry_a{.protocol = "http", .hostname = "test.example.com", .port=1337, .service_name = "test", .service_type = "", .signal_name = std::string{signal}, .signal_unit = "", .signal_rate = 1e3, .signal_type = ""};
+    Entry entry_a{ .protocol = "http", .hostname = "test.example.com", .port = 1337, .service_name = "test", .service_type = "", .signal_name = std::string{ signal }, .signal_unit = "", .signal_rate = 1e3, .signal_type = "" };
     client.registerSignal(entry_a);
 }
 
 void query_devices(DnsClient &client, std::string_view query) {
-    Entry query_filter{.signal_name = std::string{query}};
-    auto result = client.querySignals(query_filter);
+    Entry query_filter{ .signal_name = std::string{ query } };
+    auto  result = client.querySignals(query_filter);
     fmt::print("got {} results:\n", result.size());
     for (auto &entry : result) {
         fmt::print("- {}\n", entry);
@@ -67,7 +66,7 @@ void query_devices(DnsClient &client, std::string_view query) {
 int main(int argc, char *argv[]) {
     using opencmw::URI;
     const std::vector<std::string_view> args(argv + 1, argv + argc);
-    std::string_view command = args[0];
+    std::string_view                    command = args[0];
     if (command == "server") {
 #if defined(EMSCRIPTEN)
         fmt::print("unable to run server on emscripten\n");
@@ -85,7 +84,7 @@ int main(int argc, char *argv[]) {
 #endif
         clients.emplace_back(std::make_unique<client::RestClient>(opencmw::client::DefaultContentTypeHeader(MIME::BINARY)));
         client::ClientContext clientContext{ std::move(clients) };
-        DnsClient dns_client{ clientContext, URI<>{std::string{args[1]}} };
+        DnsClient             dns_client{ clientContext, URI<>{ std::string{ args[1] } } };
         if (command == "register") {
             fmt::print("registering example device {}\n", args[2]);
             register_device(dns_client, args[2]);
@@ -99,4 +98,3 @@ int main(int argc, char *argv[]) {
         clientContext.stop();
     }
 }
-
