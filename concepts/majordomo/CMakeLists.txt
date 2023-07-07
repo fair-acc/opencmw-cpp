@@ -23,13 +23,14 @@ file(COPY "${CMAKE_SOURCE_DIR}/demo_sslcert/demo_private.key" DESTINATION "${CMA
 file(COPY "${CMAKE_SOURCE_DIR}/demo_sslcert/demo_public.crt" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 add_executable(MajordomoRest_example MajordomoRest_example.cpp)
-target_include_directories(MajordomoRest_example
-    PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}
-    )
+target_include_directories(MajordomoRest_example PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} )
 target_link_libraries(MajordomoRest_example PRIVATE majordomo opencmw_project_options opencmw_project_warnings assets::rest assets::testImages)
 
 if (NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_executable(FilterSubscription_example FilterSubscription_example.cpp)
     target_link_libraries(FilterSubscription_example PRIVATE majordomo client opencmw_project_options opencmw_project_warnings)
 endif()
+
+add_executable(dns_example dns_example.cpp)
+target_include_directories(dns_example PRIVATE ${CMAKE_SOURCE_DIR}) # for majordomo helpers
+target_link_libraries(dns_example PRIVATE majordomo services opencmw_project_options opencmw_project_warnings assets::rest assets::testImages)
