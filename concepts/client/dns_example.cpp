@@ -32,7 +32,7 @@ void run_dns_server(std::string_view httpAddress, std::string_view mdpAddress) {
     auto                                                        fs = cmrc::assets::get_filesystem();
     majordomo::RestBackend<majordomo::PLAIN_HTTP, decltype(fs)> rest_backend{ broker, fs, URI<>{ std::string{ httpAddress } } };
     DnsWorkerType                                               dnsWorker{ broker, DnsHandler{} };
-    broker.bind(URI<>{ std::string{mdpAddress} }, majordomo::BindOption::Router);
+    broker.bind(URI<>{ std::string{ mdpAddress } }, majordomo::BindOption::Router);
 
     RunInThread restThread(rest_backend);
     RunInThread dnsThread(dnsWorker);
