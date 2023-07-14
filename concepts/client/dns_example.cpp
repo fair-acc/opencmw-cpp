@@ -50,12 +50,12 @@ void run_dns_server(std::string_view httpAddress, std::string_view mdpAddress) {
 }
 #endif
 
-void register_device(DnsClient &client, std::string_view signal) {
+void register_device(auto &client, std::string_view signal) {
     Entry entry_a{ .protocol = "http", .hostname = "test.example.com", .port = 1337, .service_name = "test", .service_type = "", .signal_name = std::string{ signal }, .signal_unit = "", .signal_rate = 1e3, .signal_type = "" };
     client.registerSignal(entry_a);
 }
 
-void query_devices(DnsClient &client, std::string_view query) {
+void query_devices(auto &client, std::string_view query) {
     Entry query_filter{ .signal_name = std::string{ query } };
     auto  result = client.querySignals(query_filter);
     fmt::print("got {} results:\n", result.size());
@@ -77,15 +77,17 @@ int main(int argc, char *argv[]) {
 #endif
     } else {
         // get client
+#ifndef EMSCRIPTEN
         fmt::print("getting client for server {}\n", args[1]);
         std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
-#ifndef EMSCRIPTEN
         zmq::Context context;
         clients.emplace_back(std::make_unique<client::MDClientCtx>(context, 20ms, "dnsTestClient"));
-#endif
         clients.emplace_back(std::make_unique<client::RestClient>(opencmw::client::DefaultContentTypeHeader(MIME::BINARY)));
         client::ClientContext clientContext{ std::move(clients) };
         DnsClient             dns_client{ clientContext, URI<>{ std::string{ args[1] } } };
+#else
+        DnsRestClient         dns_client{ std::string{ args[1] } };
+#endif
         if (command == "register") {
             fmt::print("registering example device {}\n", args[2]);
             register_device(dns_client, args[2]);
@@ -96,6 +98,8 @@ int main(int argc, char *argv[]) {
             fmt::print("unknown command: {}\n", command);
         }
         fmt::print("stopping client\n");
+#ifndef __EMSCRIPTEN__
         clientContext.stop();
+#endif
     }
 }

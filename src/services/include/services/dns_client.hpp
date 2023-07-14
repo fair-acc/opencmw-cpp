@@ -77,6 +77,85 @@ public:
     }
 };
 
+class DnsRestClient : public opencmw::client::RestClient {
+    URI<STRICT> endpoint;
+
+public:
+    DnsRestClient(const std::string& uri = "http://localhost:8080/dns")
+        : opencmw::client::RestClient(opencmw::client::DefaultContentTypeHeader(MIME::BINARY)), endpoint(uri) {
+    }
+
+    std::vector<Entry> querySignals(const Entry &filter = {}) {
+        auto uri       = URI<>::factory();
+
+        auto queryPara = opencmw::query::serialise(filter);
+        uri            = std::move(uri).setQuery(queryPara);
+
+        client::Command cmd;
+        cmd.command  = mdp::Command::Get;
+        cmd.endpoint = endpoint;
+
+        std::atomic<bool> done;
+        mdp::Message      answer;
+        cmd.callback = [&done, &answer](const mdp::Message &reply) {
+            answer = reply;
+            done.store(true, std::memory_order_release);
+            done.notify_all();
+        };
+        request(cmd);
+
+        done.wait(false);
+        if (!done.load(std::memory_order_acquire)) {
+            throw std::runtime_error("error acquiring answer");
+        }
+        if (!answer.error.empty()) {
+            throw std::runtime_error{ answer.error };
+        }
+
+        FlatEntryList res;
+        opencmw::deserialise<YaS, ProtocolCheck::ALWAYS>(answer.data, res);
+        return res.toEntries();
+    }
+
+    std::vector<Entry> registerSignals(const std::vector<Entry> &entries) {
+        IoBuffer outBuffer;
+        FlatEntryList entrylist{ entries };
+        opencmw::serialise<YaS>(outBuffer, entrylist);
+
+        client::Command cmd;
+        cmd.command  = mdp::Command::Set;
+        cmd.endpoint = endpoint;
+        cmd.data     = outBuffer;
+
+        std::atomic<bool> done;
+        mdp::Message      answer;
+        cmd.callback = [&done, &answer](const mdp::Message &reply) {
+            answer = reply;
+            done.store(true, std::memory_order_release);
+            done.notify_all();
+        };
+        request(cmd);
+
+        done.wait(false);
+        if (!done.load(std::memory_order_acquire)) {
+            throw std::runtime_error("error acquiring answer");
+        }
+        if (!answer.error.empty()) {
+            throw std::runtime_error{ answer.error };
+        }
+
+        FlatEntryList res;
+        if (!answer.data.empty()) {
+            opencmw::deserialise<YaS, ProtocolCheck::ALWAYS>(answer.data, res);
+        }
+        return res.toEntries();
+    }
+
+    Entry registerSignal(const Entry &entry) {
+        return registerSignals({ entry })[0];
+    }
+};
+
 } // namespace opencmw::service::dns
 
 #endif // DNS_CLIENT_HPP
