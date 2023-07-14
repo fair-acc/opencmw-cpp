@@ -29,19 +29,19 @@ public:
             IoBuffer buf{ msg.data };
             FlatEntryList    resp;
             deserialise<YaS, ProtocolCheck::ALWAYS>(buf, resp);
-            callback(resp.toEntries());});
+            callback(resp.toEntries()); });
     }
 
     std::vector<Entry> querySignals(const Entry &filter = {}) {
-        std::atomic_bool received{ false };
+        std::atomic_bool   received{ false };
         std::vector<Entry> resp;
 
         querySignalsAsync([&received, &resp](const std::vector<Entry> &response_entries) {
-                resp = response_entries;
-                received = true;
-                received.notify_one();
-            },
-            filter);
+            resp     = response_entries;
+            received = true;
+            received.notify_one();
+        },
+                filter);
 
         received.wait(false, std::memory_order_relaxed);
 
@@ -55,20 +55,22 @@ public:
         FlatEntryList entrylist{ entries };
         opencmw::serialise<YaS>(buf, entrylist);
 
-        _clientContext.set(_endpoint, [&callback](auto &msg) {
-                    FlatEntryList    resp;
-                    IoBuffer buf{ msg.data };
+        _clientContext.set(
+                _endpoint, [&callback](auto &msg) {
+                    FlatEntryList resp;
+                    IoBuffer      buf{ msg.data };
                     deserialise<YaS, ProtocolCheck::ALWAYS>(buf, resp);
                     callback(resp.toEntries());
-                }, std::move(buf));
+                },
+                std::move(buf));
     }
 
     std::vector<Entry> registerSignals(const std::vector<Entry> &entries) {
-        std::atomic_bool received{ false };
+        std::atomic_bool   received{ false };
         std::vector<Entry> resp;
 
         registerSignalsAsync([&received, &resp](const std::vector<Entry> &response_entries) {
-            resp = response_entries;
+            resp     = response_entries;
             received = true;
             received.notify_one();
         },
@@ -84,84 +86,84 @@ public:
     }
 };
 
-//class DnsRestClient : public opencmw::client::RestClient {
-//    URI<STRICT> endpoint;
+// class DnsRestClient : public opencmw::client::RestClient {
+//     URI<STRICT> endpoint;
 //
-//public:
-//    DnsRestClient(const std::string& uri = "http://localhost:8080/dns")
-//        : opencmw::client::RestClient(opencmw::client::DefaultContentTypeHeader(MIME::BINARY)), endpoint(uri) {
-//    }
+// public:
+//     DnsRestClient(const std::string& uri = "http://localhost:8080/dns")
+//         : opencmw::client::RestClient(opencmw::client::DefaultContentTypeHeader(MIME::BINARY)), endpoint(uri) {
+//     }
 //
-//    std::vector<Entry> querySignals(const Entry &filter = {}) {
-//        auto uri       = URI<>::factory();
+//     std::vector<Entry> querySignals(const Entry &filter = {}) {
+//         auto uri       = URI<>::factory();
 //
-//        auto queryPara = opencmw::query::serialise(filter);
-//        uri            = std::move(uri).setQuery(queryPara);
+//         auto queryPara = opencmw::query::serialise(filter);
+//         uri            = std::move(uri).setQuery(queryPara);
 //
-//        client::Command cmd;
-//        cmd.command  = mdp::Command::Get;
-//        cmd.endpoint = endpoint;
+//         client::Command cmd;
+//         cmd.command  = mdp::Command::Get;
+//         cmd.endpoint = endpoint;
 //
-//        std::atomic<bool> done;
-//        mdp::Message      answer;
-//        cmd.callback = [&done, &answer](const mdp::Message &reply) {
-//            answer = reply;
-//            done.store(true, std::memory_order_release);
-//            done.notify_all();
-//        };
-//        request(cmd);
+//         std::atomic<bool> done;
+//         mdp::Message      answer;
+//         cmd.callback = [&done, &answer](const mdp::Message &reply) {
+//             answer = reply;
+//             done.store(true, std::memory_order_release);
+//             done.notify_all();
+//         };
+//         request(cmd);
 //
-//        done.wait(false);
-//        if (!done.load(std::memory_order_acquire)) {
-//            throw std::runtime_error("error acquiring answer");
-//        }
-//        if (!answer.error.empty()) {
-//            throw std::runtime_error{ answer.error };
-//        }
+//         done.wait(false);
+//         if (!done.load(std::memory_order_acquire)) {
+//             throw std::runtime_error("error acquiring answer");
+//         }
+//         if (!answer.error.empty()) {
+//             throw std::runtime_error{ answer.error };
+//         }
 //
-//        FlatEntryList res;
-//        opencmw::deserialise<YaS, ProtocolCheck::ALWAYS>(answer.data, res);
-//        return res.toEntries();
-//    }
+//         FlatEntryList res;
+//         opencmw::deserialise<YaS, ProtocolCheck::ALWAYS>(answer.data, res);
+//         return res.toEntries();
+//     }
 //
-//    std::vector<Entry> registerSignals(const std::vector<Entry> &entries) {
-//        IoBuffer outBuffer;
-//        FlatEntryList entrylist{ entries };
-//        opencmw::serialise<YaS>(outBuffer, entrylist);
+//     std::vector<Entry> registerSignals(const std::vector<Entry> &entries) {
+//         IoBuffer outBuffer;
+//         FlatEntryList entrylist{ entries };
+//         opencmw::serialise<YaS>(outBuffer, entrylist);
 //
-//        client::Command cmd;
-//        cmd.command  = mdp::Command::Set;
-//        cmd.endpoint = endpoint;
-//        cmd.data     = outBuffer;
+//         client::Command cmd;
+//         cmd.command  = mdp::Command::Set;
+//         cmd.endpoint = endpoint;
+//         cmd.data     = outBuffer;
 //
-//        std::atomic<bool> done;
-//        mdp::Message      answer;
-//        cmd.callback = [&done, &answer](const mdp::Message &reply) {
-//            answer = reply;
-//            done.store(true, std::memory_order_release);
-//            done.notify_all();
-//        };
-//        request(cmd);
+//         std::atomic<bool> done;
+//         mdp::Message      answer;
+//         cmd.callback = [&done, &answer](const mdp::Message &reply) {
+//             answer = reply;
+//             done.store(true, std::memory_order_release);
+//             done.notify_all();
+//         };
+//         request(cmd);
 //
-//        done.wait(false);
-//        if (!done.load(std::memory_order_acquire)) {
-//            throw std::runtime_error("error acquiring answer");
-//        }
-//        if (!answer.error.empty()) {
-//            throw std::runtime_error{ answer.error };
-//        }
+//         done.wait(false);
+//         if (!done.load(std::memory_order_acquire)) {
+//             throw std::runtime_error("error acquiring answer");
+//         }
+//         if (!answer.error.empty()) {
+//             throw std::runtime_error{ answer.error };
+//         }
 //
-//        FlatEntryList res;
-//        if (!answer.data.empty()) {
-//            opencmw::deserialise<YaS, ProtocolCheck::ALWAYS>(answer.data, res);
-//        }
-//        return res.toEntries();
-//    }
+//         FlatEntryList res;
+//         if (!answer.data.empty()) {
+//             opencmw::deserialise<YaS, ProtocolCheck::ALWAYS>(answer.data, res);
+//         }
+//         return res.toEntries();
+//     }
 //
-//    Entry registerSignal(const Entry &entry) {
-//        return registerSignals({ entry })[0];
-//    }
-//};
+//     Entry registerSignal(const Entry &entry) {
+//         return registerSignals({ entry })[0];
+//     }
+// };
 
 } // namespace opencmw::service::dns
 

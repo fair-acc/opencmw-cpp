@@ -1,6 +1,6 @@
 #include <IoSerialiserYaS.hpp>
-#include <services/dns_client.hpp>
 #include <services/dns.hpp>
+#include <services/dns_client.hpp>
 #include <utility>
 #ifndef EMSCRIPTEN
 #include <Client.hpp>
@@ -52,9 +52,10 @@ void run_dns_server(std::string_view httpAddress, std::string_view mdpAddress) {
 
 void register_device(auto &client, std::string_view signal) {
     Entry entry_a{ .protocol = "http", .hostname = "test.example.com", .port = 1337, .service_name = "test", .service_type = "", .signal_name = std::string{ signal }, .signal_unit = "", .signal_rate = 1e3, .signal_type = "" };
-    client.registerSignalsAsync([](const auto &/*entries*/) {
+    client.registerSignalsAsync([](const auto & /*entries*/) {
         fmt::print("registered signal\n");
-    }, {entry_a});
+    },
+            { entry_a });
 }
 
 void query_devices(auto &client, std::string_view query) {
@@ -64,14 +65,15 @@ void query_devices(auto &client, std::string_view query) {
         for (auto &entry : entries) {
             fmt::print("- {}\n", entry);
         }
-    }, query_filter);
+    },
+            query_filter);
 }
 
 int main(int argc, char *argv[]) {
     using opencmw::URI;
     const std::vector<std::string_view> args(argv + 1, argv + argc);
     std::string_view                    command = args[0];
-    if (command == "server" && args.size() == 3 ) {
+    if (command == "server" && args.size() == 3) {
 #if defined(EMSCRIPTEN)
         fmt::print("unable to run server on emscripten\n");
 #else
@@ -89,7 +91,7 @@ int main(int argc, char *argv[]) {
         clients.emplace_back(std::make_unique<client::RestClient>(opencmw::client::DefaultContentTypeHeader(MIME::BINARY)));
         client::ClientContext clientContext{ std::move(clients) };
         DnsClient             dns_client{ clientContext, URI<>{ std::string{ args[1] } } };
-//        DnsRestClient         dns_client{ std::string{ args[1] } };
+        //        DnsRestClient         dns_client{ std::string{ args[1] } };
         if (command == "register" && args.size() == 3) {
             fmt::print("registering example device {}\n", args[2]);
             register_device(dns_client, args[2]);
