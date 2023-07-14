@@ -68,14 +68,14 @@ int main(int argc, char *argv[]) {
     using opencmw::URI;
     const std::vector<std::string_view> args(argv + 1, argv + argc);
     std::string_view                    command = args[0];
-    if (command == "server") {
+    if (command == "server" && args.size() == 3 ) {
 #if defined(EMSCRIPTEN)
         fmt::print("unable to run server on emscripten\n");
 #else
         fmt::print("running server on addresses: {}, {}\n", args[1], args[2]);
         run_dns_server(args[1], args[2]);
 #endif
-    } else {
+    } else if (args.size() >= 2) {
         // get client
 #ifndef EMSCRIPTEN
         fmt::print("getting client for server {}\n", args[1]);
@@ -88,10 +88,10 @@ int main(int argc, char *argv[]) {
 #else
         DnsRestClient         dns_client{ std::string{ args[1] } };
 #endif
-        if (command == "register") {
+        if (command == "register" && args.size() == 3) {
             fmt::print("registering example device {}\n", args[2]);
             register_device(dns_client, args[2]);
-        } else if (command == "query") {
+        } else if (command == "query" && args.size() == 3) {
             fmt::print("querying devices: {}\n", args[2]);
             query_devices(dns_client, args[2]);
         } else {
@@ -101,5 +101,7 @@ int main(int argc, char *argv[]) {
 #ifndef __EMSCRIPTEN__
         clientContext.stop();
 #endif
+    } else {
+        fmt::print("not enough arguments: {}\n", args);
     }
 }
