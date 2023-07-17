@@ -26,9 +26,11 @@ public:
         uri      = std::move(uri).setQuery(query::serialise(filter));
 
         _clientContext.get(uri.build(), [&callback](auto &msg) {
-            IoBuffer buf{ msg.data };
             FlatEntryList    resp;
-            deserialise<YaS, ProtocolCheck::ALWAYS>(buf, resp);
+            if (!msg.data.empty()) {
+                IoBuffer buf{ msg.data };
+                deserialise<YaS, ProtocolCheck::ALWAYS>(buf, resp);
+            }
             callback(resp.toEntries());});
     }
 
@@ -57,8 +59,10 @@ public:
 
         _clientContext.set(_endpoint, [&callback](auto &msg) {
                     FlatEntryList    resp;
-                    IoBuffer buf{ msg.data };
-                    deserialise<YaS, ProtocolCheck::ALWAYS>(buf, resp);
+                    if (!msg.data.empty()) {
+                        IoBuffer buf{ msg.data };
+                        deserialise<YaS, ProtocolCheck::ALWAYS>(buf, resp);
+                    }
                     callback(resp.toEntries());
                 }, std::move(buf));
     }
