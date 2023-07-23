@@ -45,6 +45,7 @@ elseif (EMSCRIPTEN)
             -pthread
             "SHELL:-s PTHREAD_POOL_SIZE=30"
             "SHELL:-s FETCH=1"
+            -sPROXY_TO_PTHREAD
             --emrun
             )
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
