@@ -1,5 +1,5 @@
 #include <IoSerialiserYaS.hpp>
-#include <services/dns_client.hpp>
+#include <services/dns.hpp>
 #include <utility>
 #ifndef EMSCRIPTEN
 #include <Client.hpp>
