@@ -96,7 +96,6 @@ struct FetchPayload {
         returnMdpMessage(status, data, error);
     }
 };
-static std::unordered_set<std::unique_ptr<detail::FetchPayload>, detail::pointer_hash, detail::pointer_equals> fetchPayloads;
 
 struct SubscriptionPayload;
 static std::unordered_set<std::unique_ptr<detail::SubscriptionPayload>, detail::pointer_hash, detail::pointer_equals> subscriptionPayloads;
@@ -137,9 +136,13 @@ struct SubscriptionPayload : FetchPayload {
             return it;
         };
 
-        attr.attributes     = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
+        attr.attributes     = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY | EMSCRIPTEN_FETCH_SYNCHRONOUS;
         attr.requestHeaders = preferredHeaderEmscripten.data();
-        attr.onsuccess      = [](emscripten_fetch_t *fetch) {
+
+        auto fetch = emscripten_fetch(&attr, uri.str().data());
+        std::cout << "fetched " << fetch->status << std::endl;
+        if (fetch->status < 400) {
+
             auto  payloadIt = getPayloadIt(fetch);
             auto &payload   = *payloadIt;
             payload->onsuccess(fetch->status, std::string_view(fetch->data, detail::checkedStringViewSize(fetch->numBytes)));
@@ -150,14 +153,12 @@ struct SubscriptionPayload : FetchPayload {
                 emscripten_fetch_close(fetch);
                 detail::subscriptionPayloads.erase(payloadIt);
             }
-        };
-        attr.onerror = [](emscripten_fetch_t *fetch) {
+        } else {
             auto  payloadIt = getPayloadIt(fetch);
             auto &payload   = *payloadIt;
             payload->onerror(fetch->status, std::string_view(fetch->data, detail::checkedStringViewSize(fetch->numBytes)), fetch->statusText);
             emscripten_fetch_close(fetch);
-        };
-        emscripten_fetch(&attr, uri.str().data());
+        }
     }
 
     void onsuccess(unsigned short status, std::string_view data) {
@@ -243,32 +244,25 @@ private:
             strcpy(attr.requestMethod, "GET");
         }
 
-        auto payload  = std::make_unique<detail::FetchPayload>(std::move(cmd));
-        attr.userData = payload.get();
-        detail::fetchPayloads.insert(std::move(payload));
-        static auto getPayload = [](emscripten_fetch_t *fetch) {
-            auto *rawPayload = fetch->userData;
-            auto  it         = detail::fetchPayloads.find(rawPayload);
-            if (it == detail::fetchPayloads.end()) {
-                throw fmt::format("Unknown payload for a resulting fetch call");
-            }
-            auto extracted_node = detail::fetchPayloads.extract(it);
-            return std::move(extracted_node.value());
-        };
+        detail::FetchPayload payload{std::move(cmd)};
 
-        attr.attributes     = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
+        attr.attributes     = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY | EMSCRIPTEN_FETCH_SYNCHRONOUS;
         attr.requestHeaders = preferredHeaderEmscripten.data();
-        attr.onsuccess      = [](emscripten_fetch_t *fetch) {
-            getPayload(fetch)->onsuccess(fetch->status, std::string_view(fetch->data, detail::checkedStringViewSize(fetch->numBytes)));
-            emscripten_fetch_close(fetch);
-        };
-        attr.onerror = [](emscripten_fetch_t *fetch) {
-            getPayload(fetch)->onerror(fetch->status, std::string_view(fetch->data, detail::checkedStringViewSize(fetch->numBytes)), fetch->statusText);
-            emscripten_fetch_close(fetch);
-        };
 
         // TODO: Pass the payload as POST body: emscripten_fetch(&attr, uri.relativeRef()->data());
-        emscripten_fetch(&attr, URI<>::factory(uri).addQueryParameter("_bodyOverride", body).build().str().data());
+        auto d_uri = URI<>::factory(uri).addQueryParameter("_bodyOverride", body).build().str();
+        auto* d = d_uri.data();
+
+
+        auto* fetch = emscripten_fetch(&attr, d);
+        std::cout << "status" <<  fetch->status << " " << fetch->statusText << " " << fetch->numBytes << d_uri << std::endl;
+        if (fetch->status == 200) {
+            payload.onsuccess(fetch->status, std::string_view(fetch->data, detail::checkedStringViewSize(fetch->numBytes)));
+        } else {
+            //std::cout << fetch-><< std::endl;
+            payload.onerror(fetch->status, std::string_view(fetch->data, detail::checkedStringViewSize(fetch->numBytes)), fetch->statusText);
+        }
+        emscripten_fetch_close(fetch);
     }
 
     void startSubscription(Command &&cmd) {
