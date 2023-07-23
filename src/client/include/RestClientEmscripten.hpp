@@ -255,11 +255,9 @@ private:
 
 
         auto* fetch = emscripten_fetch(&attr, d);
-        std::cout << "status" <<  fetch->status << " " << fetch->statusText << " " << fetch->numBytes << d_uri << std::endl;
         if (fetch->status == 200) {
             payload.onsuccess(fetch->status, std::string_view(fetch->data, detail::checkedStringViewSize(fetch->numBytes)));
         } else {
-            //std::cout << fetch-><< std::endl;
             payload.onerror(fetch->status, std::string_view(fetch->data, detail::checkedStringViewSize(fetch->numBytes)), fetch->statusText);
         }
         emscripten_fetch_close(fetch);
