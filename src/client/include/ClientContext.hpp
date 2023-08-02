@@ -11,6 +11,7 @@
 #include <disruptor/Disruptor.hpp>
 #include <MdpMessage.hpp>
 #include <URI.hpp>
+#include <Debug.hpp>
 
 #include "ClientCommon.hpp"
 
@@ -75,18 +76,28 @@ public:
             ctx->stop();
         }
         _stop_requested = true;
+        DEBUG_LOG("joining thread");
         _poller.join(); // wait for all workers to be finished
+        DEBUG_LOG("thread joined");
     }
 
 private:
     void poll(const std::atomic_bool &stop_requested) {
         while (!stop_requested) { // switch to event processor instead of busy spinning
+            DEBUG_LOG_EVERY_SECOND("polling")
             _cmdPoller->poll([this](Command &cmd, std::int64_t /*sequenceID*/, bool /*endOfBatch*/) -> bool {
                 if (cmd.command == mdp::Command::Invalid) {
                     return false;
                 }
                 auto &c = getClientCtx(cmd.endpoint);
-                c.request(cmd);
+#ifdef EMSCRIPTEN
+                std::thread ql{[&c, cmd]() {
+#endif
+                        c.request(cmd);
+#ifdef EMSCRIPTEN
+                    }};
+                  ql.join();
+#endif
                 return false;
             });
         }

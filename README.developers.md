@@ -233,4 +233,15 @@ https://en.wikibooks.org/wiki/More_C%2B%2B_Idioms/Copy-and-swap
 Consult [C++ Core Guidelines](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines) when in doubt.
 
 
+# Hints with using Emscripten
+
+## Chromium
+
+install https://goo.gle/wasm-debugging-extension
+
+```shell
+echo --auto-open-devtools-for-tabs >> ~/config/chromium-flags.conf
+```
+
+
 

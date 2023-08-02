@@ -12,6 +12,7 @@
 #include <ClientContext.hpp>
 #include <MIME.hpp>
 #include <URI.hpp>
+#include <emscripten/threading.h>
 
 using namespace opencmw;
 
@@ -71,6 +72,7 @@ struct FetchPayload {
         const auto errorMsg         = msgOK ? "" : fmt::format("{} - {}:{}", status, errorMsgExt, selectedErrorMsg(hasErrorMessage));
 
         try {
+            DEBUG_LOG("")
             command.callback(mdp::Message{
                              .id              = 0,
                              .arrivalTime     = std::chrono::system_clock::now(),
@@ -82,9 +84,9 @@ struct FetchPayload {
                              .error           = errorMsg,
                              .rbac            = IoBuffer() });
         } catch (const std::exception &e) {
-            std::cerr << fmt::format("caught exception '{}' in RestClient::returnMdpMessage(cmd={}, {}: {})", e.what(), command.endpoint, status, body) << std::endl;
+            std::cerr << fmt::format("caught exception '{}' in FetchPayload::returnMdpMessage(cmd={}, {}: {})", e.what(), command.endpoint, status, body) << std::endl;
         } catch (...) {
-            std::cerr << fmt::format("caught unknown exception in RestClient::returnMdpMessage(cmd={}, {}: {})", command.endpoint, status, body) << std::endl;
+            std::cerr << fmt::format("caught unknown exception in FetchPayload::returnMdpMessage(cmd={}, {}: {})", command.endpoint, status, body) << std::endl;
         }
     }
 
@@ -259,16 +261,31 @@ private:
         attr.attributes     = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
         attr.requestHeaders = preferredHeaderEmscripten.data();
         attr.onsuccess      = [](emscripten_fetch_t *fetch) {
+            DEBUG_LOG("onsuccess")
             getPayload(fetch)->onsuccess(fetch->status, std::string_view(fetch->data, detail::checkedStringViewSize(fetch->numBytes)));
             emscripten_fetch_close(fetch);
         };
         attr.onerror = [](emscripten_fetch_t *fetch) {
+            DEBUG_LOG("onfailure")
+            DEBUG_VARIABLES(fetch->numBytes, fetch->statusText, fetch->status);
             getPayload(fetch)->onerror(fetch->status, std::string_view(fetch->data, detail::checkedStringViewSize(fetch->numBytes)), fetch->statusText);
             emscripten_fetch_close(fetch);
         };
 
         // TODO: Pass the payload as POST body: emscripten_fetch(&attr, uri.relativeRef()->data());
-        emscripten_fetch(&attr, URI<>::factory(uri).addQueryParameter("_bodyOverride", body).build().str().data());
+
+        auto d = URI<>::factory(uri).addQueryParameter("_bodyOverride", body).build().str().data();
+#ifdef PROXY_FETCH_TO_MAIN
+        if (emscripten_is_main_runtime_thread()) {
+            emscripten_fetch(&attr, d);
+        } else {
+            emscripten_sync_run_in_main_runtime_thread(EM_FUNC_SIG_VII, fetch, attr, d);
+            std::cout << "proxied to main thread" << std::endl;
+        }
+#else // PROXY_FETCH_TO_MAIN
+        emscripten_fetch(&attr, d);
+#endif
+        DEBUG_LOG("sent fetch")
     }
 
     void startSubscription(Command &&cmd) {

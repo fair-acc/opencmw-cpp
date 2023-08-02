@@ -8,7 +8,9 @@
 #include <majordomo/base64pp.hpp>
 #include <majordomo/Broker.hpp>
 #include <majordomo/Worker.hpp>
-#endif
+#else
+#include <emscripten/trace.h>
+#endif // EMSCRIPTEN
 
 #include <string_view>
 #include <thread>
@@ -59,15 +61,51 @@ void register_device(auto &client, std::string_view signal) {
 
 void query_devices(auto &client, std::string_view query) {
     Entry query_filter{ .signal_name = std::string{ query } };
-    client.querySignalsAsync([](const auto &entries) {
+
+    std::promise<std::vector<Entry>> promise;
+    /*client.querySignalsAsync([](std::vector<Entry> entries) {
+        std::cout << "result size:" << entries.size() << std::endl;
+          });*/
+/*    client.querySignalsFuture(promise);
+    auto f = promise.get_future();
+    while (f.wait_for(std::chrono::seconds{1}) != std::future_status::ready) {
+        DEBUG_LOG("ohh, yeah");
+#ifdef EMSCRIPTEN
+//        emscripten_current_thread_process_queued_calls();
+        emscripten_thread_sleep(500);
+#endif
+    }
+    try {
+        std::cout << f.get().size() << std::endl;
+    } catch (...) {
+        std::cout << "future oopos" << std::endl;
+    }*/
+    DEBUG_LOG("ALWAYS")
+    auto s = client.querySignals();
+    //auto s = client.querySignalsSyncFut();
+    DEBUG_LOG("NEVER")
+    DEBUG_LOG(s);
+
+    /*client.querySignalsAsync([](const auto &entries) {
         fmt::print("got {} results:\n", entries.size());
         for (auto &entry : entries) {
             fmt::print("- {}\n", entry);
         }
-    }, query_filter);
+    }, query_filter);*/
 }
+#ifdef EMSCRIPTEN
+void spin_once() {
+    static int i = 0;
+    if (i++ == 2) {
+        emscripten_force_exit(0);
+    }
+}
+#endif
 
 int main(int argc, char *argv[]) {
+#ifdef EMSCRIPTEN
+    emscripten_trace_configure_for_google_wtf();
+#endif // EMSCRIPTEN
     using opencmw::URI;
     const std::vector<std::string_view> args(argv + 1, argv + argc);
     std::string_view                    command = args[0];
@@ -106,4 +144,16 @@ int main(int argc, char *argv[]) {
     } else {
         fmt::print("not enough arguments: {}\n", args);
     }
+
+#ifdef EMSCRIPTEN
+#ifdef PROXY_TO_PTHREAD
+    emscripten_pause_main_loop();
+#endif
+    emscripten_current_thread_process_queued_calls();
+    //emscripten_runtime_keepalive_push();
+    //emscripten_cancel_main_loop();
+    //int ret = 0;
+    //emscripten_async_run_in_main_runtime_thread(EM_FUNC_SIG_VI, exit, 0);
+    emscripten_set_main_loop(spin_once, 30, 0);
+#endif // EMSCRIPTEN
 }

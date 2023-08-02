@@ -33,7 +33,7 @@ elseif (EMSCRIPTEN)
     endif ()
     message("You are building with Emscripten Clang. Be advised that support is limited to working in conjunction with"
             " libc++ and certain modules. libc++ has been enabled.")
-    set(CMAKE_EXECUTABLE_SUFFIX ".js")
+    set(CMAKE_EXECUTABLE_SUFFIX ".html")
     add_compile_options(#opencmw_project_options INTERFACE
             -Wno-shorten-64-to-32
             -pthread
@@ -45,6 +45,7 @@ elseif (EMSCRIPTEN)
             -pthread
             "SHELL:-s PTHREAD_POOL_SIZE=30"
             "SHELL:-s FETCH=1"
+           # --emrun
             )
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 15.0.0)
