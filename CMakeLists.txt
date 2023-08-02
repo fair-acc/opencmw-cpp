@@ -38,14 +38,18 @@ elseif (EMSCRIPTEN)
             -Wno-shorten-64-to-32
             -pthread
             -fwasm-exceptions
-            )
+
+            -Wcast-function-type-strict
+            -fno-omit-frame-pointer
+            -Werror=bad-function-cast -Werror=cast-function-type
+    )
     add_link_options(#opencmw_project_options INTERFACE
             -fwasm-exceptions
             "SHELL:-s ALLOW_MEMORY_GROWTH=1"
             -pthread
             "SHELL:-s PTHREAD_POOL_SIZE=30"
             "SHELL:-s FETCH=1"
-            )
+    )
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 15.0.0)
         message(FATAL_ERROR "Clang>=15.0.0 required, but clang ${CMAKE_CXX_COMPILER_VERSION} detected.")

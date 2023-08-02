@@ -74,7 +74,12 @@ public:
         loadDataFromFile(filePath);
     };
     virtual ~DataStorage() {
-        saveDataToFile(filePath);
+        try {
+            saveDataToFile(filePath);
+        } catch (...) {
+            std::exception_ptr ex = std::current_exception();
+            std::cerr << "DataStorage failed to save file: " << what(ex) << std::endl;
+        }
     }
 
     bool                          loadDataFromFile(const char *filePath);

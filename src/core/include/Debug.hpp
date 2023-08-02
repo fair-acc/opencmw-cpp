@@ -8,6 +8,10 @@
 
 #include <fmt/format.h>
 
+#ifdef EMSCRIPTEN
+#include <emscripten/threading.h>
+#endif
+
 namespace opencmw::debug {
 
 struct DebugImpl {
@@ -63,6 +67,87 @@ log() {
         REQUIRE_THROWS_AS(cond, exception); \
     } while ((void) 0, 0)
 
+class DebugBeforeAfter {
+public:
+    DebugBeforeAfter(const char *file, int line, const char *function)
+        : file_(file), line_(line), function_(function) {
+        start_ = std::chrono::high_resolution_clock::now();
+        std::cout << "Before: File: " << file_ << ", Line: " << line_ << ", Function: " << function_ << std::endl;
+    }
+
+    ~DebugBeforeAfter() {
+        auto end = std::chrono::high_resolution_clock::now();
+        std::cout << "After:  File: " << file_ << ", Line: " << line_ << ", Function: " << function_
+                  << ", Duration: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start_).count() << " ms" << std::endl;
+    }
+
+private:
+    const char                                    *file_;
+    int                                            line_;
+    const char                                    *function_;
+    std::chrono::high_resolution_clock::time_point start_;
+};
+
+#ifdef NDEBUG
+#define DEBUG_VARIABLES(...)
+#define DEBUG_LOG(msg)
+#define DEBUG_FINISH(msg)
+#define DEBUG_LOG_EVERY_SECOND(msg)
+#else
+
+#define _DEBUG_PREFIXES_1 ""
+#define _DEBUG_PREFIXES_2 ""
+
+#ifdef EMSCRIPTEN
+#define _DEBUG_EMSCRIPTEN_THREADS_ "(emscripten mainthread/mainruntimethread) (" << emscripten_is_main_runtime_thread() << "/" << emscripten_is_main_browser_thread() << ")"
+
+#ifndef NDEBUGEMSCRIPTEN
+#undef _DEBUG_PREFIXES_1
+#define _DEBUG_PREFIXES_1 _DEBUG_EMSCRIPTEN_THREADS_
+#endif
+#endif // EMSCRIPTEN
+
+#define _DEBUG_PREFIXES "\t\t\t|" << __FILE__ << ":" << __LINE__ << " @ " << __PRETTY_FUNCTION__ << ": " << _DEBUG_PREFIXES_1 << _DEBUG_PREFIXES_2
+
+#define DEBUG_VARIABLES(...) \
+    do { \
+        std::cout << "(" << #__VA_ARGS__ << ") {"; \
+        logVars(__VA_ARGS__); \
+        std::cout << "}"; \
+        std::cout << _DEBUG_PREFIXES << #__VA_ARGS__ << ": "; \
+        std::cout << std::endl; \
+    } while (0);
+
+#define DEBUG_LOG(msg) std::cout << msg << _DEBUG_PREFIXES << std::endl;
+
+template<typename T>
+void logVars(const T &val) {
+    std::cout << val;
+}
+
+template<typename T, typename... Args>
+void logVars(const T &val, const Args &...args) {
+    std::cout << val << ", ";
+    logVars(args...);
+}
+
+#define DEBUG_FINISH(expr) \
+    DEBUG_LOG(#expr) \
+    expr; \
+    DEBUG_LOG("~" << #expr);
+
+#define DEBUG_LOG_EVERY_SECOND(msg) \
+    { \
+        static auto lastTime    = std::chrono::steady_clock::now(); \
+        auto        currentTime = std::chrono::steady_clock::now(); \
+        if (std::chrono::duration_cast<std::chrono::seconds>(currentTime - lastTime).count() >= 1) { \
+            lastTime = currentTime; \
+            DEBUG_LOG(msg); \
+        } \
+    }
+
+#endif // NDEBUG
+
 // #define OPENCMW_INSTRUMENT_ALLOC 1 //NOLINT -- used as a global macro to enable alloc/free profiling
 namespace opencmw::debug {
 static std::size_t           alloc{ 0 };   // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
@@ -97,10 +182,10 @@ public:
     Timer() = delete;
     explicit Timer(const char *message, const int alignMsg = 20, const int alignClock = 10, const int alignTime = 5) noexcept
         : _message(message), _alignMsg(alignMsg), _alignClock(alignClock), _alignTime(alignTime), _begin(clock()), _alloc(alloc), _realloc(realloc), _dealloc(dealloc) {}
-    Timer(const Timer &other) = delete;
-    Timer(Timer &&other)      = delete;
+    Timer(const Timer &other)            = delete;
+    Timer(Timer &&other)                 = delete;
     Timer &operator=(const Timer &other) = delete;
-    Timer &operator=(Timer &&other) = delete;
+    Timer &operator=(Timer &&other)      = delete;
     ~Timer() noexcept {
         const clock_t     diff            = clock() - _begin;
         const std::size_t allocation      = opencmw::debug::alloc - _alloc;

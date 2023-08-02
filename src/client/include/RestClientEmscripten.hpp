@@ -56,9 +56,9 @@ struct FetchPayload {
     FetchPayload(Command &&_command)
         : command(std::move(_command)) {}
 
-    FetchPayload(const FetchPayload &other)     = delete;
-    FetchPayload(FetchPayload &&other) noexcept = default;
-    FetchPayload &operator=(const FetchPayload &other) = delete;
+    FetchPayload(const FetchPayload &other)                = delete;
+    FetchPayload(FetchPayload &&other) noexcept            = default;
+    FetchPayload &operator=(const FetchPayload &other)     = delete;
     FetchPayload &operator=(FetchPayload &&other) noexcept = default;
 
     void          returnMdpMessage(unsigned short status, std::string_view body, std::string_view errorMsgExt = "") noexcept {
@@ -82,9 +82,9 @@ struct FetchPayload {
                              .error           = errorMsg,
                              .rbac            = IoBuffer() });
         } catch (const std::exception &e) {
-            std::cerr << fmt::format("caught exception '{}' in RestClient::returnMdpMessage(cmd={}, {}: {})", e.what(), command.endpoint, status, body) << std::endl;
+            std::cerr << fmt::format("caught exception '{}' in FetchPayload::returnMdpMessage(cmd={}, {}: {})", e.what(), command.endpoint, status, body) << std::endl;
         } catch (...) {
-            std::cerr << fmt::format("caught unknown exception in RestClient::returnMdpMessage(cmd={}, {}: {})", command.endpoint, status, body) << std::endl;
+            std::cerr << fmt::format("caught unknown exception in FetchPayload::returnMdpMessage(cmd={}, {}: {})", command.endpoint, status, body) << std::endl;
         }
     }
 
@@ -108,9 +108,9 @@ struct SubscriptionPayload : FetchPayload {
         : FetchPayload(std::move(_command))
         , _mimeType(std::move(mimeType)) {}
 
-    SubscriptionPayload(const SubscriptionPayload &other)     = delete;
-    SubscriptionPayload(SubscriptionPayload &&other) noexcept = default;
-    SubscriptionPayload &operator=(const SubscriptionPayload &other) = delete;
+    SubscriptionPayload(const SubscriptionPayload &other)                = delete;
+    SubscriptionPayload(SubscriptionPayload &&other) noexcept            = default;
+    SubscriptionPayload &operator=(const SubscriptionPayload &other)     = delete;
     SubscriptionPayload &operator=(SubscriptionPayload &&other) noexcept = default;
 
     void                 requestNext() {
@@ -268,7 +268,9 @@ private:
         };
 
         // TODO: Pass the payload as POST body: emscripten_fetch(&attr, uri.relativeRef()->data());
-        emscripten_fetch(&attr, URI<>::factory(uri).addQueryParameter("_bodyOverride", body).build().str().data());
+
+        auto d = URI<>::factory(uri).addQueryParameter("_bodyOverride", body).build().str().data();
+        emscripten_fetch(&attr, d);
     }
 
     void startSubscription(Command &&cmd) {

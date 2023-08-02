@@ -1,6 +1,6 @@
 #include <IoSerialiserYaS.hpp>
-#include <services/dns_client.hpp>
 #include <services/dns.hpp>
+#include <services/dns_client.hpp>
 #include <utility>
 #ifndef EMSCRIPTEN
 #include <Client.hpp>
@@ -8,7 +8,9 @@
 #include <majordomo/base64pp.hpp>
 #include <majordomo/Broker.hpp>
 #include <majordomo/Worker.hpp>
-#endif
+#else
+#include <emscripten/trace.h>
+#endif // EMSCRIPTEN
 
 #include <string_view>
 #include <thread>
@@ -52,26 +54,20 @@ void run_dns_server(std::string_view httpAddress, std::string_view mdpAddress) {
 
 void register_device(auto &client, std::string_view signal) {
     Entry entry_a{ .protocol = "http", .hostname = "test.example.com", .port = 1337, .service_name = "test", .service_type = "", .signal_name = std::string{ signal }, .signal_unit = "", .signal_rate = 1e3, .signal_type = "" };
-    client.registerSignalsAsync([](const auto &/*entries*/) {
-        fmt::print("registered signal\n");
-    }, {entry_a});
+    std::cout << "registered signal: " << client.registerSignal(entry_a) << std::endl;
 }
 
 void query_devices(auto &client, std::string_view query) {
     Entry query_filter{ .signal_name = std::string{ query } };
-    client.querySignalsAsync([](const auto &entries) {
-        fmt::print("got {} results:\n", entries.size());
-        for (auto &entry : entries) {
-            fmt::print("- {}\n", entry);
-        }
-    }, query_filter);
+    auto  signals = client.querySignals(query_filter);
+    std::cout << "found signal: " << signals << std::endl;
 }
 
 int main(int argc, char *argv[]) {
     using opencmw::URI;
     const std::vector<std::string_view> args(argv + 1, argv + argc);
     std::string_view                    command = args[0];
-    if (command == "server" && args.size() == 3 ) {
+    if (command == "server" && args.size() == 3) {
 #if defined(EMSCRIPTEN)
         fmt::print("unable to run server on emscripten\n");
 #else
@@ -87,9 +83,10 @@ int main(int argc, char *argv[]) {
         clients.emplace_back(std::make_unique<client::MDClientCtx>(context, 20ms, "dnsTestClient"));
 #endif
         clients.emplace_back(std::make_unique<client::RestClient>(opencmw::client::DefaultContentTypeHeader(MIME::BINARY)));
+
         client::ClientContext clientContext{ std::move(clients) };
         DnsClient             dns_client{ clientContext, URI<>{ std::string{ args[1] } } };
-//        DnsRestClient         dns_client{ std::string{ args[1] } };
+
         if (command == "register" && args.size() == 3) {
             fmt::print("registering example device {}\n", args[2]);
             register_device(dns_client, args[2]);
@@ -100,9 +97,9 @@ int main(int argc, char *argv[]) {
             fmt::print("unknown command: {}\n", command);
         }
         fmt::print("stopping client\n");
-#ifndef __EMSCRIPTEN__
+
         clientContext.stop();
-#endif
+
     } else {
         fmt::print("not enough arguments: {}\n", args);
     }

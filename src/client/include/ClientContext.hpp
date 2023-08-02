@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include <Debug.hpp>
 #include <disruptor/Disruptor.hpp>
 #include <MdpMessage.hpp>
 #include <URI.hpp>
@@ -86,7 +87,15 @@ private:
                     return false;
                 }
                 auto &c = getClientCtx(cmd.endpoint);
-                c.request(cmd);
+#ifdef EMSCRIPTEN
+                // this is necessary for fetches to actually be called, as the new thread will start/init/end and then go into js runtime to fetch
+                std::thread ql{ [&c, cmd]() {
+#endif
+                    c.request(cmd);
+#ifdef EMSCRIPTEN
+                } };
+                ql.join();
+#endif
                 return false;
             });
         }
