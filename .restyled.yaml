@@ -23,10 +23,15 @@ statuses:
 ignore_labels:
   - restyled-ignore
 
-restylers_version: "v0.301.0"
+restylers_version: stable
 
 restylers:
   - clang-format:
       image:
         tag: v16
-  - "*"
+  - cmake-format
+  - prettier-markdown
+  - prettier-yaml
+  - shellcheck
+  - whitespace
+  - black
