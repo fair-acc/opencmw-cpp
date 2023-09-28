@@ -45,6 +45,7 @@ class DnsClient {
         *callback = [] (const mdp::Message &msg) {
             DEBUG_LOG("yeah, callback")
         };
+        return -1;
     }
     void _set_callback_on_main(std::atomic_bool* done, mdp::Message* answer, std::function<void(const mdp::Message&)> *callback) {
         emscripten_sync_run_in_main_runtime_thread(EM_FUNC_SIG_VIII, __set_callback, done, answer, callback);

@@ -25,10 +25,11 @@
 
 
 // tests are either started before or in main
-// for proper operation we need a main loop which returns control to the main/js thread
+// for proper operation many implementations need a main loop which returns control to the main/js thread
 //  do this WITH_MAINLOOP, setting a main loop and exiting main into it
 
 #define TEST_IN_MAIN
+//#define CREATE_TESTCASES_ON_STACK
 //#define TEST_WITH_MAINLOOP
 
 //#define TESTS_RUN_IN_THREADS
@@ -45,7 +46,8 @@
 //#define TEST_SIMPLE_REQUEST_WAITABLE
 // there is thread proxying in emscripten, but this doesn't help, because fetches are worked upon in the runtime thread
 // works in mainloop;
-//#define TEST_FETCH_PROXYING
+#define TEST_FETCH_PROXYING_RETURNER
+//#define TEST_FETCH_PROXYING_LOOPER
 // uses DnsRestClient but build command by hand
 // works in mainloop; fetch fails immediately in node and build down throws, fetch never fetched in chromium
 //#define TEST_REST_CLIENT_MANUAL
@@ -54,7 +56,7 @@
 //#define TEST_CONTEXTCLIENT_FUTURE
 //#define TEST_REST_CLIENT_SYNC
 
-#if defined(TEST_FETCH_PROXYING) or defined(TEST_THREADED_REQUEST)
+#if defined(TEST_FETCH_PROXYING_RETURNER) or defined(TEST_FETCH_PROXYING_LOOPER) or defined(TEST_THREADED_REQUEST)
 #define NEED_SIMPLE_REQUEST
 #endif
 
@@ -66,8 +68,10 @@ static std::vector<TestCase*> tests;
 
 struct TestCase {
     enum TestState {
+        INITIALISED,
         RUNNING,
         FINISHED_UNKNOWN,
+        FINISHED_FAILURE,
         FINISHED_SUCCESS,
         FINISHED_FAILURE} state = RUNNING;
 
@@ -80,10 +84,11 @@ struct TestCase {
         DEBUG_LOG("Running " + name);
         _run();
         DEBUG_LOG(name + " ran through")
+        state = RUNNING;
     }
     virtual bool ready() {
-
-        return state != RUNNING; }
+        return state > RUNNING;
+    }
     virtual bool success() { return state == FINISHED_SUCCESS; }
     virtual ~TestCase() = default;
     std::string name;
@@ -99,13 +104,14 @@ struct FutureTestcase : TestCase{
     }
 };
 
-// std::vector<std::shared_ptr<TestCase>>
 
-//#define ADD_TESTCASE(testcasetype) testcasetype _##testcasetype( #testcasetype );
-#define ADD_TESTCASE(testcasetype) testcasetype _##testcasetype{ #testcasetype };
+
+
 
 #ifdef CREATE_TESTCASES_ON_STACK
-#define ADD_TESTCASE(name) #name Testcase_#name; tests.push_back(Testcase_#name);
+#define ADD_TESTCASE(testcasetype) testcasetype _##testcasetype{ #testcasetype };
+#else
+#define ADD_TESTCASE(testcasetype) testcasetype *_##testcasetype = new testcasetype{ #testcasetype };
 #endif
 
 
@@ -153,8 +159,8 @@ void run_tests() {
 #ifdef TESTS_RUN_IN_THREADS
         std::thread{ [t]() { t->run(); } }.detach();
 #else
-                t->run();
-                std::cout << "ready " << t->ready() << std::endl;
+        t->run();
+        std::cout << "ready " << t->ready() << std::endl;
 #endif
     });
 }
@@ -236,30 +242,38 @@ struct TestThreadedRequest : TestEmscriptenRequest {
 ADD_TESTCASE(TestThreadedRequest)
 #endif // TEST_THREADED_REQUEST
 
-#ifdef TEST_FETCH_PROXYING
+#ifdef TEST_FETCH_PROXYING_RETURNER
 // https://emscripten.org/docs/api_reference/proxying.h.html
 //  from example https://github.com/emscripten-core/emscripten/blob/main/test/pthread/test_pthread_proxying_cpp.cpp#L37
 #include <emscripten/eventloop.h>
 #include <emscripten/proxying.h>
 #include <sched.h>
 
-emscripten::ProxyingQueue queue;
+
+struct TestFetchProxyingReturner : TestCase {
+     using TestCase::TestCase;
+     std::thread       returner{[this]() { this->returner_run(); }};
+     std::atomic_bool should_quit{false};
+     emscripten::ProxyingQueue queue;
+     TestEmscriptenRequest tr{"ProxyingReturner"}, tr2{"ProxyingReturner2"};
+
+     void returner_run() {
+        DEBUG_LOG("returner_run")
+        // Return back to the event loop while keeping the runtime alive.
+        // Note that we can't use `emscripten_exit_with_live_runtime` here without
+        // introducing a memory leak due to way to C++11 threads interact with
+        // unwinding. See https://github.com/emscripten-core/emscripten/issues/17091.
+        if (!should_quit || (tr.ready() && tr2.ready()))
+            emscripten_runtime_keepalive_push();
+        else
+            DEBUG_LOG("~returner_run")
+     }
 
 struct TestFetchProxying : TestCase {
      using TestCase::TestCase;
      std::thread       looper{[this]() { this->looper_run(); }};
-     std::thread       returner{[this]() { this->returner_run(); }};
-     std::atomic_bool threaded_done{ false };
-     std::atomic_bool looper_done{false};
-     std::atomic_bool returner_done{false};
-     std::atomic_bool looper_quit{false};
      std::atomic_bool should_quit{false};
-     /*std::thread q{ [this]() {
-         // this code will never return
-         t.run();
-         t2.run();
-         threaded_done = true;
-     } };*/
+
      // the requests used by l_ooper r_eturner and the threaded variant
      TestEmscriptenRequest tl{"ProxyingLooper"}, tr{"ProxyingReturner"}, t{"ProxyingThreaded"}, tl2{"ProxyingLooper2"}, tr2{"ProxyingReturner2"}, t2{"ProxyingThreaded2"};
 
@@ -273,20 +287,9 @@ struct TestFetchProxying : TestCase {
         }
         DEBUG_LOG("!looper_run")
      }
-     void returner_run() {
-        DEBUG_LOG("returner_run")
-        // Return back to the event loop while keeping the runtime alive.
-        // Note that we can't use `emscripten_exit_with_live_runtime` here without
-        // introducing a memory leak due to way to C++11 threads interact with
-        // unwinding. See https://github.com/emscripten-core/emscripten/issues/17091.
-        if (!should_quit)
-            emscripten_runtime_keepalive_push();
-        else
-            DEBUG_LOG("~returner_run")
-     }
 
      bool ready() {
-        auto a = threaded_done && looper_done && returner_done && tl.ready() && tr.ready() && t.ready();
+        auto a = tl.ready() && tl2.ready();
         if (tl.ready() && tr.ready()) {
             should_quit = true;
         }
@@ -295,29 +298,21 @@ struct TestFetchProxying : TestCase {
      }
 
      void _run () {
-        { // Proxy to looper.
-            queue.proxyAsync(looper.native_handle(), [&]() { tl.run(); tl2.run(); looper_done = true; });
-        }
-        { // Proxy to returner.
-            queue.proxyAsync(returner.native_handle(), [&]() { tr.run(); tr2.run(); returner_done = true; });
-        }
-        // run threaded
-
-         //q.detach(); // be careful with joining here, will stall in many cases
+         queue.proxyAsync(looper.native_handle(), [&]() { tr.run(); tr2.run(); });
+         state = RUNNING;
      }
 
-     ~TestFetchProxying() {
+     ~TestFetchProxyingLooper() {
          should_quit = true;
          DEBUG_LOG("~TestFetchProxying")
          std::this_thread::yield();
-         //q.join();
-         returner.join();
-         looper.join();
+
+         looper.detach(); // we will leak here, but at least we don't crash our test application
      }
 };
-ADD_TESTCASE(TestFetchProxying)
+ADD_TESTCASE(TestFetchProxyingLooper)
 
-#endif
+#endif // TEST_FETCH_PROXYYING_LOOPER
 
 #ifdef TEST_SIMPLE_REQUEST_WAITABLE
 struct TestEmscriptenWaitableRequest : public TestCase {
@@ -464,6 +459,8 @@ void wait_for_results() {
 //        exit(0);
 //        emscripten_cancel_main_loop();
 #else
+
+        // emscripten_run_script("try { PThread.terminateAllThreads(); } catch(error) {}");
         emscripten_force_exit(0);
 #endif
     }
@@ -474,6 +471,11 @@ int main(int argc, char* argv[]) {
     emscripten_trace_configure_for_google_wtf();
 
     if (argc > 1) {  // only execute selected Tests
+
+        std::cout << "selecting tests " << std::accumulate(argv + 1, argv + argc, std::string{},
+                [](const std::string& acc, const char *arg) {
+                    return acc.empty() ? arg : acc + ' ' + arg;
+                });
         auto r = std::remove_if(tests.begin(), tests.end(), [argv, argc](TestCase *t) {
             return std::all_of(argv + 1, argv + argc, [t](auto e){ return e != t->name; });
         });
