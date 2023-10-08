@@ -294,7 +294,6 @@ struct FieldHeaderWriter<YaS> {
         // -- offset 0 vs. field start
         field.headerStart = buffer.size();
         buffer.put(IoSerialiser<YaS, StrippedDataType>::getDataTypeId()); // data type ID
-        buffer.put(opencmw::hash(field.fieldName));                       // unique hashCode identifier
         const std::size_t dataStartOffsetPosition = buffer.size();
         buffer.put(-1); // dataStart offset
         const std::size_t dataSizePosition = buffer.size();
@@ -377,10 +376,8 @@ template<>
 struct FieldHeaderReader<YaS> {
     template<ProtocolCheck check>
     inline static void get(IoBuffer &buffer, const DeserialiserInfo & /*info*/, FieldDescriptionLong &result) {
-        result.headerStart = buffer.position();
-        result.intDataType = buffer.get<uint8_t>(); // data type ID
-        // const auto        hashFieldName     =
-        buffer.get<int32_t>(); // hashed field name -> future: faster look-up/matching of fields
+        result.headerStart         = buffer.position();
+        result.intDataType         = buffer.get<uint8_t>(); // data type ID
         const auto dataStartOffset = static_cast<uint64_t>(buffer.get<int32_t>());
         const auto dataSize        = static_cast<uint64_t>(buffer.get<int32_t>());
         result.fieldName           = buffer.get<std::string_view>(); // full field name
