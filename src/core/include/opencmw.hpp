@@ -182,20 +182,20 @@ concept Duration = is_duration<T>::value;
 
 namespace detail {
 
-    template<typename Out, typename... Ts>
-    struct filter_tuple : std::type_identity<Out> {};
+template<typename Out, typename... Ts>
+struct filter_tuple : std::type_identity<Out> {};
 
-    template<typename... Out, typename InCar, typename... InCdr> // template for std::tuple arguments
-    struct filter_tuple<std::tuple<Out...>, std::tuple<InCar, InCdr...>>
-        : std::conditional_t<(std::is_same_v<InCar, Out> || ...),
-                  filter_tuple<std::tuple<Out...>, std::tuple<InCdr...>>,
-                  filter_tuple<std::tuple<Out..., InCar>, std::tuple<InCdr...>>> {};
+template<typename... Out, typename InCar, typename... InCdr> // template for std::tuple arguments
+struct filter_tuple<std::tuple<Out...>, std::tuple<InCar, InCdr...>>
+    : std::conditional_t<(std::is_same_v<InCar, Out> || ...),
+              filter_tuple<std::tuple<Out...>, std::tuple<InCdr...>>,
+              filter_tuple<std::tuple<Out..., InCar>, std::tuple<InCdr...>>> {};
 
-    template<typename Out, typename... Ts>
-    struct filter_tuple2 : std::type_identity<Out> {};
+template<typename Out, typename... Ts>
+struct filter_tuple2 : std::type_identity<Out> {};
 
-    template<typename... Ts, typename U, typename... Us> // template for variadic arguments returning std::tuple
-    struct filter_tuple2<std::tuple<Ts...>, U, Us...> : std::conditional_t<(std::is_same_v<U, Ts> || ...), filter_tuple2<std::tuple<Ts...>, Us...>, filter_tuple2<std::tuple<Ts..., U>, Us...>> {};
+template<typename... Ts, typename U, typename... Us> // template for variadic arguments returning std::tuple
+struct filter_tuple2<std::tuple<Ts...>, U, Us...> : std::conditional_t<(std::is_same_v<U, Ts> || ...), filter_tuple2<std::tuple<Ts...>, Us...>, filter_tuple2<std::tuple<Ts..., U>, Us...>> {};
 
 } // namespace detail
 
@@ -208,7 +208,8 @@ template<typename... T>
 constexpr bool is_tuple<std::tuple<T...>> = true;
 
 template<class T>
-requires(is_tuple<T>) using tuple_unique = typename detail::filter_tuple<std::tuple<>, T>::type;
+    requires(is_tuple<T>)
+using tuple_unique = typename detail::filter_tuple<std::tuple<>, T>::type;
 
 template<template<typename...> typename Type, typename... Items>
 using find_type = decltype(std::tuple_cat(std::declval<std::conditional_t<is_instance_of_v<Items, Type>, std::tuple<Items>, std::tuple<>>>()...));
@@ -223,7 +224,8 @@ template<>
 struct is_uniq<> : std::true_type {};
 
 template<typename T0, typename... Ts>
-requires(!is_in_list<T0, Ts...>::value) struct is_uniq<T0, Ts...> : is_uniq<Ts...> {};
+    requires(!is_in_list<T0, Ts...>::value)
+struct is_uniq<T0, Ts...> : is_uniq<Ts...> {};
 
 template<typename... Ts>
 struct type_list {};
@@ -239,12 +241,14 @@ struct filter_dups_impl<C, type_list<Uniqs...>, type_list<>> {
 };
 
 template<template<typename...> class C, typename... Uniqs, typename Input0, typename... Inputs>
-requires(... && !std::same_as<Input0, Uniqs>) struct filter_dups_impl<C, type_list<Uniqs...>, type_list<Input0, Inputs...>>
+    requires(... && !std::same_as<Input0, Uniqs>)
+struct filter_dups_impl<C, type_list<Uniqs...>, type_list<Input0, Inputs...>>
     : filter_dups_impl<C, type_list<Uniqs..., Input0>, type_list<Inputs...>> {
 };
 
 template<template<typename...> class C, typename... Uniqs, typename Input0, typename... Inputs>
-requires(... || std::same_as<Input0, Uniqs>) struct filter_dups_impl<C, type_list<Uniqs...>, type_list<Input0, Inputs...>>
+    requires(... || std::same_as<Input0, Uniqs>)
+struct filter_dups_impl<C, type_list<Uniqs...>, type_list<Input0, Inputs...>>
     : filter_dups_impl<C, type_list<Uniqs...>, type_list<Inputs...>> {};
 
 template<template<typename...> class C, typename... Ts>
@@ -480,7 +484,7 @@ template<typename T> requires is_same_v<std::remove_const_t<T>, float_t>   inlin
 template<typename T> requires is_same_v<std::remove_const_t<T>, double_t>  inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "double_t const" : "double_t";
 
 template<StringLike T> requires units::is_derived_from_specialization_of<T, std::basic_string> inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "string const" : "string";
-template<StringLike T> requires units::is_derived_from_specialization_of<T, std::basic_string_view> inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "string const" : "string";
+template<StringLike T> requires units::is_derived_from_specialization_of<T, std::basic_string_view> inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "string_view const" : "string_view";
 
 template<typename T, std::size_t N> inline const std::string &typeName<std::array<T,N>> = fmt::format("array<{},{}>", typeName<T>, N);
 template<typename T, std::size_t N> inline const std::string &typeName<std::array<T,N> const> = fmt::format("array<{},{}> const", typeName<T>, N);

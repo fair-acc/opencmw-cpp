@@ -292,9 +292,9 @@ TEST_CASE("IoClassSerialiser basic typeName tests", "[IoClassSerialiser]") {
         REQUIRE(typeName<float_t const> == "float_t const");
 
         REQUIRE(typeName<std::string> == "string");
-        REQUIRE(typeName<std::string_view> == "string");
+        REQUIRE(typeName<std::string_view> == "string_view");
         REQUIRE(typeName<std::string const> == "string const");
-        REQUIRE(typeName<std::string_view const> == "string const");
+        REQUIRE(typeName<std::string_view const> == "string_view const");
     }
     REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
     debug::resetStats();
