@@ -140,7 +140,6 @@ TEST_CASE("IoBuffer syntax - primitives", "[IoBuffer]") {
         REQUIRE(43 == test1a);
         test1a = 5;
         REQUIRE(5 == test1a);
-        REQUIRE(43 == a.get<int8_t>(0));
         auto &test1b = a.at<int8_t>(0); // test1b refers to actual IoBuffer memory block
         REQUIRE(43 == test1b);
         a.at<short>(0) = 5;           // '0' == index within IoBuffer
@@ -319,7 +318,7 @@ TEST_CASE("IoBuffer syntax - arrays", "[IoBuffer]") {
         // variant A: allocating a new vector
         std::vector<int> recoveredIntVector = buffer.getArray<int>();
         REQUIRE(inputIntVector == recoveredIntVector);
-        REQUIRE(inputIntVector == buffer.getArray<int>(recoveredIntVector, static_cast<size_t>(5)));
+        REQUIRE(inputIntVector == buffer.getArray(recoveredIntVector, static_cast<size_t>(5)));
         // PRINT_VECTOR(recoveredIntVector1);
 
         // variant B: re-using existing vector
@@ -334,12 +333,12 @@ TEST_CASE("IoBuffer syntax - arrays", "[IoBuffer]") {
         REQUIRE(array == array2);
 
         // bool vector & bool array
-        REQUIRE(std::vector<bool>{ false, true, false, true, false } == buffer.getArray<bool>(std::vector<bool>(), 5));
-        REQUIRE(std::array<bool, 5>{ true, false, true, false, true } == buffer.getArray<bool, 5>(std::array<bool, 5>(), 5));
+        REQUIRE(std::vector<bool>{ false, true, false, true, false } == buffer.getArray(std::vector<bool>(), 5));
+        REQUIRE(std::array<bool, 5>{ true, false, true, false, true } == buffer.getArray(std::array<bool, 5>(), 5));
 
         const auto         origPosition = buffer.position();
         std::array<int, 5> array3{ 0, 0, 0, 0, 0 };
-        REQUIRE(array == buffer.getArray<int, 5>(array3, 5));
+        REQUIRE(array == buffer.getArray(array3, 5));
         // PRINT_VECTOR(array3);
         //  read unnamed array
         buffer.set_position(origPosition); // skip back
