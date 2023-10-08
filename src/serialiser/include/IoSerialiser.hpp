@@ -452,15 +452,13 @@ struct fmt::formatter<opencmw::ProtocolCheck> {
 
     template<typename FormatContext>
     auto format(opencmw::ProtocolCheck const &v, FormatContext &ctx) const {
+        using enum opencmw::ProtocolCheck;
         switch (v) {
-        case opencmw::ProtocolCheck::IGNORE:
-            break;
+        case IGNORE:
             return fmt::format_to(ctx.out(), "IGNORE");
-        case opencmw::ProtocolCheck::LENIENT:
-            break;
+        case LENIENT:
             return fmt::format_to(ctx.out(), "LENIENT");
-        case opencmw::ProtocolCheck::ALWAYS:
-            break;
+        case ALWAYS:
             return fmt::format_to(ctx.out(), "ALWAYS");
         default:
             return ctx.out();
