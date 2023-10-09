@@ -4,7 +4,6 @@ on:
   push:
     branches: [ main ]
   pull_request:
-    branches: [ main ]
   release:
     types: [ created ]
 
@@ -22,13 +21,16 @@ jobs:
         configurations:
           - name: Ubuntu Latest gcc12
             os: ubuntu-22.04
-            compiler: gcc
-          - name: ubuntu-22.04 clang15
+            compiler: gcc12
+          - name: Ubuntu gcc13
             os: ubuntu-22.04
-            compiler: clang15
+            compiler: gcc13
           - name: ubuntu Latest clang16
             os: ubuntu-22.04
             compiler: clang16
+          - name: ubuntu Latest clang17
+            os: ubuntu-22.04
+            compiler: clang17
           - name: ubuntu-22.04 emscripten
             os: ubuntu-22.04
             compiler: emscripten
@@ -49,20 +51,17 @@ jobs:
         key: ${{ runner.os }}-${{ matrix.configurations.compiler }}-${{ matrix.cmake-build-type }}-${{ hashFiles('CMakeLists.txt') }}-${{ hashFiles('cmake/Dependencies.cmake') }}
 
     - name: Install gcc-12
-      if: matrix.configurations.compiler == 'gcc'
+      if: matrix.configurations.compiler == 'gcc12'
       run: |
         sudo add-apt-repository ppa:ubuntu-toolchain-r/ppa # provides newer gcc 12.2.0 instead of 12.1.0
-        sudo apt-get install -y gcc-12 g++-12
+        sudo apt-get install -y gcc-12 g++-12 gcovr
         sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 110 --slave /usr/bin/g++ g++ /usr/bin/g++-12 --slave /usr/bin/gcov gcov /usr/bin/gcov-12
 
-    - name: Install clang-15
-      if: matrix.configurations.compiler == 'clang15'
+    - name: Install gcc-13
+      if: matrix.configurations.compiler == 'gcc13'
       run: |
-        wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
-        sudo add-apt-repository 'deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-15 main'
-        sudo apt update
-        sudo apt install -y clang-15 libc++-15-dev libc++abi-15-dev
-        sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++-15 110
+        sudo apt-get install -y gcc-13 g++-13 gcovr
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 110 --slave /usr/bin/g++ g++ /usr/bin/g++-13 --slave /usr/bin/gcov gcov /usr/bin/gcov-13
 
     - name: Install clang-16
       if: matrix.configurations.compiler == 'clang16'
@@ -72,6 +71,16 @@ jobs:
         sudo apt update
         sudo apt install -y clang-16 libc++-16-dev libc++abi-16-dev
         sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++-16 110
+
+    - name: Install clang-17
+      if: matrix.configurations.compiler == 'clang17'
+      run: |
+        wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
+        sudo add-apt-repository 'deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main'
+        sudo apt update
+        sudo apt upgrade -y # update clang14 to fix packaging conflicts
+        sudo apt install -y clang-17 libc++-17-dev libc++abi-17-dev
+        sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++-17 110
 
     - name: Install emscripten
       if: matrix.configurations.compiler == 'emscripten'
@@ -85,13 +94,6 @@ jobs:
         ./emsdk activate releases-03ecb526947f6a3702a0d083083799fe410d3893-64bit
         # Activate PATH and other environment variables in the current terminal
         source ./emsdk_env.sh
-
-    - name: Install gcovr
-      shell: bash
-      if: matrix.configurations.name == env.REFERENCE_CONFIG && matrix.cmake-build-type == 'Debug'
-      run: |
-        python3 -m pip install gcovr --user --no-warn-script-location
-        gcovr --version
 
     - name: Configure CMake
       if: matrix.configurations.compiler != 'emscripten'
@@ -108,18 +110,8 @@ jobs:
         emcmake cmake -S . -B ../build -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DENABLE_TESTING=ON
 
     - name: Build
-      if: matrix.configurations.compiler != 'emscripten'
       shell: bash
-      # Execute the build.  You can specify a specific target with "--target <NAME>"
       run: cmake --build ../build --config ${{ matrix.cmake-build-type }}
-
-    - name: Build Emscripten
-      if: matrix.configurations.compiler == 'emscripten'
-      shell: bash
-      run: |
-        source ~/emsdk/emsdk_env.sh
-        cd ../build
-        emmake make
 
     - name: Run tests
       if: matrix.configurations.name != env.REFERENCE_CONFIG || matrix.cmake-build-type != 'Debug'
