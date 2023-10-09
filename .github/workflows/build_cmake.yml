@@ -88,12 +88,10 @@ jobs:
         cd
         git clone https://github.com/emscripten-core/emsdk.git
         cd emsdk
-        # Download and install the latest SDK tools.
-        ./emsdk install releases-03ecb526947f6a3702a0d083083799fe410d3893-64bit
-        # Make the "latest" SDK "active" for the current user. (writes .emscripten file)
-        ./emsdk activate releases-03ecb526947f6a3702a0d083083799fe410d3893-64bit
-        # Activate PATH and other environment variables in the current terminal
-        source ./emsdk_env.sh
+        # Download and install emscripten.
+        ./emsdk install 3.1.43 # 01/2023 (latest = 3.1.46 -> 09/2023)
+        # Make "active" for the current user. (writes .emscripten file)
+        ./emsdk activate 3.1.43
 
     - name: Configure CMake
       if: matrix.configurations.compiler != 'emscripten'
@@ -106,8 +104,9 @@ jobs:
       # Use a bash shell, so we can use the same syntax for environment variable access regardless of the host operating system
       shell: bash
       run: |
+        export SYSTEM_NODE=`which node` # use system node instead of old version distributed with emsdk for threading support
         source ~/emsdk/emsdk_env.sh
-        emcmake cmake -S . -B ../build -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DENABLE_TESTING=ON
+        emcmake cmake -S . -B ../build -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DENABLE_TESTING=ON -DCMAKE_CROSSCOMPILING_EMULATOR=${SYSTEM_NODE}
 
     - name: Build
       shell: bash
