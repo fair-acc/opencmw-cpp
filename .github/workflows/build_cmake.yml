@@ -8,7 +8,7 @@ on:
     types: [ created ]
 
 env:
-  REFERENCE_CONFIG: 'Ubuntu Latest gcc12' # configuration used for coverage etc
+  REFERENCE_CONFIG: 'Ubuntu Latest gcc13' # configuration used for coverage etc
 
 jobs:
   build:
@@ -19,16 +19,10 @@ jobs:
       fail-fast: false
       matrix:
         configurations:
-          - name: Ubuntu Latest gcc12
-            os: ubuntu-22.04
-            compiler: gcc12
-          - name: Ubuntu gcc13
+          - name: Ubuntu Latest gcc13
             os: ubuntu-22.04
             compiler: gcc13
-          - name: ubuntu Latest clang16
-            os: ubuntu-22.04
-            compiler: clang16
-          - name: ubuntu Latest clang17
+          - name: Ubuntu Latest clang17
             os: ubuntu-22.04
             compiler: clang17
           - name: ubuntu-22.04 emscripten
@@ -52,27 +46,18 @@ jobs:
         path: ${{runner.workspace}}/build/_deps
         key: ${{ runner.os }}-${{ matrix.configurations.compiler }}-${{ matrix.cmake-build-type }}-${{ hashFiles('CMakeLists.txt') }}-${{ hashFiles('cmake/Dependencies.cmake') }}
 
-    - name: Install gcc-12
-      if: matrix.configurations.compiler == 'gcc12'
+    - name: Install gcovr
+      shell: bash
+      if: matrix.configurations.name == env.REFERENCE_CONFIG && matrix.cmake-build-type == 'Debug'
       run: |
-        sudo add-apt-repository ppa:ubuntu-toolchain-r/ppa # provides newer gcc 12.2.0 instead of 12.1.0
-        sudo apt-get install -y gcc-12 g++-12 gcovr
-        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 110 --slave /usr/bin/g++ g++ /usr/bin/g++-12 --slave /usr/bin/gcov gcov /usr/bin/gcov-12
+        python3 -m pip install gcovr --user --no-warn-script-location
+        gcovr --version
 
     - name: Install gcc-13
       if: matrix.configurations.compiler == 'gcc13'
       run: |
-        sudo apt-get install -y gcc-13 g++-13 gcovr
+        sudo apt-get install -y gcc-13 g++-13 # gcovr # packaged gcovr is too old for gcc13
         sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 110 --slave /usr/bin/g++ g++ /usr/bin/g++-13 --slave /usr/bin/gcov gcov /usr/bin/gcov-13
-
-    - name: Install clang-16
-      if: matrix.configurations.compiler == 'clang16'
-      run: |
-        wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
-        sudo add-apt-repository 'deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-16 main'
-        sudo apt update
-        sudo apt install -y clang-16 libc++-16-dev libc++abi-16-dev
-        sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++-16 110
 
     - name: Install clang-17
       if: matrix.configurations.compiler == 'clang17'
@@ -96,14 +81,14 @@ jobs:
         ./emsdk activate 3.1.43
 
     - name: Install sonar-scanner and build-wrapper
-      if: matrix.configurations.compiler == 'gcc12' && matrix.cmake-build-type == 'Debug'
+      if: matrix.configurations.name == env.REFERENCE_CONFIG && matrix.cmake-build-type == 'Debug'
       uses: SonarSource/sonarcloud-github-c-cpp@v1
 
     - name: Configure CMake
       if: matrix.configurations.compiler != 'emscripten'
       # Use a bash shell, so we can use the same syntax for environment variable access regardless of the host operating system
       shell: bash
-      run: cmake -S . -B ../build -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DENABLE_COVERAGE=${{ matrix.configurations.name == env.REFERENCE_CONFIG &&  matrix.cmake-build-type == 'Debug'}}
+      run: cmake -S . -B ../build -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DENABLE_COVERAGE=${{ matrix.configurations.name == env.REFERENCE_CONFIG && matrix.cmake-build-type == 'Debug' }}
 
     - name: Configure CMake Emscripten
       if: matrix.configurations.compiler == 'emscripten'
@@ -115,12 +100,12 @@ jobs:
         emcmake cmake -S . -B ../build -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DENABLE_TESTING=ON -DCMAKE_CROSSCOMPILING_EMULATOR=${SYSTEM_NODE}
 
     - name: Build
-      if: matrix.configurations.compiler != 'gcc12' || matrix.cmake-build-type != 'Debug'
+      if: matrix.configurations.name != env.REFERENCE_CONFIG || matrix.cmake-build-type != 'Debug'
       shell: bash
       run: cmake --build ../build --config ${{ matrix.cmake-build-type }}
 
     - name: Build with Coverage and SonarCube
-      if: matrix.configurations.compiler == 'gcc12' && matrix.cmake-build-type == 'Debug'
+      if: matrix.configurations.name == env.REFERENCE_CONFIG && matrix.cmake-build-type == 'Debug'
       shell: bash
       run: build-wrapper-linux-x86-64 --out-dir ${{ env.BUILD_WRAPPER_OUT_DIR }} cmake --build ../build --config ${{ matrix.cmake-build-type }}
 
@@ -154,7 +139,7 @@ jobs:
       run: bash <(curl -Ls https://coverage.codacy.com/get.sh) report -r coverage.xml --skip --project-token ${{ secrets.CODACY_PROJECT_TOKEN }}
 
     - name: Run sonar-scanner
-      if: matrix.configurations.compiler == 'gcc12' && matrix.cmake-build-type == 'Debug'
+      if: matrix.configurations.name == env.REFERENCE_CONFIG && matrix.cmake-build-type == 'Debug'
       shell: bash
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
