@@ -1,11 +1,9 @@
-
 # Code formatting
 
 Use `clang-format` for all your C++ formatting needs.
 It is advisable to set up your editor to run `clang-format` on save,
 or to define a Git hook that checks the formatting on commit.
 Otherwise, the code will be rejected by the CI.
-
 
 # C++ standard version
 
@@ -14,7 +12,6 @@ by the latest stable versions of GCC and Clang.
 
 Non-0mq-related parts of the project should also be compilable
 to WebAssembly with Emscripten.
-
 
 # External dependencies
 
@@ -26,7 +23,6 @@ cases:
   a future C++ version in some form or another (such as refl-cpp and fmt);
 - they are small enough to be incorporated into this project
   and a fork be developed and maintained inside of this project.
-
 
 # Tests and examples
 
@@ -40,12 +36,10 @@ to drive the API design, but is not required as API
 if most likely to go through several review revisions
 before getting merged.
 
-
 # Comments
 
 Use comments when they would make the code more understandable.
 Don't write useless comments.
-
 
 # CamelCase versus snake_case
 
@@ -72,7 +66,6 @@ Exceptions to the CamelCase rule:
   be a part of `<algorithm>`, etc.
 
   Template parameter names should still be CamelCase.
-
 
 # Structures and classes
 
@@ -114,18 +107,18 @@ the move semantics.
 
 This includes:
 
- - local variables;
- - function arguments that are passed in as pointers or references;
- - member functions that don't modify the object
-   (also add `[[nodiscard]]` to the return type of those member functions);
- - use `const_iterators` and `std::as_const` instead of normal iterators.
+- local variables;
+- function arguments that are passed in as pointers or references;
+- member functions that don't modify the object
+  (also add `[[nodiscard]]` to the return type of those member functions);
+- use `const_iterators` and `std::as_const` instead of normal iterators.
 
 Exceptions:
 
- - don't declare member variables as `const` as it disables the move
-   constructor and the move assignment operator;
- - don't declare normal variables as `const` if they could otherwise
-   be `std::move`d to the function result or when passing to another function.
+- don't declare member variables as `const` as it disables the move
+  constructor and the move assignment operator;
+- don't declare normal variables as `const` if they could otherwise
+  be `std::move`d to the function result or when passing to another function.
 
 ## constexpr
 
@@ -146,7 +139,7 @@ Don't overuse `auto`. It is fine:
 
 Raw pointers are fine if:
 
-- they are required for interfacing with a C library 
+- they are required for interfacing with a C library
   (prefer wrapping them into a RAII-enabled type);
 - they are non-owning;
 - they have a semantic of `optional<T&>` -- that is, they are used to denote
@@ -195,14 +188,12 @@ Prefer concepts to `static_assert` if the compile-time restriction
 is expected to be checkable in other parts of the code (for example,
 checking whether a function is callable with a specified argument type).
 
-
 ## Other modern C++ features
 
 - Use enum classes instead of enums unless interfacing with a C library;
 - use `override` and `final` (if virtual member functions are not replaceable
-        with a compile-time dispatch alternative);
+  with a compile-time dispatch alternative);
 - never use `NULL` or `0` for pointers, use `nullptr` instead;
-
 
 # C++ idioms
 
@@ -220,7 +211,6 @@ the copy/move-and-swap idiom:
 
 https://en.wikibooks.org/wiki/More_C%2B%2B_Idioms/Copy-and-swap
 
-
 # General coding practices
 
 - Minimize variable scope. Don't define variables until they are used;
@@ -232,7 +222,6 @@ https://en.wikibooks.org/wiki/More_C%2B%2B_Idioms/Copy-and-swap
 
 Consult [C++ Core Guidelines](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines) when in doubt.
 
-
 # Hints with using Emscripten
 
 ## Chromium
@@ -242,6 +231,3 @@ install https://goo.gle/wasm-debugging-extension
 ```shell
 echo --auto-open-devtools-for-tabs >> ~/config/chromium-flags.conf
 ```
-
-
-
