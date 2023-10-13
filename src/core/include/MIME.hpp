@@ -31,7 +31,7 @@ public:
     constexpr std::string_view                  typeName() const noexcept { return _typeName; }
     constexpr std::string_view                  description() const noexcept { return _description; }
     constexpr std::span<const std::string_view> fileExtensions() const noexcept { return std::span<const std::string_view>(_fileExtensions.begin(), _N); };
-    constexpr explicit(false)                   operator const char *() const noexcept { return _typeName.data(); }
+    constexpr explicit(false) operator const char *() const noexcept { return _typeName.data(); }
 #if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
     constexpr explicit(false) operator std::string() const noexcept { return _typeName.data(); }
 #endif
@@ -157,7 +157,7 @@ constexpr const MimeType &getType(const std::string_view &mimeType) noexcept {
     }
     if (std::is_constant_evaluated()) {
         std::size_t    index            = SIZE_MAX;
-        constexpr auto lowerCaseCompare = [](const char ch1, const char ch2) constexpr noexcept->bool { return detail::toLower(ch1) == detail::toLower(ch2); };
+        constexpr auto lowerCaseCompare = [](const char ch1, const char ch2) constexpr noexcept -> bool { return detail::toLower(ch1) == detail::toLower(ch2); };
         detail::static_for<std::size_t, 0, ALL.size()>([&](auto i) {
             constexpr auto type = std::get<i>(ALL);
             if (std::search(mimeType.begin(), mimeType.end(), type.typeName().begin(), type.typeName().end(), lowerCaseCompare) != mimeType.end()) {
