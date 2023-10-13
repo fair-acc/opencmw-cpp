@@ -1,4 +1,3 @@
-
 add_executable(dns_tests dns_tests.cpp)
 
 target_link_libraries(dns_tests PUBLIC services Catch2::Catch2)
