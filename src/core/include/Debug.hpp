@@ -90,9 +90,9 @@ private:
 
 #ifdef NDEBUG
 #define DEBUG_VARIABLES(...)
-#define DEBUG_LOG(msg)
-#define DEBUG_FINISH(msg)
-#define DEBUG_LOG_EVERY_SECOND(msg)
+#define DEBUG_LOG(msg) msg;
+#define DEBUG_FINISH(msg) msg;
+#define DEBUG_LOG_EVERY_SECOND(msg) msg;
 #else
 
 #define _DEBUG_PREFIXES_1 ""
