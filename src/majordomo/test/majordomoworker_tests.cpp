@@ -184,7 +184,7 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
     BrokerMessageNode subClient(broker.context, ZMQ_SUB);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
     REQUIRE(subClient.connect(opencmw::majordomo::INTERNAL_ADDRESS_PUBLISHER));
-    const char *testSubscription = "/newAddress?ctx=FAIR.SELECTOR.C%3D1";
+    constexpr auto testSubscription = std::string_view("/newAddress?ctx=FAIR.SELECTOR.C%3D1");
     REQUIRE(subClient.subscribe(testSubscription));
 
     {
@@ -311,7 +311,9 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
         };
         REQUIRE(worker.notify("/newAddress", TestContext{ .ctx = opencmw::TimingCtx(1), .contentType = opencmw::MIME::JSON }, entry));
         REQUIRE(worker.activeSubscriptions().size() == 1);
-        REQUIRE(std::string_view(testSubscription).starts_with(worker.activeSubscriptions().begin()->serialized()));
+        REQUIRE(worker.activeSubscriptions().begin()->service() == "addressbook");
+        REQUIRE(worker.activeSubscriptions().begin()->path() == "/newAddress");
+        REQUIRE(worker.activeSubscriptions().begin()->params() == SubscriptionData::map{{"ctx", "FAIR.SELECTOR.C=1"}});
     }
 
     {

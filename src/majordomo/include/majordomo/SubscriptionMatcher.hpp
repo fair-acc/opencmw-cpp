@@ -91,6 +91,11 @@ public:
         return SubscriptionData(""s, uri.path().value_or(""s), uri.queryParamMap());
     }
 
+    template<typename TURI>
+    static SubscriptionData fromURIAndServiceName(const TURI &uri, std::string_view serviceName) {
+       return SubscriptionData(serviceName, uri.path().value_or(""s), uri.queryParamMap());
+    }
+
     std::string serialized() const {
         return URI<RELAXED>::factory().path(std::string(_path)).setQuery(_params).build().str();
     }

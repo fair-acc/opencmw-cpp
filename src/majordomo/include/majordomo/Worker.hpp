@@ -255,9 +255,9 @@ private:
             return true;
         }
 
-        const auto topicString = data.substr(1);
-        // const auto topic       = URI<RELAXED>(std::string(topicString));
-        const SubscriptionData subscription(serviceName.data(), topicString, {});
+        const auto topicString  = data.substr(1);
+        const auto topicUrl     = URI<RELAXED>(std::string(topicString));
+        const auto subscription = SubscriptionData::fromURIAndServiceName(topicUrl, serviceName.data());
 
         // this assumes that the broker does the subscribe/unsubscribe counting
         // for multiple clients and sends us a single sub/unsub for each topic
@@ -274,9 +274,9 @@ private:
 
     bool receiveNotificationMessage() {
         if (auto message = zmq::receive<mdp::MessageFormat::WithoutSourceId>(_notifyListenerSocket)) {
-            // const auto topic                    = URI<RELAXED>(std::string(message->topic()));
-            const SubscriptionData currentSubscription(message->serviceName, message->endpoint.str(), {});
-            const auto             matchesNotificationTopic = [this, &currentSubscription](const auto &activeSubscription) {
+            const auto currentSubscription = SubscriptionData::fromURIAndServiceName(message->endpoint, message->serviceName);
+
+            const auto matchesNotificationTopic = [this, &currentSubscription](const auto &activeSubscription) {
                 return _subscriptionMatcher(currentSubscription, activeSubscription);
             };
 

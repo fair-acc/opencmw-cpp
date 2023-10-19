@@ -514,8 +514,7 @@ private:
         auto [it, inserted] = _subscribedTopics.try_emplace(topic, 0);
         it->second++;
         if (it->second == 1) {
-            // auto topicStr = topic.serialized();
-            auto topicStr = topic.path();
+            const auto topicStr = topic.serialized();
             zmq::invoke(zmq_setsockopt, _subSocket, ZMQ_SUBSCRIBE, topicStr.data(), topicStr.size()).assertSuccess();
         }
     }
@@ -525,7 +524,7 @@ private:
         if (it != _subscribedTopics.end()) {
             it->second--;
             if (it->second == 0) {
-                auto topicStr = topic.serialized();
+                const auto topicStr = topic.serialized();
                 zmq::invoke(zmq_setsockopt, _subSocket, ZMQ_UNSUBSCRIBE, topicStr.data(), topicStr.size()).assertSuccess();
                 _subscribedTopics.erase(it);
             }
@@ -581,7 +580,7 @@ private:
                 return true;
             }
             case mdp::Command::Subscribe: {
-                SubscriptionData subscription(message.serviceName, message.endpoint.str(), {});
+                const auto subscription = SubscriptionData::fromURIAndServiceName(message.endpoint, message.serviceName);
 
                 subscribe(subscription);
 
@@ -590,7 +589,7 @@ private:
                 return true;
             }
             case mdp::Command::Unsubscribe: {
-                SubscriptionData subscription(message.serviceName, message.endpoint.str(), {});
+                const auto subscription = SubscriptionData::fromURIAndServiceName(message.endpoint, message.serviceName);
 
                 unsubscribe(subscription);
 
@@ -678,7 +677,7 @@ private:
     }
 
     void dispatchMessageToMatchingSubscribers(BrokerMessage &&message) {
-        SubscriptionData subscription(message.serviceName, message.endpoint.str(), {});
+        const auto subscription = SubscriptionData::fromURIAndServiceName(message.endpoint, message.serviceName);
 
         // TODO avoid clone() for last message sent out
         for (const auto &[topic, _] : _subscribedTopics) {
