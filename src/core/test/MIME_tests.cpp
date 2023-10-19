@@ -44,6 +44,6 @@ TEST_CASE("basic access", "[MIME]") {
     REQUIRE(MIME::getTypeByFileName("") == MIME::UNKNOWN);
     REQUIRE(MIME::getTypeByFileName("FileName.unknown") == MIME::UNKNOWN);
 
-    const char* _typeN  = MIME::TEXT;
+    const char *_typeN = MIME::TEXT;
     REQUIRE(_typeN == "text/plain");
 }

@@ -14,6 +14,8 @@
 #include <majordomo/RestBackend.hpp>
 #endif
 
+namespace fs = std::filesystem;
+
 #ifndef __EMSCRIPTEN__
 class FileDeleter {
 public:
@@ -72,7 +74,14 @@ public:
     }
 };
 
-TEST_CASE("type tests", "[DNS") {
+class NoSaveDataStorage : public TestDataStorage {
+    bool saveDataToFile(const char *filepath) {
+        std::cout << "good day sir; i am here, in the save file" << std::endl;
+        throw std::logic_error{ "I am supposed to be" };
+    }
+};
+
+TEST_CASE("type tests", "[DNS]") {
     SECTION("FlatEntryList") {
         std::vector<Entry> entries{ entry_a, entry_b, entry_c };
         FlatEntryList      response{ { entry_a, entry_b, entry_c } };
@@ -95,6 +104,39 @@ TEST_CASE("type tests", "[DNS") {
         REQUIRE(qh == entry_a);
         REQUIRE(qh == entry_b);
     }
+}
+
+TEST_CASE("data storage - create, destroy") {
+    {
+        std::string filename{ "./dns_data_storage.yas" };
+        fs::path    filePath(filename);
+        if (fs::exists(filePath)) {
+            try {
+                fs::perms existing_perms = fs::status(filePath).permissions();
+                fs::permissions(filePath, existing_perms | fs::perms::owner_write);
+            } catch (const std::filesystem::filesystem_error &ex) {
+                std::cerr << "Error: " << ex.what() << std::endl;
+            }
+        }
+
+        DataStorage ds;
+        // Do some work here...
+        if (fs::exists(filePath)) {
+        } else {
+            std::ofstream outputFile(filePath);
+            std::cout << "created file" << std::endl;
+        }
+
+        // Remove owner's write permission
+        try {
+            fs::permissions(filePath, fs::status(filePath).permissions() & ~fs::perms::owner_write);
+        } catch (const std::filesystem::filesystem_error &ex) {
+            std::cerr << "Error: " << ex.what() << std::endl;
+        }
+        ds.addEntry(entry_a);
+    }
+
+    FileDeleter fd;
 }
 
 TEST_CASE("data storage - Adding Entries", "[DNS]") {

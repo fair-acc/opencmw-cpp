@@ -124,7 +124,7 @@ bool DataStorage<EntryType, FilterType, SerialiseType>::saveDataToFile(const cha
     opencmw::serialise<opencmw::YaS>(outBuffer, k);
 
     std::ofstream os{ filepath, std::ios::binary };
-    if (!os.is_open()) return false;
+    if (!os.is_open()) throw std::runtime_error("Could not open file for writing DataStorage");
 
     os.write(reinterpret_cast<const char *>(outBuffer.data()), static_cast<long>(outBuffer.size()));
 

@@ -155,6 +155,8 @@ constexpr const MimeType &getType(const std::string_view &mimeType) noexcept {
     if (mimeType.empty()) {
         return UNKNOWN;
     }
+    //   this code is evaluated and tested at compile time and cannot be tracked by the coverage program
+    // LCOV_EXCL_START
     if (std::is_constant_evaluated()) {
         std::size_t    index            = SIZE_MAX;
         constexpr auto lowerCaseCompare = [](const char ch1, const char ch2) constexpr noexcept -> bool { return detail::toLower(ch1) == detail::toLower(ch2); };
@@ -166,6 +168,7 @@ constexpr const MimeType &getType(const std::string_view &mimeType) noexcept {
         });
         return (index == SIZE_MAX) ? UNKNOWN : ALL[index];
     }
+    // LCOV_EXCL_STOP
 
     for (const MimeType &type : ALL) {
         // N.B.mimeType may contain several MIME types, e.g "image/webp,image/apng,image/*"
