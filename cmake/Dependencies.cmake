@@ -34,10 +34,12 @@ FetchContent_MakeAvailable(gsl-lite fmt)
 set(gsl-lite_DIR ${gsl-lite_BINARY_DIR})
 set(fmt_DIR ${fmt_BINARY_DIR})
 
+set(mp_units_patch_command git apply "${CMAKE_CURRENT_SOURCE_DIR}/patches/mp-units-disable-broken-ctad.diff")
 FetchContent_Declare(
         mp-units
         GIT_REPOSITORY https://github.com/mpusz/units.git
         GIT_TAG v0.8.0
+        PATCH_COMMAND ${mp_units_patch_command}
         SOURCE_SUBDIR src/
 )
 
