@@ -46,4 +46,7 @@ TEST_CASE("basic access", "[MIME]") {
 
     const char *_typeN = MIME::TEXT;
     REQUIRE(_typeN == "text/plain");
+
+    std::vector<opencmw::MIME::MimeType> v{ MIME::TEXT, MIME::JAR };
+    std::cout << v;
 }

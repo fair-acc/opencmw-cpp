@@ -196,6 +196,8 @@ constexpr const MimeType &getTypeByFileName(const std::string_view &fileName) {
         return ending.size() <= value.size() ? std::equal(ending.rbegin(), ending.rend(), value.rbegin(), lowerCaseCompare) : false;
     };
 
+    //   this code is evaluated and tested at compile time and cannot be tracked by the coverage program
+    // LCOV_EXCL_START
     if (std::is_constant_evaluated()) {
         std::size_t index = SIZE_MAX;
         detail::static_for<std::size_t, 0, ALL.size()>([&](auto i) {
@@ -209,6 +211,7 @@ constexpr const MimeType &getTypeByFileName(const std::string_view &fileName) {
         });
         return (index == SIZE_MAX) ? UNKNOWN : ALL[index];
     }
+    // LCOV_EXCL_STOP
 
     for (const MimeType &type : ALL) {
         for (const auto &ending : type.fileExtensions()) {

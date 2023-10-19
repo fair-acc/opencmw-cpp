@@ -40,7 +40,7 @@ public:
 #else
 class FileDeleter {
 public:
-    FileDeleter(std::string filename) {}
+    FileDeleter(std::string filename = "") {}
 };
 #endif // __EMSCRIPTEN__
 
