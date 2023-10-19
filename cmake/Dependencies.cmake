@@ -37,7 +37,7 @@ set(fmt_DIR ${fmt_BINARY_DIR})
 FetchContent_Declare(
         mp-units
         GIT_REPOSITORY https://github.com/mpusz/units.git
-        GIT_TAG 23debc34e28c1b69a06d458695bef8f3d7b9bbdb
+        GIT_TAG v0.8.0
         SOURCE_SUBDIR src/
 )
 
