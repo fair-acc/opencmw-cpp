@@ -46,7 +46,6 @@ if (typeof XMLHttpRequest === 'undefined') {
                     res.setHeader('Content-Type', 'application/octet-stream');
 
                     // Set the additional headers
-                    res.setHeader('Access-Control-Allow-Origin', '*');
                     res.setHeader('Keep-Alive', 'timeout=5, max=5');
                     res.setHeader('X-OPENCMW-SERVICE-NAME', 'dns');
                     res.setHeader('X-OPENCMW-TOPIC', '//s?signal_type=&signal_unit=&signal_name=&service_type=&service_name=&port=-1&hostname=&protocol=&signal_rate=nan&contextType=application%2Foctet-stream');
