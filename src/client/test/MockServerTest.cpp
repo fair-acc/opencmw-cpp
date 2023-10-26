@@ -62,11 +62,11 @@ TEST_CASE("MockServer Subscription Test", "[mock-server][lambda_handler]") {
     BrokerMessageNode client(context, ZMQ_SUB);
     REQUIRE(client.connect(opencmw::URI<>(server.addressSub())));
 
-    client.subscribe("a.service");
+    client.subscribe(mdp::SubscriptionTopic("a.topic"));
     std::this_thread::sleep_for(10ms); // wait for the subscription to be set-up. todo: investigate more clever way
 
-    server.notify("a.service", "100");
-    server.notify("a.service", "23");
+    server.notify(mdp::SubscriptionTopic("a.topic"), "100");
+    server.notify(mdp::SubscriptionTopic("a.topic"), "23");
 
     {
         auto reply = client.tryReadOne();
@@ -74,7 +74,7 @@ TEST_CASE("MockServer Subscription Test", "[mock-server][lambda_handler]") {
         REQUIRE(reply);
         REQUIRE(reply->data.asString() == "100");
         REQUIRE(reply->command == mdp::Command::Final);
-        REQUIRE(reply->endpoint.str() == "a.service");
+        REQUIRE(reply->endpoint.str() == "/a.topic");
     }
     {
         auto reply = client.tryReadOne();
@@ -82,16 +82,16 @@ TEST_CASE("MockServer Subscription Test", "[mock-server][lambda_handler]") {
         REQUIRE(reply);
         REQUIRE(reply->data.asString() == "23");
         REQUIRE(reply->command == mdp::Command::Final);
-        REQUIRE(reply->endpoint.str() == "a.service");
+        REQUIRE(reply->endpoint.str() == "/a.topic");
     }
 
-    server.notify("a.service", "10");
+    server.notify(mdp::SubscriptionTopic("a.topic"), "10");
     {
         auto reply = client.tryReadOne();
         fmt::print("{}\n", reply.has_value());
         REQUIRE(reply);
         REQUIRE(reply->data.asString() == "10");
         REQUIRE(reply->command == mdp::Command::Final);
-        REQUIRE(reply->endpoint.str() == "a.service");
+        REQUIRE(reply->endpoint.str() == "/a.topic");
     }
 }

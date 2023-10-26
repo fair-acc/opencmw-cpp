@@ -95,7 +95,7 @@ class BasicWorker {
     std::array<zmq_pollitem_t, 3>                            _pollerItems;
     SubscriptionMatcher                                      _subscriptionMatcher;
     mutable std::mutex                                       _activeSubscriptionsLock;
-    std::unordered_set<SubscriptionData>                     _activeSubscriptions;
+    std::unordered_set<mdp::SubscriptionTopic>               _activeSubscriptions;
     zmq::Socket                                              _notifyListenerSocket;
     std::unordered_map<std::thread::id, NotificationHandler> _notificationHandlers;
     std::shared_mutex                                        _notificationHandlersLock;
@@ -128,9 +128,9 @@ public:
         _subscriptionMatcher.addFilter<Filter>(key);
     }
 
-    std::unordered_set<SubscriptionData> activeSubscriptions() const noexcept {
-        std::lock_guard                      lockGuard(_activeSubscriptionsLock);
-        std::unordered_set<SubscriptionData> copy = _activeSubscriptions;
+    std::unordered_set<mdp::SubscriptionTopic> activeSubscriptions() const noexcept {
+        std::lock_guard                            lockGuard(_activeSubscriptionsLock);
+        std::unordered_set<mdp::SubscriptionTopic> copy = _activeSubscriptions;
         return copy;
     }
 
@@ -257,7 +257,7 @@ private:
 
         const auto topicString  = data.substr(1);
         const auto topicUrl     = URI<RELAXED>(std::string(topicString));
-        const auto subscription = SubscriptionData::fromURIAndServiceName(topicUrl, serviceName.data());
+        const auto subscription = mdp::SubscriptionTopic::fromURIAndServiceName(topicUrl, serviceName.data());
 
         // this assumes that the broker does the subscribe/unsubscribe counting
         // for multiple clients and sends us a single sub/unsub for each topic
@@ -274,7 +274,7 @@ private:
 
     bool receiveNotificationMessage() {
         if (auto message = zmq::receive<mdp::MessageFormat::WithoutSourceId>(_notifyListenerSocket)) {
-            const auto currentSubscription = SubscriptionData::fromURIAndServiceName(message->endpoint, message->serviceName);
+            const auto currentSubscription      = mdp::SubscriptionTopic::fromURIAndServiceName(message->endpoint, message->serviceName);
 
             const auto matchesNotificationTopic = [this, &currentSubscription](const auto &activeSubscription) {
                 return _subscriptionMatcher(currentSubscription, activeSubscription);

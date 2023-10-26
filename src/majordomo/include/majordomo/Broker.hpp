@@ -175,7 +175,6 @@ inline std::string findDnsEntry(std::string_view brokerName, std::unordered_map<
 template<role... Roles>
 class Broker {
 private:
-    // Shorten chrono names
     using Clock     = std::chrono::steady_clock;
     using Timestamp = std::chrono::time_point<Clock>;
 
@@ -261,21 +260,21 @@ public:
     const std::string  brokerName;
 
 private:
-    Timestamp                                                   _heartbeatAt = Clock::now() + settings.heartbeatInterval;
-    SubscriptionMatcher                                         _subscriptionMatcher;
-    std::unordered_map<SubscriptionData, std::set<std::string>> _subscribedClientsByTopic; // topic -> client IDs
-    std::unordered_map<SubscriptionData, int>                   _subscribedTopics;         // topic -> subscription count
-    std::unordered_map<std::string, Client>                     _clients;
-    std::unordered_map<std::string, Worker>                     _workers;
-    std::unordered_map<std::string, Service>                    _services;
-    std::unordered_map<std::string, detail::DnsServiceItem>     _dnsCache;
-    std::set<std::string>                                       _dnsAddresses;
-    Timestamp                                                   _dnsHeartbeatAt;
-    bool                                                        _connectedToDns    = false;
+    Timestamp                                                         _heartbeatAt = Clock::now() + settings.heartbeatInterval;
+    SubscriptionMatcher                                               _subscriptionMatcher;
+    std::unordered_map<mdp::SubscriptionTopic, std::set<std::string>> _subscribedClientsByTopic; // topic -> client IDs
+    std::unordered_map<mdp::SubscriptionTopic, int>                   _subscribedTopics;         // topic -> subscription count
+    std::unordered_map<std::string, Client>                           _clients;
+    std::unordered_map<std::string, Worker>                           _workers;
+    std::unordered_map<std::string, Service>                          _services;
+    std::unordered_map<std::string, detail::DnsServiceItem>           _dnsCache;
+    std::set<std::string>                                             _dnsAddresses;
+    Timestamp                                                         _dnsHeartbeatAt;
+    bool                                                              _connectedToDns    = false;
 
-    const IoBuffer                                              _rbac              = IoBuffer("RBAC=ADMIN,abcdef12345");
+    const IoBuffer                                                    _rbac              = IoBuffer("RBAC=ADMIN,abcdef12345");
 
-    std::atomic<bool>                                           _shutdownRequested = false;
+    std::atomic<bool>                                                 _shutdownRequested = false;
 
     // Sockets collection. The Broker class will be used as the handler
     const zmq::Socket             _routerSocket;
@@ -402,7 +401,7 @@ public:
         pollerItems[3].events = ZMQ_POLLIN;
     }
 
-    Broker(const Broker &) = delete;
+    Broker(const Broker &)            = delete;
     Broker &operator=(const Broker &) = delete;
 
     template<typename Filter>
@@ -510,21 +509,21 @@ public:
     }
 
 private:
-    void subscribe(const SubscriptionData &topic) {
+    void subscribe(const mdp::SubscriptionTopic &topic) {
         auto [it, inserted] = _subscribedTopics.try_emplace(topic, 0);
         it->second++;
         if (it->second == 1) {
-            const auto topicStr = topic.serialized();
+            const auto topicStr = topic.toZmqTopic();
             zmq::invoke(zmq_setsockopt, _subSocket, ZMQ_SUBSCRIBE, topicStr.data(), topicStr.size()).assertSuccess();
         }
     }
 
-    void unsubscribe(const SubscriptionData &topic) {
+    void unsubscribe(const mdp::SubscriptionTopic &topic) {
         auto it = _subscribedTopics.find(topic);
         if (it != _subscribedTopics.end()) {
             it->second--;
             if (it->second == 0) {
-                const auto topicStr = topic.serialized();
+                const auto topicStr = topic.toZmqTopic();
                 zmq::invoke(zmq_setsockopt, _subSocket, ZMQ_UNSUBSCRIBE, topicStr.data(), topicStr.size()).assertSuccess();
                 _subscribedTopics.erase(it);
             }
@@ -549,7 +548,7 @@ private:
 
         const auto topicString = data.substr(1);
         const auto topicURI    = URI<RELAXED>(std::string(topicString));
-        const auto topic       = SubscriptionData::fromURI(topicURI);
+        const auto topic       = mdp::SubscriptionTopic::fromURI(topicURI);
 
         if (data[0] == '\x1') {
             subscribe(topic);
@@ -580,7 +579,7 @@ private:
                 return true;
             }
             case mdp::Command::Subscribe: {
-                const auto subscription = SubscriptionData::fromURIAndServiceName(message.endpoint, message.serviceName);
+                const auto subscription = mdp::SubscriptionTopic::fromURIAndServiceName(message.endpoint, message.serviceName);
 
                 subscribe(subscription);
 
@@ -589,7 +588,7 @@ private:
                 return true;
             }
             case mdp::Command::Unsubscribe: {
-                const auto subscription = SubscriptionData::fromURIAndServiceName(message.endpoint, message.serviceName);
+                const auto subscription = mdp::SubscriptionTopic::fromURIAndServiceName(message.endpoint, message.serviceName);
 
                 unsubscribe(subscription);
 
@@ -677,7 +676,7 @@ private:
     }
 
     void dispatchMessageToMatchingSubscribers(BrokerMessage &&message) {
-        const auto subscription = SubscriptionData::fromURIAndServiceName(message.endpoint, message.serviceName);
+        const auto subscription = mdp::SubscriptionTopic::fromURIAndServiceName(message.endpoint, message.serviceName);
 
         // TODO avoid clone() for last message sent out
         for (const auto &[topic, _] : _subscribedTopics) {
@@ -685,7 +684,7 @@ private:
                 auto       copy            = message;
                 const auto subscriptionURI = mdp::Message::URI(std::string(subscription.path()));
                 copy.endpoint              = subscriptionURI;
-                copy.sourceId              = topic.serialized();
+                copy.sourceId              = topic.toZmqTopic();
                 zmq::send(std::move(copy), _pubSocket).assertSuccess();
 
                 const auto it = _subscribedClientsByTopic.find(topic);

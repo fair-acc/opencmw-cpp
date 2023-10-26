@@ -565,8 +565,8 @@ TEST_CASE("Pubsub example using SUB client/DEALER worker", "[broker][pubsub_sub_
     REQUIRE(broker.bind(publisherAddress, BindOption::Pub));
 
     BrokerMessageNode subscriber(broker.context, ZMQ_SUB);
-    REQUIRE(subscriber.connect(publisherAddress, "/a.topic"));
-    REQUIRE(subscriber.subscribe("/other.*"));
+    REQUIRE(subscriber.connect(publisherAddress, mdp::SubscriptionTopic("/a.topic")));
+    REQUIRE(subscriber.subscribe(mdp::SubscriptionTopic("/other.*")));
 
     broker.processMessages();
 
@@ -949,11 +949,11 @@ TEST_CASE("pubsub example using PUB socket (SUB client)", "[broker][pubsub_subcl
     MessageNode publisherTwo(broker.context);
     REQUIRE(publisherTwo.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
-    subscriber.subscribe("/cooking.italian*");
+    subscriber.subscribe(mdp::SubscriptionTopic("/cooking.italian*"));
 
     broker.processMessages();
 
-    subscriber.subscribe("/cooking.indian*");
+    subscriber.subscribe(mdp::SubscriptionTopic("/cooking.indian*"));
 
     broker.processMessages();
 
@@ -1011,7 +1011,7 @@ TEST_CASE("pubsub example using PUB socket (SUB client)", "[broker][pubsub_subcl
         REQUIRE(reply->rbac.asString() == "rbac_worker_2");
     }
 
-    subscriber.unsubscribe("/cooking.italian*");
+    subscriber.unsubscribe(mdp::SubscriptionTopic("/cooking.italian*"));
 
     broker.processMessages();
 
@@ -1072,7 +1072,7 @@ TEST_CASE("BasicWorker run loop quits when broker quits", "[worker]") {
     auto                     quitBroker = std::jthread([&broker]() {
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
         broker.shutdown();
-                        });
+    });
 
     worker.run(); // returns when broker disappears
     quitBroker.join();

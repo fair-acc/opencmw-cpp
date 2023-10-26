@@ -10,6 +10,7 @@ using opencmw::client::SubscriptionClient;
 using opencmw::majordomo::MockServer;
 using opencmw::mdp::Command;
 using opencmw::mdp::Message;
+using opencmw::mdp::SubscriptionTopic;
 using namespace opencmw;
 using namespace std::chrono_literals;
 
@@ -66,17 +67,18 @@ TEST_CASE("Basic Client Subscription Test", "[Client]") {
     std::vector<zmq_pollitem_t> pollitems{};
     SubscriptionClient          subscriptionClient(context, pollitems, 100ms, "subscriptionClientID");
     auto                        uri = URI<uri_check::STRICT>(server.addressSub());
+
     subscriptionClient.connect(uri);
     subscriptionClient.housekeeping(std::chrono::system_clock::now());
 
-    auto        endpoint = URI<uri_check::STRICT>::UriFactory(uri).path("a.service").build();
+    const auto  endpoint = URI<uri_check::STRICT>::UriFactory(uri).path("a.topic").build();
 
     std::string reqId    = "2";
     subscriptionClient.subscribe(endpoint, reqId);
     std::this_thread::sleep_for(50ms); // allow for subscription to be established
 
-    server.notify("/a.service", URI<uri_check::STRICT>::factory(endpoint).addQueryParameter("ctx", "test_ctx1").build().str(), "101");
-    server.notify("/a.service", URI<uri_check::STRICT>::factory(endpoint).addQueryParameter("ctx", "test_ctx2").build().str(), "102");
+    server.notify(SubscriptionTopic("a.topic?ctx=test_ctx1"), "101");
+    server.notify(SubscriptionTopic("a.topic?ctx=test_ctx2"), "102");
 
     Message resultOfNotify1;
     REQUIRE(subscriptionClient.receive(resultOfNotify1));

@@ -8,6 +8,7 @@
 #include <ClientContext.hpp>
 #include <MdpMessage.hpp>
 #include <opencmw.hpp>
+#include <SubscriptionTopic.hpp>
 #include <URI.hpp>
 #include <zmq/ZmqUtils.hpp>
 
@@ -248,15 +249,15 @@ public:
     }
 
     void subscribe(const URI<STRICT> &uri, std::string_view /*reqId*/) override {
-        auto       &con         = findConnection(uri);
-        std::string serviceName = uri.relativeRefNoFragment().value();
+        auto      &con         = findConnection(uri);
+        const auto serviceName = mdp::SubscriptionTopic::fromURI(uri).toZmqTopic();
         assert(!serviceName.empty());
         opencmw::zmq::invoke(zmq_setsockopt, con._socket, ZMQ_SUBSCRIBE, serviceName.data(), serviceName.size()).assertSuccess();
     }
 
     void unsubscribe(const URI<STRICT> &uri, std::string_view /*reqId*/) override {
-        auto       &con         = findConnection(uri);
-        std::string serviceName = uri.relativeRefNoFragment().value();
+        auto      &con         = findConnection(uri);
+        const auto serviceName = mdp::SubscriptionTopic::fromURI(uri).toZmqTopic();
         assert(!serviceName.empty());
         opencmw::zmq::invoke(zmq_setsockopt, con._socket, ZMQ_UNSUBSCRIBE, serviceName.data(), serviceName.size()).assertSuccess();
     }
@@ -396,7 +397,7 @@ public:
                 _requests.insert({ req_id, Request{ .uri = cmd.endpoint, .callback = std::move(cmd.callback), .timestamp_received = cmd.arrivalTime } });
             } else if (cmd.command == mdp::Command::Subscribe) {
                 req_id = _request_id++;
-                _subscriptions.insert({ *cmd.endpoint.relativeRefNoFragment(), Subscription{ .uri = cmd.endpoint, .callback = std::move(cmd.callback), .timestamp_received = cmd.arrivalTime } });
+                _subscriptions.insert({ mdp::SubscriptionTopic::fromURI(cmd.endpoint).toZmqTopic(), Subscription{ .uri = cmd.endpoint, .callback = std::move(cmd.callback), .timestamp_received = cmd.arrivalTime } });
             } else if (cmd.command == mdp::Command::Unsubscribe) {
                 _requests.erase(0); // todo: lookup correct subscription
             }

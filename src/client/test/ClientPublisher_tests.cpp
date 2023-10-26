@@ -69,7 +69,7 @@ TEST_CASE("Basic subscription test", "[ClientContext]") {
     ClientContext clientContext{ std::move(clients) };
     std::this_thread::sleep_for(100ms);
     // subscription
-    auto             endpoint = URI<STRICT>::factory(URI<STRICT>(server.addressSub())).scheme("mds").path("/a.service").addQueryParameter("C", "2").build();
+    auto             endpoint = URI<STRICT>::factory(URI<STRICT>(server.addressSub())).scheme("mds").path("/a.topic").addQueryParameter("C", "2").build();
     std::atomic<int> received{ 0 };
     clientContext.subscribe(endpoint, [&received, &payload](const Message &update) {
         if (update.data.size() == payload.size()) {
@@ -79,7 +79,7 @@ TEST_CASE("Basic subscription test", "[ClientContext]") {
     std::this_thread::sleep_for(100ms); // allow for the subscription request to be processed
     // send notifications
     for (int i = 0; i < 100; i++) {
-        server.notify(*endpoint.relativeRefNoFragment(), payload);
+        server.notify(mdp::SubscriptionTopic::fromURI(endpoint), payload);
     }
     std::this_thread::sleep_for(10ms); // allow for all the notifications to reach the client
     fmt::print("received notifications {}\n", received.load());

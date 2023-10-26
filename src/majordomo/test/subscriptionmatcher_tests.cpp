@@ -9,12 +9,12 @@
 
 #include <charconv>
 
-using opencmw::majordomo::SubscriptionData;
 using opencmw::majordomo::SubscriptionMatcher;
+using opencmw::mdp::SubscriptionTopic;
 
 struct SubscriptionUriMatcher : SubscriptionMatcher {
     bool operator()(const auto &notified, const auto &subscriber) const {
-        return SubscriptionMatcher::operator()(SubscriptionData::fromURI(notified), SubscriptionData::fromURI(subscriber));
+        return SubscriptionMatcher::operator()(SubscriptionTopic::fromURI(notified), SubscriptionTopic::fromURI(subscriber));
     }
 };
 
