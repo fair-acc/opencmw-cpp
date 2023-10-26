@@ -21,6 +21,7 @@ using opencmw::majordomo::Broker;
 using opencmw::majordomo::BrokerMessage;
 using opencmw::majordomo::Settings;
 using opencmw::majordomo::Worker;
+using opencmw::mdp::SubscriptionTopic;
 
 /*
  * This test serves as example on how MajordomoWorker is to be used.
@@ -184,8 +185,7 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
     BrokerMessageNode subClient(broker.context, ZMQ_SUB);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
     REQUIRE(subClient.connect(opencmw::majordomo::INTERNAL_ADDRESS_PUBLISHER));
-    constexpr auto testSubscription = std::string_view("/newAddress?ctx=FAIR.SELECTOR.C%3D1");
-    REQUIRE(subClient.subscribe(testSubscription));
+    REQUIRE(subClient.subscribe(mdp::SubscriptionTopic("/newAddress?ctx=FAIR.SELECTOR.C%3D1")));
 
     {
         auto request            = createClientMessage(mdp::Command::Get);
@@ -313,7 +313,7 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
         REQUIRE(worker.activeSubscriptions().size() == 1);
         REQUIRE(worker.activeSubscriptions().begin()->service() == "addressbook");
         REQUIRE(worker.activeSubscriptions().begin()->path() == "/newAddress");
-        REQUIRE(worker.activeSubscriptions().begin()->params() == SubscriptionData::map{{"ctx", "FAIR.SELECTOR.C=1"}});
+        REQUIRE(worker.activeSubscriptions().begin()->params() == SubscriptionTopic::map{ { "ctx", "FAIR.SELECTOR.C=1" } });
     }
 
     {

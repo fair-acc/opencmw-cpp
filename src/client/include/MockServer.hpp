@@ -15,7 +15,7 @@
 namespace opencmw::majordomo {
 
 /*
- * Very simple mock opencmw server to use for testing. Offers a single int property named "a.service" which can be get/set/subscribed.
+ * Very simple mock opencmw server to use for testing.
  * Does not do any processing on its own, all actions have to be queried explicitly by calling the respective handler.
  * This allows single threaded and reproducible testing of client logic.
  */
@@ -91,29 +91,15 @@ public:
         return true;
     }
 
-    void notify(std::string_view topic, std::string_view value) {
-        auto                                                brokerName  = "";
-        auto                                                serviceName = "a.service";
+    void notify(const mdp::SubscriptionTopic &topic, std::string_view value) {
+        static const auto                                   brokerName  = "";
+        static const auto                                   serviceName = "a.service";
         mdp::BasicMessage<mdp::MessageFormat::WithSourceId> notify;
         notify.protocolName    = mdp::clientProtocol;
         notify.command         = mdp::Command::Final;
         notify.serviceName     = serviceName;
-        notify.endpoint        = mdp::Message::URI(std::string(topic));
-        notify.sourceId        = std::string(topic);
-        notify.clientRequestID = IoBuffer(brokerName);
-        notify.data            = IoBuffer(value.data(), value.size());
-        zmq::send(std::move(notify), _pubSocket.value()).assertSuccess();
-    }
-
-    void notify(std::string_view topic, std::string_view uri, std::string_view value) {
-        auto                                                brokerName  = "";
-        auto                                                serviceName = "a.service";
-        mdp::BasicMessage<mdp::MessageFormat::WithSourceId> notify;
-        notify.protocolName    = mdp::clientProtocol;
-        notify.command         = mdp::Command::Final;
-        notify.serviceName     = serviceName;
-        notify.endpoint        = mdp::Message::URI(std::string(uri));
-        notify.sourceId        = topic;
+        notify.endpoint        = topic.toEndpoint();
+        notify.sourceId        = topic.toZmqTopic();
         notify.clientRequestID = IoBuffer(brokerName);
         notify.data            = IoBuffer(value.data(), value.size());
         zmq::send(std::move(notify), _pubSocket.value()).assertSuccess();

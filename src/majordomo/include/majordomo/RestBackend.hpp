@@ -251,9 +251,9 @@ public:
         , requestResponseSocket(context, ZMQ_SUB)
         , subscriptionInfo(std::move(_subscriptionInfo)) {}
 
-    Connection(const Connection &other) = delete;
+    Connection(const Connection &other)       = delete;
     Connection &operator=(const Connection &) = delete;
-    Connection &operator=(Connection &&) = delete;
+    Connection &operator=(Connection &&)      = delete;
 
     // Here be dragons! This is not to be used after
     // the connection was involved in any threading code

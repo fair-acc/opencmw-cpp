@@ -281,7 +281,7 @@ public:
         return zmq::invoke(zmq_bind, _socket, mdp::toZeroMQEndpoint(address).data()).isValid();
     }
 
-    bool connect(const opencmw::URI<opencmw::STRICT> &address, std::string_view subscription = "") {
+    bool connect(const opencmw::URI<opencmw::STRICT> &address, const mdp::SubscriptionTopic &subscription = {}) {
         auto result = zmq::invoke(zmq_connect, _socket, mdp::toZeroMQEndpoint(address).data());
         if (!result) return false;
 
@@ -292,14 +292,16 @@ public:
         return true;
     }
 
-    bool subscribe(std::string_view subscription) {
-        assert(!subscription.empty());
-        return zmq::invoke(zmq_setsockopt, _socket, ZMQ_SUBSCRIBE, subscription.data(), subscription.size()).isValid();
+    bool subscribe(const mdp::SubscriptionTopic &subscription) {
+        const auto topic = subscription.toZmqTopic();
+        assert(!topic.empty());
+        return zmq::invoke(zmq_setsockopt, _socket, ZMQ_SUBSCRIBE, topic.data(), topic.size()).isValid();
     }
 
-    bool unsubscribe(std::string_view subscription) {
-        assert(!subscription.empty());
-        return zmq::invoke(zmq_setsockopt, _socket, ZMQ_UNSUBSCRIBE, subscription.data(), subscription.size()).isValid();
+    bool unsubscribe(const mdp::SubscriptionTopic &subscription) {
+        const auto topic = subscription.toZmqTopic();
+        assert(!topic.empty());
+        return zmq::invoke(zmq_setsockopt, _socket, ZMQ_UNSUBSCRIBE, topic.data(), topic.size()).isValid();
     }
 
     bool sendRawFrame(std::string data) {
@@ -402,8 +404,8 @@ public:
 
 class NonCopyableMovableHandler {
 public:
-    NonCopyableMovableHandler()                                      = default;
-    NonCopyableMovableHandler(NonCopyableMovableHandler &&) noexcept = default;
+    NonCopyableMovableHandler()                                                 = default;
+    NonCopyableMovableHandler(NonCopyableMovableHandler &&) noexcept            = default;
     NonCopyableMovableHandler &operator=(NonCopyableMovableHandler &&) noexcept = default;
 
     void                       operator()(opencmw::majordomo::RequestContext &) {}
