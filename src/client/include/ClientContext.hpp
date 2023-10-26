@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include <Debug.hpp>
 #include <disruptor/Disruptor.hpp>
 #include <MdpMessage.hpp>
 #include <URI.hpp>
@@ -39,17 +40,24 @@ class ClientContext {
     std::shared_ptr<CmdBufferType>                                      _commandRingBuffer;
     std::shared_ptr<CmdPollerType>                                      _cmdPoller;
     std::unordered_map<std::string, std::reference_wrapper<ClientBase>> _schemeContexts;
-    std::jthread                                                        _poller; // thread polling all the sockets
+    std::atomic_bool                                                    _stop_requested{ false };
+    std::thread                                                         _poller; // thread polling all the sockets
 
 public:
     explicit ClientContext(std::vector<std::unique_ptr<ClientBase>> &&implementations)
         : _contexts(std::move(implementations)), _commandRingBuffer{ std::make_shared<CmdBufferType>() }, _cmdPoller{ _commandRingBuffer->newPoller() } {
         _commandRingBuffer->addGatingSequences({ _cmdPoller->sequence() });
-        _poller = std::jthread([this](const std::stop_token &stopToken) { this->poll(stopToken); });
+        _poller = std::thread([this]() { this->poll(_stop_requested); });
         for (auto &ctx : _contexts) {
             for (auto &scheme : ctx->protocols()) {
                 _schemeContexts.insert({ scheme, std::ref(*ctx) });
             }
+        }
+    }
+
+    ~ClientContext() {
+        if (!_stop_requested) {
+            stop();
         }
     }
 
@@ -67,19 +75,27 @@ public:
         for (auto &ctx : _contexts) {
             ctx->stop();
         }
-        _poller.request_stop(); // request halt to all workers
-        _poller.join();         // wait for all workers to be finished
+        _stop_requested = true;
+        _poller.join(); // wait for all workers to be finished
     }
 
 private:
-    void poll(const std::stop_token &stoken) {
-        while (!stoken.stop_requested()) { // switch to event processor instead of busy spinning
+    void poll(const std::atomic_bool &stop_requested) {
+        while (!stop_requested) { // switch to event processor instead of busy spinning
             _cmdPoller->poll([this](Command &cmd, std::int64_t /*sequenceID*/, bool /*endOfBatch*/) -> bool {
                 if (cmd.command == mdp::Command::Invalid) {
                     return false;
                 }
                 auto &c = getClientCtx(cmd.endpoint);
-                c.request(cmd);
+#ifdef EMSCRIPTEN
+                // this is necessary for fetches to actually be called, as the new thread will start/init/end and then go into js runtime to fetch
+                std::thread ql{ [&c, cmd]() {
+#endif
+                    c.request(cmd);
+#ifdef EMSCRIPTEN
+                } };
+                ql.join();
+#endif
                 return false;
             });
         }

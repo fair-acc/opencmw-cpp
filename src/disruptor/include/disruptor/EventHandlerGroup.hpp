@@ -41,7 +41,8 @@ public:
      */
     std::shared_ptr<EventHandlerGroupType> And(const std::shared_ptr<EventHandlerGroupType> &otherHandlerGroup) {
         std::vector<std::shared_ptr<Sequence>> sequences(_sequences);
-        std::ranges::copy(otherHandlerGroup->_sequences, std::back_inserter(sequences));
+        // std::ranges::copy(otherHandlerGroup->_sequences, std::back_inserter(sequences));
+        std::copy(otherHandlerGroup->_sequences.begin(), otherHandlerGroup->_sequences.end(), std::back_inserter(sequences));
 
         return std::make_shared<EventHandlerGroupType>(_disruptor, _consumerRepository, sequences);
     }
@@ -60,7 +61,8 @@ public:
             sequences.push_back(eventProcessor->sequence());
         }
 
-        std::ranges::copy(_sequences, std::back_inserter(sequences));
+        // std::ranges::copy(_sequences, std::back_inserter(sequences));
+        std::copy(_sequences.begin(), _sequences.end(), std::back_inserter(sequences));
 
         return std::make_shared<EventHandlerGroupType>(_disruptor, _consumerRepository, sequences);
     }

@@ -21,7 +21,7 @@ class MimeType {
     std::string_view                _typeName; // TODO: replace with case-insensitive constexpr std::string once fully supported by both gcc13 and clang?, see http://www.gotw.ca/gotw/029.htm
     std::string_view                _description;
     std::array<std::string_view, 3> _fileExtensions; // N.B. max number '3' of ext is hardcoded TODO: replace with constexpr std::array or std::vector once fully supported by both gcc13 and clang?
-    size_t                          _N;
+    std::size_t                     _N;
 
 public:
     MimeType() = delete;
@@ -30,14 +30,14 @@ public:
         : _typeName(name), _description(description), _fileExtensions{ std::forward<Ts>(ext)... }, _N(sizeof...(Ts)) {}
     constexpr std::string_view                  typeName() const noexcept { return _typeName; }
     constexpr std::string_view                  description() const noexcept { return _description; }
-    constexpr std::span<const std::string_view> fileExtensions() const noexcept { return std::span(_fileExtensions.data(), _N); };
-    constexpr explicit(false)                   operator const char *() const noexcept { return _typeName.data(); }
-#if not defined(__clang__) or (__clang_major__ >= 16)
+    constexpr std::span<const std::string_view> fileExtensions() const noexcept { return std::span<const std::string_view>(_fileExtensions.begin(), _N); };
+    constexpr explicit(false) operator const char *() const noexcept { return _typeName.data(); }
+#if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
     constexpr explicit(false) operator std::string() const noexcept { return _typeName.data(); }
 #endif
     constexpr explicit(false) operator std::string_view() const noexcept { return _typeName; }
 
-#if not defined(__EMSCRIPTEN__) and defined(__clang__) and (__clang_major__ >= 16)
+#if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
     constexpr auto operator<=>(const MimeType &rhs) const noexcept { return _typeName <=> rhs._typeName; }
 #endif
     constexpr bool operator==(const MimeType &rhs) const noexcept { return _typeName == rhs._typeName; }
@@ -155,9 +155,11 @@ constexpr const MimeType &getType(const std::string_view &mimeType) noexcept {
     if (mimeType.empty()) {
         return UNKNOWN;
     }
+    //   this code is evaluated and tested at compile time and cannot be tracked by the coverage program
+    // LCOV_EXCL_START
     if (std::is_constant_evaluated()) {
         std::size_t    index            = SIZE_MAX;
-        constexpr auto lowerCaseCompare = [](const char ch1, const char ch2) constexpr noexcept->bool { return detail::toLower(ch1) == detail::toLower(ch2); };
+        constexpr auto lowerCaseCompare = [](const char ch1, const char ch2) constexpr noexcept -> bool { return detail::toLower(ch1) == detail::toLower(ch2); };
         detail::static_for<std::size_t, 0, ALL.size()>([&](auto i) {
             constexpr auto type = std::get<i>(ALL);
             if (std::search(mimeType.begin(), mimeType.end(), type.typeName().begin(), type.typeName().end(), lowerCaseCompare) != mimeType.end()) {
@@ -166,6 +168,7 @@ constexpr const MimeType &getType(const std::string_view &mimeType) noexcept {
         });
         return (index == SIZE_MAX) ? UNKNOWN : ALL[index];
     }
+    // LCOV_EXCL_STOP
 
     for (const MimeType &type : ALL) {
         // N.B.mimeType may contain several MIME types, e.g "image/webp,image/apng,image/*"
@@ -193,6 +196,8 @@ constexpr const MimeType &getTypeByFileName(const std::string_view &fileName) {
         return ending.size() <= value.size() ? std::equal(ending.rbegin(), ending.rend(), value.rbegin(), lowerCaseCompare) : false;
     };
 
+    //   this code is evaluated and tested at compile time and cannot be tracked by the coverage program
+    // LCOV_EXCL_START
     if (std::is_constant_evaluated()) {
         std::size_t index = SIZE_MAX;
         detail::static_for<std::size_t, 0, ALL.size()>([&](auto i) {
@@ -206,6 +211,7 @@ constexpr const MimeType &getTypeByFileName(const std::string_view &fileName) {
         });
         return (index == SIZE_MAX) ? UNKNOWN : ALL[index];
     }
+    // LCOV_EXCL_STOP
 
     for (const MimeType &type : ALL) {
         for (const auto &ending : type.fileExtensions()) {

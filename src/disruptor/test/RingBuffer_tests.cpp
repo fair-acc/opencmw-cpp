@@ -183,7 +183,7 @@ void ringBufferPollerTest() {
     std::chrono::time_point time_start    = std::chrono::system_clock::now();
     auto                    on_completion = [&time_start]() noexcept { time_start = std::chrono::system_clock::now(); };
     std::barrier            sync_point(2, on_completion);
-    std::jthread            publisher([&sync_point, &publisher, &ringBuffer, &waitingForReader, &fillEventHandler]() {
+    std::thread             publisher([&sync_point, &publisher, &ringBuffer, &waitingForReader, &fillEventHandler]() {
         opencmw::thread::setThreadName("publisher", publisher);
         opencmw::thread::setThreadAffinity(std::array{ true, false}, publisher);
         sync_point.arrive_and_wait();
@@ -199,7 +199,7 @@ void ringBufferPollerTest() {
         } });
 
     using opencmw::disruptor::PollState;
-    std::jthread consumer([&sync_point, &consumer, &received, &poller]() {
+    std::thread consumer([&sync_point, &consumer, &received, &poller]() {
         opencmw::thread::setThreadName("consumer", consumer);
         opencmw::thread::setThreadAffinity(std::array{ false, true }, consumer);
         const auto pollEventHandler = [&received](const int &event, std::int64_t /*sequenceID*/, bool /*endOfBatch*/) {
@@ -248,7 +248,7 @@ TEST_CASE("BlockingQueue two-thread poller (classic)", "[Disruptor]") {
     std::chrono::time_point time_start    = std::chrono::system_clock::now();
     auto                    on_completion = [&time_start]() noexcept { time_start = std::chrono::system_clock::now(); };
     std::barrier            sync_point(2, on_completion);
-    std::jthread            publisher([&sync_point, &queue, &counter, &publisher]() {
+    std::thread             publisher([&sync_point, &queue, &counter, &publisher]() {
         opencmw::thread::setThreadName("publisher", publisher);
         opencmw::thread::setThreadAffinity(std::array{ true, false }, publisher);
         sync_point.arrive_and_wait();
@@ -258,7 +258,7 @@ TEST_CASE("BlockingQueue two-thread poller (classic)", "[Disruptor]") {
         } });
 
     using opencmw::disruptor::PollState;
-    std::jthread consumer([&sync_point, &consumer, &received, &queue]() {
+    std::thread consumer([&sync_point, &consumer, &received, &queue]() {
         opencmw::thread::setThreadName("consumer", consumer);
         opencmw::thread::setThreadAffinity(std::array{ false, true }, consumer);
         sync_point.arrive_and_wait();

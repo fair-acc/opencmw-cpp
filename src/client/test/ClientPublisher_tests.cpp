@@ -58,7 +58,6 @@ TEST_CASE("Basic get/set test", "[ClientContext]") {
     });
     std::this_thread::sleep_for(10ms); // allow the reply to reach the client
     REQUIRE(received == 2);
-    clientContext.stop();
 }
 
 TEST_CASE("Basic subscription test", "[ClientContext]") {

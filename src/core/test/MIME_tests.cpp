@@ -43,4 +43,10 @@ TEST_CASE("basic access", "[MIME]") {
     REQUIRE(MIME::getType("unknown/MIME_TYPE") == MIME::UNKNOWN);
     REQUIRE(MIME::getTypeByFileName("") == MIME::UNKNOWN);
     REQUIRE(MIME::getTypeByFileName("FileName.unknown") == MIME::UNKNOWN);
+
+    const char *_typeN = MIME::TEXT;
+    REQUIRE(_typeN == "text/plain");
+
+    std::vector<opencmw::MIME::MimeType> v{ MIME::TEXT, MIME::JAR };
+    std::cout << v;
 }

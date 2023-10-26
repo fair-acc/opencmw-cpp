@@ -32,7 +32,7 @@ TEST_CASE("serialise/deserialise queries", "[QuerySerialiser][serialisation]") {
             .ctx         = TimingCtx(1, 2, 3, 4)
         };
 
-        const auto map = QueryMap{
+        auto map = QueryMap{
             { "param1", "Hello" },
             { "param2", "42" },
             { "param3", std::nullopt },
@@ -44,6 +44,21 @@ TEST_CASE("serialise/deserialise queries", "[QuerySerialiser][serialisation]") {
         REQUIRE(serialised == map);
         const auto deserialised = query::deserialise<TestQueryClass>(map);
         REQUIRE(v == deserialised);
+
+        map["param2"] = "";
+        TestQueryClass newDeserialised;
+        newDeserialised = query::deserialise<TestQueryClass>(map);
+        // param2 will get skipped and is uninitialized
+        newDeserialised.param2 = v.param2;
+        REQUIRE(newDeserialised == v);
+
+        map.erase(map.find("param2"));
+        std::for_each(map.begin(), map.end(), [](auto &it) { std::cout << it.first; });
+        TestQueryClass newerDeserialised;
+        newerDeserialised = query::deserialise<TestQueryClass>(map);
+        // param2 will get skipped and is uninitialized
+        newerDeserialised.param2 = v.param2;
+        REQUIRE(newerDeserialised == v);
     }
 
     {

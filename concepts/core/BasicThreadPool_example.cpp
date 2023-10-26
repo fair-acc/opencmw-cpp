@@ -21,7 +21,7 @@ int main() {
     // enqueue and add task to list -- w/o return type
     poolWork.execute([] { fmt::print("Hello World from thread '{}'!\n", getThreadName()); });
     // poolWork.execute([]<typename... T>(T&&...args) { fmt::print(fmt::format_string<T...>("Hello World from thread '{}'!\n"), std::forward<T>(args)...); }, getThreadName());
-    poolWork.execute([](const auto &...args) { fmt::print(fmt::runtime("Hello World from thread '{}'!\n"), args...); }, getThreadName());
+    // poolWork.execute([](const auto &...args) { fmt::print(fmt::runtime("Hello World from thread '{}'!\n"), args...); }, getThreadName());
 
     // constexpr auto           func1  = []<typename... T>(T&&...args) { return fmt::format(fmt::format_string<std::string, T...>("thread '{1}' scheduled task '{0}'!\n"), getThreadName(), args...); };
     constexpr auto           func1  = [](const auto &...args) { return fmt::format(fmt::runtime("thread '{1}' scheduled task '{0}'!\n"), getThreadName(), args...); };
@@ -71,9 +71,9 @@ int main() {
 
     for (int testRun = 0; testRun < nTestRun; testRun++) {
         // execute nTasks tasks, each on a new jthreads (N.B. worst case timing <-> base-line benchmark)
-        const auto              start = steady_clock::now();
-        std::atomic<int>        counter(0);
-        std::list<std::jthread> threads;
+        const auto             start = steady_clock::now();
+        std::atomic<int>       counter(0);
+        std::list<std::thread> threads;
         for (int i = 0; i < nTasks; i++) {
             threads.emplace_back([&counter] { std::this_thread::sleep_for(milliseconds(10)); ++counter; counter.notify_one(); });
         }
@@ -84,6 +84,7 @@ int main() {
         std::this_thread::sleep_for(milliseconds(10));
         fmt::print("run {}: {:12} -- dispatching took {:>7} -- execution took {:>7} - #threads: {}\n", testRun, "bare-thread",
                 duration_cast<microseconds>(diff1), duration_cast<milliseconds>(diff2), nTasks);
+        std::for_each(threads.begin(), threads.end(), [](auto &thread) { thread.join(); });
     }
 
     poolWork.requestShutdown();

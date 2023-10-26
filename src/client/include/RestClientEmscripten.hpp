@@ -9,6 +9,7 @@
 #include <unordered_set>
 
 #include <ClientCommon.hpp>
+#include <ClientContext.hpp>
 #include <MIME.hpp>
 #include <URI.hpp>
 
@@ -55,9 +56,9 @@ struct FetchPayload {
     FetchPayload(Command &&_command)
         : command(std::move(_command)) {}
 
-    FetchPayload(const FetchPayload &other)     = delete;
-    FetchPayload(FetchPayload &&other) noexcept = default;
-    FetchPayload &operator=(const FetchPayload &other) = delete;
+    FetchPayload(const FetchPayload &other)                = delete;
+    FetchPayload(FetchPayload &&other) noexcept            = default;
+    FetchPayload &operator=(const FetchPayload &other)     = delete;
     FetchPayload &operator=(FetchPayload &&other) noexcept = default;
 
     void          returnMdpMessage(unsigned short status, std::string_view body, std::string_view errorMsgExt = "") noexcept {
@@ -81,9 +82,9 @@ struct FetchPayload {
                              .error           = errorMsg,
                              .rbac            = IoBuffer() });
         } catch (const std::exception &e) {
-            std::cerr << fmt::format("caught exception '{}' in RestClient::returnMdpMessage(cmd={}, {}: {})", e.what(), command.endpoint, status, body) << std::endl;
+            std::cerr << fmt::format("caught exception '{}' in FetchPayload::returnMdpMessage(cmd={}, {}: {})", e.what(), command.endpoint, status, body) << std::endl;
         } catch (...) {
-            std::cerr << fmt::format("caught unknown exception in RestClient::returnMdpMessage(cmd={}, {}: {})", command.endpoint, status, body) << std::endl;
+            std::cerr << fmt::format("caught unknown exception in FetchPayload::returnMdpMessage(cmd={}, {}: {})", command.endpoint, status, body) << std::endl;
         }
     }
 
@@ -107,9 +108,9 @@ struct SubscriptionPayload : FetchPayload {
         : FetchPayload(std::move(_command))
         , _mimeType(std::move(mimeType)) {}
 
-    SubscriptionPayload(const SubscriptionPayload &other)     = delete;
-    SubscriptionPayload(SubscriptionPayload &&other) noexcept = default;
-    SubscriptionPayload &operator=(const SubscriptionPayload &other) = delete;
+    SubscriptionPayload(const SubscriptionPayload &other)                = delete;
+    SubscriptionPayload(SubscriptionPayload &&other) noexcept            = default;
+    SubscriptionPayload &operator=(const SubscriptionPayload &other)     = delete;
     SubscriptionPayload &operator=(SubscriptionPayload &&other) noexcept = default;
 
     void                 requestNext() {
@@ -169,7 +170,7 @@ struct SubscriptionPayload : FetchPayload {
 };
 } // namespace detail
 
-class RestClient {
+class RestClient : public ClientBase {
     std::string       _name;
     MIME::MimeType    _mimeType;
     std::atomic<bool> _run = true;
@@ -190,18 +191,20 @@ public:
     template<typename... Args>
     explicit(false) RestClient(Args... initArgs)
         : _name(detail::find_argument_value<false, std::string>([] { return "RestClient"; }, initArgs...))
-        , _mimeType(detail::find_argument_value<true, DefaultContentTypeHeader>([this] { return MIME::JSON; }, initArgs...)) {
+        , _mimeType(detail::find_argument_value<true, DefaultContentTypeHeader>([] { return MIME::JSON; }, initArgs...)) {
     }
-    ~RestClient(){ /* RestClient::stop(); TODO */ };
+    ~RestClient() { RestClient::stop(); };
 
-    std::vector<std::string>  protocols() noexcept { return { "http", "https" }; }
+    void                      stop() override{};
+
+    std::vector<std::string>  protocols() noexcept override { return { "http", "https" }; }
 
     [[nodiscard]] std::string name() const noexcept { return _name; }
     // [[nodiscard]] ThreadPoolType threadPool() const noexcept { return _thread_pool; }
     [[nodiscard]] MIME::MimeType defaultMimeType() const noexcept { return _mimeType; }
     [[nodiscard]] std::string    clientCertificate() const noexcept { return _caCertificate; }
 
-    void                         request(Command cmd) {
+    void                         request(Command cmd) override {
         switch (cmd.command) {
         case mdp::Command::Get:
         case mdp::Command::Set:
@@ -265,7 +268,9 @@ private:
         };
 
         // TODO: Pass the payload as POST body: emscripten_fetch(&attr, uri.relativeRef()->data());
-        emscripten_fetch(&attr, URI<>::factory(uri).addQueryParameter("_bodyOverride", body).build().str().data());
+
+        auto d = URI<>::factory(uri).addQueryParameter("_bodyOverride", body).build().str().data();
+        emscripten_fetch(&attr, d);
     }
 
     void startSubscription(Command &&cmd) {

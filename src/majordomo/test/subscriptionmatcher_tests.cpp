@@ -66,11 +66,13 @@ TEST_CASE("Test path and query", "[subscription_matcher][path_and_query]") {
     using TestFilter1 = DomainFilter<Int>;
     using TestFilter2 = DomainFilter<std::string_view>;
     using TestFilter3 = DomainFilter<std::string_view, LessThan>;
+    using TestFilter4 = opencmw::NumberFilter<float>;
     using URI         = opencmw::URI<opencmw::RELAXED>;
     SubscriptionUriMatcher matcher;
     matcher.addFilter<TestFilter1>("testKey1");
     matcher.addFilter<TestFilter2>("testKey2");
     matcher.addFilter<TestFilter3>("testKey3");
+    matcher.addFilter<TestFilter4>("testKey4");
 
     REQUIRE_FALSE(matcher(URI("/property1?testKey1"), URI("/property2?testKey1")));
     REQUIRE(matcher(URI("/property?testKey1"), URI("/property?testKey1")));
@@ -87,6 +89,8 @@ TEST_CASE("Test path and query", "[subscription_matcher][path_and_query]") {
     REQUIRE_FALSE(matcher(URI("/property"), URI("/property?testKey1=42")));
     REQUIRE(matcher(URI("/property?testKey3=abc"), URI("/property?testKey3=bcd")));
     REQUIRE_FALSE(matcher(URI("/property?testKey3=bcd"), URI("/property?testKey3=abc")));
+    REQUIRE(matcher(URI("/property?testKey4=3.33"), URI("/property?testKey4=3.33")));
+    REQUIRE_FALSE(matcher(URI("/property?testKey4=3.33"), URI("/property?testKey4=3.44")));
 }
 
 TEST_CASE("Test timing and context type matching", "[subscription_matcher]") {
