@@ -48,6 +48,7 @@ public:
     SubscriptionTopic() = default;
 
     template<typename PathString>
+        requires(!std::same_as<SubscriptionTopic, std::remove_cvref_t<PathString>>)
     explicit SubscriptionTopic(PathString &&path)
         : SubscriptionTopic(""s, std::forward<PathString>(path), {}) {}
 
