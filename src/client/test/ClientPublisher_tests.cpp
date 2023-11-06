@@ -28,15 +28,20 @@ TEST_CASE("Basic get/set test", "[ClientContext]") {
     auto             endpoint = URI<STRICT>::factory(URI<STRICT>(server.address())).scheme("mdp").path("/a.service").addQueryParameter("C", "2").build();
     std::atomic<int> received{ 0 };
     clientContext.get(endpoint, [&received](const Message &message) {
-        REQUIRE(message.data.size() == 3); // == "100");
+        REQUIRE(message.data.asString() == "100");
+        REQUIRE(message.error == "404");
+        REQUIRE(message.rbac.asString() == "rbac");
         received++;
     });
     std::this_thread::sleep_for(20ms); // allow the request to reach the server
     server.processRequest([&endpoint](auto &&req, auto &reply) {
         REQUIRE(req.command == Command::Get);
         reply.data     = IoBuffer("100");
+        reply.error    = "404";
+        reply.rbac     = IoBuffer("rbac");
         reply.endpoint = Message::URI::factory(endpoint).addQueryParameter("ctx", "test_ctx").build();
     });
+
     std::this_thread::sleep_for(20ms); // hacky: this is needed because the requests are only identified using their uri, so we cannot have multiple requests with identical uris
     auto              testData = std::vector<std::byte>{ std::byte{ 'a' }, std::byte{ 'b' }, std::byte{ 'c' } };
     opencmw::IoBuffer dataSetRequest;
