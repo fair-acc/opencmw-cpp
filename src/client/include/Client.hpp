@@ -132,22 +132,16 @@ public:
         return true;
     }
 
-    static bool handleMessage(const mdp::Message &message, mdp::Message &output) {
-        // subscription updates
+    static bool handleMessage(mdp::Message &message) {
         if (message.command == mdp::Command::Notify || message.command == mdp::Command::Final) {
-            output.arrivalTime = std::chrono::system_clock::now();
-            const auto body    = message.data.asString();
-            output.data.resize(body.size());
-            std::memcpy(output.data.data(), body.begin(), body.size());
-            output.endpoint   = message.endpoint;
-            auto params       = output.endpoint.queryParamMap();
-            auto requestId_sv = message.clientRequestID.asString();
-            if (auto result = std::from_chars(requestId_sv.data(), requestId_sv.data() + requestId_sv.size(), output.id); result.ec == std::errc::invalid_argument || result.ec == std::errc::result_out_of_range) {
-                output.id = 0;
+            message.arrivalTime = std::chrono::system_clock::now();
+            const auto requestId_sv = message.clientRequestID.asString();
+            if (auto result = std::from_chars(requestId_sv.data(), requestId_sv.data() + requestId_sv.size(), message.id); result.ec == std::errc::invalid_argument || result.ec == std::errc::result_out_of_range) {
+                message.id = 0;
             }
             return true;
         }
-        return true;
+        return false;
     }
 
     bool receive(mdp::Message &msg) override {
@@ -156,7 +150,10 @@ public:
                 continue;
             }
             if (auto message = zmq::receive<mdp::MessageFormat::WithoutSourceId>(con._socket)) {
-                return handleMessage(std::move(*message), msg);
+                if (!handleMessage(*message))
+                    return false;
+                msg = std::move(*message);
+                return true;
             }
         }
         return false;
@@ -275,15 +272,17 @@ public:
         return true;
     }
 
-    static bool handleMessage(const mdp::BasicMessage<MessageFormat::WithSourceId> &message, mdp::Message &output) {
+    static bool handleMessage(mdp::BasicMessage<MessageFormat::WithSourceId> &&message, mdp::Message &output) {
         // subscription updates
         if (message.command == mdp::Command::Notify || message.command == mdp::Command::Final) {
             output.arrivalTime = std::chrono::system_clock::now();
-            output.data        = message.data;
+            output.data        = std::move(message.data);
+            output.error       = std::move(message.error);
             // output.serviceName = URI<uri_check::STRICT>(std::string{ message.serviceName() });
-            output.serviceName     = message.sourceId; // temporary hack until serviceName -> 'requestedTopic' and 'topic' -> 'replyTopic'
-            output.endpoint        = message.endpoint;
-            output.clientRequestID = message.clientRequestID;
+            output.serviceName     = std::move(message.sourceId); // temporary hack until serviceName -> 'requestedTopic' and 'topic' -> 'replyTopic'
+            output.endpoint        = std::move(message.endpoint);
+            output.clientRequestID = std::move(message.clientRequestID);
+            output.rbac            = std::move(message.rbac);
             output.id              = 0; // review if this is still needed
             return true;
         }
@@ -295,12 +294,8 @@ public:
             if (con._connectionState != detail::ConnectionState::CONNECTED) {
                 continue;
             }
-            while (true) {
-                if (auto message = zmq::receive<MessageFormat::WithSourceId>(con._socket)) {
-                    return handleMessage(*message, msg);
-                } else {
-                    break;
-                }
+            if (auto message = zmq::receive<MessageFormat::WithSourceId>(con._socket)) {
+                return handleMessage(std::move(*message), msg);
             }
         }
         return false;
