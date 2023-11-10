@@ -34,14 +34,4 @@ if(NOT EMSCRIPTEN)
             Catch2::Catch2
             disruptor)
   catch_discover_tests(disruptor_tests)
-
-  # this one could be enabled with libcpp, eta 0.5-1h
-  add_executable(disruptor_rx_tests catch_main.cpp Rx_tests.cpp)
-  target_link_libraries(
-    disruptor_rx_tests
-    PRIVATE opencmw_project_warnings
-            opencmw_project_options
-            Catch2::Catch2
-            disruptor)
-  catch_discover_tests(disruptor_rx_tests)
 endif()

@@ -45,13 +45,5 @@ add_library(mustache INTERFACE)
 target_include_directories(mustache INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/3rd_party/kainjow)
 add_library(mustache::mustache ALIAS mustache)
 
-set(RXCPP_DISABLE_TESTS_AND_EXAMPLES 1)
-FetchContent_Declare(
-        rxcpp
-        GIT_REPOSITORY https://github.com/ReactiveX/RxCpp
-        GIT_TAG 7f97aa901701343593869acad1ee5a02292f39cf # TODO Change to the latest tested release of RxCpp before making a release of OpenCMW
-)
-FetchContent_MakeAvailable(rxcpp)
-
 FetchContent_MakeAvailable(cpp-httplib zeromq) # libsodium openssl kainjow-mustache
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/contrib) # replace contrib by extras for catch2 v3.x.x
