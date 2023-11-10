@@ -5,12 +5,7 @@ target_include_directories(disruptor INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT
 if(EMSCRIPTEN)
   target_link_libraries(disruptor INTERFACE $<BUILD_INTERFACE:fmt::fmt-header-only> core pthread)
 else()
-  target_link_libraries(
-    disruptor
-    INTERFACE $<BUILD_INTERFACE:fmt::fmt-header-only>
-              core
-              rxcpp
-              pthread)
+  target_link_libraries(disruptor INTERFACE $<BUILD_INTERFACE:fmt::fmt-header-only> core pthread)
 endif()
 
 install(
