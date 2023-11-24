@@ -193,7 +193,7 @@ TEST_CASE("data storage - Renewing Entries") {
 
 TEST_CASE("run services", "[DNS]") {
     FileDeleter                                                 fd;
-    majordomo::Broker<>                                         broker{ "Broker", {} };
+    majordomo::Broker<>                                         broker{ "/Broker", {} };
     std::string                                                 rootPath{ "./" };
     auto                                                        fs = cmrc::assets::get_filesystem();
     majordomo::RestBackend<majordomo::PLAIN_HTTP, decltype(fs)> rest_backend{ broker, fs };
@@ -206,7 +206,7 @@ TEST_CASE("run services", "[DNS]") {
 
 TEST_CASE("client", "[DNS]") {
     FileDeleter                                                 fd;
-    majordomo::Broker<>                                         broker{ "Broker", {} };
+    majordomo::Broker<>                                         broker{ "/Broker", {} };
     std::string                                                 rootPath{ "./" };
     auto                                                        fs = cmrc::assets::get_filesystem();
     majordomo::RestBackend<majordomo::PLAIN_HTTP, decltype(fs)> rest_backend{ broker, fs };
@@ -250,7 +250,7 @@ TEST_CASE("client", "[DNS]") {
 
 TEST_CASE("query", "[DNS]") {
     FileDeleter                                                 fd;
-    majordomo::Broker<>                                         broker{ "Broker", {} };
+    majordomo::Broker<>                                         broker{ "/Broker", {} };
     auto                                                        fs = cmrc::assets::get_filesystem();
     majordomo::RestBackend<majordomo::PLAIN_HTTP, decltype(fs)> rest_backend{ broker, fs };
     DnsWorkerType                                               dnsWorker{ broker, DnsHandler{} };
@@ -259,7 +259,7 @@ TEST_CASE("query", "[DNS]") {
     RunInThread                                                 brokerThread(broker);
     RunInThread                                                 dnsThread(dnsWorker);
 
-    REQUIRE(waitUntilServiceAvailable(broker.context, "dns"));
+    REQUIRE(waitUntilWorkerServiceAvailable(broker.context, dnsWorker));
 
     SECTION("query") {
         auto services = querySignals();

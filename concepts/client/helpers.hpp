@@ -47,7 +47,7 @@ struct rest_test_step {
         requires(command != opencmw::mdp::Command::Set)
         : _client(client), _resultChecker(std::move(resultChecker)), _expectedRepliesCount(expectedRepliesCount) {
         _command.command  = command;
-        _command.endpoint = endpoint;
+        _command.topic    = endpoint;
         _command.callback = [this](const opencmw::mdp::Message &reply) {
             fmt::print("Reply R\"({})\"\n", reply.data.asString());
             if (_resultChecker && !_resultChecker(reply)) {
@@ -66,7 +66,7 @@ struct rest_test_step {
         : _client(client) {
         _command.command  = command;
         _command.data     = opencmw::IoBuffer(new_data.data(), new_data.size());
-        _command.endpoint = endpoint;
+        _command.topic    = endpoint;
         _command.callback = [this](const opencmw::mdp::Message & /*reply*/) {
             next_step();
         };

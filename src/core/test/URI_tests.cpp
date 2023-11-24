@@ -83,15 +83,18 @@ TEST_CASE("query parsing", "[URI][query_parsing]") {
     using TestCase                    = std::pair<std::string, std::unordered_map<std::string, std::optional<std::string>>>;
 
     static const std::array testCases = {
+        TestCase{ "", {} },
         TestCase{ "scheme:/host/property", {} },
         TestCase{ "scheme:/host/property?testKey1=42", { { "testKey1", "42" } } },
+        TestCase{ "?testKey1=42", { { "testKey1", "42" } } },
         TestCase{ "scheme:/host/property?testKey1=42&testKey2=24", { { "testKey1", "42" }, { "testKey2", "24" } } },
-        TestCase{ "scheme:/host/property?k0;k1=v1;k2=v2&k3&k4=", { { "k0", std::nullopt }, { "k1", "v1" }, { "k2", "v2" }, { "k3", std::nullopt }, { "k4", std::nullopt } } }
+        TestCase{ "scheme:/host/property?k0;k1=v1;k2=v2&k3&k4=", { { "k0", std::nullopt }, { "k1", "v1" }, { "k2", "v2" }, { "k3", std::nullopt }, { "k4", std::nullopt } } },
+        TestCase{ "?k0;k1=v1;k2=v2&k3&k4=", { { "k0", std::nullopt }, { "k1", "v1" }, { "k2", "v2" }, { "k3", std::nullopt }, { "k4", std::nullopt } } }
     };
 
-    for (const auto &testCase : testCases) {
-        REQUIRE_NOTHROW(opencmw::URI<>(testCase.first));
-        REQUIRE(opencmw::URI<>(testCase.first).queryParamMap() == testCase.second);
+    for (const auto &[uriString, expectedQuery] : testCases) {
+        REQUIRE_NOTHROW(opencmw::URI<>(uriString));
+        REQUIRE(opencmw::URI<>(uriString).queryParamMap() == expectedQuery);
     }
 }
 

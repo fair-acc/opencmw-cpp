@@ -2,10 +2,9 @@
 #define OPENCMW_MAJORDOMO_SUBSCRIPTIONMATCHER_H
 
 #include <Filters.hpp>
-#include <SubscriptionTopic.hpp>
 #include <TimingCtx.hpp>
+#include <Topic.hpp>
 
-#include <concepts>
 #include <memory>
 
 namespace opencmw::majordomo {
@@ -15,29 +14,26 @@ private:
     std::unordered_map<std::string, std::unique_ptr<opencmw::AbstractFilter>> _filters;
 
 public:
-    using URI = const opencmw::URI<RELAXED>; // relaxed because we need "*"
-
     template<typename Filter>
     void addFilter(const std::string &key) {
         _filters.emplace(key, std::make_unique<Filter>());
     }
 
-    bool operator()(const mdp::SubscriptionTopic &notified, const mdp::SubscriptionTopic &subscriber) const noexcept {
-        return testPathOnly(notified.service(), subscriber.service())
-            && testPathOnly(notified.path(), subscriber.path())
+    bool operator()(const mdp::Topic &notified, const mdp::Topic &subscriber) const noexcept {
+        return notified.service() == subscriber.service()
             && testQueries(notified, subscriber);
     }
 
 private:
-    bool testQueries(const mdp::SubscriptionTopic &notified, const mdp::SubscriptionTopic &subscriber) const noexcept {
-        const auto subscriberQuery = subscriber.params();
+    bool testQueries(const mdp::Topic &notified, const mdp::Topic &subscriber) const noexcept {
+        const auto &subscriberQuery = subscriber.params();
         if (subscriberQuery.empty()) {
             return true;
         }
 
-        const auto notificationQuery = notified.params();
+        const auto &notificationQuery = notified.params();
 
-        auto       doesSatisfy       = [this, &notificationQuery](const auto &subscriptionParam) {
+        auto        doesSatisfy       = [this, &notificationQuery](const auto &subscriptionParam) {
             const auto &key   = subscriptionParam.first;
             const auto &value = subscriptionParam.second;
 
@@ -51,7 +47,7 @@ private:
             assert(filterIt->second);
 
             const auto notifyIt = notificationQuery.find(key);
-            if (notifyIt == notificationQuery.end() && value) {
+            if (notifyIt == notificationQuery.end()) {
                 // specific/required subscription topic but not corresponding filter in notification set
                 return false;
             }
@@ -60,25 +56,6 @@ private:
         };
 
         return std::all_of(subscriberQuery.begin(), subscriberQuery.end(), doesSatisfy);
-    }
-
-    bool testPathOnly(const std::string_view &notified, const std::string_view &subscriber) const {
-        if (subscriber.empty() || std::all_of(subscriber.begin(), subscriber.end(), [](char c) { return std::isblank(c); })) {
-            return true;
-        }
-
-        if (subscriber.find('*') == std::string_view::npos) {
-            return notified == subscriber;
-        }
-
-        auto pathSubscriberView = std::string_view(subscriber);
-
-        if (pathSubscriberView.ends_with("*")) {
-            pathSubscriberView.remove_suffix(1);
-        }
-
-        // match path (leading characters) only - assumes trailing asterisk
-        return notified.starts_with(pathSubscriberView);
     }
 };
 

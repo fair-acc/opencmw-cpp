@@ -2,9 +2,7 @@
 #define OPENCMW_MAJORDOMO_WORKER_H
 #include <array>
 #include <atomic>
-
 #include <chrono>
-#include <concepts>
 #include <shared_mutex>
 #include <string>
 #include <thread>
@@ -22,6 +20,7 @@
 #include <majordomo/Constants.hpp>
 #include <majordomo/Rbac.hpp>
 #include <majordomo/Settings.hpp>
+#include <majordomo/SubscriptionMatcher.hpp>
 #include <MdpMessage.hpp>
 #include <MIME.hpp>
 #include <MustacheSerialiser.hpp>
@@ -60,8 +59,6 @@ using description = worker_detail::description_impl<worker_detail::to_type<Value
 
 template<units::basic_fixed_string serviceName, typename... Meta>
 class BasicWorker {
-    static_assert(!serviceName.empty());
-
     using Clock        = std::chrono::steady_clock;
     using Timestamp    = std::chrono::time_point<Clock>;
     using Description  = opencmw::find_type<worker_detail::description_impl, Meta...>;
@@ -95,7 +92,7 @@ class BasicWorker {
     std::array<zmq_pollitem_t, 3>                            _pollerItems;
     SubscriptionMatcher                                      _subscriptionMatcher;
     mutable std::mutex                                       _activeSubscriptionsLock;
-    std::unordered_set<mdp::SubscriptionTopic>               _activeSubscriptions;
+    std::unordered_set<mdp::Topic>                           _activeSubscriptions;
     zmq::Socket                                              _notifyListenerSocket;
     std::unordered_map<std::thread::id, NotificationHandler> _notificationHandlers;
     std::shared_mutex                                        _notificationHandlersLock;
@@ -104,6 +101,7 @@ class BasicWorker {
 
 public:
     static constexpr std::string_view name = serviceName.data();
+    static_assert(mdp::isValidServiceName(name));
 
     explicit BasicWorker(opencmw::URI<STRICT> brokerAddress, std::function<void(RequestContext &)> handler, const zmq::Context &context, Settings settings = {})
         : _handler{ std::move(handler) }, _settings{ std::move(settings) }, _brokerAddress{ std::move(brokerAddress) }, _context(context), _notifyListenerSocket(_context, ZMQ_PULL), _notifyAddress(makeNotifyAddress()) {
@@ -128,9 +126,9 @@ public:
         _subscriptionMatcher.addFilter<Filter>(key);
     }
 
-    std::unordered_set<mdp::SubscriptionTopic> activeSubscriptions() const noexcept {
-        std::lock_guard                            lockGuard(_activeSubscriptionsLock);
-        std::unordered_set<mdp::SubscriptionTopic> copy = _activeSubscriptions;
+    std::unordered_set<mdp::Topic> activeSubscriptions() const noexcept {
+        std::lock_guard                lockGuard(_activeSubscriptionsLock);
+        std::unordered_set<mdp::Topic> copy = _activeSubscriptions;
         return copy;
     }
 
@@ -193,7 +191,7 @@ protected:
 
 private:
     std::string makeNotifyAddress() const noexcept {
-        return fmt::format("inproc://workers/{}-{}/notify", serviceName.data(), worker_detail::nextWorkerId());
+        return fmt::format("inproc://workers{}-{}/notify", name, worker_detail::nextWorkerId());
     }
 
     NotificationHandler &notificationHandlerForThisThread() {
@@ -235,7 +233,7 @@ private:
         reply.command         = mdp::Command::Final;
         reply.serviceName     = request.serviceName; // serviceName == clientSourceId
         reply.clientRequestID = request.clientRequestID;
-        reply.endpoint        = request.endpoint;
+        reply.topic           = request.topic;
         reply.rbac            = request.rbac;
         return reply;
     }
@@ -255,18 +253,25 @@ private:
             return true;
         }
 
-        const auto topicString  = data.substr(1);
-        const auto topicUrl     = URI<RELAXED>(std::string(topicString));
-        const auto subscription = mdp::SubscriptionTopic::fromURIAndServiceName(topicUrl, serviceName.data());
+        const auto                topicString = data.substr(1);
+        std::optional<mdp::Topic> subscription;
+        try {
+            subscription = mdp::Topic::fromZmqTopic(topicString);
+        } catch (...) {
+            return false;
+        }
+        if (subscription->service() != name) {
+            return true;
+        }
 
         // this assumes that the broker does the subscribe/unsubscribe counting
         // for multiple clients and sends us a single sub/unsub for each topic
         if (data[0] == '\x1') {
             std::lock_guard lockGuard(_activeSubscriptionsLock);
-            _activeSubscriptions.insert(subscription);
+            _activeSubscriptions.insert(*subscription);
         } else {
             std::lock_guard lockGuard(_activeSubscriptionsLock);
-            _activeSubscriptions.erase(subscription);
+            _activeSubscriptions.erase(*subscription);
         }
 
         return true;
@@ -274,7 +279,7 @@ private:
 
     bool receiveNotificationMessage() {
         if (auto message = zmq::receive<mdp::MessageFormat::WithoutSourceId>(_notifyListenerSocket)) {
-            const auto currentSubscription      = mdp::SubscriptionTopic::fromURIAndServiceName(message->endpoint, message->serviceName);
+            const auto currentSubscription      = mdp::Topic::fromMdpTopic(message->topic);
 
             const auto matchesNotificationTopic = [this, &currentSubscription](const auto &activeSubscription) {
                 return _subscriptionMatcher(currentSubscription, activeSubscription);
@@ -452,13 +457,11 @@ inline void serialiseAndWriteToBody(RequestContext &rawCtx, const ReflectableCla
 }
 
 inline void writeResult(std::string_view workerName, RequestContext &rawCtx, const auto &replyContext, const auto &output) {
-    auto        replyQuery   = query::serialise(replyContext);
-    const auto  baseUri      = rawCtx.reply.endpoint.empty() ? rawCtx.request.endpoint : rawCtx.reply.endpoint;
-    const auto  topicUriOld  = mdp::Message::URI::factory(baseUri).setQuery(std::move(replyQuery)).build();
-    const auto  topicUriNew  = mdp::Message::URI::factory(baseUri).build();
-    const auto &topicUri     = topicUriOld;
+    auto       replyQuery    = query::serialise(replyContext);
+    const auto baseUri       = rawCtx.reply.topic.empty() ? rawCtx.request.topic : rawCtx.reply.topic;
+    const auto topicUri      = mdp::Message::URI::factory(baseUri).setQuery(std::move(replyQuery)).build();
 
-    rawCtx.reply.endpoint    = topicUri;
+    rawCtx.reply.topic       = topicUri;
     const auto replyMimetype = query::getMimeType(replyContext);
     const auto mimeType      = replyMimetype != MIME::UNKNOWN ? replyMimetype : rawCtx.mimeType;
     if (mimeType == MIME::JSON) {
@@ -487,10 +490,10 @@ inline void writeResult(std::string_view workerName, RequestContext &rawCtx, con
 
 inline void writeResultFull(std::string_view workerName, RequestContext &rawCtx, const auto &requestContext, const auto &replyContext, const auto &input, const auto &output) {
     auto       replyQuery    = query::serialise(replyContext);
-    const auto baseUri       = rawCtx.reply.endpoint.empty() ? rawCtx.request.endpoint : rawCtx.reply.endpoint;
+    const auto baseUri       = rawCtx.reply.topic.empty() ? rawCtx.request.topic : rawCtx.reply.topic;
     const auto topicUri      = mdp::Message::URI::factory(baseUri).setQuery(std::move(replyQuery)).build();
 
-    rawCtx.reply.endpoint    = topicUri;
+    rawCtx.reply.topic       = topicUri;
     const auto replyMimetype = query::getMimeType(replyContext);
     const auto mimeType      = replyMimetype != MIME::UNKNOWN ? replyMimetype : rawCtx.mimeType;
     if (mimeType == MIME::JSON) {
@@ -540,7 +543,7 @@ struct HandlerImpl {
     }
 
     void operator()(RequestContext &rawCtx) {
-        const auto  reqTopic          = rawCtx.request.endpoint;
+        const auto  reqTopic          = rawCtx.request.topic;
         const auto  queryMap          = reqTopic.queryParamMap();
 
         ContextType requestCtx        = query::deserialise<ContextType>(queryMap);
@@ -582,12 +585,8 @@ public:
     }
 
     bool notify(const ContextType &context, const OutputType &reply) {
-        return notify("/", context, reply);
-    }
-
-    bool notify(std::string_view path, const ContextType &context, const OutputType &reply) {
         RequestContext rawCtx;
-        rawCtx.reply.endpoint = mdp::Message::URI(std::string(path));
+        rawCtx.reply.topic = URI<>(std::string(Worker::name));
         worker_detail::writeResult(Worker::name, rawCtx, context, reply);
         return BasicWorker<serviceName, Meta...>::notify(std::move(rawCtx.reply));
     }

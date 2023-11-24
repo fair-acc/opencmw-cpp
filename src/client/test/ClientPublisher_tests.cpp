@@ -36,10 +36,10 @@ TEST_CASE("Basic get/set test", "[ClientContext]") {
     std::this_thread::sleep_for(20ms); // allow the request to reach the server
     server.processRequest([&endpoint](auto &&req, auto &reply) {
         REQUIRE(req.command == Command::Get);
-        reply.data     = IoBuffer("100");
-        reply.error    = "404";
-        reply.rbac     = IoBuffer("rbac");
-        reply.endpoint = Message::URI::factory(endpoint).addQueryParameter("ctx", "test_ctx").build();
+        reply.data  = IoBuffer("100");
+        reply.error = "404";
+        reply.rbac  = IoBuffer("rbac");
+        reply.topic = Message::URI::factory(endpoint).addQueryParameter("ctx", "test_ctx").build();
     });
 
     std::this_thread::sleep_for(20ms); // hacky: this is needed because the requests are only identified using their uri, so we cannot have multiple requests with identical uris
@@ -58,8 +58,8 @@ TEST_CASE("Basic get/set test", "[ClientContext]") {
     server.processRequest([&endpoint](auto &&req, auto &reply) {
         REQUIRE(req.command == Command::Set);
         REQUIRE(req.data.asString() == "abc");
-        reply.data     = IoBuffer();
-        reply.endpoint = Message::URI::factory(endpoint).addQueryParameter("ctx", "test_ctx").build();
+        reply.data  = IoBuffer();
+        reply.topic = Message::URI::factory(endpoint).addQueryParameter("ctx", "test_ctx").build();
     });
     std::this_thread::sleep_for(10ms); // allow the reply to reach the client
     REQUIRE(received == 2);
@@ -74,7 +74,7 @@ TEST_CASE("Basic subscription test", "[ClientContext]") {
     ClientContext clientContext{ std::move(clients) };
     std::this_thread::sleep_for(100ms);
     // subscription
-    auto             endpoint = URI<STRICT>::factory(URI<STRICT>(server.addressSub())).scheme("mds").path("/a.topic").addQueryParameter("C", "2").build();
+    auto             endpoint = URI<STRICT>::factory(URI<STRICT>(server.addressSub())).scheme("mds").path("/a.service").addQueryParameter("C", "2").build();
     std::atomic<int> received{ 0 };
     clientContext.subscribe(endpoint, [&received, &payload](const Message &update) {
         if (update.data.size() == payload.size()) {
@@ -84,7 +84,8 @@ TEST_CASE("Basic subscription test", "[ClientContext]") {
     std::this_thread::sleep_for(100ms); // allow for the subscription request to be processed
     // send notifications
     for (int i = 0; i < 100; i++) {
-        server.notify(mdp::SubscriptionTopic::fromURI(endpoint), payload);
+        server.notify("/a.service?C=2", payload); // received by client
+        server.notify("/a.service?C=3", payload); // not received by client
     }
     std::this_thread::sleep_for(10ms); // allow for all the notifications to reach the client
     fmt::print("received notifications {}\n", received.load());

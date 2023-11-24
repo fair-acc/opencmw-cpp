@@ -35,7 +35,7 @@ int main(int argc, char **argv) {
 
     // note: inconsistency: brokerName as ctor argument, worker's serviceName as NTTP
     // note: default roles different from java (has: ADMIN, READ_WRITE, READ_ONLY, ANYONE, NULL)
-    majordomo::Broker primaryBroker("PrimaryBroker", testSettings());
+    majordomo::Broker primaryBroker("/PrimaryBroker", testSettings());
     opencmw::query::registerTypes(SimpleContext(), primaryBroker);
 
     auto fs = cmrc::assets::get_filesystem();
@@ -72,19 +72,19 @@ int main(int argc, char **argv) {
     });
 
     // second broker to test DNS functionalities
-    majordomo::Broker secondaryBroker("SecondaryTestBroker", { .dnsAddress = brokerRouterAddress->str() });
+    majordomo::Broker secondaryBroker("/SecondaryTestBroker", { .dnsAddress = brokerRouterAddress->str() });
     std::jthread      secondaryBrokerThread([&secondaryBroker] {
         secondaryBroker.run();
-         });
+    });
 
     //
-    majordomo::Worker<"helloWorld", SimpleContext, SimpleRequest, SimpleReply, majordomo::description<"A friendly service saying hello">> helloWorldWorker(primaryBroker, HelloWorldHandler());
-    majordomo::Worker<"addressbook", SimpleContext, AddressRequest, AddressEntry>                                                         addressbookWorker(primaryBroker, TestAddressHandler());
-    majordomo::Worker<"addressbookBackup", SimpleContext, AddressRequest, AddressEntry>                                                   addressbookBackupWorker(primaryBroker, TestAddressHandler());
-    majordomo::BasicWorker<"beverages">                                                                                                   beveragesWorker(primaryBroker, TestIntHandler(10));
+    majordomo::Worker<"/helloWorld", SimpleContext, SimpleRequest, SimpleReply, majordomo::description<"A friendly service saying hello">> helloWorldWorker(primaryBroker, HelloWorldHandler());
+    majordomo::Worker<"/addressbook", SimpleContext, AddressRequest, AddressEntry>                                                         addressbookWorker(primaryBroker, TestAddressHandler());
+    majordomo::Worker<"/addressbookBackup", SimpleContext, AddressRequest, AddressEntry>                                                   addressbookBackupWorker(primaryBroker, TestAddressHandler());
+    majordomo::BasicWorker<"/beverages">                                                                                                   beveragesWorker(primaryBroker, TestIntHandler(10));
 
     //
-    ImageServiceWorker<"testImage", majordomo::description<"Returns an image">> imageWorker(primaryBroker, std::chrono::seconds(10));
+    ImageServiceWorker<"/testImage", majordomo::description<"Returns an image">> imageWorker(primaryBroker, std::chrono::seconds(10));
 
     //
     RunInThread runHelloWorld(helloWorldWorker);
@@ -92,7 +92,7 @@ int main(int argc, char **argv) {
     RunInThread runAddressbookBackup(addressbookBackupWorker);
     RunInThread runBeverages(beveragesWorker);
     RunInThread runImage(imageWorker);
-    waitUntilServiceAvailable(primaryBroker.context, "addressbook");
+    waitUntilWorkerServiceAvailable(primaryBroker.context, addressbookWorker);
 
     // Fake message publisher - sends messages on notifier.service
     TestNode<mdp::MessageFormat::WithoutSourceId> publisher(primaryBroker.context);
@@ -102,9 +102,9 @@ int main(int argc, char **argv) {
         {
             std::cerr << "Sending new number (step " << i << ")\n";
             mdp::Message notifyMessage;
-            notifyMessage.endpoint = mdp::Message::URI("/wine");
-            const auto data        = std::to_string(i);
-            notifyMessage.data     = opencmw::IoBuffer(data.data(), data.size());
+            notifyMessage.topic = mdp::Message::URI("/wine");
+            const auto data     = std::to_string(i);
+            notifyMessage.data  = opencmw::IoBuffer(data.data(), data.size());
 
             beveragesWorker.notify(std::move(notifyMessage));
         }
@@ -125,15 +125,15 @@ int main(int argc, char **argv) {
                 .contentType = opencmw::MIME::JSON
             };
 
-            addressbookWorker.notify("/addressbook", context, entry);
+            addressbookWorker.notify(context, entry);
 
             context.testFilter = "main";
             entry.city         = "London";
-            addressbookWorker.notify("/addressbook", context, entry);
+            addressbookWorker.notify(context, entry);
 
             context.testFilter = "alternate";
             entry.city         = "Brighton";
-            addressbookWorker.notify("/addressbook", context, entry);
+            addressbookWorker.notify(context, entry);
         }
 
         std::this_thread::sleep_for(3s);

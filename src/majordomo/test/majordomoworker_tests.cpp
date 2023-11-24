@@ -21,7 +21,7 @@ using opencmw::majordomo::Broker;
 using opencmw::majordomo::BrokerMessage;
 using opencmw::majordomo::Settings;
 using opencmw::majordomo::Worker;
-using opencmw::mdp::SubscriptionTopic;
+using opencmw::mdp::Topic;
 
 /*
  * This test serves as example on how MajordomoWorker is to be used.
@@ -106,7 +106,7 @@ mdp::Message createClientMessage(mdp::Command command) {
 
 TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][majordomoworker][simple_example]") {
     // We run both broker and worker inproc
-    Broker broker("TestBroker", testSettings());
+    Broker broker("/TestBroker", testSettings());
 
     // For subscription matching, it is necessary that broker knows how to handle the query params "ctx" and "contentType".
     // ("ctx" needs to use the TimingCtxFilter, and "contentType" compare the mime types (currently simply a string comparison))
@@ -117,13 +117,13 @@ TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][major
     opencmw::query::registerTypes(TestContext(), broker);
 
     // Create MajordomoWorker with our domain objects, and our TestHandler.
-    Worker<"addressbook", TestContext, AddressQueryRequest, AddressEntry, opencmw::majordomo::description<"An Addressbook service">> worker(broker, TestHandler());
+    Worker<"/addressbook", TestContext, AddressQueryRequest, AddressEntry, opencmw::majordomo::description<"An Addressbook service">> worker(broker, TestHandler());
 
     // Run worker and broker in separate threads
     RunInThread brokerRun(broker);
     RunInThread workerRun(worker);
 
-    REQUIRE(waitUntilServiceAvailable(broker.context, "addressbook"));
+    REQUIRE(waitUntilWorkerServiceAvailable(broker.context, worker));
 
     // The client used here is a simple test client, operating on raw messages.
     // Later, a client class analog to MajordomoWorker, sending AddressQueryRequest, and receiving AddressEntry, could be used.
@@ -132,8 +132,8 @@ TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][major
 
     { // Make sure the API description is returned
         auto request        = createClientMessage(mdp::Command::Get);
-        request.serviceName = "mmi.openapi";
-        request.data        = IoBuffer("addressbook");
+        request.serviceName = "/mmi.openapi";
+        request.data        = IoBuffer("/addressbook");
         client.send(std::move(request));
 
         const auto reply = client.tryReadOne();
@@ -141,7 +141,7 @@ TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][major
         REQUIRE(reply.has_value());
         REQUIRE(reply->protocolName == mdp::clientProtocol);
         REQUIRE(reply->command == mdp::Command::Final);
-        REQUIRE(reply->serviceName == "mmi.openapi");
+        REQUIRE(reply->serviceName == "/mmi.openapi");
         REQUIRE(reply->data.asString() == "An Addressbook service");
         REQUIRE(reply->error == "");
     }
@@ -149,9 +149,9 @@ TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][major
     {
         // Send a request for address with ID 42
         auto request            = createClientMessage(mdp::Command::Get);
-        request.serviceName     = "addressbook";
+        request.serviceName     = "/addressbook";
         request.clientRequestID = IoBuffer("1");
-        request.endpoint        = mdp::Message::URI("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json");
+        request.topic           = mdp::Message::URI("/addressbook?ctx=FAIR.SELECTOR.ALL;contentType=application/json");
         request.data            = IoBuffer("{ \"id\": 42 }");
         client.send(std::move(request));
 
@@ -160,38 +160,38 @@ TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][major
 
         // Assert that the correct reply is received, containing the serialised Address Entry return by TestHandler.
         REQUIRE(reply->command == mdp::Command::Final);
-        REQUIRE(reply->serviceName == "addressbook");
+        REQUIRE(reply->serviceName == "/addressbook");
         REQUIRE(reply->clientRequestID.asString() == "1");
         REQUIRE(reply->error == "");
-        REQUIRE(reply->endpoint.str() == "/addresses?contentType=application%2Fjson&ctx=FAIR.SELECTOR.ALL");
+        REQUIRE(reply->topic == mdp::Message::URI("/addressbook?contentType=application%2Fjson&ctx=FAIR.SELECTOR.ALL"));
         REQUIRE(reply->data.asString() == "{\n\"name\": \"Santa Claus\",\n\"street\": \"Elf Road\",\n\"streetNumber\": 123,\n\"postalCode\": \"88888\",\n\"city\": \"North Pole\",\n\"isCurrent\": false\n}");
     }
 }
 
 TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworker][plain_client][rbac]") {
     using namespace opencmw::majordomo;
-    Broker<ADMIN, ANY> broker("TestBroker", testSettings());
+    Broker<ADMIN, ANY> broker("/TestBroker", testSettings());
     opencmw::query::registerTypes(TestContext(), broker);
 
-    Worker<"addressbook", TestContext, AddressQueryRequest, AddressEntry, rbac<ADMIN, NONE>, description<"API description">> worker(broker, TestHandler());
+    Worker<"/addressbook", TestContext, AddressQueryRequest, AddressEntry, rbac<ADMIN, NONE>, description<"API description">> worker(broker, TestHandler());
     REQUIRE(worker.serviceDescription() == "API description");
 
     RunInThread brokerRun(broker);
     RunInThread workerRun(worker);
 
-    REQUIRE(waitUntilServiceAvailable(broker.context, "addressbook"));
+    REQUIRE(waitUntilWorkerServiceAvailable(broker.context, worker));
 
     MessageNode       client(broker.context);
     BrokerMessageNode subClient(broker.context, ZMQ_SUB);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
     REQUIRE(subClient.connect(opencmw::majordomo::INTERNAL_ADDRESS_PUBLISHER));
-    REQUIRE(subClient.subscribe(mdp::SubscriptionTopic("/newAddress?ctx=FAIR.SELECTOR.C%3D1")));
+    REQUIRE(subClient.subscribe("/addressbook?ctx=FAIR.SELECTOR.C%3D1"));
 
     {
         auto request            = createClientMessage(mdp::Command::Get);
-        request.serviceName     = "addressbook";
+        request.serviceName     = "/addressbook";
         request.clientRequestID = IoBuffer("1");
-        request.endpoint        = mdp::Message::URI("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json");
+        request.topic           = mdp::Message::URI("/addressbook?ctx=FAIR.SELECTOR.ALL;contentType=application/json");
         request.data            = IoBuffer("{ \"id\": 42 }");
         request.rbac            = IoBuffer("RBAC=ADMIN,1234");
         client.send(std::move(request));
@@ -199,19 +199,19 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
         const auto reply = client.tryReadOne();
         REQUIRE(reply.has_value());
         REQUIRE(reply->command == mdp::Command::Final);
-        REQUIRE(reply->serviceName == "addressbook");
+        REQUIRE(reply->serviceName == "/addressbook");
         REQUIRE(reply->clientRequestID.asString() == "1");
         REQUIRE(reply->error == "");
-        REQUIRE(reply->endpoint.str() == "/addresses?contentType=application%2Fjson&ctx=FAIR.SELECTOR.ALL");
+        REQUIRE(reply->topic == mdp::Message::URI("/addressbook?contentType=application%2Fjson&ctx=FAIR.SELECTOR.ALL"));
         REQUIRE(reply->data.asString() == "{\n\"name\": \"Santa Claus\",\n\"street\": \"Elf Road\",\n\"streetNumber\": 123,\n\"postalCode\": \"88888\",\n\"city\": \"North Pole\",\n\"isCurrent\": false\n}");
     }
 
     // GET with unknown role or empty role fails
     for (const auto &role : { "UNKNOWN", "" }) {
         auto request            = createClientMessage(mdp::Command::Get);
-        request.serviceName     = "addressbook";
+        request.serviceName     = "/addressbook";
         request.clientRequestID = IoBuffer("1");
-        request.endpoint        = mdp::Message::URI("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json");
+        request.topic           = mdp::Message::URI("/addressbook?ctx=FAIR.SELECTOR.ALL;contentType=application/json");
         request.data            = IoBuffer("{ \"id\": 42 }");
         const auto body         = fmt::format("RBAC={},1234", role);
         request.rbac            = IoBuffer(body.data(), body.size());
@@ -220,7 +220,7 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
         const auto reply = client.tryReadOne();
         REQUIRE(reply.has_value());
         REQUIRE(reply->command == mdp::Command::Final);
-        REQUIRE(reply->serviceName == "addressbook");
+        REQUIRE(reply->serviceName == "/addressbook");
         REQUIRE(reply->clientRequestID.asString() == "1");
         REQUIRE(reply->error == fmt::format("GET access denied to role '{}'", role));
         REQUIRE(reply->data.asString() == "");
@@ -229,9 +229,9 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
     // request non-existing entry
     {
         auto request            = createClientMessage(mdp::Command::Get);
-        request.serviceName     = "addressbook";
+        request.serviceName     = "/addressbook";
         request.clientRequestID = IoBuffer("2");
-        request.endpoint        = mdp::Message::URI("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json");
+        request.topic           = mdp::Message::URI("/addressbook?ctx=FAIR.SELECTOR.ALL;contentType=application/json");
         request.data            = IoBuffer("{ \"id\": 4711 }");
         request.rbac            = IoBuffer("RBAC=ADMIN,1234");
         client.send(std::move(request));
@@ -249,9 +249,9 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
     // send empty request
     {
         auto request            = createClientMessage(mdp::Command::Get);
-        request.serviceName     = "addressbook";
+        request.serviceName     = "/addressbook";
         request.clientRequestID = IoBuffer("3");
-        request.endpoint        = mdp::Message::URI("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json");
+        request.topic           = mdp::Message::URI("/addressbook?ctx=FAIR.SELECTOR.ALL;contentType=application/json");
         request.data            = IoBuffer("");
         request.rbac            = IoBuffer("RBAC=ADMIN,1234");
         client.send(std::move(request));
@@ -269,9 +269,9 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
     // send request with invalid JSON
     {
         auto request            = createClientMessage(mdp::Command::Get);
-        request.serviceName     = "addressbook";
+        request.serviceName     = "/addressbook";
         request.clientRequestID = IoBuffer("4");
-        request.endpoint        = mdp::Message::URI("/addresses?ctx=FAIR.SELECTOR.ALL;contentType=application/json");
+        request.topic           = mdp::Message::URI("/addressbook?ctx=FAIR.SELECTOR.ALL;contentType=application/json");
         request.data            = IoBuffer("{ \"id\": 42 ]");
         request.rbac            = IoBuffer("RBAC=ADMIN,1234");
         client.send(std::move(request));
@@ -296,7 +296,7 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
             .city         = "Sahara",
             .isCurrent    = true
         };
-        REQUIRE(worker.notify("/newAddress", TestContext{ .ctx = opencmw::TimingCtx(-1, 1, -1, -1), .contentType = opencmw::MIME::JSON }, entry));
+        REQUIRE(worker.notify(TestContext{ .ctx = opencmw::TimingCtx(-1, 1, -1, -1), .contentType = opencmw::MIME::JSON }, entry));
     }
 
     {
@@ -309,19 +309,19 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
             .city         = "Easter Island",
             .isCurrent    = true
         };
-        REQUIRE(worker.notify("/newAddress", TestContext{ .ctx = opencmw::TimingCtx(1), .contentType = opencmw::MIME::JSON }, entry));
-        REQUIRE(worker.activeSubscriptions().size() == 1);
-        REQUIRE(worker.activeSubscriptions().begin()->service() == "addressbook");
-        REQUIRE(worker.activeSubscriptions().begin()->path() == "/newAddress");
-        REQUIRE(worker.activeSubscriptions().begin()->params() == SubscriptionTopic::map{ { "ctx", "FAIR.SELECTOR.C=1" } });
+        REQUIRE(worker.notify(TestContext{ .ctx = opencmw::TimingCtx(1), .contentType = opencmw::MIME::JSON }, entry));
+        const auto activeSubscriptions = worker.activeSubscriptions();
+        REQUIRE(activeSubscriptions.size() == 1);
+        REQUIRE(activeSubscriptions.begin()->service() == "/addressbook");
+        REQUIRE(activeSubscriptions.begin()->params() == Topic::Params{ { "ctx", "FAIR.SELECTOR.C=1" } });
     }
 
     {
         const auto notify = subClient.tryReadOne();
         REQUIRE(notify.has_value());
         REQUIRE(notify->command == mdp::Command::Final);
-        REQUIRE(notify->sourceId == "/newAddress?ctx=FAIR.SELECTOR.C%3D1");
-        REQUIRE(notify->endpoint.str() == "/newAddress");
+        REQUIRE(notify->sourceId == "/addressbook?ctx=FAIR.SELECTOR.C%3D1");
+        REQUIRE(notify->topic == mdp::Message::URI("/addressbook?contentType=application%2Fjson&ctx=FAIR.SELECTOR.C%3D1"));
         REQUIRE(notify->error.empty());
         REQUIRE(notify->data.asString() == "{\n\"name\": \"Easter Bunny\",\n\"street\": \"Carrot Road\",\n\"streetNumber\": 123,\n\"postalCode\": \"88888\",\n\"city\": \"Easter Island\",\n\"isCurrent\": true\n}");
     }

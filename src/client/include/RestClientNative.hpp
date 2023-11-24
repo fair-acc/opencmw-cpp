@@ -229,7 +229,7 @@ private:
                 return {};
             }
 
-            const auto httpError = httplib::detail::status_message(result->status);
+            const auto httpError = httplib::status_message(result->status);
             return fmt::format("{} - {}:{}", result->status, httpError, errorMsgExt.empty() ? result->body : errorMsgExt);
         }();
 
@@ -237,26 +237,26 @@ private:
             cmd.callback(mdp::Message{
                     .id              = 0,
                     .arrivalTime     = std::chrono::system_clock::now(),
-                    .protocolName    = cmd.endpoint.scheme().value(),
+                    .protocolName    = cmd.topic.scheme().value(),
                     .command         = mdp::Command::Final,
                     .clientRequestID = cmd.clientRequestID,
-                    .endpoint        = cmd.endpoint,
+                    .topic           = cmd.topic,
                     .data            = errorMsg ? IoBuffer() : IoBuffer(result->body.data(), result->body.size()),
                     .error           = errorMsg.value_or(""),
                     .rbac            = IoBuffer() });
         } catch (const std::exception &e) {
-            std::cerr << fmt::format("caught exception '{}' in RestClient::returnMdpMessage(cmd={}, {}: {})", e.what(), cmd.endpoint, result->status, result.value().body) << std::endl;
+            std::cerr << fmt::format("caught exception '{}' in RestClient::returnMdpMessage(cmd={}, {}: {})", e.what(), cmd.topic, result->status, result.value().body) << std::endl;
         } catch (...) {
-            std::cerr << fmt::format("caught unknown exception in RestClient::returnMdpMessage(cmd={}, {}: {})", cmd.endpoint, result->status, result.value().body) << std::endl;
+            std::cerr << fmt::format("caught unknown exception in RestClient::returnMdpMessage(cmd={}, {}: {})", cmd.topic, result->status, result.value().body) << std::endl;
         }
     }
 
     void executeCommand(Command &&cmd) const {
         using namespace std::string_literals;
-        std::cout << "RestClient::request(" << (cmd.endpoint.str()) << ")" << std::endl;
-        auto preferredHeader = getPreferredContentTypeHeader(cmd.endpoint);
+        std::cout << "RestClient::request(" << (cmd.topic.str()) << ")" << std::endl;
+        auto preferredHeader = getPreferredContentTypeHeader(cmd.topic);
 
-        auto endpointBuilder = URI<>::factory(cmd.endpoint);
+        auto endpointBuilder = URI<>::factory(cmd.topic);
 
         if (cmd.command == mdp::Command::Set) {
             preferredHeader.insert(std::make_pair("X-OPENCMW-METHOD"s, "PUT"s));
@@ -266,6 +266,7 @@ private:
         auto endpoint = endpointBuilder.build();
 
         auto callback = [&cmd, &preferredHeader, &endpoint]<typename ClientType>(ClientType &client) {
+            client.set_follow_location(true);
             client.set_read_timeout(cmd.timeout); // default keep-alive value
             if (const httplib::Result &result = client.Get(endpoint.relativeRef()->data(), preferredHeader)) {
                 returnMdpMessage(cmd, result);
@@ -276,29 +277,29 @@ private:
                     errorStr << fmt::format(" - SSL error: '{}'", X509_verify_cert_error_string(sslResult));
                 }
 #endif
-                const std::string errorMsg = fmt::format("GET request failed for: '{}' - {} - CHECK_CERTIFICATES: {}", cmd.endpoint.str(), errorStr.str(), CHECK_CERTIFICATES);
+                const std::string errorMsg = fmt::format("GET request failed for: '{}' - {} - CHECK_CERTIFICATES: {}", cmd.topic.str(), errorStr.str(), CHECK_CERTIFICATES);
                 returnMdpMessage(cmd, result, errorMsg);
             }
         };
 
-        if (cmd.endpoint.scheme() && equal_with_case_ignore(cmd.endpoint.scheme().value(), "https")) {
+        if (cmd.topic.scheme() && equal_with_case_ignore(cmd.topic.scheme().value(), "https")) {
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
-            httplib::SSLClient client(cmd.endpoint.hostName().value(), cmd.endpoint.port() ? cmd.endpoint.port().value() : 443);
+            httplib::SSLClient client(cmd.topic.hostName().value(), cmd.topic.port() ? cmd.topic.port().value() : 443);
             client.set_ca_cert_store(_client_cert_store);
             client.enable_server_certificate_verification(CHECK_CERTIFICATES);
             callback(client);
 #else
             throw std::invalid_argument("https is not supported");
 #endif
-        } else if (cmd.endpoint.scheme() && equal_with_case_ignore(cmd.endpoint.scheme().value(), "http")) {
-            httplib::Client client(cmd.endpoint.hostName().value(), cmd.endpoint.port() ? cmd.endpoint.port().value() : 80);
+        } else if (cmd.topic.scheme() && equal_with_case_ignore(cmd.topic.scheme().value(), "http")) {
+            httplib::Client client(cmd.topic.hostName().value(), cmd.topic.port() ? cmd.topic.port().value() : 80);
             callback(client);
             return;
         } else {
-            if (cmd.endpoint.scheme()) {
-                throw std::invalid_argument(fmt::format("unsupported protocol '{}' for endpoint '{}'", cmd.endpoint.scheme(), cmd.endpoint.str()));
+            if (cmd.topic.scheme()) {
+                throw std::invalid_argument(fmt::format("unsupported protocol '{}' for endpoint '{}'", cmd.topic.scheme(), cmd.topic.str()));
             } else {
-                throw std::invalid_argument(fmt::format("no protocol provided for endpoint '{}'", cmd.endpoint.str()));
+                throw std::invalid_argument(fmt::format("no protocol provided for endpoint '{}'", cmd.topic.str()));
             }
         }
     }
@@ -309,20 +310,21 @@ private:
 
     void startSubscription(Command &&cmd) {
         std::scoped_lock lock(_subscriptionLock);
-        if (equal_with_case_ignore(*cmd.endpoint.scheme(), "http")
+        if (equal_with_case_ignore(*cmd.topic.scheme(), "http")
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
-                || equal_with_case_ignore(*cmd.endpoint.scheme(), "https")
+                || equal_with_case_ignore(*cmd.topic.scheme(), "https")
 #endif
         ) {
-            auto it = _subscription1.find(cmd.endpoint);
+            auto it = _subscription1.find(cmd.topic);
             if (it == _subscription1.end()) {
-                auto &client              = _subscription1.try_emplace(cmd.endpoint, httplib::Client(cmd.endpoint.hostName().value(), cmd.endpoint.port().value())).first->second;
+                auto &client = _subscription1.try_emplace(cmd.topic, httplib::Client(cmd.topic.hostName().value(), cmd.topic.port().value())).first->second;
+                client.set_follow_location(true);
 
-                auto  longPollingEndpoint = [&] {
-                    if (!cmd.endpoint.queryParamMap().contains(LONG_POLLING_IDX_TAG)) {
-                        return URI<>::factory(cmd.endpoint).addQueryParameter(LONG_POLLING_IDX_TAG, "Next").build();
+                auto longPollingEndpoint = [&] {
+                    if (!cmd.topic.queryParamMap().contains(LONG_POLLING_IDX_TAG)) {
+                        return URI<>::factory(cmd.topic).addQueryParameter(LONG_POLLING_IDX_TAG, "Next").build();
                     } else {
-                        return URI<>::factory(cmd.endpoint).build();
+                        return URI<>::factory(cmd.topic).build();
                     }
                 }();
 
@@ -347,29 +349,29 @@ private:
                     } else {                                      // failed or server is down -> wait until retry
                         std::this_thread::sleep_for(cmd.timeout); // time-out until potential retry
                         if (_run) {
-                            returnMdpMessage(cmd, result, fmt::format("Long-Polling-GET request failed for {}: {}", cmd.endpoint.str(), static_cast<int>(result.error())));
+                            returnMdpMessage(cmd, result, fmt::format("Long-Polling-GET request failed for {}: {}", cmd.topic.str(), static_cast<int>(result.error())));
                         }
                     }
                 }
             }
         } else {
-            throw std::invalid_argument(fmt::format("unsupported scheme '{}' for requested subscription '{}'", cmd.endpoint.scheme(), cmd.endpoint.str()));
+            throw std::invalid_argument(fmt::format("unsupported scheme '{}' for requested subscription '{}'", cmd.topic.scheme(), cmd.topic.str()));
         }
     }
 
     void stopSubscription(const Command &cmd) {
         // stop subscription that matches URI
         std::scoped_lock lock(_subscriptionLock);
-        if (equal_with_case_ignore(*cmd.endpoint.scheme(), "http")) {
-            auto it = _subscription1.find(cmd.endpoint);
+        if (equal_with_case_ignore(*cmd.topic.scheme(), "http")) {
+            auto it = _subscription1.find(cmd.topic);
             if (it != _subscription1.end()) {
                 it->second.stop();
                 _subscription1.erase(it);
                 return;
             }
-        } else if (equal_with_case_ignore(*cmd.endpoint.scheme(), "https")) {
+        } else if (equal_with_case_ignore(*cmd.topic.scheme(), "https")) {
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
-            auto it = _subscription2.find(cmd.endpoint);
+            auto it = _subscription2.find(cmd.topic);
             if (it != _subscription2.end()) {
                 it->second.stop();
                 _subscription2.erase(it);
@@ -379,7 +381,7 @@ private:
             throw std::runtime_error("https is not supported - enable CPPHTTPLIB_OPENSSL_SUPPORT");
 #endif
         } else {
-            throw std::invalid_argument(fmt::format("unsupported scheme '{}' for requested subscription '{}'", cmd.endpoint.scheme(), cmd.endpoint.str()));
+            throw std::invalid_argument(fmt::format("unsupported scheme '{}' for requested subscription '{}'", cmd.topic.scheme(), cmd.topic.str()));
         }
     }
 

@@ -18,7 +18,7 @@ option(WITH_PERF_TOOL "Build with perf-tools" OFF)
 FetchContent_Declare(
         cpp-httplib
         GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
-        GIT_TAG v0.11.2 # latest v0.11.2
+        GIT_TAG v0.14.2 # latest v0.14.2
 )
 
 # zlib: optional httplib dependency

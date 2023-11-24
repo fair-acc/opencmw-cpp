@@ -8,7 +8,7 @@
 #include <ClientContext.hpp>
 #include <MdpMessage.hpp>
 #include <opencmw.hpp>
-#include <SubscriptionTopic.hpp>
+#include <Topic.hpp>
 #include <URI.hpp>
 #include <zmq/ZmqUtils.hpp>
 
@@ -96,26 +96,26 @@ public:
 
     void get(const URI<STRICT> &uri, std::string_view req_id) override {
         const auto &con     = findConnection(uri);
-        auto        message = createRequestTemplate(mdp::Command::Get, uri.relativeRefNoFragment().value(), req_id);
+        auto        message = createRequestTemplate(mdp::Command::Get, uri, req_id);
         zmq::send(std::move(message), con._socket).assertSuccess();
     }
 
     void set(const URI<STRICT> &uri, std::string_view req_id, const std::span<const std::byte> &request) override {
         const auto &con     = findConnection(uri);
-        auto        message = createRequestTemplate(mdp::Command::Set, uri.relativeRefNoFragment().value(), req_id);
+        auto        message = createRequestTemplate(mdp::Command::Set, uri, req_id);
         message.data        = IoBuffer(reinterpret_cast<const char *>(request.data()), request.size());
         zmq::send(std::move(message), con._socket).assertSuccess();
     }
 
     void subscribe(const URI<STRICT> &uri, std::string_view req_id) override {
         const auto &con     = findConnection(uri);
-        auto        message = createRequestTemplate(mdp::Command::Subscribe, uri.relativeRefNoFragment().value(), req_id);
+        auto        message = createRequestTemplate(mdp::Command::Subscribe, uri, req_id);
         zmq::send(std::move(message), con._socket).assertSuccess();
     }
 
     void unsubscribe(const URI<STRICT> &uri, std::string_view req_id) override {
         const auto &con     = findConnection(uri);
-        auto        message = createRequestTemplate(mdp::Command::Unsubscribe, uri.relativeRefNoFragment().value(), req_id);
+        auto        message = createRequestTemplate(mdp::Command::Unsubscribe, uri, req_id);
         zmq::send(std::move(message), con._socket).assertSuccess();
     }
 
@@ -134,7 +134,7 @@ public:
 
     static bool handleMessage(mdp::Message &message) {
         if (message.command == mdp::Command::Notify || message.command == mdp::Command::Final) {
-            message.arrivalTime = std::chrono::system_clock::now();
+            message.arrivalTime     = std::chrono::system_clock::now();
             const auto requestId_sv = message.clientRequestID.asString();
             if (auto result = std::from_chars(requestId_sv.data(), requestId_sv.data() + requestId_sv.size(), message.id); result.ec == std::errc::invalid_argument || result.ec == std::errc::result_out_of_range) {
                 message.id = 0;
@@ -184,11 +184,13 @@ public:
     }
 
 private:
-    static mdp::Message createRequestTemplate(mdp::Command command, std::string_view serviceName, std::string_view req_id) {
+    static mdp::Message createRequestTemplate(mdp::Command command, const URI<STRICT> &uri, std::string_view req_id) {
+        const auto   subscription = mdp::Topic::fromString(uri.relativeRefNoFragment().value_or(""));
         mdp::Message req;
         req.protocolName    = mdp::clientProtocol;
         req.command         = command;
-        req.serviceName     = std::string(serviceName);
+        req.serviceName     = subscription.service();
+        req.topic           = subscription.toMdpTopic();
         req.clientRequestID = IoBuffer(req_id.data(), req_id.size());
 
         return req;
@@ -246,17 +248,17 @@ public:
     }
 
     void subscribe(const URI<STRICT> &uri, std::string_view /*reqId*/) override {
-        auto      &con         = findConnection(uri);
-        const auto serviceName = mdp::SubscriptionTopic::fromURI(uri).toZmqTopic();
-        assert(!serviceName.empty());
-        opencmw::zmq::invoke(zmq_setsockopt, con._socket, ZMQ_SUBSCRIBE, serviceName.data(), serviceName.size()).assertSuccess();
+        auto      &con   = findConnection(uri);
+        const auto topic = mdp::Topic::fromString(uri.relativeRefNoFragment().value_or("")).toZmqTopic();
+        assert(!topic.empty());
+        opencmw::zmq::invoke(zmq_setsockopt, con._socket, ZMQ_SUBSCRIBE, topic.data(), topic.size()).assertSuccess();
     }
 
     void unsubscribe(const URI<STRICT> &uri, std::string_view /*reqId*/) override {
-        auto      &con         = findConnection(uri);
-        const auto serviceName = mdp::SubscriptionTopic::fromURI(uri).toZmqTopic();
-        assert(!serviceName.empty());
-        opencmw::zmq::invoke(zmq_setsockopt, con._socket, ZMQ_UNSUBSCRIBE, serviceName.data(), serviceName.size()).assertSuccess();
+        auto      &con   = findConnection(uri);
+        const auto topic = mdp::Topic::fromString(uri.relativeRefNoFragment().value_or("")).toZmqTopic();
+        assert(!topic.empty());
+        opencmw::zmq::invoke(zmq_setsockopt, con._socket, ZMQ_UNSUBSCRIBE, topic.data(), topic.size()).assertSuccess();
     }
 
     bool disconnect(detail::Connection &con) {
@@ -280,7 +282,7 @@ public:
             output.error       = std::move(message.error);
             // output.serviceName = URI<uri_check::STRICT>(std::string{ message.serviceName() });
             output.serviceName     = std::move(message.sourceId); // temporary hack until serviceName -> 'requestedTopic' and 'topic' -> 'replyTopic'
-            output.endpoint        = std::move(message.endpoint);
+            output.topic           = std::move(message.topic);
             output.clientRequestID = std::move(message.clientRequestID);
             output.rbac            = std::move(message.rbac);
             output.id              = 0; // review if this is still needed
@@ -389,15 +391,15 @@ public:
         if (cmd.callback) {
             if (cmd.command == mdp::Command::Get || cmd.command == mdp::Command::Set) {
                 req_id = _request_id++;
-                _requests.insert({ req_id, Request{ .uri = cmd.endpoint, .callback = std::move(cmd.callback), .timestamp_received = cmd.arrivalTime } });
+                _requests.insert({ req_id, Request{ .uri = cmd.topic, .callback = std::move(cmd.callback), .timestamp_received = cmd.arrivalTime } });
             } else if (cmd.command == mdp::Command::Subscribe) {
                 req_id = _request_id++;
-                _subscriptions.insert({ mdp::SubscriptionTopic::fromURI(cmd.endpoint).toZmqTopic(), Subscription{ .uri = cmd.endpoint, .callback = std::move(cmd.callback), .timestamp_received = cmd.arrivalTime } });
+                _subscriptions.insert({ mdp::Topic::fromMdpTopic(cmd.topic).toZmqTopic(), Subscription{ .uri = cmd.topic, .callback = std::move(cmd.callback), .timestamp_received = cmd.arrivalTime } });
             } else if (cmd.command == mdp::Command::Unsubscribe) {
                 _requests.erase(0); // todo: lookup correct subscription
             }
         }
-        sendCmd(cmd.endpoint, cmd.command, req_id, cmd.data);
+        sendCmd(cmd.topic, cmd.command, req_id, cmd.data);
     }
 
 private:

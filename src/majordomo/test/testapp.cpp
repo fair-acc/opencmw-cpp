@@ -73,7 +73,7 @@ int main(int argc, char **argv) {
     using opencmw::majordomo::Broker;
     using opencmw::majordomo::Settings;
 
-    static constexpr auto propertyStoreService = units::basic_fixed_string("property_store");
+    static constexpr auto propertyStoreService = units::basic_fixed_string("/property_store");
 
     if (argc < 2) {
         std::cerr << "Usage: majordomo_testapp <broker|client|worker|brokerworker> <options>\n\n"
@@ -102,7 +102,7 @@ int main(int argc, char **argv) {
         const auto pubEndpoint    = argc > 3 ? std::optional<URI>(parseUriOrExit(argv[3])) : std::optional<URI>{};
 
         Context    context;
-        auto       broker        = Broker("test_broker", testSettings());
+        auto       broker        = Broker("/test_broker", testSettings());
         const auto routerAddress = broker.bind(routerEndpoint);
         if (!routerAddress) {
             std::cerr << fmt::format("Could not bind to '{}'\n", routerEndpoint);
@@ -130,11 +130,11 @@ int main(int argc, char **argv) {
 
         auto                              brokerThread = std::jthread([&broker] {
             broker.run();
-                                     });
+        });
 
         auto                              workerThread = std::jthread([&worker] {
             worker.run();
-                                     });
+        });
 
         brokerThread.join();
         workerThread.join();

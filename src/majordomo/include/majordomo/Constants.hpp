@@ -18,7 +18,7 @@ const opencmw::URI<>            INPROC_BROKER              = opencmw::URI<>("inp
 const opencmw::URI<>            INTERNAL_ADDRESS_BROKER    = opencmw::URI<>::factory(INPROC_BROKER).path(SUFFIX_ROUTER).build();
 const opencmw::URI<>            INTERNAL_ADDRESS_PUBLISHER = opencmw::URI<>::factory(INPROC_BROKER).path(SUFFIX_PUBLISHER).build();
 const opencmw::URI<>            INTERNAL_ADDRESS_SUBSCRIBE = opencmw::URI<>::factory(INPROC_BROKER).path(SUFFIX_SUBSCRIBE).build();
-/*constexpr*/ const std::string INTERNAL_SERVICE_NAMES     = "mmi.service";
+/*constexpr*/ const std::string INTERNAL_SERVICE_NAMES     = "/mmi.service";
 const opencmw::URI<>            INTERNAL_SERVICE_NAMES_URI = opencmw::URI<>("/mmi.service");
 } // namespace opencmw::majordomo
 
