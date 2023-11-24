@@ -10,7 +10,7 @@ using opencmw::client::SubscriptionClient;
 using opencmw::majordomo::MockServer;
 using opencmw::mdp::Command;
 using opencmw::mdp::Message;
-using opencmw::mdp::SubscriptionTopic;
+using opencmw::mdp::Topic;
 using namespace opencmw;
 using namespace std::chrono_literals;
 
@@ -34,8 +34,8 @@ TEST_CASE("Basic Client Get/Set Test", "[Client]") {
             REQUIRE(req.command == Command::Get);
             REQUIRE(req.data.empty());
             REQUIRE(req.clientRequestID.asString() == "1");
-            reply.data     = opencmw::IoBuffer("42");
-            reply.endpoint = Message::URI::factory(uri).addQueryParameter("ctx", "test_ctx1").build();
+            reply.data  = opencmw::IoBuffer("42");
+            reply.topic = Message::URI::factory(uri).addQueryParameter("ctx", "test_ctx1").build();
         });
         Message result;
         REQUIRE(client.receive(result));
@@ -50,8 +50,8 @@ TEST_CASE("Basic Client Get/Set Test", "[Client]") {
             REQUIRE(req.command == Command::Set);
             REQUIRE(req.data.asString() == "100");
             REQUIRE(req.clientRequestID.asString() == "2");
-            reply.data     = opencmw::IoBuffer();
-            reply.endpoint = Message::URI::factory(uri).addQueryParameter("ctx", "test_ctx2").build();
+            reply.data  = opencmw::IoBuffer();
+            reply.topic = Message::URI::factory(uri).addQueryParameter("ctx", "test_ctx2").build();
         });
 
         Message result;
@@ -71,14 +71,14 @@ TEST_CASE("Basic Client Subscription Test", "[Client]") {
     subscriptionClient.connect(uri);
     subscriptionClient.housekeeping(std::chrono::system_clock::now());
 
-    const auto  endpoint = URI<uri_check::STRICT>::UriFactory(uri).path("a.topic").build();
+    const auto  endpoint = URI<uri_check::STRICT>::UriFactory(uri).path("/a.service").build();
 
     std::string reqId    = "2";
     subscriptionClient.subscribe(endpoint, reqId);
     std::this_thread::sleep_for(50ms); // allow for subscription to be established
 
-    server.notify(SubscriptionTopic("a.topic?ctx=test_ctx1"), "101");
-    server.notify(SubscriptionTopic("a.topic?ctx=test_ctx2"), "102");
+    server.notify("/a.service?ctx=test_ctx1", "101");
+    server.notify("/a.service?ctx=test_ctx2", "102");
 
     Message resultOfNotify1;
     REQUIRE(subscriptionClient.receive(resultOfNotify1));

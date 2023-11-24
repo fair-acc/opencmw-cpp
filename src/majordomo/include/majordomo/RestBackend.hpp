@@ -27,6 +27,7 @@
 #include <IoSerialiserJson.hpp>
 #include <MustacheSerialiser.hpp>
 #include <ThreadAffinity.hpp>
+#include <Topic.hpp>
 
 // Majordomo
 #include <majordomo/Broker.hpp>
@@ -69,7 +70,7 @@ constexpr std::size_t MAX_CACHED_REPLIES                  = 32;
 
 namespace detail {
 // Provides a safe alternative to getenv
-const char *getEnvFilenameOr(const char *field, const char *defaultValue) {
+inline const char *getEnvFilenameOr(const char *field, const char *defaultValue) {
     const char *result = ::getenv(field);
     if (result == nullptr) {
         result = defaultValue;
@@ -109,7 +110,7 @@ enum class RestMethod {
     Invalid
 };
 
-std::string_view acceptedMimeForRequest(const auto &request) {
+inline std::string_view acceptedMimeForRequest(const auto &request) {
     static constexpr std::array<std::string_view, 3> acceptableMimeTypes = {
         MIME::JSON.typeName(), MIME::HTML.typeName(), MIME::BINARY.typeName()
     };
@@ -160,7 +161,7 @@ bool respondWithError(auto &response, std::string_view message) {
     return true;
 };
 
-bool respondWithServicesList(auto &broker, const httplib::Request &request, httplib::Response &response) {
+inline bool respondWithServicesList(auto &broker, const httplib::Request &request, httplib::Response &response) {
     // Mmi is not a MajordomoWorker, so it doesn't know JSON (TODO)
     const auto acceptedFormat = acceptedMimeForRequest(request);
 
@@ -189,8 +190,8 @@ bool respondWithServicesList(auto &broker, const httplib::Request &request, http
 
                     // sort services, move mmi. services to the end
                     auto serviceLessThan = [](const auto &lhs, const auto &rhs) {
-                        const auto lhsIsMmi = lhs.name.starts_with("mmi.");
-                        const auto rhsIsMmi = rhs.name.starts_with("mmi.");
+                        const auto lhsIsMmi = lhs.name.starts_with("/mmi.");
+                        const auto rhsIsMmi = rhs.name.starts_with("/mmi.");
                         if (lhsIsMmi != rhsIsMmi) {
                             return rhsIsMmi;
                         }
@@ -211,17 +212,10 @@ bool respondWithServicesList(auto &broker, const httplib::Request &request, http
     }
 }
 
-struct SubscriptionInfo {
-    std::string serviceName;
-    std::string topicName;
-    auto        operator<=>(const SubscriptionInfo &other) const = default;
-    bool        operator==(const SubscriptionInfo &other) const  = default;
-};
-
 struct Connection {
-    zmq::Socket      notificationSubscriptionSocket;
-    zmq::Socket      requestResponseSocket;
-    SubscriptionInfo subscriptionInfo;
+    zmq::Socket notificationSubscriptionSocket;
+    zmq::Socket requestResponseSocket;
+    std::string subscriptionKey;
 
     using Timestamp    = std::chrono::time_point<std::chrono::system_clock>;
     Timestamp lastUsed = std::chrono::system_clock::now();
@@ -239,17 +233,17 @@ private:
     Connection(Connection &&other) noexcept
         : notificationSubscriptionSocket(std::move(other.notificationSubscriptionSocket))
         , requestResponseSocket(std::move(other.requestResponseSocket))
-        , subscriptionInfo(std::move(other.subscriptionInfo))
+        , subscriptionKey(std::move(other.subscriptionKey))
         , lastUsed(std::move(other.lastUsed))
         , _cachedReplies(std::move(other._cachedReplies))
         , _nextPollingIndex(other._nextPollingIndex) {
     }
 
 public:
-    Connection(const zmq::Context &context, SubscriptionInfo _subscriptionInfo)
+    Connection(const zmq::Context &context, std::string _subscriptionKey)
         : notificationSubscriptionSocket(context, ZMQ_DEALER)
         , requestResponseSocket(context, ZMQ_SUB)
-        , subscriptionInfo(std::move(_subscriptionInfo)) {}
+        , subscriptionKey(std::move(_subscriptionKey)) {}
 
     Connection(const Connection &other)       = delete;
     Connection &operator=(const Connection &) = delete;
@@ -326,27 +320,26 @@ protected:
     URI<>             _restAddress;
 
 private:
-    std::jthread                                                            _connectionUpdaterThread;
-    std::shared_mutex                                                       _connectionsMutex;
-
-    std::map<detail::SubscriptionInfo, std::unique_ptr<detail::Connection>> _connectionForService;
+    std::jthread                                               _connectionUpdaterThread;
+    std::shared_mutex                                          _connectionsMutex;
+    std::map<std::string, std::unique_ptr<detail::Connection>> _connectionForService;
 
 public:
     using BrokerType = Broker<Roles...>;
     // returns a connection with refcount 1. Make sure you lower it to
     // zero at some point
-    detail::Connection *notificationSubscriptionConnectionFor(const detail::SubscriptionInfo &subscriptionInfo) {
+    detail::Connection *notificationSubscriptionConnectionFor(const std::string &subscriptionKey) {
         detail::WriteLock lock(_connectionsMutex);
         // TODO: No need to find + emplace as separate steps
-        if (auto it = _connectionForService.find(subscriptionInfo); it != _connectionForService.end()) {
+        if (auto it = _connectionForService.find(subscriptionKey); it != _connectionForService.end()) {
             auto *connection = it->second.get();
             connection->increaseReferenceCount();
             return connection;
         }
 
         auto [it, inserted] = _connectionForService.emplace(std::piecewise_construct,
-                std::forward_as_tuple(subscriptionInfo),
-                std::forward_as_tuple(std::make_unique<detail::Connection>(_broker.context, subscriptionInfo)));
+                std::forward_as_tuple(subscriptionKey),
+                std::forward_as_tuple(std::make_unique<detail::Connection>(_broker.context, subscriptionKey)));
 
         if (!inserted) {
             assert(inserted);
@@ -360,8 +353,8 @@ public:
         mdp::Message subscribeMessage;
         subscribeMessage.protocolName = mdp::clientProtocol;
         subscribeMessage.command      = mdp::Command::Subscribe;
-        subscribeMessage.serviceName  = subscriptionInfo.serviceName;
-        subscribeMessage.endpoint     = mdp::Message::URI(subscriptionInfo.topicName);
+        subscribeMessage.topic        = mdp::Message::URI(subscriptionKey);
+        subscribeMessage.serviceName  = subscribeMessage.topic.path().value_or("/");
 
         if (!zmq::send(std::move(subscribeMessage), connection->notificationSubscriptionSocket)) {
             std::terminate();
@@ -383,8 +376,8 @@ public:
                     detail::WriteLock lock(_connectionsMutex);
 
                     // Expired subscriptions cleanup
-                    std::vector<const detail::SubscriptionInfo *> expiredSubscriptions;
-                    for (auto &[info, connection] : _connectionForService) {
+                    std::vector<std::string> expiredSubscriptions;
+                    for (auto &[subscriptionKey, connection] : _connectionForService) {
                         // fmt::print("Reference count is {}\n", connection->referenceCount());
                         if (connection->referenceCount() == 0) {
                             auto connectionLock = connection->writeLock();
@@ -392,12 +385,12 @@ public:
                                 continue;
                             }
                             if (std::chrono::system_clock::now() - connection->lastUsed > UNUSED_SUBSCRIPTION_EXPIRATION_TIME) {
-                                expiredSubscriptions.push_back(&info);
+                                expiredSubscriptions.push_back(subscriptionKey);
                             }
                         }
                     }
-                    for (auto *subscriptionInfo : expiredSubscriptions) {
-                        _connectionForService.erase(*subscriptionInfo);
+                    for (const auto &subscriptionKey : expiredSubscriptions) {
+                        _connectionForService.erase(subscriptionKey);
                     }
 
                     // Reading the missed messages
@@ -465,21 +458,37 @@ public:
 
     virtual ~RestBackend() {
         _svr.stop();
+        // shutdown thread before _connectionForService is destroyed
+        _connectionUpdaterThread.request_stop();
+        _connectionUpdaterThread.join();
     }
 
     auto handleServiceRequest(const httplib::Request &request, httplib::Response &response, const httplib::ContentReader *content_reader_ = nullptr) {
         using detail::RestMethod;
-        auto service = [&] {
-            if (!request.path.empty() && request.path[0] == '/') {
-                return std::string_view(request.path.begin() + 1, request.path.end());
-            } else {
-                return std::string_view(request.path);
-            }
-        }();
 
-        if (service.empty()) {
-            return detail::respondWithError(response, "Error: Service not specified\n");
+        auto convertParams = [](const httplib::Params &params) {
+            mdp::Topic::Params r;
+            for (const auto &[key, value] : params) {
+                if (key == "LongPollingIdx" || key == "SubscriptionContext") {
+                    continue;
+                }
+                if (value.empty()) {
+                    r[key] = std::nullopt;
+                } else {
+                    r[key] = value;
+                }
+            }
+            return r;
+        };
+
+        std::optional<mdp::Topic> maybeTopic;
+
+        try {
+            maybeTopic = mdp::Topic::fromString(request.path, convertParams(request.params));
+        } catch (const std::exception &e) {
+            return detail::respondWithError(response, fmt::format("Error: {}\n", e.what()));
         }
+        auto topic      = std::move(*maybeTopic);
 
         auto restMethod = [&] {
             // clang-format off
@@ -497,8 +506,6 @@ public:
             // clang-format on
         }();
 
-        std::string subscriptionContext;
-
         for (const auto &[key, value] : request.params) {
             if (key == "LongPollingIdx") {
                 // This parameter is not passed on, it just means we
@@ -506,7 +513,7 @@ public:
                 restMethod = value == "Subscription" ? RestMethod::Subscribe : RestMethod::LongPoll;
 
             } else if (key == "SubscriptionContext") {
-                subscriptionContext = value;
+                topic = mdp::Topic::fromString(value, {}); // params are parsed from value
             }
         }
 
@@ -519,13 +526,13 @@ public:
         switch (restMethod) {
         case RestMethod::Get:
         case RestMethod::Post:
-            return worker.respondWithPubSub(request, response, service, restMethod, content_reader_);
+            return worker.respondWithPubSub(request, response, topic, restMethod, content_reader_);
 
         case RestMethod::LongPoll:
-            return worker.respondWithLongPoll(request, response, service, subscriptionContext);
+            return worker.respondWithLongPoll(request, response, topic);
 
         case RestMethod::Subscribe:
-            return worker.respondWithSubscription(response, service, subscriptionContext);
+            return worker.respondWithSubscription(response, topic);
 
         default:
             // std::unreachable() is C++23
@@ -592,11 +599,11 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
 
     zmq_pollitem_t pollItem{};
 
-    RestWorker(RestBackend &rest)
+    explicit RestWorker(RestBackend &rest)
         : restBackend(rest) {
     }
 
-    RestWorker(RestWorker &&other) = default;
+    RestWorker(RestWorker &&other) noexcept = default;
 
     detail::Connection connect() {
         detail::Connection connection(restBackend._broker.context, {});
@@ -608,7 +615,7 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         return std::move(connection).unsafeMove();
     }
 
-    bool respondWithPubSub(const httplib::Request &request, httplib::Response &response, const std::string_view &service, detail::RestMethod restMethod, const httplib::ContentReader *content_reader_ = nullptr) {
+    bool respondWithPubSub(const httplib::Request &request, httplib::Response &response, mdp::Topic topic, detail::RestMethod restMethod, const httplib::ContentReader *content_reader_ = nullptr) {
         // clang-format off
         const mdp::Command mdpMessageCommand =
                  restMethod == detail::RestMethod::Post      ? mdp::Command::Set :
@@ -643,14 +650,11 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         mdp::Message message;
         message.protocolName      = mdp::clientProtocol;
         message.command           = mdpMessageCommand;
-        message.serviceName       = std::string(service);
 
         const auto acceptedFormat = detail::acceptedMimeForRequest(request);
-        uri                       = std::move(uri).addQueryParameter("contentType", std::string(acceptedFormat));
-
-        auto topic                = std::string(service) + uri.toString();
-
-        message.endpoint          = mdp::Message::URI(topic);
+        topic.addParam("contentType", acceptedFormat);
+        message.serviceName = std::string(topic.service());
+        message.topic       = topic.toMdpTopic();
 
         if (request.is_multipart_form_data()) {
             if (content_reader_ != nullptr) {
@@ -711,7 +715,7 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         } else {
             response.status = HTTP_OK;
 
-            response.set_header("X-OPENCMW-TOPIC", responseMessage->endpoint.str().data());
+            response.set_header("X-OPENCMW-TOPIC", responseMessage->topic.str().data());
             response.set_header("X-OPENCMW-SERVICE-NAME", responseMessage->serviceName.data());
             response.set_header("Access-Control-Allow-Origin", "*");
             const auto data = responseMessage->data.asString();
@@ -725,10 +729,9 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         return true;
     }
 
-    bool respondWithSubscription(httplib::Response &response, const std::string_view &service, const std::string_view &topic) {
-        detail::SubscriptionInfo subscriptionInfo{ std::string(service), std::string(topic) };
-
-        auto                    *connection = restBackend.notificationSubscriptionConnectionFor(subscriptionInfo);
+    bool respondWithSubscription(httplib::Response &response, const mdp::Topic &subscription) {
+        const auto subscriptionKey = subscription.toZmqTopic();
+        auto      *connection      = restBackend.notificationSubscriptionConnectionFor(subscriptionKey);
         assert(connection);
 
         response.set_header("Access-Control-Allow-Origin", "*");
@@ -755,11 +758,11 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         return true;
     }
 
-    bool respondWithLongPollRedirect(const httplib::Request &request, httplib::Response &response, const std::string_view &subscriptionContext, detail::PollingIndex redirectLongPollingIdx) {
+    bool respondWithLongPollRedirect(const httplib::Request &request, httplib::Response &response, const mdp::Topic &subscription, detail::PollingIndex redirectLongPollingIdx) {
         auto uri = URI<>::factory()
                            .path(request.path)
                            .addQueryParameter("LongPollingIdx", std::to_string(redirectLongPollingIdx))
-                           .addQueryParameter("SubscriptionContext", std::string(subscriptionContext));
+                           .addQueryParameter("SubscriptionContext", subscription.toMdpTopic().str());
 
         // copy over the original query parameters
         addParameters(request, uri);
@@ -769,14 +772,14 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         return true;
     }
 
-    bool respondWithLongPoll(const httplib::Request &request, httplib::Response &response, const std::string_view &service, const std::string_view &topic) {
+    bool respondWithLongPoll(const httplib::Request &request, httplib::Response &response, const mdp::Topic &subscription) {
         // TODO: After the URIs are formalized, rethink service and topic
         auto uri = URI<>::factory();
         addParameters(request, uri);
 
-        detail::SubscriptionInfo subscriptionInfo{ std::string(service), std::string(topic) };
+        const auto subscriptionKey  = subscription.toZmqTopic();
 
-        const auto               longPollingIdxIt = request.params.find("LongPollingIdx");
+        const auto longPollingIdxIt = request.params.find("LongPollingIdx");
         if (longPollingIdxIt == request.params.end()) {
             return detail::respondWithError(response, "Error: LongPollingIdx parameter not specified");
         }
@@ -788,10 +791,10 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
             detail::PollingIndex nextPollingIndex = 0;
             detail::Connection  *connection       = nullptr;
         };
-        auto fetchCache = [this, &subscriptionInfo] {
+        auto fetchCache = [this, &subscriptionKey] {
             std::shared_lock lock(restBackend._connectionsMutex);
             auto            &recycledConnectionForService = restBackend._connectionForService;
-            if (auto it = recycledConnectionForService.find(subscriptionInfo); it != recycledConnectionForService.cend()) {
+            if (auto it = recycledConnectionForService.find(subscriptionKey); it != recycledConnectionForService.cend()) {
                 auto                         *connectionCache = it->second.get();
                 detail::Connection::KeepAlive keep(connectionCache);
                 auto                          connectionCacheLock = connectionCache->readLock();
@@ -818,19 +821,19 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
             response.set_header("Access-Control-Allow-Origin", "*");
 
             if (longPollingIdxParam == "Next") {
-                return respondWithLongPollRedirect(request, response, topic, cache.nextPollingIndex);
+                return respondWithLongPollRedirect(request, response, subscription, cache.nextPollingIndex);
             }
 
             if (longPollingIdxParam == "Last") {
                 if (cache.connection != nullptr) {
-                    return respondWithLongPollRedirect(request, response, topic, cache.nextPollingIndex - 1);
+                    return respondWithLongPollRedirect(request, response, subscription, cache.nextPollingIndex - 1);
                 } else {
-                    return respondWithLongPollRedirect(request, response, topic, cache.nextPollingIndex);
+                    return respondWithLongPollRedirect(request, response, subscription, cache.nextPollingIndex);
                 }
             }
 
             if (longPollingIdxParam == "FirstAvailable") {
-                return respondWithLongPollRedirect(request, response, topic, cache.firstCachedIndex);
+                return respondWithLongPollRedirect(request, response, subscription, cache.firstCachedIndex);
             }
 
             if (std::from_chars(longPollingIdxParam.data(), longPollingIdxParam.data() + longPollingIdxParam.size(), requestedLongPollingIdx).ec != std::errc{}) {
@@ -854,7 +857,7 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         }
 
         // Fallback to creating a connection and waiting
-        auto *connection = restBackend.notificationSubscriptionConnectionFor(subscriptionInfo);
+        auto *connection = restBackend.notificationSubscriptionConnectionFor(subscriptionKey);
         assert(connection);
         detail::Connection::KeepAlive keep(connection);
 

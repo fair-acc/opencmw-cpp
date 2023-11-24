@@ -248,7 +248,7 @@ public:
         }
     }
 
-    MessageFrame(const MessageFrame &other) = delete;
+    MessageFrame(const MessageFrame &other)            = delete;
     MessageFrame &operator=(const MessageFrame &other) = delete;
 
     MessageFrame(MessageFrame &&other) noexcept
@@ -369,7 +369,7 @@ template<mdp::MessageFormat Format>
     zmsg.frame(ZmqMessage<Format>::Frame::Command)         = MessageFrame::fromStaticData(commandStrings[static_cast<std::size_t>(message.command)]);
     zmsg.frame(ZmqMessage<Format>::Frame::ServiceName)     = MessageFrame{ std::move(message.serviceName) };
     zmsg.frame(ZmqMessage<Format>::Frame::ClientRequestId) = MessageFrame{ std::move(message.clientRequestID) };
-    zmsg.frame(ZmqMessage<Format>::Frame::Topic)           = MessageFrame{ std::string(message.endpoint.str()) };
+    zmsg.frame(ZmqMessage<Format>::Frame::Topic)           = MessageFrame{ std::string(message.topic.str()) };
     zmsg.frame(ZmqMessage<Format>::Frame::Body)            = MessageFrame{ std::move(message.data) };
     zmsg.frame(ZmqMessage<Format>::Frame::Error)           = MessageFrame{ std::move(message.error) };
     zmsg.frame(ZmqMessage<Format>::Frame::RBAC)            = MessageFrame{ std::move(message.rbac) };
@@ -432,7 +432,7 @@ template<mdp::MessageFormat Format>
     msg.command         = static_cast<mdp::Command>(commandStr[0]);
     msg.serviceName     = std::string(zmsg.frame(ZmqMessage<Format>::Frame::ServiceName).data());
     msg.clientRequestID = IoBuffer(clientRequestId.data(), clientRequestId.size());
-    msg.endpoint        = mdp::Message::URI(std::string(zmsg.frame(ZmqMessage<Format>::Frame::Topic).data()));
+    msg.topic           = mdp::Message::URI(std::string(zmsg.frame(ZmqMessage<Format>::Frame::Topic).data()));
     msg.data            = IoBuffer(data.data(), data.size());
     msg.error           = std::string(zmsg.frame(ZmqMessage<Format>::Frame::Error).data());
     msg.rbac            = IoBuffer(rbac.data(), rbac.size());

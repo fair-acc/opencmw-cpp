@@ -119,7 +119,7 @@ private:
             Reply         subscriptionReply;
             try {
                 handleGetRequest(filterIn, filterOut, subscriptionReply);
-                super_t::notify(std::string(serviceName.c_str()), filterOut, subscriptionReply);
+                super_t::notify(filterOut, subscriptionReply);
             } catch (const std::exception &ex) {
                 fmt::print("caught specific exception '{}'\n", ex.what());
             } catch (...) {
@@ -133,7 +133,7 @@ int main() {
     using opencmw::URI;
 
     // init Broker and one simple Worker
-    Broker broker("PrimaryBroker");
+    Broker broker("/PrimaryBroker");
     if (!broker.bind(URI<>("mds://127.0.0.1:12345"))) {
         std::cerr << "Could not bind to broker address" << std::endl;
         return 1;
@@ -154,11 +154,11 @@ int main() {
     std::atomic<int>               receivedA{ 0 };
     std::atomic<int>               receivedAB{ 0 };
     client.subscribe(URI("mds://127.0.0.1:12345/DeviceName/Acquisition?signalFilter=A"), [&receivedA](const opencmw::mdp::Message &update) {
-        fmt::print("Client('A') received message from service '{}' for endpoint '{}'\n", update.serviceName, update.endpoint.str());
+        fmt::print("Client('A') received message from service '{}' for endpoint '{}'\n", update.serviceName, update.topic.str());
         receivedA++;
     });
-    client.subscribe(URI("mds://127.0.0.1:12345/DeviceName/Acquisition?signalFilter=A,B"), [&receivedAB](const opencmw::mdp::Message &update) {
-        fmt::print("Client('A,B') received message from service '{}' for endpoint '{}'\n", update.serviceName, update.endpoint.str());
+    client.subscribe(URI("mds://127.0.0.1:12345/DeviceName/Acquisition?signalFilter=A%2CB"), [&receivedAB](const opencmw::mdp::Message &update) {
+        fmt::print("Client('A,B') received message from service '{}' for endpoint '{}'\n", update.serviceName, update.topic.str());
         receivedAB++;
     });
 

@@ -16,6 +16,7 @@
 #include <fmt/core.h>
 
 #include "Rbac.hpp"
+#include "Topic.hpp"
 #include "URI.hpp"
 
 #include <MdpMessage.hpp>
@@ -138,7 +139,7 @@ inline std::string findDnsEntry(std::string_view brokerName, std::unordered_map<
     const auto queryScheme              = query.scheme();
     const auto queryPath                = query.path().value_or("");
     const auto strippedQueryPath        = stripStart(queryPath, "/");
-    const auto stripStartFromSearchPath = strippedQueryPath.starts_with("mmi.") ? fmt::format("/{}", brokerName) : "/"; // crop initial broker name for broker-specific MMI services
+    const auto stripStartFromSearchPath = strippedQueryPath.starts_with("/mmi.") ? fmt::format("/{}", brokerName) : "/"; // crop initial broker name for broker-specific MMI services
 
     const auto entryMatches             = [&queryScheme, &strippedQueryPath, &stripStartFromSearchPath](const auto &dnsEntry) {
         if (queryScheme && !iequal(dnsEntry.scheme().value_or(""), *queryScheme)) {
@@ -192,11 +193,10 @@ private:
         const zmq::Socket &socket;
         const std::string  id;
         const std::string  serviceName;
-        const std::string  serviceNameTopic;
         Timestamp          expiry;
 
         explicit Worker(const zmq::Socket &s, const std::string &id_, const std::string &serviceName_, Timestamp expiry_)
-            : socket(s), id{ std::move(id_) }, serviceName{ std::move(serviceName_) }, serviceNameTopic(std::string("/") + serviceName), expiry{ std::move(expiry_) } {}
+            : socket(s), id{ std::move(id_) }, serviceName{ std::move(serviceName_) }, expiry{ std::move(expiry_) } {}
     };
 
     struct Service {
@@ -260,21 +260,21 @@ public:
     const std::string  brokerName;
 
 private:
-    Timestamp                                                         _heartbeatAt = Clock::now() + settings.heartbeatInterval;
-    SubscriptionMatcher                                               _subscriptionMatcher;
-    std::unordered_map<mdp::SubscriptionTopic, std::set<std::string>> _subscribedClientsByTopic; // topic -> client IDs
-    std::unordered_map<mdp::SubscriptionTopic, int>                   _subscribedTopics;         // topic -> subscription count
-    std::unordered_map<std::string, Client>                           _clients;
-    std::unordered_map<std::string, Worker>                           _workers;
-    std::unordered_map<std::string, Service>                          _services;
-    std::unordered_map<std::string, detail::DnsServiceItem>           _dnsCache;
-    std::set<std::string>                                             _dnsAddresses;
-    Timestamp                                                         _dnsHeartbeatAt;
-    bool                                                              _connectedToDns    = false;
+    Timestamp                                               _heartbeatAt = Clock::now() + settings.heartbeatInterval;
+    SubscriptionMatcher                                     _subscriptionMatcher;
+    std::unordered_map<mdp::Topic, std::set<std::string>>   _subscribedClientsByTopic; // topic -> client IDs
+    std::unordered_map<mdp::Topic, int>                     _subscribedTopics;         // topic -> subscription count
+    std::unordered_map<std::string, Client>                 _clients;
+    std::unordered_map<std::string, Worker>                 _workers;
+    std::unordered_map<std::string, Service>                _services;
+    std::unordered_map<std::string, detail::DnsServiceItem> _dnsCache;
+    std::set<std::string>                                   _dnsAddresses;
+    Timestamp                                               _dnsHeartbeatAt;
+    bool                                                    _connectedToDns    = false;
 
-    const IoBuffer                                                    _rbac              = IoBuffer("RBAC=ADMIN,abcdef12345");
+    const IoBuffer                                          _rbac              = IoBuffer("RBAC=ADMIN,abcdef12345");
 
-    std::atomic<bool>                                                 _shutdownRequested = false;
+    std::atomic<bool>                                       _shutdownRequested = false;
 
     // Sockets collection. The Broker class will be used as the handler
     const zmq::Socket             _routerSocket;
@@ -291,7 +291,9 @@ public:
         , _pubSocket(context, ZMQ_XPUB)
         , _subSocket(context, ZMQ_SUB)
         , _dnsSocket(context, ZMQ_DEALER) {
-        addInternalService("mmi.dns", [this](BrokerMessage &&message) {
+        assert(mdp::isValidServiceName(brokerName));
+
+        addInternalService("/mmi.dns", [this](BrokerMessage &&message) {
             using namespace std::literals;
             message.command = mdp::Command::Final;
 
@@ -327,9 +329,9 @@ public:
             return message;
         });
 
-        addInternalService("mmi.echo", [](BrokerMessage &&message) { return message; });
+        addInternalService("/mmi.echo", [](BrokerMessage &&message) { return message; });
 
-        addInternalService("mmi.service", [this](BrokerMessage &&message) {
+        addInternalService("/mmi.service", [this](BrokerMessage &&message) {
             message.command = mdp::Command::Final;
             if (message.data.empty()) {
 #if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
@@ -355,7 +357,7 @@ public:
             return message;
         });
 
-        addInternalService("mmi.openapi", [this](BrokerMessage &&message) {
+        addInternalService("/mmi.openapi", [this](BrokerMessage &&message) {
             message.command        = mdp::Command::Final;
             const auto serviceName = std::string(message.data.asString());
             const auto serviceIt   = _services.find(serviceName);
@@ -509,7 +511,7 @@ public:
     }
 
 private:
-    void subscribe(const mdp::SubscriptionTopic &topic) {
+    void subscribe(const mdp::Topic &topic) {
         auto [it, inserted] = _subscribedTopics.try_emplace(topic, 0);
         it->second++;
         if (it->second == 1) {
@@ -518,17 +520,16 @@ private:
         }
     }
 
-    void unsubscribe(const mdp::SubscriptionTopic &topic) {
+    void unsubscribe(const mdp::Topic &topic) {
         auto it = _subscribedTopics.find(topic);
-        if (it != _subscribedTopics.end()) {
-            it->second--;
-            if (it->second == 0) {
-                const auto topicStr = topic.toZmqTopic();
-                zmq::invoke(zmq_setsockopt, _subSocket, ZMQ_UNSUBSCRIBE, topicStr.data(), topicStr.size()).assertSuccess();
-                _subscribedTopics.erase(it);
-            }
-        } else {
-            throw fmt::format("Nothing subscribed to {}\n", topic);
+        if (it == _subscribedTopics.end()) {
+            return;
+        }
+        it->second--;
+        if (it->second == 0) {
+            const auto topicStr = topic.toZmqTopic();
+            zmq::invoke(zmq_setsockopt, _subSocket, ZMQ_UNSUBSCRIBE, topicStr.data(), topicStr.size()).assertSuccess();
+            _subscribedTopics.erase(it);
         }
     }
 
@@ -546,16 +547,19 @@ private:
             return false;
         }
 
-        const auto topicString = data.substr(1);
-        const auto topicURI    = URI<RELAXED>(std::string(topicString));
-        const auto topic       = mdp::SubscriptionTopic::fromURI(topicURI);
-
-        if (data[0] == '\x1') {
-            subscribe(topic);
-        } else {
-            unsubscribe(topic);
+        const auto                topicString = data.substr(1);
+        std::optional<mdp::Topic> topic;
+        try {
+            topic = mdp::Topic::fromZmqTopic(topicString);
+        } catch (...) {
+            // malformed topic, ignore
+            return false;
         }
-
+        if (data[0] == '\x1') {
+            subscribe(*topic);
+        } else {
+            unsubscribe(*topic);
+        }
         return true;
     }
 
@@ -571,7 +575,7 @@ private:
         if (message.protocolName == mdp::clientProtocol) {
             switch (message.command) {
             case mdp::Command::Ready: {
-                if (const auto topicURI = URI<RELAXED>(message.endpoint.str()); topicURI.scheme()) {
+                if (const auto topicURI = URI<RELAXED>(message.topic.str()); topicURI.scheme()) {
                     auto [iter, inserted] = _dnsCache.try_emplace(message.serviceName, std::string(message.sourceId), message.serviceName);
                     iter->second.uris.insert(topicURI);
                     iter->second.expiry = updatedDnsExpiry();
@@ -579,20 +583,30 @@ private:
                 return true;
             }
             case mdp::Command::Subscribe: {
-                const auto subscription = mdp::SubscriptionTopic::fromURIAndServiceName(message.endpoint, message.serviceName);
+                std::optional<mdp::Topic> subscription;
+                try {
+                    subscription = mdp::Topic::fromMdpTopic(message.topic);
+                } catch (...) {
+                    // malformed topic, ignore
+                    return false;
+                }
 
-                subscribe(subscription);
-
-                auto [it, inserted] = _subscribedClientsByTopic.try_emplace(subscription, std::set<std::string>{});
+                subscribe(*subscription);
+                auto [it, inserted] = _subscribedClientsByTopic.try_emplace(*subscription);
                 it->second.emplace(message.sourceId);
                 return true;
             }
             case mdp::Command::Unsubscribe: {
-                const auto subscription = mdp::SubscriptionTopic::fromURIAndServiceName(message.endpoint, message.serviceName);
+                std::optional<mdp::Topic> subscription;
+                try {
+                    subscription = mdp::Topic::fromMdpTopic(message.topic);
+                } catch (...) {
+                    // malformed topic, ignore
+                    return false;
+                }
 
-                unsubscribe(subscription);
-
-                auto it = _subscribedClientsByTopic.find(subscription);
+                unsubscribe(*subscription);
+                auto it = _subscribedClientsByTopic.find(*subscription);
                 if (it != _subscribedClientsByTopic.end()) {
                     it->second.erase(message.sourceId);
                     if (it->second.empty()) {
@@ -676,22 +690,25 @@ private:
     }
 
     void dispatchMessageToMatchingSubscribers(BrokerMessage &&message) {
-        const auto subscription = mdp::SubscriptionTopic::fromURIAndServiceName(message.endpoint, message.serviceName);
+        std::optional<mdp::Topic> notification;
 
+        try {
+            notification = mdp::Topic::fromMdpTopic(message.topic);
+        } catch (...) {
+            // malformed topic, ignore
+            return;
+        }
         // TODO avoid clone() for last message sent out
         for (const auto &[topic, _] : _subscribedTopics) {
-            if (_subscriptionMatcher(subscription, topic)) {
-                auto       copy            = message;
-                const auto subscriptionURI = mdp::Message::URI(std::string(subscription.path()));
-                copy.endpoint              = subscriptionURI;
-                copy.sourceId              = topic.toZmqTopic();
+            if (_subscriptionMatcher(*notification, topic)) {
+                auto copy     = message;
+                copy.sourceId = topic.toZmqTopic();
                 zmq::send(std::move(copy), _pubSocket).assertSuccess();
 
                 const auto it = _subscribedClientsByTopic.find(topic);
                 if (it != _subscribedClientsByTopic.end()) {
                     for (const auto &clientId : it->second) {
                         auto clientCopy     = message;
-                        clientCopy.endpoint = subscriptionURI;
                         clientCopy.sourceId = clientId;
                         zmq::send(std::move(clientCopy), _routerSocket).assertSuccess();
                     }
@@ -747,9 +764,9 @@ private:
 
             // not implemented -- reply according to Majordomo Management Interface (MMI) as defined in http://rfc.zeromq.org/spec:8
 
-            auto reply     = std::move(clientMessage);
-            reply.command  = mdp::Command::Final;
-            reply.endpoint = INTERNAL_SERVICE_NAMES_URI;
+            auto reply    = std::move(clientMessage);
+            reply.command = mdp::Command::Final;
+            reply.topic   = INTERNAL_SERVICE_NAMES_URI;
             reply.data.clear();
             reply.error = fmt::format("unknown service (error 501): '{}'", reply.serviceName);
             reply.rbac  = _rbac;
@@ -837,7 +854,7 @@ private:
             // notify potential listeners
             BrokerMessage notify;
             notify.serviceName     = INTERNAL_SERVICE_NAMES;
-            notify.endpoint        = INTERNAL_SERVICE_NAMES_URI;
+            notify.topic           = INTERNAL_SERVICE_NAMES_URI;
             notify.clientRequestID = IoBuffer(brokerName.data(), brokerName.size());
             notify.sourceId        = INTERNAL_SERVICE_NAMES;
             zmq::send(std::move(notify), _pubSocket).assertSuccess();
@@ -899,7 +916,6 @@ private:
         disconnect.command      = mdp::Command::Disconnect;
         disconnect.sourceId     = worker.id;
         disconnect.serviceName  = worker.serviceName;
-        disconnect.endpoint     = mdp::Message::URI(worker.serviceNameTopic);
         disconnect.data         = IoBuffer("broker shutdown");
         disconnect.rbac         = _rbac;
         zmq::send(std::move(disconnect), worker.socket).assertSuccess();
@@ -920,8 +936,8 @@ private:
         if (Clock::now() > _dnsHeartbeatAt || force) {
             const auto ready = createDnsReadyMessage();
             for (const auto &dnsAddress : _dnsAddresses) {
-                auto toSend     = ready;
-                toSend.endpoint = mdp::Message::URI(dnsAddress);
+                auto toSend  = ready;
+                toSend.topic = mdp::Message::URI(dnsAddress);
                 registerWithDnsServices(std::move(toSend));
             }
             for (const auto &[name, service] : _services) {
@@ -935,14 +951,14 @@ private:
             auto       ready   = createDnsReadyMessage();
             const auto address = fmt::format("{}/{}", dnsAddress, detail::stripStart(serviceName, "/"));
             // TODO use URI factory?
-            ready.endpoint = mdp::Message::URI(address);
+            ready.topic = mdp::Message::URI(address);
             registerWithDnsServices(std::move(ready));
         }
     }
 
     void registerWithDnsServices(mdp::Message &&readyMessage) {
         auto [it, inserted] = _dnsCache.try_emplace(brokerName, std::string(), brokerName);
-        it->second.uris.insert(URI<RELAXED>(readyMessage.endpoint.str()));
+        it->second.uris.insert(URI<RELAXED>(readyMessage.topic.str()));
         it->second.expiry = updatedDnsExpiry();
         zmq::send(std::move(readyMessage), _dnsSocket).ignoreResult();
     }

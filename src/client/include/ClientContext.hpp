@@ -86,7 +86,7 @@ private:
                 if (cmd.command == mdp::Command::Invalid) {
                     return false;
                 }
-                auto &c = getClientCtx(cmd.endpoint);
+                auto &c = getClientCtx(cmd.topic);
 #ifdef EMSCRIPTEN
                 // this is necessary for fetches to actually be called, as the new thread will start/init/end and then go into js runtime to fetch
                 std::thread ql{ [&c, cmd]() {
@@ -113,7 +113,7 @@ private:
         bool published = _commandRingBuffer->tryPublishEvent([&endpoint, &cmd, cb = std::move(callback), d = std::move(data)](Command &&ev, long /*seq*/) mutable {
             ev.command  = cmd;
             ev.callback = std::move(cb);
-            ev.endpoint = FWD(endpoint);
+            ev.topic    = FWD(endpoint);
             ev.data     = std::move(d);
         });
         if (!published) {

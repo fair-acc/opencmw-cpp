@@ -108,7 +108,7 @@ TEST_CASE("Basic Rest Client Get/Set Test - HTTP", "[Client]") {
     data.put('C');
     Command command;
     command.command  = mdp::Command::Get;
-    command.endpoint = URI<STRICT>("http://localhost:8080/endPoint");
+    command.topic    = URI<STRICT>("http://localhost:8080/endPoint");
     command.data     = std::move(data);
     command.callback = [&done](const mdp::Message & /*rep*/) {
         done.store(true, std::memory_order_release);
@@ -162,7 +162,7 @@ TEST_CASE("Basic Rest Client Get/Set Test - HTTPS", "[Client]") {
     data.put(0);
     Command command;
     command.command  = mdp::Command::Get;
-    command.endpoint = URI<STRICT>("https://localhost:8080/endPoint");
+    command.topic    = URI<STRICT>("https://localhost:8080/endPoint");
     command.data     = std::move(data);
     command.callback = [&done](const mdp::Message & /*rep*/) {
         done.store(true, std::memory_order_release);
@@ -253,7 +253,7 @@ TEST_CASE("Basic Rest Client Subscribe/Unsubscribe Test", "[Client]") {
 
     Command command;
     command.command  = mdp::Command::Subscribe;
-    command.endpoint = URI<STRICT>("http://localhost:8080/event");
+    command.topic    = URI<STRICT>("http://localhost:8080/event");
     command.data     = std::move(data);
     command.callback = [&receivedRegular, &receivedError](const mdp::Message &rep) {
         fmt::print("SSE client received reply = '{}' - body size: '{}'\n", rep.data.asString(), rep.data.size());

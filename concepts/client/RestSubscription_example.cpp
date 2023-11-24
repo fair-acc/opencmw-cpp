@@ -85,7 +85,7 @@ int main() {
     data.put(0);
     opencmw::client::Command command;
     command.command  = opencmw::mdp::Command::Subscribe;
-    command.endpoint = opencmw::URI<opencmw::STRICT>("http://localhost:8080/event");
+    command.topic    = opencmw::URI<opencmw::STRICT>("http://localhost:8080/event");
     command.data     = std::move(data);
     command.callback = [&received](const opencmw::mdp::Message &rep) {
         fmt::print("SSE client received reply = '{}' - body size: '{}'\n", rep.data.asString(), rep.data.size());

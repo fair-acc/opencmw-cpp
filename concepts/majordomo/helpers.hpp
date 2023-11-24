@@ -182,14 +182,16 @@ public:
                 reply.image.base64      = base64pp::encode(imageData[selectedImage]);
                 reply.image.contentType = "image/png"; // MIME::PNG;
                 // TODO the subscription via REST has a leading slash, so this "/" is necessary for it to match, check if that can be avoided
-                super_t::notify("/", context, reply);
+                super_t::notify(context, reply);
             }
         });
 
         super_t::setCallback([this](majordomo::RequestContext &rawCtx, const SimpleContext &, const majordomo::Empty &, SimpleContext &, BinaryData &out) {
             using namespace opencmw;
-            const auto topicPath  = rawCtx.request.endpoint.path().value_or("");
-            const auto path       = ::detail::stripPrefix(topicPath, "/");
+            const auto params     = rawCtx.request.topic.queryParamMap();
+            const auto pathParam  = params.find("path");
+            auto       path       = pathParam != params.end() ? pathParam->second.value_or("") : "";
+            path                  = ::detail::stripPrefix(path, "/");
             out.resourceName      = ::detail::stripPrefix(::detail::stripPrefix(path, PROPERTY_NAME), "/");
             out.image.base64      = base64pp::encode(imageData[selectedImage]);
             out.image.contentType = "image/png"; // MIME::PNG;
@@ -281,26 +283,22 @@ public:
         return zmq::invoke(zmq_bind, _socket, mdp::toZeroMQEndpoint(address).data()).isValid();
     }
 
-    bool connect(const opencmw::URI<opencmw::STRICT> &address, const mdp::SubscriptionTopic &subscription = {}) {
+    bool connect(const opencmw::URI<opencmw::STRICT> &address, const std::string_view subscriptionTopic = {}) {
         auto result = zmq::invoke(zmq_connect, _socket, mdp::toZeroMQEndpoint(address).data());
         if (!result) return false;
 
-        if (!subscription.empty()) {
-            return subscribe(subscription);
+        if (!subscriptionTopic.empty()) {
+            return subscribe(subscriptionTopic);
         }
 
         return true;
     }
 
-    bool subscribe(const mdp::SubscriptionTopic &subscription) {
-        const auto topic = subscription.toZmqTopic();
-        assert(!topic.empty());
+    bool subscribe(std::string_view topic) {
         return zmq::invoke(zmq_setsockopt, _socket, ZMQ_SUBSCRIBE, topic.data(), topic.size()).isValid();
     }
 
-    bool unsubscribe(const mdp::SubscriptionTopic &subscription) {
-        const auto topic = subscription.toZmqTopic();
-        assert(!topic.empty());
+    bool unsubscribe(const std::string_view topic) {
         return zmq::invoke(zmq_setsockopt, _socket, ZMQ_UNSUBSCRIBE, topic.data(), topic.size()).isValid();
     }
 
@@ -355,7 +353,7 @@ inline bool waitUntilServiceAvailable(const zmq::Context &context, std::string_v
         mdp::Message request;
         request.protocolName = mdp::clientProtocol;
         request.command      = mdp::Command::Get;
-        request.serviceName  = "mmi.service";
+        request.serviceName  = "/mmi.service";
         request.data         = opencmw::IoBuffer(serviceName.data(), serviceName.size());
         client.send(std::move(request));
 
@@ -370,6 +368,11 @@ inline bool waitUntilServiceAvailable(const zmq::Context &context, std::string_v
     }
 
     return false;
+}
+
+template<typename Worker>
+inline bool waitUntilWorkerServiceAvailable(const zmq::Context &context, const Worker &, const opencmw::URI<opencmw::STRICT> &brokerAddress = opencmw::majordomo::INTERNAL_ADDRESS_BROKER) {
+    return waitUntilServiceAvailable(context, Worker::name, brokerAddress);
 }
 
 class TestIntHandler {

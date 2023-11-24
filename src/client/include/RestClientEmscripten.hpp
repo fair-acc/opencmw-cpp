@@ -74,17 +74,17 @@ struct FetchPayload {
             command.callback(mdp::Message{
                              .id              = 0,
                              .arrivalTime     = std::chrono::system_clock::now(),
-                             .protocolName    = command.endpoint.scheme().value(),
+                             .protocolName    = command.topic.scheme().value(),
                              .command         = mdp::Command::Final,
                              .clientRequestID = command.clientRequestID,
-                             .endpoint        = command.endpoint,
+                             .topic           = command.topic,
                              .data            = msgOK ? IoBuffer(body.data(), body.size()) : IoBuffer(),
                              .error           = errorMsg,
                              .rbac            = IoBuffer() });
         } catch (const std::exception &e) {
-            std::cerr << fmt::format("caught exception '{}' in FetchPayload::returnMdpMessage(cmd={}, {}: {})", e.what(), command.endpoint, status, body) << std::endl;
+            std::cerr << fmt::format("caught exception '{}' in FetchPayload::returnMdpMessage(cmd={}, {}: {})", e.what(), command.topic, status, body) << std::endl;
         } catch (...) {
-            std::cerr << fmt::format("caught unknown exception in FetchPayload::returnMdpMessage(cmd={}, {}: {})", command.endpoint, status, body) << std::endl;
+            std::cerr << fmt::format("caught unknown exception in FetchPayload::returnMdpMessage(cmd={}, {}: {})", command.topic, status, body) << std::endl;
         }
     }
 
@@ -114,9 +114,9 @@ struct SubscriptionPayload : FetchPayload {
     SubscriptionPayload &operator=(SubscriptionPayload &&other) noexcept = default;
 
     void                 requestNext() {
-        auto uri = command.endpoint;
+        auto uri = command.topic;
         fmt::print("URL 1 >>> {}\n", uri.relativeRef());
-        auto                                                 preferredHeader = detail::getPreferredContentTypeHeader(command.endpoint, _mimeType);
+        auto                                                 preferredHeader = detail::getPreferredContentTypeHeader(command.topic, _mimeType);
         std::array<const char *, preferredHeader.size() + 1> preferredHeaderEmscripten;
         std::transform(preferredHeader.cbegin(), preferredHeader.cend(), preferredHeaderEmscripten.begin(),
                                 [](const auto &str) { return str.c_str(); });
@@ -223,8 +223,8 @@ public:
 
 private:
     void executeCommand(Command &&cmd) const {
-        auto                                                 uri             = opencmw::URI<>::factory(cmd.endpoint).build();
-        auto                                                 preferredHeader = detail::getPreferredContentTypeHeader(cmd.endpoint, _mimeType);
+        auto                                                 uri             = opencmw::URI<>::factory(cmd.topic).build();
+        auto                                                 preferredHeader = detail::getPreferredContentTypeHeader(cmd.topic, _mimeType);
         std::array<const char *, preferredHeader.size() + 1> preferredHeaderEmscripten;
         std::transform(preferredHeader.cbegin(), preferredHeader.cend(), preferredHeaderEmscripten.begin(),
                 [](const auto &str) { return str.c_str(); });
@@ -274,8 +274,8 @@ private:
     }
 
     void startSubscription(Command &&cmd) {
-        auto uri        = opencmw::URI<>::factory(cmd.endpoint).queryParam("LongPollingIdx=Next").build();
-        cmd.endpoint    = uri;
+        auto uri        = opencmw::URI<>::factory(cmd.topic).queryParam("LongPollingIdx=Next").build();
+        cmd.topic       = uri;
 
         auto payload    = std::make_unique<detail::SubscriptionPayload>(std::move(cmd), _mimeType);
         auto rawPayload = payload.get();
@@ -289,10 +289,10 @@ private:
         // void get(...)
         // void set(...)
         // instead of going through a fake generic request(...)?
-        auto uri       = opencmw::URI<>::factory(cmd.endpoint).queryParam("LongPollingIdx=Next").build();
+        auto uri       = opencmw::URI<>::factory(cmd.topic).queryParam("LongPollingIdx=Next").build();
         auto payloadIt = std::find_if(detail::subscriptionPayloads.begin(), detail::subscriptionPayloads.end(),
                 [&](const auto &ptr) {
-                    return ptr->command.endpoint == uri;
+                    return ptr->command.topic == uri;
                 });
         if (payloadIt == detail::subscriptionPayloads.end()) {
             return;

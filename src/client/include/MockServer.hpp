@@ -91,15 +91,16 @@ public:
         return true;
     }
 
-    void notify(const mdp::SubscriptionTopic &topic, std::string_view value) {
-        static const auto                                   brokerName  = "";
-        static const auto                                   serviceName = "a.service";
+    void notify(std::string_view endpoint, std::string_view value) {
+        static const auto                                   brokerName   = "";
+        static const auto                                   serviceName  = "a.service";
+        const auto                                          subscription = mdp::Topic::fromMdpTopic(URI<>(std::string(endpoint)));
         mdp::BasicMessage<mdp::MessageFormat::WithSourceId> notify;
         notify.protocolName    = mdp::clientProtocol;
         notify.command         = mdp::Command::Final;
         notify.serviceName     = serviceName;
-        notify.endpoint        = topic.toEndpoint();
-        notify.sourceId        = topic.toZmqTopic();
+        notify.topic           = subscription.toMdpTopic();
+        notify.sourceId        = subscription.toZmqTopic();
         notify.clientRequestID = IoBuffer(brokerName);
         notify.data            = IoBuffer(value.data(), value.size());
         zmq::send(std::move(notify), _pubSocket.value()).assertSuccess();
@@ -111,7 +112,7 @@ public:
         reply.command         = mdp::Command::Final;
         reply.serviceName     = request.serviceName;
         reply.clientRequestID = request.clientRequestID;
-        reply.endpoint        = request.endpoint;
+        reply.topic           = request.topic;
         reply.rbac            = request.rbac;
         return reply;
     }

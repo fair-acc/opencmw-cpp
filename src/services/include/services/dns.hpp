@@ -14,7 +14,7 @@
 
 namespace opencmw::service::dns {
 
-using DnsWorkerType = majordomo::Worker<"dns", Context, FlatEntryList, FlatEntryList, majordomo::description<"Register and Query Signals">>;
+using DnsWorkerType = majordomo::Worker<"/dns", Context, FlatEntryList, FlatEntryList, majordomo::description<"Register and Query Signals">>;
 
 class DnsHandler {
 protected:
