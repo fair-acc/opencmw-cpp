@@ -61,9 +61,11 @@ using namespace std::chrono_literals;
 
 constexpr auto        HTTP_OK                             = 200;
 constexpr auto        HTTP_ERROR                          = 500;
+constexpr auto        HTTP_GATEWAY_TIMEOUT                = 504;
 constexpr auto        DEFAULT_REST_PORT                   = 8080;
 constexpr auto        REST_POLLING_TIME                   = 10s;
 constexpr auto        UPDATER_POLLING_TIME                = 1s;
+constexpr auto        LONG_POLL_SERVER_TIMEOUT            = 30s;
 constexpr auto        UNUSED_SUBSCRIPTION_EXPIRATION_TIME = 30s;
 constexpr std::size_t MAX_CACHED_REPLIES                  = 32;
 
@@ -154,8 +156,8 @@ std::string_view acceptedMimeForRequest(const auto &request) {
     return acceptableMimeTypes[0];
 }
 
-bool respondWithError(auto &response, std::string_view message) {
-    response.status = HTTP_ERROR;
+bool respondWithError(auto &response, std::string_view message, int status = HTTP_ERROR) {
+    response.status = status;
     response.set_content(message.data(), MIME::TEXT.typeName().data());
     return true;
 };
@@ -287,9 +289,18 @@ public:
         return ReadLock(_cachedRepliesMutex);
     }
 
-    void waitForUpdate() {
-        auto temporaryLock = writeLock();
-        _pollingIndexCV.wait(temporaryLock);
+    bool waitForUpdate(std::chrono::milliseconds timeout) {
+        // This could also periodically check for the client connection being dropped (e.g. due to client-side timeout)
+        // if cpp-httplib had API for that.
+        auto       temporaryLock = writeLock();
+        const auto next          = _nextPollingIndex;
+        while (_nextPollingIndex == next) {
+            if (_pollingIndexCV.wait_for(temporaryLock, timeout) == std::cv_status::timeout) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     std::size_t cachedRepliesSize(ReadLock & /*lock*/) const {
@@ -465,6 +476,9 @@ public:
 
     virtual ~RestBackend() {
         _svr.stop();
+        // shutdown thread before _connectionForService is destroyed
+        _connectionUpdaterThread.request_stop();
+        _connectionUpdaterThread.join();
     }
 
     auto handleServiceRequest(const httplib::Request &request, httplib::Response &response, const httplib::ContentReader *content_reader_ = nullptr) {
@@ -737,7 +751,9 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
                 [connection](std::size_t /*offset*/, httplib::DataSink &sink) mutable {
                     std::cerr << "Chunked reply...\n";
 
-                    connection->waitForUpdate();
+                    if (!connection->waitForUpdate(LONG_POLL_SERVER_TIMEOUT)) {
+                        return false;
+                    }
 
                     auto        connectionCacheLock = connection->readLock();
                     auto        lastIndex           = connection->nextPollingIndex(connectionCacheLock) - 1;
@@ -861,7 +877,9 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         // Since we use KeepAlive object, the inital refCount can go away
         connection->decreaseReferenceCount();
 
-        connection->waitForUpdate();
+        if (!connection->waitForUpdate(LONG_POLL_SERVER_TIMEOUT)) {
+            return detail::respondWithError(response, "Timeout waiting for update", HTTP_GATEWAY_TIMEOUT);
+        }
 
         const auto newCache = fetchCache();
 
