@@ -33,8 +33,8 @@ class OpencmwConan(ConanFile):
         """
         tools.mkdir("build")
         cmake = CMake(self)
-        cmake.definitions["ENABLE_CONCEPTS"] = False
-        cmake.definitions["ENABLE_TESTING"] = False
+        cmake.definitions["OPENCMW_ENABLE_CONCEPTS"] = False
+        cmake.definitions["OPENCMW_ENABLE_TESTING"] = False
         cmake.configure(build_folder="build")
         return cmake
 

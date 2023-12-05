@@ -97,13 +97,13 @@ enable_doxygen()
 # allow for static analysis options
 include(cmake/StaticAnalyzers.cmake)
 
-option(ENABLE_TESTING "Enable Test Builds" ${opencmw_MASTER_PROJECT})
+option(OPENCMW_ENABLE_TESTING "Enable Test Builds" ${opencmw_MASTER_PROJECT})
 if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR GENERATOR_IS_MULTI_CONFIG)
-  option(ENABLE_COVERAGE "Enable Coverage" ON)
+  option(OPENCMW_ENABLE_COVERAGE "Enable Coverage" ON)
 else()
-  option(ENABLE_COVERAGE "Enable Coverage" OFF)
+  option(OPENCMW_ENABLE_COVERAGE "Enable Coverage" OFF)
 endif()
-option(ENABLE_CONCEPTS "Enable Concepts Builds" ${opencmw_MASTER_PROJECT})
+option(OPENCMW_ENABLE_CONCEPTS "Enable Concepts Builds" ${opencmw_MASTER_PROJECT})
 
 # Very basic PCH example
 option(ENABLE_PCH "Enable Precompiled Headers" OFF)
@@ -120,10 +120,10 @@ if(ENABLE_PCH)
     <utility>)
 endif()
 
-if(ENABLE_TESTING)
+if(OPENCMW_ENABLE_TESTING)
   enable_testing()
   message("Building Tests.")
-  if(ENABLE_COVERAGE)
+  if(OPENCMW_ENABLE_COVERAGE)
     if(UNIX
        AND NOT APPLE
        AND NOT EMSCRIPTEN) # Linux
@@ -173,7 +173,7 @@ endif()
 
 add_subdirectory(src)
 
-if(ENABLE_CONCEPTS)
+if(OPENCMW_ENABLE_CONCEPTS)
   message("Building Concepts")
   add_subdirectory(concepts)
 endif()
