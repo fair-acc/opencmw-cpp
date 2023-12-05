@@ -126,6 +126,7 @@ if(OPENCMW_ENABLE_TESTING)
   if(OPENCMW_ENABLE_COVERAGE)
     if(UNIX
        AND NOT APPLE
+       AND NOT CMAKE_CXX_COMPILER_ID MATCHES ".*Clang"
        AND NOT EMSCRIPTEN) # Linux
       message("Coverage reporting enabled")
       include(cmake/CodeCoverage.cmake) # https://github.com/bilke/cmake-modules/blob/master/CodeCoverage.cmake #
