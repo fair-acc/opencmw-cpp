@@ -19,6 +19,6 @@ install(
   EXPORT opencmwTargets
   PUBLIC_HEADER DESTINATION include/opencmw)
 
-if(ENABLE_TESTING)
+if(OPENCMW_ENABLE_TESTING)
   add_subdirectory(test)
 endif()

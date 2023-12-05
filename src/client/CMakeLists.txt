@@ -35,6 +35,6 @@ install(
   PUBLIC_HEADER DESTINATION include/opencmw)
 
 # setup tests
-if(ENABLE_TESTING)
+if(OPENCMW_ENABLE_TESTING)
   add_subdirectory(test)
 endif()
