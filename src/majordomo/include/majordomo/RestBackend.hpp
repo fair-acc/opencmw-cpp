@@ -62,9 +62,10 @@ using namespace std::chrono_literals;
 
 constexpr auto        HTTP_OK                             = 200;
 constexpr auto        HTTP_ERROR                          = 500;
+constexpr auto        HTTP_GATEWAY_TIMEOUT                = 504;
 constexpr auto        DEFAULT_REST_PORT                   = 8080;
-constexpr auto        REST_POLLING_TIME                   = 10s;
 constexpr auto        UPDATER_POLLING_TIME                = 1s;
+constexpr auto        LONG_POLL_SERVER_TIMEOUT            = 30s;
 constexpr auto        UNUSED_SUBSCRIPTION_EXPIRATION_TIME = 30s;
 constexpr std::size_t MAX_CACHED_REPLIES                  = 32;
 
@@ -155,8 +156,8 @@ inline std::string_view acceptedMimeForRequest(const auto &request) {
     return acceptableMimeTypes[0];
 }
 
-bool respondWithError(auto &response, std::string_view message) {
-    response.status = HTTP_ERROR;
+bool respondWithError(auto &response, std::string_view message, int status = HTTP_ERROR) {
+    response.status = status;
     response.set_content(message.data(), MIME::TEXT.typeName().data());
     return true;
 };
@@ -281,9 +282,18 @@ public:
         return ReadLock(_cachedRepliesMutex);
     }
 
-    void waitForUpdate() {
-        auto temporaryLock = writeLock();
-        _pollingIndexCV.wait(temporaryLock);
+    bool waitForUpdate(std::chrono::milliseconds timeout) {
+        // This could also periodically check for the client connection being dropped (e.g. due to client-side timeout)
+        // if cpp-httplib had API for that.
+        auto       temporaryLock = writeLock();
+        const auto next          = _nextPollingIndex;
+        while (_nextPollingIndex == next) {
+            if (_pollingIndexCV.wait_for(temporaryLock, timeout) == std::cv_status::timeout) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     std::size_t cachedRepliesSize(ReadLock & /*lock*/) const {
@@ -315,9 +325,10 @@ public:
 template<typename Mode, typename VirtualFS, role... Roles>
 class RestBackend : public Mode {
 protected:
-    Broker<Roles...> &_broker;
-    const VirtualFS  &_vfs;
-    URI<>             _restAddress;
+    Broker<Roles...>                      &_broker;
+    const VirtualFS                       &_vfs;
+    URI<>                                  _restAddress;
+    std::atomic<std::chrono::milliseconds> _majordomoTimeout = 30000ms;
 
 private:
     std::jthread                                               _connectionUpdaterThread;
@@ -325,6 +336,19 @@ private:
     std::map<std::string, std::unique_ptr<detail::Connection>> _connectionForService;
 
 public:
+    /**
+     * Timeout used for interaction with majordomo workers, i.e. the time to wait
+     * for notifications on subscriptions (long-polling) and for responses to Get/Set
+     * requests.
+     */
+    void setMajordomoTimeout(std::chrono::milliseconds timeout) {
+        _majordomoTimeout = timeout;
+    }
+
+    std::chrono::milliseconds majordomoTimeout() const {
+        return _majordomoTimeout;
+    }
+
     using BrokerType = Broker<Roles...>;
     // returns a connection with refcount 1. Make sure you lower it to
     // zero at some point
@@ -705,9 +729,9 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         }
 
         pollItem.socket = connection.notificationSubscriptionSocket.zmq_ptr;
-        auto pollResult = zmq::invoke(zmq_poll, &pollItem, 1, std::chrono::duration_cast<std::chrono::milliseconds>(REST_POLLING_TIME).count());
+        auto pollResult = zmq::invoke(zmq_poll, &pollItem, 1, std::chrono::duration_cast<std::chrono::milliseconds>(restBackend.majordomoTimeout()).count());
         if (!pollResult || pollResult.value() == 0) {
-            detail::respondWithError(response, "Error: No response from broker\n");
+            detail::respondWithError(response, "Error: No response from broker\n", HTTP_GATEWAY_TIMEOUT);
         } else if (auto responseMessage = zmq::receive<mdp::MessageFormat::WithoutSourceId>(connection.notificationSubscriptionSocket); !responseMessage) {
             detail::respondWithError(response, "Error: Empty response from broker\n");
         } else if (!responseMessage->error.empty()) {
@@ -733,14 +757,16 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         const auto subscriptionKey = subscription.toZmqTopic();
         auto      *connection      = restBackend.notificationSubscriptionConnectionFor(subscriptionKey);
         assert(connection);
-
+        const auto majordomoTimeout = restBackend.majordomoTimeout();
         response.set_header("Access-Control-Allow-Origin", "*");
         response.set_chunked_content_provider(
                 "application/json",
-                [connection](std::size_t /*offset*/, httplib::DataSink &sink) mutable {
+                [connection, majordomoTimeout](std::size_t /*offset*/, httplib::DataSink &sink) mutable {
                     std::cerr << "Chunked reply...\n";
 
-                    connection->waitForUpdate();
+                    if (!connection->waitForUpdate(majordomoTimeout)) {
+                        return false;
+                    }
 
                     auto        connectionCacheLock = connection->readLock();
                     auto        lastIndex           = connection->nextPollingIndex(connectionCacheLock) - 1;
@@ -864,7 +890,9 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         // Since we use KeepAlive object, the inital refCount can go away
         connection->decreaseReferenceCount();
 
-        connection->waitForUpdate();
+        if (!connection->waitForUpdate(restBackend.majordomoTimeout())) {
+            return detail::respondWithError(response, "Timeout waiting for update", HTTP_GATEWAY_TIMEOUT);
+        }
 
         const auto newCache = fetchCache();
 

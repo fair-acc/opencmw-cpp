@@ -101,6 +101,29 @@ public:
     }
 };
 
+struct WaitingContext {
+    int32_t                 timeoutMs   = 0;
+    opencmw::MIME::MimeType contentType = opencmw::MIME::JSON;
+};
+ENABLE_REFLECTION_FOR(WaitingContext, timeoutMs, contentType)
+
+template<units::basic_fixed_string serviceName, typename... Meta>
+class WaitingWorker : public majordomo::Worker<serviceName, WaitingContext, SingleString, SingleString, Meta...> {
+public:
+    using super_t = majordomo::Worker<serviceName, WaitingContext, SingleString, SingleString, Meta...>;
+
+    template<typename BrokerType>
+    explicit WaitingWorker(const BrokerType &broker)
+        : super_t(broker, {}) {
+        super_t::setCallback([](majordomo::RequestContext &, const WaitingContext &inCtx, const SingleString &in, WaitingContext &outCtx, SingleString &out) {
+            fmt::println("Sleep for {}", inCtx.timeoutMs);
+            std::this_thread::sleep_for(std::chrono::milliseconds(inCtx.timeoutMs));
+            outCtx    = inCtx;
+            out.value = fmt::format("You said: {}", in.value);
+        });
+    }
+};
+
 TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][majordomoworker][simple_example]") {
     // We run both broker and worker inproc
     majordomo::Broker                                          broker("/TestBroker", testSettings());
@@ -244,4 +267,52 @@ TEST_CASE("Subscriptions", "[majordomo][majordomoworker][subscription]") {
     }
     std::ranges::sort(subscriptions);
     REQUIRE(subscriptions == std::vector<std::string>{ "/colors", "/colors?blue&green&red", "/colors?green&red", "/colors?red" });
+}
+
+TEST_CASE("Majordomo timeouts", "[majordomo][majordomoworker][rest]") {
+    majordomo::Broker                                          broker("/TestBroker", testSettings());
+    auto                                                       fs = cmrc::assets::get_filesystem();
+    FileServerRestBackend<majordomo::PLAIN_HTTP, decltype(fs)> rest(broker, fs);
+    RunInThread                                                restServerRun(rest);
+
+    opencmw::query::registerTypes(WaitingContext(), broker);
+
+    WaitingWorker<"/waiter"> worker(broker);
+
+    RunInThread              brokerRun(broker);
+    RunInThread              workerRun(worker);
+
+    REQUIRE(waitUntilWorkerServiceAvailable(broker.context, worker));
+
+    // set timeout to unit-test friendly interval
+    rest.setMajordomoTimeout(800ms);
+
+    SECTION("Waiting for notification that doesn't happen in time returns 504 message") {
+        std::vector<std::jthread> clientThreads;
+        for (int i = 0; i < 16; ++i) {
+            clientThreads.push_back(makeGetRequestResponseCheckerThread("/waiter?LongPollingIdx=Next", { "Timeout" }, { 504 }));
+        }
+    }
+
+    SECTION("Waiting for notification that happens in time gives expected response") {
+        auto client = makeGetRequestResponseCheckerThread("/waiter?LongPollingIdx=Next", { "This is a notification" });
+        std::this_thread::sleep_for(400ms);
+        worker.notify({}, { "This is a notification" });
+    }
+
+    SECTION("Response to request takes too long, timeout status is returned") {
+        httplib::Client postData{ "http://localhost:8080" };
+        auto            reply = postData.Post("/waiter?contentType=application%2Fjson&timeoutMs=1200", "{\"value\": \"Hello!\"}", "application/json");
+        REQUIRE(reply);
+        REQUIRE(reply->status == 504);
+        REQUIRE(reply->body.find("No response") != std::string::npos);
+    }
+
+    SECTION("Response to request arrives in time") {
+        httplib::Client postData{ "http://localhost:8080" };
+        auto            reply = postData.Post("/waiter?contentType=application%2Fjson&timeoutMs=0", "{\"value\": \"Hello!\"}", "application/json");
+        REQUIRE(reply);
+        REQUIRE(reply->status == 200);
+        REQUIRE(reply->body.find("You said: Hello!") != std::string::npos);
+    }
 }
