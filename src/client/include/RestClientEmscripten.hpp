@@ -223,7 +223,6 @@ public:
 
 private:
     void executeCommand(Command &&cmd) const {
-        auto                                                 uri             = opencmw::URI<>::factory(cmd.topic).build();
         auto                                                 preferredHeader = detail::getPreferredContentTypeHeader(cmd.topic, _mimeType);
         std::array<const char *, preferredHeader.size() + 1> preferredHeaderEmscripten;
         std::transform(preferredHeader.cbegin(), preferredHeader.cend(), preferredHeaderEmscripten.begin(),
@@ -269,8 +268,8 @@ private:
 
         // TODO: Pass the payload as POST body: emscripten_fetch(&attr, uri.relativeRef()->data());
 
-        auto d = URI<>::factory(uri).addQueryParameter("_bodyOverride", body).build().str().data();
-        emscripten_fetch(&attr, d);
+        const auto uri = URI<>::factory(cmd.topic).addQueryParameter("_bodyOverride", body).build();
+        emscripten_fetch(&attr, uri.str().data());
     }
 
     void startSubscription(Command &&cmd) {
