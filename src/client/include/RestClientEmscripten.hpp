@@ -273,7 +273,7 @@ private:
     }
 
     void startSubscription(Command &&cmd) {
-        auto uri        = opencmw::URI<>::factory(cmd.topic).queryParam("LongPollingIdx=Next").build();
+        auto uri        = opencmw::URI<>::factory(cmd.topic).addQueryParameter("LongPollingIdx", "Next").build();
         cmd.topic       = uri;
 
         auto payload    = std::make_unique<detail::SubscriptionPayload>(std::move(cmd), _mimeType);
@@ -288,7 +288,7 @@ private:
         // void get(...)
         // void set(...)
         // instead of going through a fake generic request(...)?
-        auto uri       = opencmw::URI<>::factory(cmd.topic).queryParam("LongPollingIdx=Next").build();
+        auto uri       = opencmw::URI<>::factory(cmd.topic).addQueryParameter("LongPollingIdx", "Next").build();
         auto payloadIt = std::find_if(detail::subscriptionPayloads.begin(), detail::subscriptionPayloads.end(),
                 [&](const auto &ptr) {
                     return ptr->command.topic == uri;
