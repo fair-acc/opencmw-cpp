@@ -18,6 +18,15 @@ public:
         _concatenated_certificates += root_certificates[1];
         _concatenated_certificates += root_certificates[2];
         _concatenated_certificates += root_certificates[3];
+
+        if (auto filename = std::getenv("OPENCMW_REST_CERT_FILE"); filename) {
+            std::ifstream ifs{ filename };
+            if (!ifs.is_open()) {
+                std::string cert;
+                ifs >> cert;
+                _concatenated_certificates += cert;
+            }
+        }
     }
     constexpr std::string get() const noexcept {
         return _concatenated_certificates;

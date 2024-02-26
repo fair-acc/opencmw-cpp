@@ -142,7 +142,6 @@ class RestClient : public ClientBase {
     std::mutex                             _subscriptionLock;
     std::map<URI<STRICT>, httplib::Client> _subscription1;
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
-    X509_STORE                               *_client_cert_store = nullptr;
     std::map<URI<STRICT>, httplib::SSLClient> _subscription2;
 #endif
 
@@ -166,12 +165,6 @@ public:
         , _maxIoThreads(detail::find_argument_value<true, MaxIoThreads>([] { return MaxIoThreads(); }, initArgs...))
         , _thread_pool(detail::find_argument_value<true, ThreadPoolType>([this] { return std::make_shared<BasicThreadPool<IO_BOUND>>(_name, _minIoThreads, _maxIoThreads); }, initArgs...))
         , _caCertificate(detail::find_argument_value<true, ClientCertificates>([] { return rest::DefaultCertificate().get(); }, initArgs...)) {
-#ifdef CPPHTTPLIB_OPENSSL_SUPPORT
-        if (_client_cert_store != nullptr) {
-            X509_STORE_free(_client_cert_store);
-        }
-        _client_cert_store = detail::createCertificateStore(_caCertificate);
-#endif
     }
     ~RestClient() override { RestClient::stop(); };
 
@@ -285,7 +278,8 @@ private:
         if (cmd.topic.scheme() && equal_with_case_ignore(cmd.topic.scheme().value(), "https")) {
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
             httplib::SSLClient client(cmd.topic.hostName().value(), cmd.topic.port() ? cmd.topic.port().value() : 443);
-            client.set_ca_cert_store(_client_cert_store);
+            // client owns its certificate store and destroys it after use. create a store for each client
+            client.set_ca_cert_store(detail::createCertificateStore(_caCertificate));
             client.enable_server_certificate_verification(CHECK_CERTIFICATES);
             callback(client);
 #else
@@ -315,45 +309,68 @@ private:
                 || equal_with_case_ignore(*cmd.topic.scheme(), "https")
 #endif
         ) {
-            auto it = _subscription1.find(cmd.topic);
-            if (it == _subscription1.end()) {
-                auto &client = _subscription1.try_emplace(cmd.topic, httplib::Client(cmd.topic.hostName().value(), cmd.topic.port().value())).first->second;
-                client.set_follow_location(true);
+            auto createNewSubscription = [&](auto &client) {
+                {
+                    client.set_follow_location(true);
 
-                auto longPollingEndpoint = [&] {
-                    if (!cmd.topic.queryParamMap().contains(LONG_POLLING_IDX_TAG)) {
-                        return URI<>::factory(cmd.topic).addQueryParameter(LONG_POLLING_IDX_TAG, "Next").build();
-                    } else {
-                        return URI<>::factory(cmd.topic).build();
-                    }
-                }();
-
-                const auto pollHeaders = getPreferredContentTypeHeader(longPollingEndpoint);
-                auto       endpoint    = longPollingEndpoint.relativeRef().value();
-                client.set_read_timeout(cmd.timeout); // default keep-alive value
-                while (_run) {
-                    auto redirect_get = [&client](auto url, auto headers) {
-                        for (;;) {
-                            auto result = client.Get(url, headers);
-                            if (!result) return result;
-
-                            if (result->status >= 300 && result->status < 400) {
-                                url = httplib::detail::decode_url(result.value().get_header_value("location"), true);
-                            } else {
-                                return result;
-                            }
+                    auto longPollingEndpoint = [&] {
+                        if (!cmd.topic.queryParamMap().contains(LONG_POLLING_IDX_TAG)) {
+                            return URI<>::factory(cmd.topic).addQueryParameter(LONG_POLLING_IDX_TAG, "Next").build();
+                        } else {
+                            return URI<>::factory(cmd.topic).build();
                         }
-                    };
-                    if (const httplib::Result &result = redirect_get(endpoint, pollHeaders)) {
-                        returnMdpMessage(cmd, result);
-                    } else {                                      // failed or server is down -> wait until retry
-                        std::this_thread::sleep_for(cmd.timeout); // time-out until potential retry
-                        if (_run) {
-                            returnMdpMessage(cmd, result, fmt::format("Long-Polling-GET request failed for {}: {}", cmd.topic.str(), static_cast<int>(result.error())));
+                    }();
+
+                    const auto pollHeaders = getPreferredContentTypeHeader(longPollingEndpoint);
+                    auto       endpoint    = longPollingEndpoint.relativeRef().value();
+                    client.set_read_timeout(cmd.timeout); // default keep-alive value
+                    while (_run) {
+                        auto redirect_get = [&client](auto url, auto headers) {
+                            for (;;) {
+                                auto result = client.Get(url, headers);
+                                if (!result) return result;
+
+                                if (result->status >= 300 && result->status < 400) {
+                                    url = httplib::detail::decode_url(result.value().get_header_value("location"), true);
+                                } else {
+                                    return result;
+                                }
+                            }
+                        };
+                        if (const httplib::Result &result = redirect_get(endpoint, pollHeaders)) {
+                            returnMdpMessage(cmd, result);
+                        } else {                                      // failed or server is down -> wait until retry
+                            std::this_thread::sleep_for(cmd.timeout); // time-out until potential retry
+                            if (_run) {
+                                returnMdpMessage(cmd, result, fmt::format("Long-Polling-GET request failed for {}: {}", cmd.topic.str(), static_cast<int>(result.error())));
+                            }
                         }
                     }
                 }
+            };
+            if (equal_with_case_ignore(*cmd.topic.scheme(), "http")) {
+                auto it = _subscription1.find(cmd.topic);
+                if (it == _subscription1.end()) {
+                    _subscription1.emplace(cmd.topic, httplib::Client(cmd.topic.hostName().value(), cmd.topic.port().value()));
+                    createNewSubscription(_subscription1.at(cmd.topic));
+                }
+            } else {
+#ifdef CPPHTTPLIB_OPENSSL_SUPPORT
+                if (auto it = _subscription2.find(cmd.topic); it == _subscription2.end()) {
+                    _subscription2.emplace(
+                            std::piecewise_construct,
+                            std::forward_as_tuple(cmd.topic),
+                            std::forward_as_tuple(cmd.topic.hostName().value(), cmd.topic.port().value()));
+                    auto &client = _subscription2.at(cmd.topic);
+                    client.set_ca_cert_store(detail::createCertificateStore(_caCertificate));
+                    client.enable_server_certificate_verification(CHECK_CERTIFICATES);
+                    createNewSubscription(_subscription2.at(cmd.topic));
+                }
+#else
+                throw std::invalid_argument("https is not supported");
+#endif
             }
+
         } else {
             throw std::invalid_argument(fmt::format("unsupported scheme '{}' for requested subscription '{}'", cmd.topic.scheme(), cmd.topic.str()));
         }
