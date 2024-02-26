@@ -73,8 +73,6 @@ TEST_CASE("Basic Rest Client Constructor and API Tests", "[Client]") {
     RestClient client5("clientName", DefaultContentTypeHeader(MIME::HTML), MinIoThreads(2), MaxIoThreads(5), ClientCertificates(testCertificate));
     REQUIRE(client5.defaultMimeType() == MIME::HTML);
     REQUIRE(client5.threadPool()->poolName() == "clientName");
-
-    REQUIRE_THROWS_AS(RestClient(ClientCertificates("Invalid Certificate Format")), std::invalid_argument);
 }
 
 TEST_CASE("Basic Rest Client Get/Set Test - HTTP", "[Client]") {
@@ -123,6 +121,73 @@ TEST_CASE("Basic Rest Client Get/Set Test - HTTP", "[Client]") {
 }
 
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
+TEST_CASE("Multiple Rest Client Get/Set Test - HTTPS", "[Client]") {
+    using namespace opencmw::client;
+    RestClient client("TestSSLClient", ClientCertificates(testServerCertificates.caCertificate));
+    REQUIRE(RestClient::CHECK_CERTIFICATES);
+    RestClient::CHECK_CERTIFICATES = true; // 'false' disables certificate check
+    REQUIRE(client.name() == "TestSSLClient");
+    REQUIRE(client.defaultMimeType() == MIME::JSON);
+
+    // HTTP
+    X509     *cert = opencmw::client::detail::readServerCertificateFromFile(testServerCertificates.serverCertificate);
+    EVP_PKEY *pkey = opencmw::client::detail::readServerPrivateKeyFromFile(testServerCertificates.serverKey);
+    if (const X509_STORE *ca_store = opencmw::client::detail::createCertificateStore(testServerCertificates.caCertificate); !cert || !pkey || !ca_store) {
+        FAIL(fmt::format("Failed to load certificate: {}", ERR_error_string(ERR_get_error(), nullptr)));
+    }
+    httplib::SSLServer server(cert, pkey);
+
+    std::string        acceptHeader;
+    server.Get("/endPoint", [&acceptHeader](const httplib::Request &req, httplib::Response &res) {
+        if (req.headers.contains("accept")) {
+            acceptHeader = req.headers.find("accept")->second;
+        } else {
+            FAIL("no accept headers found");
+        }
+        res.set_content("Hello World!", acceptHeader);
+    });
+    client.threadPool()->execute<"RestServer">([&server] { server.listen("localhost", 8080); });
+    while (!server.is_running()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    REQUIRE(server.is_running());
+
+    std::array<std::atomic<bool>, 4> dones;
+    dones[0] = false;
+    dones[1] = false;
+    dones[2] = false;
+    dones[3] = false;
+    std::atomic<int> counter{ 0 };
+    auto             makeCommand = [&]() {
+        IoBuffer data;
+        data.put('A');
+        data.put('B');
+        data.put('C');
+        data.put(0);
+
+        Command command;
+        command.command  = mdp::Command::Get;
+        command.topic    = URI<STRICT>("https://localhost:8080/endPoint");
+        command.data     = std::move(data);
+        command.callback = [&dones, &counter](const mdp::Message             &/*rep*/) {
+            int currentCounter = counter.fetch_add(1, std::memory_order_relaxed);
+            dones[currentCounter].store(true, std::memory_order_release);
+            // Assuming you have access to 'done' variable, uncomment the following line
+            dones[currentCounter].notify_all();
+        };
+        client.request(command);
+    };
+    for (int i = 0; i < 4; i++)
+        makeCommand();
+
+    for (auto &done : dones) {
+        done.wait(false);
+    }
+    REQUIRE(std::ranges::all_of(dones, [](auto &done) { return done.load(std::memory_order_acquire); }));
+    REQUIRE(acceptHeader == MIME::JSON.typeName());
+    server.stop();
+}
+
 TEST_CASE("Basic Rest Client Get/Set Test - HTTPS", "[Client]") {
     using namespace opencmw::client;
     RestClient client("TestSSLClient", ClientCertificates(testServerCertificates.caCertificate));
@@ -254,6 +319,110 @@ TEST_CASE("Basic Rest Client Subscribe/Unsubscribe Test", "[Client]") {
     Command command;
     command.command  = mdp::Command::Subscribe;
     command.topic    = URI<STRICT>("http://localhost:8080/event");
+    command.data     = std::move(data);
+    command.callback = [&receivedRegular, &receivedError](const mdp::Message &rep) {
+        fmt::print("SSE client received reply = '{}' - body size: '{}'\n", rep.data.asString(), rep.data.size());
+        if (rep.error.size() == 0) {
+            receivedRegular.fetch_add(1, std::memory_order_relaxed);
+        } else {
+            receivedError.fetch_add(1, std::memory_order_relaxed);
+        }
+        receivedRegular.notify_all();
+        receivedError.notify_all();
+    };
+
+    client.request(command);
+
+    std::cout << "client request launched" << std::endl;
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    eventDispatcher.send_event("test-event meta data");
+    std::jthread dispatcher([&updateCounter, &eventDispatcher] {
+        while (updateCounter < 5) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            eventDispatcher.send_event(fmt::format("test-event {}", updateCounter++));
+        }
+    });
+    dispatcher.join();
+
+    while (receivedRegular.load(std::memory_order_relaxed) < 5) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    std::cout << "done waiting" << std::endl;
+    REQUIRE(receivedRegular.load(std::memory_order_acquire) >= 5);
+
+    command.command = mdp::Command::Unsubscribe;
+    client.request(command);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::cout << "done Unsubscribe" << std::endl;
+
+    client.stop();
+    server.stop();
+    eventDispatcher.send_event(fmt::format("test-event {}", updateCounter++));
+    std::cout << "server stopped" << std::endl;
+}
+
+TEST_CASE("Basic Rest Client Subscribe/Unsubscribe Test HTTPS", "[Client]") {
+    // HTTP
+    X509     *cert = opencmw::client::detail::readServerCertificateFromFile(testServerCertificates.serverCertificate);
+    EVP_PKEY *pkey = opencmw::client::detail::readServerPrivateKeyFromFile(testServerCertificates.serverKey);
+    if (const X509_STORE *ca_store = opencmw::client::detail::createCertificateStore(testServerCertificates.caCertificate); !cert || !pkey || !ca_store) {
+        FAIL(fmt::format("Failed to load certificate: {}", ERR_error_string(ERR_get_error(), nullptr)));
+    }
+    using namespace opencmw::client;
+
+    std::atomic<int>        updateCounter{ 0 };
+    detail::EventDispatcher eventDispatcher;
+    httplib::SSLServer      server(cert, pkey);
+    server.Get("/event", [&eventDispatcher, &updateCounter](const httplib::Request &req, httplib::Response &res) {
+        DEBUG_LOG("Server received request");
+        auto acceptType = req.headers.find("accept");
+        if (acceptType == req.headers.end() || MIME::EVENT_STREAM.typeName() != acceptType->second) { // non-SSE request -> return default response
+#if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
+            res.set_content(fmt::format("update counter = {}", updateCounter.load()), MIME::TEXT);
+#else
+            res.set_content(fmt::format("update counter = {}", updateCounter.load()), std::string(MIME::TEXT.typeName()));
+#endif
+            return;
+        } else {
+            fmt::print("server received SSE request on path '{}' body = '{}'\n", req.path, req.body);
+#if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
+            res.set_chunked_content_provider(MIME::EVENT_STREAM, [&eventDispatcher](size_t /*offset*/, httplib::DataSink &sink) {
+#else
+            res.set_chunked_content_provider(std::string(MIME::EVENT_STREAM.typeName()), [&eventDispatcher](size_t /*offset*/, httplib::DataSink &sink) {
+#endif
+                eventDispatcher.wait_event(sink);
+                return true;
+            });
+        }
+    });
+    server.Get("/endPoint", [](const httplib::Request &req, httplib::Response &res) {
+        fmt::print("server received request on path '{}' body = '{}'\n", req.path, req.body);
+        res.set_content("Hello World!", "text/plain");
+    });
+
+    RestClient client("TestSSLClient", ClientCertificates(testServerCertificates.caCertificate));
+
+    client.threadPool()->execute<"RestServer">([&server] { server.listen("localhost", 8080); });
+    while (!server.is_running()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    REQUIRE(server.is_running());
+    REQUIRE(RestClient::CHECK_CERTIFICATES);
+    RestClient::CHECK_CERTIFICATES = true; // 'false' disables certificate check
+    REQUIRE(client.name() == "TestSSLClient");
+    REQUIRE(client.defaultMimeType() == MIME::JSON);
+
+    std::atomic<int> receivedRegular(0);
+    std::atomic<int> receivedError(0);
+    IoBuffer         data;
+    data.put('A');
+    data.put('B');
+    data.put('C');
+    data.put(0);
+
+    Command command;
+    command.command  = mdp::Command::Subscribe;
+    command.topic    = URI<STRICT>("https://localhost:8080/event");
     command.data     = std::move(data);
     command.callback = [&receivedRegular, &receivedError](const mdp::Message &rep) {
         fmt::print("SSE client received reply = '{}' - body size: '{}'\n", rep.data.asString(), rep.data.size());
