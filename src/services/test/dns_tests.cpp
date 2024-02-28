@@ -189,6 +189,23 @@ TEST_CASE("data storage - Renewing Entries") {
     REQUIRE(e->ttl > now);
 }
 
+TEST_CASE("data storage - Deleting Entries") {
+    TestDataStorage ds;
+    ds.addEntry(entry_a);
+    ds.addEntry(entry_b);
+    ds.deleteEntries(entry_a);
+
+    REQUIRE(ds.getActiveEntriesCount() == 1);
+
+    auto entries = ds.entries();
+    REQUIRE(entries.size() == 1);
+    auto e = std::find(entries.begin(), entries.end(), entry_a);
+    REQUIRE(e == entries.end());
+
+    ds.addEntry(entry_a);
+    ds.addEntry(entry_c);
+}
+
 #ifndef __EMSCRIPTEN__
 
 TEST_CASE("run services", "[DNS]") {
@@ -287,6 +304,55 @@ TEST_CASE("query", "[DNS]") {
         REQUIRE(services[0] == entry_c);
     }
 }
+
+TEST_CASE("client unregister entries", "[DNS]") {
+    FileDeleter                                                 fd;
+    majordomo::Broker<>                                         broker{ "/Broker", {} };
+    auto                                                        fs = cmrc::assets::get_filesystem();
+    majordomo::RestBackend<majordomo::PLAIN_HTTP, decltype(fs)> rest_backend{ broker, fs };
+    DnsWorkerType                                               dnsWorker{ broker, DnsHandler{} };
+
+    RunInThread                                                 restThread(rest_backend);
+    RunInThread                                                 brokerThread(broker);
+    RunInThread                                                 dnsThread(dnsWorker);
+
+    REQUIRE(waitUntilWorkerServiceAvailable(broker.context, dnsWorker));
+
+    std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
+    clients.emplace_back(std::make_unique<client::MDClientCtx>(broker.context, 20ms, "dnsTestClient"));
+    clients.emplace_back(std::make_unique<client::RestClient>(opencmw::client::DefaultContentTypeHeader(MIME::BINARY)));
+    client::ClientContext clientContext{ std::move(clients) };
+    DnsClient             restClient{ clientContext, URI<>{ "http://localhost:8080/dns" } };
+    restClient.registerSignals({ entry_a, entry_b, entry_c });
+
+    SECTION("unregister") {
+        auto deleted = restClient.unregisterSignal(entry_a);
+        REQUIRE(deleted.size() == 1);
+        REQUIRE(deleted.at(0) == entry_a);
+        auto remaining = restClient.querySignals();
+        REQUIRE(remaining.size() == 2);
+        REQUIRE(std::ranges::none_of(remaining, [](auto &e) { return e == entry_a; }));
+    }
+    SECTION("unregister entries") {
+        auto res = restClient.unregisterSignals({ entry_a, entry_b });
+        REQUIRE(res.size() == 2);
+
+        auto rem = restClient.querySignals();
+        REQUIRE(rem.size() == 1);
+        REQUIRE(rem.at(0) == entry_c);
+    }
+    SECTION("unregister group") {
+        REQUIRE(restClient.querySignals().size() == 3);
+        QueryEntry e;
+        e.service_name = "group a";
+        auto res       = restClient.unregisterSignal(e);
+        REQUIRE(res.size() == 2);
+        auto remaining = restClient.querySignals();
+        REQUIRE(remaining.size() == 1);
+        REQUIRE(remaining.at(0) == entry_c);
+    }
+}
+
 #endif // __EMSCRIPTEN__
 
 TEST_CASE("registering", "[DNS]") {

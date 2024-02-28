@@ -60,6 +60,30 @@ public:
         return result;
     }
 
+    template<class ReturnEntryType = EntryType, class FilterT = EntryType>
+    std::vector<ReturnEntryType> deleteEntries(const std::vector<FilterT> entries) {
+        std::vector<ReturnEntryType> deletedEntries;
+        std::ranges::for_each(entries, [this, &deletedEntries](auto &e) {
+            auto d = deleteEntries(e);
+            std::ranges::move(d, std::back_inserter(deletedEntries));
+        });
+        return deletedEntries;
+    }
+
+    template<class ReturnEntryType = EntryType, class FilterT = FilterType>
+    std::vector<ReturnEntryType> deleteEntries(const FilterT &filter = {}) {
+        std::vector<ReturnEntryType> deletedEntries;
+        std::erase_if(_entries,
+                [&filter, &deletedEntries](const StorageEntryType &entry) {
+                    if (filter == entry) {
+                        deletedEntries.push_back(entry);
+                        return true; // Remove the entry
+                    }
+                    return false; // Keep the entry
+                });
+        return deletedEntries;
+    }
+
     const std::vector<StorageEntryType> &getEntries() const {
         return _entries;
     }

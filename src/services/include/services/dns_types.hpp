@@ -43,6 +43,7 @@ struct QueryEntry : Entry {
 
 struct Context : QueryEntry {
     [[maybe_unused]] MIME::MimeType contextType{ MIME::BINARY };
+    bool                            doDelete{ false };
 };
 
 struct FlatEntryList {
@@ -76,7 +77,8 @@ struct FlatEntryList {
 #undef insert_into
     }
 
-    [[nodiscard]] std::vector<Entry> toEntries() const {
+    template<typename EntryType = Entry>
+    [[nodiscard]] std::vector<EntryType> toEntries() const {
         const std::size_t size = protocol.size();
         assert(hostname.size() == size
                 && port.size() == size
@@ -87,11 +89,11 @@ struct FlatEntryList {
                 && signal_rate.size() == size
                 && signal_type.size() == size);
 
-        std::vector<Entry> res;
+        std::vector<EntryType> res;
         res.reserve(size);
 
         for (std::size_t i = 0; i < size; ++i) {
-            res.emplace_back(Entry{ protocol[i],
+            res.emplace_back(EntryType{ protocol[i],
                     hostname[i],
                     port[i],
                     service_name[i],
@@ -110,7 +112,7 @@ struct FlatEntryList {
 #define ENTRY_FIELDS protocol, hostname, port, service_name, service_type, signal_name, signal_unit, signal_rate, signal_type
 ENABLE_REFLECTION_FOR(opencmw::service::dns::Entry, ENTRY_FIELDS)
 ENABLE_REFLECTION_FOR(opencmw::service::dns::QueryEntry, ENTRY_FIELDS)
-ENABLE_REFLECTION_FOR(opencmw::service::dns::Context, contextType, ENTRY_FIELDS)
+ENABLE_REFLECTION_FOR(opencmw::service::dns::Context, contextType, doDelete, ENTRY_FIELDS)
 ENABLE_REFLECTION_FOR(opencmw::service::dns::FlatEntryList, ENTRY_FIELDS) // everything is a vector<T> here
 #undef ENTRY_FIELDS
 
