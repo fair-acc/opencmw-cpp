@@ -65,6 +65,28 @@ public:
                 std::move(buf));
     }
 
+    void unregisterSignalsAsync(std::function<void(std::vector<Entry>)> callback, const std::vector<Entry> &filter = {}) {
+        auto    uri = URI<>::factory(_endpoint);
+        Context ctx;
+        ctx.doDelete = true;
+        uri          = std::move(uri).setQuery(query::serialise(ctx));
+
+        IoBuffer      buf;
+        FlatEntryList entrylist{ filter };
+        opencmw::serialise<YaS>(buf, entrylist);
+
+        _clientContext.set(
+                uri.build(), [callback = std::move(callback)](auto &msg) {
+                    FlatEntryList resp;
+                    IoBuffer      buf{ msg.data };
+                    if (!buf.empty()) {
+                        deserialise<YaS, ProtocolCheck::ALWAYS>(buf, resp);
+                    }
+                    callback(resp.toEntries());
+                },
+                std::move(buf));
+    }
+
     template<typename ReturnType>
     auto _doSync(auto function, auto parameter, std::chrono::seconds timeout) {
         std::atomic_bool        received{ false };
@@ -90,11 +112,17 @@ public:
     std::vector<Entry> registerSignals(const std::vector<Entry> &entries, std::chrono::seconds timeout = 20s) {
         return _doSync<std::vector<Entry>>(&DnsClient::registerSignalsAsync, entries, timeout);
     }
+    std::vector<Entry> unregisterSignals(const std::vector<Entry> &entries, std::chrono::seconds timeout = 20s) {
+        return _doSync<std::vector<Entry>>(&DnsClient::unregisterSignalsAsync, entries, timeout);
+    }
     Entry registerSignal(const Entry &entry) {
         auto s = registerSignals({ entry });
         if (s.size() > 0)
             return s[0];
         return {};
+    }
+    std::vector<Entry> unregisterSignal(const Entry &entry) {
+        return unregisterSignals({ entry });
     }
 };
 

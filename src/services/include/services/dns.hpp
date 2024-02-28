@@ -23,8 +23,12 @@ protected:
 public:
     void operator()(majordomo::RequestContext &rawCtx, const Context &ctx, const FlatEntryList &in, [[maybe_unused]] Context &replyContext, FlatEntryList &response) {
         if (rawCtx.request.command == mdp::Command::Set) {
-            auto out = datastorage.addEntries(in.toEntries());
-            response = out;
+            if (ctx.doDelete) {
+                response = datastorage.deleteEntries(in.toEntries<QueryEntry>());
+            } else {
+                auto out = datastorage.addEntries(in.toEntries());
+                response = out;
+            }
         } else if (rawCtx.request.command == mdp::Command::Get) {
             auto result = datastorage.queryEntries(ctx);
             response    = { result };
