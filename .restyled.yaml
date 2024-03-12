@@ -29,7 +29,7 @@ restylers_version: stable
 restylers:
   - clang-format:
       image:
-        tag: v16
+        tag: v17
   - cmake-format
   - prettier-markdown
   - prettier-yaml
