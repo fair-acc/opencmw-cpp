@@ -218,8 +218,8 @@ struct Connection {
     zmq::Socket requestResponseSocket;
     std::string subscriptionKey;
 
-    using Timestamp    = std::chrono::time_point<std::chrono::system_clock>;
-    Timestamp lastUsed = std::chrono::system_clock::now();
+    using Timestamp                 = std::chrono::time_point<std::chrono::system_clock>;
+    std::atomic<Timestamp> lastUsed = std::chrono::system_clock::now();
 
 private:
     mutable std::shared_mutex   _cachedRepliesMutex;
@@ -235,7 +235,7 @@ private:
         : notificationSubscriptionSocket(std::move(other.notificationSubscriptionSocket))
         , requestResponseSocket(std::move(other.requestResponseSocket))
         , subscriptionKey(std::move(other.subscriptionKey))
-        , lastUsed(std::move(other.lastUsed))
+        , lastUsed(other.lastUsed.load())
         , _cachedReplies(std::move(other._cachedReplies))
         , _nextPollingIndex(other._nextPollingIndex) {
     }
@@ -408,7 +408,7 @@ public:
                             if (connection->referenceCount() != 0) {
                                 continue;
                             }
-                            if (std::chrono::system_clock::now() - connection->lastUsed > UNUSED_SUBSCRIPTION_EXPIRATION_TIME) {
+                            if (std::chrono::system_clock::now() - connection->lastUsed.load() > UNUSED_SUBSCRIPTION_EXPIRATION_TIME) {
                                 expiredSubscriptions.push_back(subscriptionKey);
                             }
                         }
@@ -823,7 +823,8 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
             if (auto it = recycledConnectionForService.find(subscriptionKey); it != recycledConnectionForService.cend()) {
                 auto                         *connectionCache = it->second.get();
                 detail::Connection::KeepAlive keep(connectionCache);
-                auto                          connectionCacheLock = connectionCache->readLock();
+                connectionCache->lastUsed = std::chrono::system_clock::now();
+                auto connectionCacheLock  = connectionCache->readLock();
                 return CacheInfo{
                     .firstCachedIndex = connectionCache->nextPollingIndex(connectionCacheLock) - connectionCache->cachedRepliesSize(connectionCacheLock),
                     .nextPollingIndex = connectionCache->nextPollingIndex(connectionCacheLock),
