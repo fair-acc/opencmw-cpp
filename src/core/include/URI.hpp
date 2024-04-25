@@ -58,11 +58,9 @@ public:
         : _str(src) { parseURI(); }
     explicit URI(std::string &&src)
         : _str(std::move(src)) { parseURI(); }
-    URI(const URI &other)
-    noexcept { *this = other; }
-    URI(const URI &&other)
-    noexcept { *this = std::move(other); }
-    ~URI()       = default;
+    URI(const URI &other) noexcept { *this = other; }
+    URI(const URI &&other) noexcept { *this = std::move(other); }
+    ~URI() = default;
 
     URI &operator=(const URI &other) noexcept {
         if (this == &other) {
@@ -195,16 +193,19 @@ public:
         using namespace fmt::literals;
         if (_path.empty() && _query.empty() && _fragment.empty()) return {};
         return fmt::format("{opt_path_slash}{path}{qMark}{query}{hashMark}{fragment}",
-                           "opt_path_slash"_a = (_path.empty() || _path.starts_with('/')) ? "" : "/", "path"_a = _path,                     // path
-                           "qMark"_a = (_query.empty() || _query.starts_with('?')) ? "" : "?", "query"_a = _query,                         // query
-                           "hashMark"_a = (_fragment.empty() || _fragment.starts_with('#')) ? "" : "#", "fragment"_a = encode(_fragment)); // fragment
+                           fmt::arg("opt_path_slash", _path.empty() || _path.starts_with('/') ? "" : "/"),
+                           fmt::arg("path", _path),                     // path
+                           fmt::arg("qMark", (_query.empty() || _query.starts_with('?')) ? "" : "?"),
+                           fmt::arg("query", _query),                         // query
+                           fmt::arg("hashMark", (_fragment.empty() || _fragment.starts_with('#')) ? "" : "#"),
+                           fmt::arg("fragment", encode(_fragment))); // fragment
     }
     inline std::optional<std::string> relativeRefNoFragment() const noexcept { // path + query
         using namespace fmt::literals;
         if (_path.empty() && _query.empty()) return {};
         return fmt::format("{opt_path_slash}{path}{qMark}{query}",
-                           "opt_path_slash"_a = (_path.empty() || _path.starts_with('/')) ? "" : "/", "path"_a = _path,                     // path
-                           "qMark"_a = (_query.empty() || _query.starts_with('?')) ? "" : "?", "query"_a = _query);                        // query
+                           fmt::arg("opt_path_slash", (_path.empty() || _path.starts_with('/')) ? "" : "/"), fmt::arg("path", _path),                     // path
+                           fmt::arg("qMark", (_query.empty() || _query.starts_with('?')) ? "" : "?"), fmt::arg("query", _query));                        // query
     }
     // clang-format om
 
@@ -309,25 +310,25 @@ public:
         std::string toString() const {
             using namespace fmt::literals;
             if (_authority.empty()) {
-                _authority = fmt::format("{user}{opt_colon1}{pwd}{at}{host}{opt_colon2}{port}",                //
-                        "user"_a = _userName, "opt_colon1"_a = (_pwd.empty() || _userName.empty()) ? "" : ":", /* user:pwd colon separator */
-                        "pwd"_a = _userName.empty() ? "" : _pwd, "at"_a = _userName.empty() ? "" : "@",        // 'user:pwd@' separator
-                        "host"_a = _host, "opt_colon2"_a = _port ? ":" : "", "port"_a = _port ? std::to_string(_port.value()) : "");
+                _authority = fmt::format("{user}{opt_colon1}{pwd}{at}{host}{opt_colon2}{port}",                              //
+                        fmt::arg("user", _userName), fmt::arg("opt_colon1", (_pwd.empty() || _userName.empty()) ? "" : ":"), /* user:pwd colon separator */
+                        fmt::arg("pwd", _userName.empty() ? "" : _pwd), fmt::arg("at", _userName.empty() ? "" : "@"),        // 'user:pwd@' separator
+                        fmt::arg("host", _host), fmt::arg("opt_colon2", _port ? ":" : ""), fmt::arg("port", _port ? std::to_string(_port.value()) : ""));
             }
 
             // TODO: Calling toString multiple times appends parameters over and over again
             for (const auto &[key, value] : _queryMap) {
-                _query += fmt::format("{opt_ampersand}{key}{opt_equal}{value}",               // N.B. 'key=value' percent-encoding according to RFC 3986
-                        "opt_ampersand"_a = _query.empty() ? "" : "&", "key"_a = encode(key), //
-                        "opt_equal"_a = value ? "=" : "", "value"_a = value ? encode(value.value()) : "");
+                _query += fmt::format("{opt_ampersand}{key}{opt_equal}{value}",                             // N.B. 'key=value' percent-encoding according to RFC 3986
+                        fmt::arg("opt_ampersand", _query.empty() ? "" : "&"), fmt::arg("key", encode(key)), //
+                        fmt::arg("opt_equal", value ? "=" : ""), fmt::arg("value", value ? encode(value.value()) : ""));
             }
 
-            return fmt::format("{scheme}{colon}{opt_auth_slash}{authority}{opt_path_slash}{path}{qMark}{query}{hashMark}{fragment}",   //
-                    "scheme"_a = _scheme, "colon"_a = _scheme.empty() ? "" : ":",                                                      // scheme
-                    "opt_auth_slash"_a = (_authority.empty() || _authority.starts_with("//")) ? "" : "//", "authority"_a = _authority, // authority
-                    "opt_path_slash"_a = (_path.empty() || _path.starts_with('/') || _authority.empty()) ? "" : "/", "path"_a = _path, // path
-                    "qMark"_a = (_query.empty() || _query.starts_with('?')) ? "" : "?", "query"_a = _query,                            // query
-                    "hashMark"_a = (_fragment.empty() || _fragment.starts_with('#')) ? "" : "#", "fragment"_a = encode(_fragment));    // fragment
+            return fmt::format("{scheme}{colon}{opt_auth_slash}{authority}{opt_path_slash}{path}{qMark}{query}{hashMark}{fragment}",                 //
+                    fmt::arg("scheme", _scheme), fmt::arg("colon", _scheme.empty() ? "" : ":"),                                                      // scheme
+                    fmt::arg("opt_auth_slash", (_authority.empty() || _authority.starts_with("//")) ? "" : "//"), fmt::arg("authority", _authority), // authority
+                    fmt::arg("opt_path_slash", (_path.empty() || _path.starts_with('/') || _authority.empty()) ? "" : "/"), fmt::arg("path", _path), // path
+                    fmt::arg("qMark", (_query.empty() || _query.starts_with('?')) ? "" : "?"), fmt::arg("query", _query),                            // query
+                    fmt::arg("hashMark", (_fragment.empty() || _fragment.starts_with('#')) ? "" : "#"), fmt::arg("fragment", encode(_fragment)));    // fragment
         }
 
         URI build() {
