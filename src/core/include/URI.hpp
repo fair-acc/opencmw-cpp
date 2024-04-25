@@ -207,7 +207,7 @@ public:
                            fmt::arg("opt_path_slash", (_path.empty() || _path.starts_with('/')) ? "" : "/"), fmt::arg("path", _path),                     // path
                            fmt::arg("qMark", (_query.empty() || _query.starts_with('?')) ? "" : "?"), fmt::arg("query", _query));                        // query
     }
-    // clang-format om
+    // clang-format on
 
     // decompose map
     inline const std::unordered_map<std::string, std::optional<std::string>> &queryParamMap() const {
@@ -243,7 +243,7 @@ public:
                     continue;
                 }
                 const auto value = decode(_query.substr(readPos, _query.length() - readPos));
-                _queryMap[key] = value.empty() ? std::nullopt : std::optional(value);
+                _queryMap[key]   = value.empty() ? std::nullopt : std::optional(value);
                 break;
             } else {
                 auto key       = std::string(_query.substr(readPos, _query.length() - readPos));
@@ -257,7 +257,7 @@ public:
 
     // comparison operators
     auto operator<=>(const URI &other) const noexcept { return _str <=> other.str(); }
-    bool operator==(const URI &other) const noexcept  { return _str == other.str(); }
+    bool operator==(const URI &other) const noexcept { return _str == other.str(); }
 
     class UriFactory {
         mutable std::string     _authority;
@@ -273,11 +273,11 @@ public:
         std::unordered_map<std::string, std::optional<std::string>> _queryMap;
 
     public:
-        UriFactory() = default;
-        UriFactory(const UriFactory &) = default;
-        UriFactory& operator=(const UriFactory &) = default;
+        UriFactory()                              = default;
+        UriFactory(const UriFactory &)            = default;
+        UriFactory &operator=(const UriFactory &) = default;
 
-        UriFactory copy() const {
+        UriFactory  copy() const {
             return UriFactory(*this);
         }
 
