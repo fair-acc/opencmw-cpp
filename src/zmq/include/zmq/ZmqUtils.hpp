@@ -14,13 +14,13 @@
 #include <string>
 #include <type_traits>
 
-#ifdef __clang__ // TODO: replace (source_location is part of C++20 but still "experimental" for clang
+#ifdef __cpp_lib_source_location
+#include <source_location>
+#else
 #include <experimental/source_location>
 namespace std {
 typedef std::experimental::source_location source_location;
 }
-#else
-#include <source_location>
 #endif
 
 #ifndef ENABLE_RESULT_CHECKS
