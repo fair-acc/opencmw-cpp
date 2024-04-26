@@ -1,7 +1,7 @@
 #ifndef OPENCMW_CPP_URI_HPP
 #define OPENCMW_CPP_URI_HPP
 #include <algorithm>
-#include <fmt/format.h>
+#include <cassert>
 #include <iomanip>
 #include <ios>
 #include <optional>
@@ -10,7 +10,8 @@
 #include <string_view>
 #include <unordered_map>
 
-#include <cassert>
+#include <fmt/format.h>
+#include <fmt/std.h>
 
 namespace opencmw {
 
@@ -475,25 +476,6 @@ struct std::hash<opencmw::URI<check>> {
 };
 
 // fmt::format and std::ostream helper output
-
-// fmt::format and std::ostream helper output for std::optional
-template<typename T> // TODO: move to utils class
-struct fmt::formatter<std::optional<T>> {
-    template<typename ParseContext>
-    constexpr auto parse(ParseContext &ctx) {
-        return ctx.begin(); // not (yet) implemented
-    }
-
-    template<typename FormatContext>
-    auto format(std::optional<T> const &v, FormatContext &ctx) const {
-        return v ? fmt::format_to(ctx.out(), "'{}'", v.value()) : fmt::format_to(ctx.out(), "{{}}");
-    }
-};
-
-template<typename T>
-inline std::ostream &operator<<(std::ostream &os, const std::optional<T> &v) {
-    return os << fmt::format("{}", v);
-}
 
 template<opencmw::uri_check check>
 struct fmt::formatter<opencmw::URI<check>> {

@@ -268,9 +268,6 @@ TEST_CASE("helper methods", "[URI]") {
     dummyStream << fmt::format("test std::optional fmt::print: '{}'\n", optional);
     REQUIRE(dummyStream.str().size() != 0);
     resetStream();
-    dummyStream << "std::cout std::optional print: " << optional << std::endl;
-    REQUIRE(dummyStream.str().size() != 0);
-    resetStream();
 }
 
 TEST_CASE("lifetime", "[URI]") {

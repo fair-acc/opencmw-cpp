@@ -20,10 +20,6 @@ static_assert(no_fwd_wrapper(0) == 1, "r-value non-forwarding -> converted to lv
 static_assert(fwd_wrapper_verbose(0) == 2, "r-value forwarding");
 static_assert(fwd_wrapper(0) == 2, "r-value forwarding");
 
-/**** unmove(..) tests ***/
-static_assert(fwd_wrapper(unmove(lvalue)) == 1, "l-value -> l-value forwarding (copy)");
-static_assert(fwd_wrapper(unmove(0)) == 1, "r-value -> lvalue forwarding (copy)");
-
 /**** power 2 and bit-magic tests ***/
 static_assert(isPower2(1024U));
 static_assert(is_power2_v<1024U>);

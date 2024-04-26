@@ -44,8 +44,6 @@ constexpr bool always_false = false;
 using units::basic_fixed_string;
 using units::is_same_v;
 
-constexpr auto &unmove(auto &&t) { return t; } // opposite of std::move(...)
-
 template<typename R, typename Fn, typename... FnArgs>
 concept invocable_r = std::is_invocable_r_v<R, Fn, FnArgs...>;
 

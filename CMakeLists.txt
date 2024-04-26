@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.19)
 
 project(opencmw-cpp CXX)
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 
 # include(cmake/StandardProjectSettings.cmake)
 include(cmake/PreventInSourceBuilds.cmake)
@@ -126,7 +126,10 @@ if(OPENCMW_ENABLE_TESTING)
   if(OPENCMW_ENABLE_COVERAGE)
     if(UNIX
        AND NOT APPLE
-       AND NOT CMAKE_CXX_COMPILER_ID MATCHES ".*Clang"
+       AND NOT
+           CMAKE_CXX_COMPILER_ID
+           MATCHES
+           ".*Clang"
        AND NOT EMSCRIPTEN) # Linux
       message("Coverage reporting enabled")
       include(cmake/CodeCoverage.cmake) # https://github.com/bilke/cmake-modules/blob/master/CodeCoverage.cmake #
