@@ -17,6 +17,7 @@ if(NOT EMSCRIPTEN)
     serialiser
     majordomo
     rest
+    cpr::cpr
     zmq)
 else()
   target_link_libraries(
