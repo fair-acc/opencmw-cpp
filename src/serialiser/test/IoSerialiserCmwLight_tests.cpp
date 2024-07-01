@@ -272,3 +272,43 @@ TEST_CASE("IoClassSerialiserCmwLight missing field", "[IoClassSerialiser]") {
     REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
     debug::resetStats();
 }
+
+namespace ioserialiser_cmwlight_test {
+struct IntegerMap {
+    int x_8 = 1336; // fieldname gets mapped to "8"
+    int foo = 42;
+    int bar = 45;
+};
+} // namespace ioserialiser_cmwlight_test
+ENABLE_REFLECTION_FOR(ioserialiser_cmwlight_test::IntegerMap, x_8, foo, bar)
+
+TEST_CASE("IoClassSerialiserCmwLight deserialise into map", "[IoClassSerialiser]") {
+    using namespace opencmw;
+    using namespace ioserialiser_cmwlight_test;
+    debug::resetStats();
+    {
+        // serialise
+        IoBuffer     buffer;
+        IntegerMap input{23, 13, 37};
+        opencmw::serialise<opencmw::CmwLight>(buffer, input);
+        buffer.reset();
+        REQUIRE(buffer.size() == sizeof(int32_t) /* map size */ + refl::reflect(input).members.size /* map entries */ * (sizeof(int32_t) /* string lengths */ + sizeof(uint8_t) /* type */ + sizeof(int32_t) /* int */) + 2 + 4 + 4 /* strings + \0 */);
+        //std::cout << hexview(buffer.asString());
+
+        // deserialise
+        std::map<std::string, int> deserialised{};
+        DeserialiserInfo info;
+        auto field = opencmw::detail::newFieldHeader<CmwLight, true>(buffer, "map", 0, deserialised, -1);
+        opencmw::FieldHeaderReader<CmwLight>::template get<ProtocolCheck::IGNORE>(buffer, info, field);
+        IoSerialiser<CmwLight, START_MARKER>::deserialise(buffer, field, START_MARKER_INST);
+        opencmw::IoSerialiser<CmwLight, std::map<std::string, int>>::deserialise(buffer, field, deserialised);
+
+        // check for correctness
+        REQUIRE(deserialised.size() == 3);
+        REQUIRE(deserialised["8"] == 23);
+        REQUIRE(deserialised["foo"] == 13);
+        REQUIRE(deserialised["bar"] == 37);
+    }
+    REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
+    debug::resetStats();
+}
