@@ -394,9 +394,8 @@ struct IoSerialiser<CmwLight, std::map<std::string, ValueType>> {
         DeserialiserInfo info;
         constexpr ProtocolCheck check = ProtocolCheck::IGNORE;
         using protocol = CmwLight;
+        auto field = opencmw::detail::newFieldHeader<CmwLight, true>(buffer, "", parent.hierarchyDepth, ValueType{}, parent.subfields);
         while (buffer.position() < buffer.size()) {
-            auto field = opencmw::detail::newFieldHeader<CmwLight, true>(buffer, "", parent.hierarchyDepth, ValueType{}, -1);
-
             auto previousSubFields = field.subfields;
             FieldHeaderReader<protocol>::template get<check>(buffer, info, field);
             buffer.set_position(field.dataStartPosition); // skip to data start
