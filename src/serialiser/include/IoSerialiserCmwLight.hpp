@@ -242,9 +242,6 @@ struct IoSerialiser<CmwLight, START_MARKER> {
     }
 
     constexpr static void deserialise(IoBuffer & buffer, FieldDescription auto & field, const START_MARKER &) {
-        if (field.hierarchyDepth > 0) {
-            std::ignore = buffer.get<uint8_t>(); // skip the field type byte which has already been processed
-        }
         field.subfields = buffer.get<int32_t>();
         field.dataStartPosition = buffer.position();
     }
@@ -339,16 +336,18 @@ struct FieldHeaderReader<CmwLight> {
         field.dataEndPosition = std::numeric_limits<size_t>::max();
         field.modifier        = ExternalModifier::UNKNOWN;
         if (field.subfields == 0) {
+            field.dataStartPosition = field.headerStart + (field.intDataType ==IoSerialiser<CmwLight, START_MARKER>::getDataTypeId() ? 4 : 0 );
             field.intDataType = IoSerialiser<CmwLight, END_MARKER>::getDataTypeId();
             field.hierarchyDepth--;
-            field.dataStartPosition = buffer.position();
             return;
         }
         if (field.subfields == -1) {
             if (field.hierarchyDepth != 0) {                      // do not read field description for root element
                 field.fieldName = buffer.get<std::string_view>(); // full field name
+                field.intDataType = buffer.get<uint8_t>();          // data type ID
+            } else {
+                field.intDataType = IoSerialiser<CmwLight, START_MARKER>::getDataTypeId();
             }
-            field.intDataType = IoSerialiser<CmwLight, START_MARKER>::getDataTypeId();
         } else {
             field.fieldName   = buffer.get<std::string_view>(); // full field name
             field.intDataType = buffer.get<uint8_t>();          // data type ID
