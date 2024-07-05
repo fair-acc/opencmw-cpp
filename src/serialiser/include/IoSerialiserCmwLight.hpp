@@ -241,8 +241,8 @@ struct IoSerialiser<CmwLight, START_MARKER> {
         buffer.put(static_cast<int32_t>(field.subfields));
     }
 
-    constexpr static void deserialise(IoBuffer & buffer, FieldDescription auto & field, const START_MARKER &) {
-        field.subfields = buffer.get<int32_t>();
+    constexpr static void deserialise(IoBuffer &buffer, FieldDescription auto &field, const START_MARKER &) {
+        field.subfields         = buffer.get<int32_t>();
         field.dataStartPosition = buffer.position();
     }
 };
@@ -320,7 +320,7 @@ struct FieldHeaderWriter<CmwLight> {
         if (field.hierarchyDepth != 0) {
             buffer.put<IoBuffer::MetaInfo::WITH>(field.fieldName); // full field name with zero termination
         }
-        if (!is_same_v<DataType, START_MARKER> || field.hierarchyDepth != 0) {                        // do not put startMarker type id into buffer
+        if (!is_same_v<DataType, START_MARKER> || field.hierarchyDepth != 0) {     // do not put startMarker type id into buffer
             buffer.put(IoSerialiser<CmwLight, StrippedDataType>::getDataTypeId()); // data type ID
         }
         IoSerialiser<CmwLight, StrippedDataType>::serialise(buffer, field, getAnnotatedMember(unwrapPointer(data)));
@@ -336,14 +336,14 @@ struct FieldHeaderReader<CmwLight> {
         field.dataEndPosition = std::numeric_limits<size_t>::max();
         field.modifier        = ExternalModifier::UNKNOWN;
         if (field.subfields == 0) {
-            field.dataStartPosition = field.headerStart + (field.intDataType ==IoSerialiser<CmwLight, START_MARKER>::getDataTypeId() ? 4 : 0 );
-            field.intDataType = IoSerialiser<CmwLight, END_MARKER>::getDataTypeId();
+            field.dataStartPosition = field.headerStart + (field.intDataType == IoSerialiser<CmwLight, START_MARKER>::getDataTypeId() ? 4 : 0);
+            field.intDataType       = IoSerialiser<CmwLight, END_MARKER>::getDataTypeId();
             field.hierarchyDepth--;
             return;
         }
         if (field.subfields == -1) {
-            if (field.hierarchyDepth != 0) {                      // do not read field description for root element
-                field.fieldName = buffer.get<std::string_view>(); // full field name
+            if (field.hierarchyDepth != 0) {                        // do not read field description for root element
+                field.fieldName   = buffer.get<std::string_view>(); // full field name
                 field.intDataType = buffer.get<uint8_t>();          // data type ID
             } else {
                 field.intDataType = IoSerialiser<CmwLight, START_MARKER>::getDataTypeId();
@@ -373,7 +373,7 @@ struct IoSerialiser<CmwLight, std::map<std::string, ValueType>> {
         return IoSerialiser<CmwLight, START_MARKER>::getDataTypeId();
     }
 
-    constexpr static void serialise(IoBuffer &buffer, FieldDescription auto const & parentField, const std::map<std::string, ValueType> &value) noexcept {
+    constexpr static void serialise(IoBuffer &buffer, FieldDescription auto const &parentField, const std::map<std::string, ValueType> &value) noexcept {
         buffer.put(static_cast<int32_t>(value.size()));
         for (auto &[key, val] : value) {
             if constexpr (isReflectableClass<ValueType>()) { // nested data-structure
@@ -390,10 +390,10 @@ struct IoSerialiser<CmwLight, std::map<std::string, ValueType>> {
     }
 
     constexpr static void deserialise(IoBuffer &buffer, FieldDescription auto const &parent, std::map<std::string, ValueType> &value) noexcept {
-        DeserialiserInfo info;
+        DeserialiserInfo        info;
         constexpr ProtocolCheck check = ProtocolCheck::IGNORE;
-        using protocol = CmwLight;
-        auto field = opencmw::detail::newFieldHeader<CmwLight, true>(buffer, "", parent.hierarchyDepth, ValueType{}, parent.subfields);
+        using protocol                = CmwLight;
+        auto field                    = opencmw::detail::newFieldHeader<CmwLight, true>(buffer, "", parent.hierarchyDepth, ValueType{}, parent.subfields);
         while (buffer.position() < buffer.size()) {
             auto previousSubFields = field.subfields;
             FieldHeaderReader<protocol>::template get<check>(buffer, info, field);
@@ -404,14 +404,14 @@ struct IoSerialiser<CmwLight, std::map<std::string, ValueType>> {
                     IoSerialiser<protocol, END_MARKER>::deserialise(buffer, field, END_MARKER_INST);
                 } catch (...) {
                     if (opencmw::detail::handleDeserialisationErrorAndSkipToNextField<check>(buffer, field, info, "IoSerialiser<{}, END_MARKER>::deserialise(buffer, {}::{}, END_MARKER_INST): position {} vs. size {} -- exception: {}",
-                                                                            protocol::protocolName(), parent.fieldName, field.fieldName, buffer.position(), buffer.size(), what())) {
+                                protocol::protocolName(), parent.fieldName, field.fieldName, buffer.position(), buffer.size(), what())) {
                         continue;
                     }
                 }
                 return; // step down to previous hierarchy depth
             }
 
-            const auto [fieldValue, _] = value.insert({std::string{field.fieldName}, ValueType{}});
+            const auto [fieldValue, _] = value.insert({ std::string{ field.fieldName }, ValueType{} });
             if constexpr (isReflectableClass<ValueType>()) {
                 field.intDataType = IoSerialiser<protocol, START_MARKER>::getDataTypeId();
                 buffer.set_position(field.headerStart); // reset buffer position for the nested deserialiser to read again

@@ -142,7 +142,7 @@ struct IoSerialiser {
 };
 
 template<std::size_t N, refl::const_string<N> string>
-constexpr const char* sanitizeFieldName() {
+constexpr const char *sanitizeFieldName() {
     if constexpr (N > 2 && string.data[0] == 'x' && string.data[1] == '_') {
         return string.c_str() + 2;
     }
