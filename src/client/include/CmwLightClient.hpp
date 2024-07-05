@@ -8,21 +8,21 @@
 #include <string_view>
 
 #include <ClientContext.hpp>
+#include <IoSerialiserCmwLight.hpp>
 #include <MdpMessage.hpp>
 #include <opencmw.hpp>
 #include <Topic.hpp>
 #include <URI.hpp>
 #include <zmq/ZmqUtils.hpp>
-#include <IoSerialiserCmwLight.hpp>
 
 namespace opencmw::client::cmwlight {
 
 struct CmwLightHeaderOptions {
-    int64_t b; // SOURCE_ID
+    int64_t                            b; // SOURCE_ID
     std::map<std::string, std::string> e;
     // can potentially contain more and arbitrary data
     // accessors to make code more readable
-    int64_t &sourceId() {return b;}
+    int64_t                           &sourceId() { return b; }
     std::map<std::string, std::string> sessionBody;
 };
 
@@ -35,26 +35,26 @@ struct CmwLightHeader {
     std::string                            d;   // SESSION_ID
     std::unique_ptr<CmwLightHeaderOptions> x_3;
     // accessors to make code more readable
-    int8_t                                 &requestType(){return x_2;}
-    int64_t                                &id() {return x_0;}
-    std::string                            &device() {return x_1;}
-    std::string                            &property() {return f;}
-    int8_t                                 &updateType() {return x_7;}
-    std::string                            &sessionId() {return d;}
-    std::unique_ptr<CmwLightHeaderOptions> &options() {return x_3;}
+    int8_t                                 &requestType() { return x_2; }
+    int64_t                                &id() { return x_0; }
+    std::string                            &device() { return x_1; }
+    std::string                            &property() { return f; }
+    int8_t                                 &updateType() { return x_7; }
+    std::string                            &sessionId() { return d; }
+    std::unique_ptr<CmwLightHeaderOptions> &options() { return x_3; }
 };
 struct CmwLightConnectBody {
-    std::string x_9;
-    std::string &clientInfo() {return x_9;}
+    std::string  x_9;
+    std::string &clientInfo() { return x_9; }
 };
 struct CmwLightRequestContext {
     std::string                        x_8; // SELECTOR
     std::map<std::string, std::string> c;   // FILTERS // todo: support arbitrary filter data
     std::map<std::string, std::string> x;   // DATA // todo: support arbitrary filter data
     // accessors to make code more readable
-    std::string                        &selector() {return x_8;};
-    std::map<std::string, std::string> &data() {return c;}
-    std::map<std::string, std::string> &filters(){return x;}
+    std::string                        &selector() { return x_8; };
+    std::map<std::string, std::string> &data() { return c; }
+    std::map<std::string, std::string> &filters() { return x; }
 };
 struct CmwLightDataContext {
     std::string                        x_4; // CYCLE_NAME
@@ -62,13 +62,13 @@ struct CmwLightDataContext {
     int64_t                            x_5; // ACQ_STAMP
     std::map<std::string, std::string> x;   // DATA // todo: support arbitrary filter data
     // accessors to make code more readable
-    std::string                        &cycleName() {return x_4;}
-    long                               &cycleStamp() {return x_6;}
-    long                               &acqStamp() {return x_5;}
-    std::map<std::string, std::string> &data() {return x;}
+    std::string                        &cycleName() { return x_4; }
+    long                               &cycleStamp() { return x_6; }
+    long                               &acqStamp() { return x_5; }
+    std::map<std::string, std::string> &data() { return x; }
 };
 
-}
+} // namespace opencmw::client::cmwlight
 ENABLE_REFLECTION_FOR(opencmw::client::cmwlight::CmwLightHeaderOptions, b, e)
 ENABLE_REFLECTION_FOR(opencmw::client::cmwlight::CmwLightHeader, x_2, x_0, x_1, f, x_7, d, x_3)
 ENABLE_REFLECTION_FOR(opencmw::client::cmwlight::CmwLightConnectBody, x_9)
@@ -88,7 +88,7 @@ enum class MessageType : char { SERVER_CONNECT_ACK = 0x01,
     CLIENT_HB                                      = 0x22 };
 
 /**
-* Frame Types in the descriptor (Last frame of a message containing the type of each sub message)
+ * Frame Types in the descriptor (Last frame of a message containing the type of each sub message)
  */
 enum class FrameType : char { HEADER = 0,
     BODY                             = 1,
@@ -163,7 +163,7 @@ std::string getIdentity() {
 
 std::string createClientInfo() {
     // todo insert correct data
-    //return fmt::format("9#Address:#string#16#tcp:%2F%2FSYSPC008:0#ApplicationId:#string#69#app=fesa%2Dexplorer%2Dapp;ver=19%2E0%2E0;uid=akrimm;host=SYSPC008;pid=191616;#UserName:#string#6#akrimm#ProcessName:#string#8#cmwlight#Language:#string#3#cpp#StartTime:#long#1720084272252#Name:#string#15#cmwlightexample#Pid:#int#191616#Version:#string#6#10%2E3%2E0");
+    // return fmt::format("9#Address:#string#16#tcp:%2F%2FSYSPC008:0#ApplicationId:#string#69#app=fesa%2Dexplorer%2Dapp;ver=19%2E0%2E0;uid=akrimm;host=SYSPC008;pid=191616;#UserName:#string#6#akrimm#ProcessName:#string#8#cmwlight#Language:#string#3#cpp#StartTime:#long#1720084272252#Name:#string#15#cmwlightexample#Pid:#int#191616#Version:#string#6#10%2E3%2E0");
     return "9#Address:#string#16#tcp:%2F%2FSYSPC008:0#ApplicationId:#string#69#app=fesa%2Dexplorer%2Dapp;ver=19%2E0%2E0;uid=akrimm;host=SYSPC008;pid=191616;#UserName:#string#6#akrimm#ProcessName:#string#17#fesa%2Dexplorer%2Dapp#Language:#string#4#Java#StartTime:#long#1720084272252#Name:#string#17#fesa%2Dexplorer%2Dapp#Pid:#int#191616#Version:#string#6#10%2E3%2E0";
 }
 
@@ -172,16 +172,22 @@ std::string createClientId() {
 }
 
 struct PendingRequest {
-    enum class RequestState { INITIALIZED, WAITING, FINISHED };
-    std::string reqId{""};
+    enum class RequestState { INITIALIZED,
+        WAITING,
+        FINISHED };
+    std::string       reqId{ "" };
     opencmw::IoBuffer data{};
-    RequestType requestType{RequestType::GET};
-    RequestState state{RequestState::INITIALIZED};
-    std::string uri{""};
+    RequestType       requestType{ RequestType::GET };
+    RequestState      state{ RequestState::INITIALIZED };
+    std::string       uri{ "" };
 };
 
 struct OpenSubscription {
-    enum class SubscriptionState { INITIALIZED, SUBSCRIBING, SUBSCRIBED, UNSUBSCRIBING, UNSUBSCRIBED };
+    enum class SubscriptionState { INITIALIZED,
+        SUBSCRIBING,
+        SUBSCRIBED,
+        UNSUBSCRIBING,
+        UNSUBSCRIBED };
     std::chrono::milliseconds             backOff = 20ms;
     long                                  updateId;
     long                                  reqId = 0L;
@@ -192,7 +198,11 @@ struct OpenSubscription {
 };
 
 struct Connection {
-    enum class ConnectionState { DISCONNECTED, CONNECTING1, CONNECTING2, CONNECTED, };
+    enum class ConnectionState { DISCONNECTED,
+        CONNECTING1,
+        CONNECTING2,
+        CONNECTED,
+    };
     std::string                             _authority;
     zmq::Socket                             _socket;
     ConnectionState                         _connectionState               = ConnectionState::DISCONNECTED;
@@ -201,11 +211,11 @@ struct Connection {
     timePoint                               _lastHeartBeatSent             = std::chrono::system_clock::now();
     std::chrono::milliseconds               _backoff                       = 20ms; // implements exponential back-off to get
     std::vector<zmq::MessageFrame>          _frames{};                             // currently received frames, will be accumulated until the message is complete
-    std::map<std::string , OpenSubscription> _subscriptions;                       // all subscriptions requested for (un) subscribe
+    std::map<std::string, OpenSubscription> _subscriptions;                        // all subscriptions requested for (un) subscribe
     int64_t                                 _subscriptionIdGenerator;
     int64_t                                 _requestIdGenerator;
 
-    std::map<std::string, PendingRequest>          _pendingRequests;
+    std::map<std::string, PendingRequest>   _pendingRequests;
 
     Connection(const zmq::Context &context, const std::string_view authority, const int zmq_dealer_type)
         : _authority{ authority }, _socket{ context, zmq_dealer_type } {
@@ -214,15 +224,15 @@ struct Connection {
 };
 
 static void send(const zmq::Socket &socket, int param, std::string_view errorMsg, auto &&data) {
-    opencmw::zmq::MessageFrame connectFrame{FWD(data)};
+    opencmw::zmq::MessageFrame connectFrame{ FWD(data) };
     if (!connectFrame.send(socket, param).isValid()) {
         throw std::runtime_error(errorMsg.data());
     }
 }
 
-static std::string descriptorToString(auto... descriptor){
+static std::string descriptorToString(auto... descriptor) {
     std::string result{};
-    result.reserve(sizeof... (descriptor));
+    result.reserve(sizeof...(descriptor));
     ((result.push_back(static_cast<char>(descriptor))), ...);
     return result;
 }
@@ -239,8 +249,8 @@ void sendConnectRequest(Connection &con) {
     detail::send(con._socket, ZMQ_SNDMORE, "error sending get frame"sv, "\x21"); // 0x20 => detail::MessageType::CLIENT_REQ
     CmwLightHeader header;
     header.requestType() = static_cast<int8_t>(detail::RequestType::CONNECT);
-    header.id() = con._requestIdGenerator++;
-    header.options() = std::make_unique<CmwLightHeaderOptions>();
+    header.id()          = con._requestIdGenerator++;
+    header.options()     = std::make_unique<CmwLightHeaderOptions>();
     send(con._socket, ZMQ_SNDMORE, "failed to send message header"sv, serialiseCmwLight(header)); // send message header
     CmwLightConnectBody connectBody;
     connectBody.clientInfo() = createClientInfo();
@@ -252,13 +262,13 @@ void sendConnectRequest(Connection &con) {
 
 class CMWLightClientBase {
 public:
-    virtual ~CMWLightClientBase()                                                                          = default;
-    virtual bool      receive(mdp::Message &message)                                                 = 0;
-    virtual timePoint housekeeping(const timePoint &now)                                             = 0;
-    virtual void      get(const URI<STRICT> &, std::string_view)                                     = 0;
+    virtual ~CMWLightClientBase()                                                               = default;
+    virtual bool      receive(mdp::Message &message)                                            = 0;
+    virtual timePoint housekeeping(const timePoint &now)                                        = 0;
+    virtual void      get(const URI<STRICT> &, std::string_view)                                = 0;
     virtual void      set(const URI<STRICT> &, std::string_view, const std::span<const char> &) = 0;
-    virtual void      subscribe(const URI<STRICT> &, std::string_view)                               = 0;
-    virtual void      unsubscribe(const URI<STRICT> &, std::string_view)                             = 0;
+    virtual void      subscribe(const URI<STRICT> &, std::string_view)                          = 0;
+    virtual void      unsubscribe(const URI<STRICT> &, std::string_view)                        = 0;
 };
 
 class CMWLightClient : public CMWLightClientBase {
@@ -272,10 +282,10 @@ class CMWLightClient : public CMWLightClientBase {
     constexpr static const auto     HEARTBEAT_INTERVAL = 2000ms;
 
 public:
-    explicit CMWLightClient(const zmq::Context  &context,
-            std::vector<zmq_pollitem_t> &pollItems,
-            const timeUnit               timeout  = 1s,
-            std::string                  clientId = "")
+    explicit CMWLightClient(const zmq::Context &context,
+            std::vector<zmq_pollitem_t>        &pollItems,
+            const timeUnit                      timeout  = 1s,
+            std::string                         clientId = "")
         : _clientTimeout(timeout), _context(context), _clientId(std::move(clientId)), _sourceName(fmt::format("CMWLightClient(clientId: {})", _clientId)), _pollItems(pollItems) {}
 
     void connect(const URI<STRICT> &uri) {
@@ -287,8 +297,8 @@ public:
         using enum detail::Connection::ConnectionState;
         using namespace std::string_view_literals;
         // todo: for now we expect rda3tcp://host:port, but this should allow be rda3://devicename which will be looked up on the cmw directory server
-        auto endpoint = fmt::format("tcp://{}", con._authority);
-        std::string id = detail::getIdentity();
+        auto        endpoint = fmt::format("tcp://{}", con._authority);
+        std::string id       = detail::getIdentity();
         if (!zmq::invoke(zmq_setsockopt, con._socket, ZMQ_IDENTITY, id.data(), id.size()).isValid()) { // hostname/process/id/channel -- seems to be needed by CMW :-|
             fmt::print(stderr, "failed set socket identity");
         }
@@ -315,56 +325,56 @@ public:
     void get(const URI<STRICT> &uri, std::string_view req_id) override {
         using namespace std::string_view_literals;
         using enum detail::FrameType;
-        auto &con     = findConnection(uri); // send message header
-        std::string key(req_id);
+        auto                  &con = findConnection(uri); // send message header
+        std::string            key(req_id);
         detail::PendingRequest value{};
-        value.reqId = req_id;
+        value.reqId       = req_id;
         value.requestType = detail::RequestType::GET;
-        value.state = detail::PendingRequest::RequestState::INITIALIZED;
-        value.uri = uri.str();
-        con._pendingRequests.insert({fmt::format("{}", req_id), std::move(value)});
+        value.state       = detail::PendingRequest::RequestState::INITIALIZED;
+        value.uri         = uri.str();
+        con._pendingRequests.insert({ fmt::format("{}", req_id), std::move(value) });
     }
 
     void set(const URI<STRICT> &uri, std::string_view req_id, const std::span<const char> &request) override {
         using namespace std::string_view_literals;
         using enum detail::FrameType;
-        auto &con     = findConnection(uri); // send message header
+        auto                  &con = findConnection(uri); // send message header
         detail::PendingRequest value{};
-        value.reqId = req_id;
+        value.reqId       = req_id;
         value.requestType = detail::RequestType::SET;
-        value.data = IoBuffer{request.data(), request.size()};
-        value.state = detail::PendingRequest::RequestState::INITIALIZED;
-        value.uri = uri.str();
-        con._pendingRequests.insert({fmt::format("{}", req_id), std::move(value)});
+        value.data        = IoBuffer{ request.data(), request.size() };
+        value.state       = detail::PendingRequest::RequestState::INITIALIZED;
+        value.uri         = uri.str();
+        con._pendingRequests.insert({ fmt::format("{}", req_id), std::move(value) });
     }
 
     void subscribe(const URI<STRICT> &uri, std::string_view req_id) override {
         using namespace std::string_view_literals;
         using enum detail::FrameType;
-        auto &con     = findConnection(uri);
+        auto                    &con = findConnection(uri);
         detail::OpenSubscription sub{};
         sub.state = detail::OpenSubscription::SubscriptionState::INITIALIZED;
-        sub.uri = uri.str();
-        std::string req_id_string{req_id};
-        char* req_id_end = req_id_string.data() + req_id_string.size();
-        sub.reqId = strtol(req_id_string.data(), &req_id_end, 10);
-        con._subscriptions.insert({fmt::format("{}", con._subscriptionIdGenerator++), std::move(sub)});
+        sub.uri   = uri.str();
+        std::string req_id_string{ req_id };
+        char       *req_id_end = req_id_string.data() + req_id_string.size();
+        sub.reqId              = strtol(req_id_string.data(), &req_id_end, 10);
+        con._subscriptions.insert({ fmt::format("{}", con._subscriptionIdGenerator++), std::move(sub) });
     }
 
     void unsubscribe(const URI<STRICT> &uri, std::string_view req_id) override {
         using namespace std::string_view_literals;
-        auto &con     = findConnection(uri);
-        con._subscriptions[std::string{req_id}].state = detail::OpenSubscription::SubscriptionState::UNSUBSCRIBING;
+        auto &con                                       = findConnection(uri);
+        con._subscriptions[std::string{ req_id }].state = detail::OpenSubscription::SubscriptionState::UNSUBSCRIBING;
         CmwLightHeader header;
         header.requestType() = static_cast<int8_t>(detail::RequestType::UNSUBSCRIBE);
-        std::string reqIdString{req_id};
-        char* end = reqIdString.data() + req_id.size();
-        header.id() = std::strtol(req_id.data(), &end, 10);
-        //header.options() = {};
-        //header.sessionId() = sessionId;
-        //header.deviceName() = device;
-        //header.propertyName() = property;
-        //header.updateType() = updateType;
+        std::string reqIdString{ req_id };
+        char       *end = reqIdString.data() + req_id.size();
+        header.id()     = std::strtol(req_id.data(), &end, 10);
+        // header.options() = {};
+        // header.sessionId() = sessionId;
+        // header.deviceName() = device;
+        // header.propertyName() = property;
+        // header.updateType() = updateType;
         detail::send(con._socket, ZMQ_SNDMORE, "failed to send message header"sv, detail::serialiseCmwLight(header)); // send message header
         CmwLightRequestContext ctx;
         // send requestContext
@@ -390,14 +400,14 @@ public:
             throw std::runtime_error(fmt::format("received malformed response: wrong number of frames({}) or mismatch with frame descriptor({})", con._frames.size(), con._frames.back().size()));
         }
         // deserialise header frames[1]
-        IoBuffer data(con._frames[1].data().data(), con._frames[1].data().size());
+        IoBuffer         data(con._frames[1].data().data(), con._frames[1].data().size());
         DeserialiserInfo info = checkHeaderInfo<CmwLight>(data, DeserialiserInfo{}, ProtocolCheck::LENIENT);
-        CmwLightHeader header;
-        auto result = opencmw::deserialise<opencmw::CmwLight, ProtocolCheck::LENIENT>(data, header);
+        CmwLightHeader   header;
+        auto             result = opencmw::deserialise<opencmw::CmwLight, ProtocolCheck::LENIENT>(data, header);
 
         if (con._connectionState == detail::Connection::ConnectionState::CONNECTING2) {
             if (header.requestType() == static_cast<uint8_t>(detail::RequestType::REPLY)) {
-                con._connectionState = detail::Connection::ConnectionState::CONNECTED;
+                con._connectionState       = detail::Connection::ConnectionState::CONNECTED;
                 con._lastHeartbeatReceived = currentTime;
                 return true;
             } else {
@@ -406,48 +416,48 @@ public:
         }
 
         using enum detail::RequestType;
-        switch (detail::RequestType{header.requestType()}) {
+        switch (detail::RequestType{ header.requestType() }) {
         case REPLY: {
-            //auto request = con._pendingRequests[fmt::format("{}", header.id())];
-            //con._pendingRequests.erase(header.id());
-            output.arrivalTime = std::chrono::system_clock::now(); ///timePoint   < UTC time when the message was sent/received by the client
-            output.command = opencmw::mdp::Command::Final;         ///Command     < command type (GET, SET, SUBSCRIBE, UNSUBSCRIBE, PARTIAL, FINAL, NOTIFY, READY, DISCONNECT, HEARTBEAT)
-            output.id = 0;                                         ///std::size_t
-            output.protocolName = "RDA3";                          ///std::string < unique protocol name including version (e.g. 'MDPC03' or 'MDPW03')
-            output.serviceName = "/";                              ///std::string < service endpoint name (normally the URI path only), or client source ID (for broker <-> worker messages)
-            output.clientRequestID;                                ///IoBuffer    < stateful: worker mirrors clientRequestID; stateless: worker generates unique increasing IDs (to detect packet loss)
-            output.topic = URI{"/"};                               ///URI         < URI containing at least <path> and optionally <query> parameters
-            output.data = IoBuffer{con._frames[2].data().data(), con._frames[2].size()}; ///IoBuffer    < request/reply body -- opaque binary, e.g. YaS-, CmwLight-, JSON-, or HTML-based
-            output.error = "";                                     ///std::string < UTF-8 strings containing  error code and/or stack-trace (e.g. "404 Not Found")
-            //output.rbac;                                         ///IoBuffer    < optional RBAC meta-info -- may contain token, role, signed message hash (implementation dependent)
+            // auto request = con._pendingRequests[fmt::format("{}", header.id())];
+            // con._pendingRequests.erase(header.id());
+            output.arrivalTime  = std::chrono::system_clock::now();                         /// timePoint   < UTC time when the message was sent/received by the client
+            output.command      = opencmw::mdp::Command::Final;                             /// Command     < command type (GET, SET, SUBSCRIBE, UNSUBSCRIBE, PARTIAL, FINAL, NOTIFY, READY, DISCONNECT, HEARTBEAT)
+            output.id           = 0;                                                        /// std::size_t
+            output.protocolName = "RDA3";                                                   /// std::string < unique protocol name including version (e.g. 'MDPC03' or 'MDPW03')
+            output.serviceName  = "/";                                                      /// std::string < service endpoint name (normally the URI path only), or client source ID (for broker <-> worker messages)
+            output.clientRequestID;                                                         /// IoBuffer    < stateful: worker mirrors clientRequestID; stateless: worker generates unique increasing IDs (to detect packet loss)
+            output.topic = URI{ "/" };                                                      /// URI         < URI containing at least <path> and optionally <query> parameters
+            output.data  = IoBuffer{ con._frames[2].data().data(), con._frames[2].size() }; /// IoBuffer    < request/reply body -- opaque binary, e.g. YaS-, CmwLight-, JSON-, or HTML-based
+            output.error = "";                                                              /// std::string < UTF-8 strings containing  error code and/or stack-trace (e.g. "404 Not Found")
+            // output.rbac;                                         ///IoBuffer    < optional RBAC meta-info -- may contain token, role, signed message hash (implementation dependent)
             return true;
         }
         case EXCEPTION: {
             auto request = con._pendingRequests[fmt::format("{}", header.id())];
-            //con._pendingRequests.erase(header.id());
-            output.arrivalTime = std::chrono::system_clock::now(); ///timePoint   < UTC time when the message was sent/received by the client
-            output.command = opencmw::mdp::Command::Final;         ///Command     < command type (GET, SET, SUBSCRIBE, UNSUBSCRIBE, PARTIAL, FINAL, NOTIFY, READY, DISCONNECT, HEARTBEAT)
-            output.id = 0;                                         ///std::size_t
-            output.protocolName = "RDA3";                          ///std::string < unique protocol name including version (e.g. 'MDPC03' or 'MDPW03')
-            output.serviceName = "/";                              ///std::string < service endpoint name (normally the URI path only), or client source ID (for broker <-> worker messages)
-            output.clientRequestID = IoBuffer{};                   ///IoBuffer    < stateful: worker mirrors clientRequestID; stateless: worker generates unique increasing IDs (to detect packet loss)
-            output.topic = URI{"/"};                               ///URI         < URI containing at least <path> and optionally <query> parameters
-            output.data = IoBuffer{con._frames[2].data().data(), con._frames[2].size()}; ///IoBuffer    < request/reply body -- opaque binary, e.g. YaS-, CmwLight-, JSON-, or HTML-based
-            output.error = "";                                     ///std::string < UTF-8 strings containing  error code and/or stack-trace (e.g. "404 Not Found")
+            // con._pendingRequests.erase(header.id());
+            output.arrivalTime     = std::chrono::system_clock::now();                                /// timePoint   < UTC time when the message was sent/received by the client
+            output.command         = opencmw::mdp::Command::Final;                                    /// Command     < command type (GET, SET, SUBSCRIBE, UNSUBSCRIBE, PARTIAL, FINAL, NOTIFY, READY, DISCONNECT, HEARTBEAT)
+            output.id              = 0;                                                               /// std::size_t
+            output.protocolName    = "RDA3";                                                          /// std::string < unique protocol name including version (e.g. 'MDPC03' or 'MDPW03')
+            output.serviceName     = "/";                                                             /// std::string < service endpoint name (normally the URI path only), or client source ID (for broker <-> worker messages)
+            output.clientRequestID = IoBuffer{};                                                      /// IoBuffer    < stateful: worker mirrors clientRequestID; stateless: worker generates unique increasing IDs (to detect packet loss)
+            output.topic           = URI{ "/" };                                                      /// URI         < URI containing at least <path> and optionally <query> parameters
+            output.data            = IoBuffer{ con._frames[2].data().data(), con._frames[2].size() }; /// IoBuffer    < request/reply body -- opaque binary, e.g. YaS-, CmwLight-, JSON-, or HTML-based
+            output.error           = "";                                                              /// std::string < UTF-8 strings containing  error code and/or stack-trace (e.g. "404 Not Found")
             return true;
         }
         case SUBSCRIBE: {
             auto sub = con._subscriptions[fmt::format("{}", header.id())];
-            //sub.replyId = header.options()->sourceId();
-            sub.state = detail::OpenSubscription::SubscriptionState::SUBSCRIBED;
+            // sub.replyId = header.options()->sourceId();
+            sub.state   = detail::OpenSubscription::SubscriptionState::SUBSCRIBED;
             sub.backOff = 20ms; // reset back-off
             return false;
         }
         case UNSUBSCRIBE: {
             // successfully removed subscription
-            auto subscriptionForUnsub = con._subscriptions[fmt::format("{}", header.id())];
+            auto subscriptionForUnsub  = con._subscriptions[fmt::format("{}", header.id())];
             subscriptionForUnsub.state = detail::OpenSubscription::SubscriptionState::UNSUBSCRIBED;
-            //con._subscriptions.erase(subscriptionForUnsub.updateId);
+            // con._subscriptions.erase(subscriptionForUnsub.updateId);
             return false;
         }
         case NOTIFICATION_DATA: {
@@ -456,22 +466,22 @@ public:
                 return false;
             }
             auto subscriptionForNotification = con._subscriptions[replyId];
-            //URI endpointForNotificationContext;
-            //try {
-            //    endpointForNotificationContext = new ParsedEndpoint(subscriptionForNotification.endpoint, reply.dataContext.cycleName).toURI();
-            //} catch (URISyntaxException | CmwLightProtocol.RdaLightException e) {
-            //    return false; // Error generating reply context URI
-            //}
-            output.arrivalTime = std::chrono::system_clock::now(); ///timePoint   < UTC time when the message was sent/received by the client
-            output.command = opencmw::mdp::Command::Notify;        ///Command     < command type (GET, SET, SUBSCRIBE, UNSUBSCRIBE, PARTIAL, FINAL, NOTIFY, READY, DISCONNECT, HEARTBEAT)
-            output.id = 0;                                         ///std::size_t
-            output.protocolName = "RDA3";                          ///std::string < unique protocol name including version (e.g. 'MDPC03' or 'MDPW03')
-            output.serviceName = "/";                              ///std::string < service endpoint name (normally the URI path only), or client source ID (for broker <-> worker messages)
-            output.clientRequestID = IoBuffer{};                   ///IoBuffer    < stateful: worker mirrors clientRequestID; stateless: worker generates unique increasing IDs (to detect packet loss)
-            output.clientRequestID;                                ///IoBuffer    < stateful: worker mirrors clientRequestID; stateless: worker generates unique increasing IDs (to detect packet loss)
-            output.topic = URI{"/"};                               ///URI         < URI containing at least <path> and optionally <query> parameters
-            output.data = IoBuffer{con._frames[2].data().data(), con._frames[2].size()}; ///IoBuffer    < request/reply body -- opaque binary, e.g. YaS-, CmwLight-, JSON-, or HTML-based
-            output.error = "";                                     ///std::string < UTF-8 strings containing  error code and/or stack-trace (e.g. "404 Not Found")
+            // URI endpointForNotificationContext;
+            // try {
+            //     endpointForNotificationContext = new ParsedEndpoint(subscriptionForNotification.endpoint, reply.dataContext.cycleName).toURI();
+            // } catch (URISyntaxException | CmwLightProtocol.RdaLightException e) {
+            //     return false; // Error generating reply context URI
+            // }
+            output.arrivalTime     = std::chrono::system_clock::now();                      /// timePoint   < UTC time when the message was sent/received by the client
+            output.command         = opencmw::mdp::Command::Notify;                         /// Command     < command type (GET, SET, SUBSCRIBE, UNSUBSCRIBE, PARTIAL, FINAL, NOTIFY, READY, DISCONNECT, HEARTBEAT)
+            output.id              = 0;                                                     /// std::size_t
+            output.protocolName    = "RDA3";                                                /// std::string < unique protocol name including version (e.g. 'MDPC03' or 'MDPW03')
+            output.serviceName     = "/";                                                   /// std::string < service endpoint name (normally the URI path only), or client source ID (for broker <-> worker messages)
+            output.clientRequestID = IoBuffer{};                                            /// IoBuffer    < stateful: worker mirrors clientRequestID; stateless: worker generates unique increasing IDs (to detect packet loss)
+            output.clientRequestID;                                                         /// IoBuffer    < stateful: worker mirrors clientRequestID; stateless: worker generates unique increasing IDs (to detect packet loss)
+            output.topic = URI{ "/" };                                                      /// URI         < URI containing at least <path> and optionally <query> parameters
+            output.data  = IoBuffer{ con._frames[2].data().data(), con._frames[2].size() }; /// IoBuffer    < request/reply body -- opaque binary, e.g. YaS-, CmwLight-, JSON-, or HTML-based
+            output.error = "";                                                              /// std::string < UTF-8 strings containing  error code and/or stack-trace (e.g. "404 Not Found")
             return true;
         }
         case NOTIFICATION_EXC: {
@@ -480,32 +490,32 @@ public:
                 return false;
             }
             auto subscriptionForNotifyExc = con._subscriptions[replyId];
-            output.arrivalTime = std::chrono::system_clock::now(); ///timePoint   < UTC time when the message was sent/received by the client
-            output.command = opencmw::mdp::Command::Notify;        ///Command     < command type (GET, SET, SUBSCRIBE, UNSUBSCRIBE, PARTIAL, FINAL, NOTIFY, READY, DISCONNECT, HEARTBEAT)
-            output.id = 0;                                         ///std::size_t
-            output.protocolName = "RDA3";                          ///std::string < unique protocol name including version (e.g. 'MDPC03' or 'MDPW03')
-            output.serviceName = "/";                              ///std::string < service endpoint name (normally the URI path only), or client source ID (for broker <-> worker messages)
-            output.clientRequestID = IoBuffer{};                   ///IoBuffer    < stateful: worker mirrors clientRequestID; stateless: worker generates unique increasing IDs (to detect packet loss)
-            output.topic = URI{"/"};                               ///URI         < URI containing at least <path> and optionally <query> parameters
-            output.data = IoBuffer{con._frames[2].data().data(), con._frames[2].size()}; ///IoBuffer    < request/reply body -- opaque binary, e.g. YaS-, CmwLight-, JSON-, or HTML-based
-            output.error = "";                                     ///std::string < UTF-8 strings containing  error code and/or stack-trace (e.g. "404 Not Found")
+            output.arrivalTime            = std::chrono::system_clock::now();                                /// timePoint   < UTC time when the message was sent/received by the client
+            output.command                = opencmw::mdp::Command::Notify;                                   /// Command     < command type (GET, SET, SUBSCRIBE, UNSUBSCRIBE, PARTIAL, FINAL, NOTIFY, READY, DISCONNECT, HEARTBEAT)
+            output.id                     = 0;                                                               /// std::size_t
+            output.protocolName           = "RDA3";                                                          /// std::string < unique protocol name including version (e.g. 'MDPC03' or 'MDPW03')
+            output.serviceName            = "/";                                                             /// std::string < service endpoint name (normally the URI path only), or client source ID (for broker <-> worker messages)
+            output.clientRequestID        = IoBuffer{};                                                      /// IoBuffer    < stateful: worker mirrors clientRequestID; stateless: worker generates unique increasing IDs (to detect packet loss)
+            output.topic                  = URI{ "/" };                                                      /// URI         < URI containing at least <path> and optionally <query> parameters
+            output.data                   = IoBuffer{ con._frames[2].data().data(), con._frames[2].size() }; /// IoBuffer    < request/reply body -- opaque binary, e.g. YaS-, CmwLight-, JSON-, or HTML-based
+            output.error                  = "";                                                              /// std::string < UTF-8 strings containing  error code and/or stack-trace (e.g. "404 Not Found")
             return true;
         }
         case SUBSCRIBE_EXCEPTION: {
-            auto subForSubExc = con._subscriptions[fmt::format("{}", header.id())];
-            subForSubExc.state = detail::OpenSubscription::SubscriptionState::UNSUBSCRIBED;
+            auto subForSubExc    = con._subscriptions[fmt::format("{}", header.id())];
+            subForSubExc.state   = detail::OpenSubscription::SubscriptionState::UNSUBSCRIBED;
             subForSubExc.nextTry = currentTime + subForSubExc.backOff;
             subForSubExc.backOff *= 2;
             // exception during subscription, retrying
-            output.arrivalTime = std::chrono::system_clock::now(); ///timePoint   < UTC time when the message was sent/received by the client
-            output.command = opencmw::mdp::Command::Notify;        ///Command     < command type (GET, SET, SUBSCRIBE, UNSUBSCRIBE, PARTIAL, FINAL, NOTIFY, READY, DISCONNECT, HEARTBEAT)
-            output.id = 0;                                         ///std::size_t
-            output.protocolName = "RDA3";                          ///std::string < unique protocol name including version (e.g. 'MDPC03' or 'MDPW03')
-            output.clientRequestID = IoBuffer{};                   ///IoBuffer    < stateful: worker mirrors clientRequestID; stateless: worker generates unique increasing IDs (to detect packet loss)
-            output.topic = URI{"/"};                               ///URI         < URI containing at least <path> and optionally <query> parameters
-            output.data = IoBuffer{con._frames[2].data().data(), con._frames[2].size()}; ///IoBuffer    < request/reply body -- opaque binary, e.g. YaS-, CmwLight-, JSON-, or HTML-based
-            output.data = IoBuffer{con._frames[2].data().data(), con._frames[2].size()}; ///IoBuffer    < request/reply body -- opaque binary, e.g. YaS-, CmwLight-, JSON-, or HTML-based
-            output.error = "";                                     ///std::string < UTF-8 strings containing  error code and/or stack-trace (e.g. "404 Not Found")
+            output.arrivalTime     = std::chrono::system_clock::now();                                /// timePoint   < UTC time when the message was sent/received by the client
+            output.command         = opencmw::mdp::Command::Notify;                                   /// Command     < command type (GET, SET, SUBSCRIBE, UNSUBSCRIBE, PARTIAL, FINAL, NOTIFY, READY, DISCONNECT, HEARTBEAT)
+            output.id              = 0;                                                               /// std::size_t
+            output.protocolName    = "RDA3";                                                          /// std::string < unique protocol name including version (e.g. 'MDPC03' or 'MDPW03')
+            output.clientRequestID = IoBuffer{};                                                      /// IoBuffer    < stateful: worker mirrors clientRequestID; stateless: worker generates unique increasing IDs (to detect packet loss)
+            output.topic           = URI{ "/" };                                                      /// URI         < URI containing at least <path> and optionally <query> parameters
+            output.data            = IoBuffer{ con._frames[2].data().data(), con._frames[2].size() }; /// IoBuffer    < request/reply body -- opaque binary, e.g. YaS-, CmwLight-, JSON-, or HTML-based
+            output.data            = IoBuffer{ con._frames[2].data().data(), con._frames[2].size() }; /// IoBuffer    < request/reply body -- opaque binary, e.g. YaS-, CmwLight-, JSON-, or HTML-based
+            output.error           = "";                                                              /// std::string < UTF-8 strings containing  error code and/or stack-trace (e.g. "404 Not Found")
             return true;
         }
         // unsupported or non-actionable replies
@@ -534,7 +544,7 @@ public:
                 con._connectionState = CONNECTING2; // proceed to step 2 by sending the CLIENT_REQ, REQ_TYPE=CONNECT message
                 sendConnectRequest(con);
                 con._lastHeartbeatReceived = currentTime;
-                con._backoff = 20ms; // reset back-off time
+                con._backoff               = 20ms; // reset back-off time
             } else {
                 throw std::runtime_error("received unsolicited SERVER_CONNECT_ACK");
             }
@@ -564,7 +574,7 @@ public:
         for (auto &con : _connections) {
             while (true) {
                 zmq::MessageFrame frame;
-                const auto byteCountResultId = frame.receive(con._socket, ZMQ_DONTWAIT);
+                const auto        byteCountResultId = frame.receive(con._socket, ZMQ_DONTWAIT);
                 if (!byteCountResultId.isValid() || byteCountResultId.value() < 1) {
                     fmt::print(".");
                     break;
@@ -593,7 +603,7 @@ public:
     // method to be called in regular time intervals to send and verify heartbeats
     timePoint housekeeping(const timePoint &now) override {
         using ConnectionState = detail::Connection::ConnectionState;
-        using RequestState = detail::PendingRequest::RequestState;
+        using RequestState    = detail::PendingRequest::RequestState;
         using namespace std::literals;
         using enum detail::OpenSubscription::SubscriptionState;
         using enum detail::FrameType;
@@ -619,22 +629,22 @@ public:
                             detail::send(con._socket, ZMQ_SNDMORE, "error sending get frame"sv, "\x21"); // 0x21 => detail::MessageType::CLIENT_REQ
                             CmwLightHeader msg;
                             msg.requestType() = static_cast<int8_t>(detail::RequestType::GET);
-                            char* reqIdEnd = req.reqId.data() + req.reqId.size();
-                            msg.id() = std::strtol(req.reqId.data(), &reqIdEnd, 10) + 1; // +1 to start with the identical requst id as the java impl
-                            msg.sessionId() = detail::createClientId();
-                            URI<uri_check::STRICT> uri{req.uri};
-                            msg.device() = uri.path()->substr(1, uri.path()->find('/',1)-1);
-                            msg.property() = uri.path()->substr(uri.path()->find('/',1)+1);
-                            msg.options() = std::make_unique<CmwLightHeaderOptions>();
-                            //msg.reqContext() = "";
+                            char *reqIdEnd    = req.reqId.data() + req.reqId.size();
+                            msg.id()          = std::strtol(req.reqId.data(), &reqIdEnd, 10) + 1; // +1 to start with the identical requst id as the java impl
+                            msg.sessionId()   = detail::createClientId();
+                            URI<uri_check::STRICT> uri{ req.uri };
+                            msg.device()   = uri.path()->substr(1, uri.path()->find('/', 1) - 1);
+                            msg.property() = uri.path()->substr(uri.path()->find('/', 1) + 1);
+                            msg.options()  = std::make_unique<CmwLightHeaderOptions>();
+                            // msg.reqContext() = "";
                             msg.updateType() = static_cast<uint8_t>(detail::UpdateType::NORMAL);
                             detail::send(con._socket, ZMQ_SNDMORE, "failed to send message header"sv, detail::serialiseCmwLight(msg)); // send message header
                             bool hasRequestCtx = true;
                             if (hasRequestCtx) {
                                 CmwLightRequestContext ctx;
                                 ctx.selector() = ""; // todo: set correct ctx values
-                                //ctx.data = {};
-                                //ctx.filters = {"triggerName", "asdf"};
+                                // ctx.data = {};
+                                // ctx.filters = {"triggerName", "asdf"};
                                 IoBuffer buffer{};
                                 serialise<CmwLight>(buffer, ctx);
                                 detail::send(con._socket, ZMQ_SNDMORE, "failed to send context frame"sv, std::move(buffer)); // send requestContext
@@ -647,25 +657,25 @@ public:
                             detail::send(con._socket, ZMQ_SNDMORE, "error sending get frame"sv, "\x21"); // 0x20 => detail::MessageType::CLIENT_REQ
                             CmwLightHeader msg;
                             msg.requestType() = static_cast<int8_t>(detail::RequestType::GET);
-                            char* reqIdEnd = req.reqId.data() + req.reqId.size();
-                            msg.id() = std::strtol(req.reqId.data(), &reqIdEnd, 10);
-                            msg.sessionId() = detail::createClientId();
-                            URI<uri_check::STRICT> uri{req.uri};
-                            msg.device() = uri.path()->substr(1, uri.path()->find('/',1)-1);
-                            msg.property() = uri.path()->substr(uri.path()->find('/',1)+1);
-                            //msg.reqContext() = "";
+                            char *reqIdEnd    = req.reqId.data() + req.reqId.size();
+                            msg.id()          = std::strtol(req.reqId.data(), &reqIdEnd, 10);
+                            msg.sessionId()   = detail::createClientId();
+                            URI<uri_check::STRICT> uri{ req.uri };
+                            msg.device()   = uri.path()->substr(1, uri.path()->find('/', 1) - 1);
+                            msg.property() = uri.path()->substr(uri.path()->find('/', 1) + 1);
+                            // msg.reqContext() = "";
                             msg.updateType() = static_cast<uint8_t>(detail::UpdateType::NORMAL);
                             detail::send(con._socket, ZMQ_SNDMORE, "failed to send message header"sv, detail::serialiseCmwLight(msg)); // send message header
                             bool hasRequestCtx = false;
                             if (hasRequestCtx) {
                                 CmwLightRequestContext ctx;
                                 ctx.selector() = "asdf"; // todo: set correct ctx values
-                                //ctx.data = {};
-                                //ctx.filters = {"triggerName", "asdf"};
+                                // ctx.data = {};
+                                // ctx.filters = {"triggerName", "asdf"};
                                 IoBuffer buffer{};
                                 serialise<CmwLight>(buffer, ctx);
                                 detail::send(con._socket, ZMQ_SNDMORE, "failed to send context frame"sv, std::move(buffer)); // send requestContext
-                                detail::send(con._socket, ZMQ_SNDMORE, "failed to send data frame"sv, std::move(req.data)); // send requestContext
+                                detail::send(con._socket, ZMQ_SNDMORE, "failed to send data frame"sv, std::move(req.data));  // send requestContext
                                 detail::send(con._socket, 0, "failed to send descriptor frame"sv, descriptorToString(HEADER, BODY_REQUEST_CONTEXT, BODY));
                             } else {
                                 detail::send(con._socket, ZMQ_SNDMORE, "failed to send data frame"sv, std::move(req.data)); // send requestContext
@@ -675,19 +685,19 @@ public:
                         }
                     }
                 }
-                for (auto &[id, sub]: con._subscriptions) {
+                for (auto &[id, sub] : con._subscriptions) {
                     if (sub.state == INITIALIZED) {
                         detail::send(con._socket, ZMQ_SNDMORE, "error sending get frame"sv, "\x21"); // 0x20 => detail::MessageType::CLIENT_REQ
                         CmwLightHeader header;
                         header.requestType() = static_cast<uint8_t>(detail::RequestType::SUBSCRIBE);
-                        header.sessionId() = detail::createClientId();
+                        header.sessionId()   = detail::createClientId();
                         detail::send(con._socket, ZMQ_SNDMORE, "failed to send message header"sv, detail::serialiseCmwLight(header)); // send message header
                         bool hasRequestCtx = false;
                         if (hasRequestCtx) {
                             CmwLightRequestContext ctx;
                             ctx.selector() = "asdf"; // todo: set correct ctx values
-                            //ctx.data = {};
-                            //ctx.filters = {"triggerName", "asdf"};
+                            // ctx.data = {};
+                            // ctx.filters = {"triggerName", "asdf"};
                             IoBuffer buffer{};
                             serialise<CmwLight>(buffer, ctx);
                             detail::send(con._socket, ZMQ_SNDMORE, "failed to send context frame"sv, std::move(buffer)); // send requestContext
@@ -697,7 +707,6 @@ public:
                         }
                         sub.state = SUBSCRIBING;
                     } else if (sub.state == UNSUBSCRIBING) {
-
                     }
                 }
                 if (con._lastHeartBeatSent < now - HEARTBEAT_INTERVAL) {
@@ -737,7 +746,7 @@ class CmwLightClientCtx : public ClientBase {
 
 public:
     explicit CmwLightClientCtx(const zmq::Context &zeromq_context, const timeUnit timeout = 1s, std::string clientId = "") // todo: also pass thread pool
-            : _zctx{ zeromq_context }, _control_socket_send(zeromq_context, ZMQ_PAIR), _control_socket_recv(zeromq_context, ZMQ_PAIR), _timeout(timeout), _clientId(std::move(clientId)) {
+        : _zctx{ zeromq_context }, _control_socket_send(zeromq_context, ZMQ_PAIR), _control_socket_recv(zeromq_context, ZMQ_PAIR), _timeout(timeout), _clientId(std::move(clientId)) {
         _poller = std::jthread([this](const std::stop_token &stoken) { this->poll(stoken); });
         zmq::invoke(zmq_bind, _control_socket_send, "inproc://mdclientControlSocket").assertSuccess();
         _pollitems.push_back({ .socket = _control_socket_recv.zmq_ptr, .fd = 0, .events = ZMQ_POLLIN, .revents = 0 });

@@ -74,7 +74,12 @@ target_include_directories(rest_client_only_tests PRIVATE ${CMAKE_SOURCE_DIR})
 # catch_discover_tests(rest_client_only_tests)
 
 add_executable(CmwLightTest catch_main.cpp CmwLightTest.cpp)
-target_link_libraries(CmwLightTest PUBLIC opencmw_project_warnings opencmw_project_options Catch2::Catch2 client)
+target_link_libraries(
+  CmwLightTest
+  PUBLIC opencmw_project_warnings
+         opencmw_project_options
+         Catch2::Catch2
+         client)
 target_include_directories(CmwLightTest PRIVATE ${CMAKE_SOURCE_DIR})
 catch_discover_tests(CmwLightTest)
 
