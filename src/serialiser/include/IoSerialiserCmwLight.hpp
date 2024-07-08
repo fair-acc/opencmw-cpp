@@ -242,7 +242,7 @@ struct IoSerialiser<CmwLight, START_MARKER> {
     }
 
     constexpr static void deserialise(IoBuffer &buffer, FieldDescription auto &field, const START_MARKER &) {
-        field.subfields         = buffer.get<int32_t>();
+        field.subfields         = static_cast<uint16_t>(buffer.get<int32_t>());
         field.dataStartPosition = buffer.position();
     }
 };

@@ -33,16 +33,16 @@ static std::string hexview(const std::string_view value, std::size_t bytesPerLin
     std::string alpha; // temporarily store the ascii representation
     alpha.reserve(8 * bytesPerLine);
     for (auto [i, c] : std::ranges::views::enumerate(value)) {
-        if (i % (bytesPerLine * 8) == 0) {
+        if (static_cast<std::size_t>(i) % (bytesPerLine * 8) == 0) {
             result.append(fmt::format("{0:#08x} - {0:04} | ", i)); // print address in hex and decimal
         }
         result.append(fmt::format("{:02x} ", c));
         alpha.append(fmt::format("{}", std::isprint(c) ? c : '.'));
-        if ((i + 1) % 8 == 0) {
+        if (static_cast<std::size_t>(i + 1) % 8 == 0) {
             result.append("   ");
             alpha.append(" ");
         }
-        if ((i + 1) % (bytesPerLine * 8) == 0) {
+        if (static_cast<std::size_t>(i + 1) % (bytesPerLine * 8) == 0) {
             result.append(fmt::format("   {}\n", alpha));
             alpha.clear();
         }
