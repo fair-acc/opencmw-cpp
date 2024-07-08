@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <thread>
+#include <atomic>
 
 namespace opencmw {
 

@@ -65,6 +65,16 @@ if(NOT EMSCRIPTEN)
   # TEST_PREFIX to whatever you want, or use different for different binaries catch_discover_tests(client_tests
   # TEST_PREFIX  "unittests." REPORTER xml OUTPUT_DIR . OUTPUT_PREFIX "unittests." OUTPUT_SUFFIX .xml)
   catch_discover_tests(clientPublisher_tests)
+
+  add_executable(CmwLightTest catch_main.cpp CmwLightTest.cpp)
+  target_link_libraries(
+          CmwLightTest
+          PUBLIC opencmw_project_warnings
+          opencmw_project_options
+          Catch2::Catch2
+          client)
+  target_include_directories(CmwLightTest PRIVATE ${CMAKE_SOURCE_DIR})
+  catch_discover_tests(CmwLightTest)
 endif()
 
 add_executable(rest_client_only_tests RestClientOnly_tests.cpp)
@@ -72,16 +82,6 @@ target_link_libraries(rest_client_only_tests PUBLIC opencmw_project_warnings ope
 target_include_directories(rest_client_only_tests PRIVATE ${CMAKE_SOURCE_DIR})
 # This test requires a different kind of invocation as it needs the server running
 # catch_discover_tests(rest_client_only_tests)
-
-add_executable(CmwLightTest catch_main.cpp CmwLightTest.cpp)
-target_link_libraries(
-  CmwLightTest
-  PUBLIC opencmw_project_warnings
-         opencmw_project_options
-         Catch2::Catch2
-         client)
-target_include_directories(CmwLightTest PRIVATE ${CMAKE_SOURCE_DIR})
-catch_discover_tests(CmwLightTest)
 
 if(EMSCRIPTEN)
   add_executable(emscripten_client_tests EmscriptenClientTests.cpp)
