@@ -77,7 +77,8 @@ static std::string hexview(const std::string_view value, std::size_t bytesPerLin
     result.reserve(value.size() * 4);
     std::string alpha; // temporarily store the ascii representation
     alpha.reserve(8 * bytesPerLine);
-    for (auto [i, c] : std::ranges::views::enumerate(value)) {
+    std::size_t i = 0;
+    for (auto c : value) {
         if (i % (bytesPerLine * 8) == 0) {
             result.append(fmt::format("{0:#08x} - {0:04} | ", i)); // print address in hex and decimal
         }
@@ -91,6 +92,7 @@ static std::string hexview(const std::string_view value, std::size_t bytesPerLin
             result.append(fmt::format("   {}\n", alpha));
             alpha.clear();
         }
+        i++;
     }
     result.append(fmt::format("{:{}}   {}\n", "", 3 * (9 * bytesPerLine - alpha.size()), alpha));
     return result;
