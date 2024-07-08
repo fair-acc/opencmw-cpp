@@ -68,11 +68,11 @@ if(NOT EMSCRIPTEN)
 
   add_executable(CmwLightTest catch_main.cpp CmwLightTest.cpp)
   target_link_libraries(
-          CmwLightTest
-          PUBLIC opencmw_project_warnings
-          opencmw_project_options
-          Catch2::Catch2
-          client)
+    CmwLightTest
+    PUBLIC opencmw_project_warnings
+           opencmw_project_options
+           Catch2::Catch2
+           client)
   target_include_directories(CmwLightTest PRIVATE ${CMAKE_SOURCE_DIR})
   catch_discover_tests(CmwLightTest)
 endif()

@@ -472,15 +472,15 @@ public:
             // } catch (URISyntaxException | CmwLightProtocol.RdaLightException e) {
             //     return false; // Error generating reply context URI
             // }
-            output.arrivalTime     = std::chrono::system_clock::now();                      /// timePoint   < UTC time when the message was sent/received by the client
-            output.command         = opencmw::mdp::Command::Notify;                         /// Command     < command type (GET, SET, SUBSCRIBE, UNSUBSCRIBE, PARTIAL, FINAL, NOTIFY, READY, DISCONNECT, HEARTBEAT)
-            output.id              = 0;                                                     /// std::size_t
-            output.protocolName    = "RDA3";                                                /// std::string < unique protocol name including version (e.g. 'MDPC03' or 'MDPW03')
-            output.serviceName     = "/";                                                   /// std::string < service endpoint name (normally the URI path only), or client source ID (for broker <-> worker messages)
-            output.clientRequestID = IoBuffer{};                                            /// IoBuffer    < stateful: worker mirrors clientRequestID; stateless: worker generates unique increasing IDs (to detect packet loss)
-            output.topic = URI{ "/" };                                                      /// URI         < URI containing at least <path> and optionally <query> parameters
-            output.data  = IoBuffer{ con._frames[2].data().data(), con._frames[2].size() }; /// IoBuffer    < request/reply body -- opaque binary, e.g. YaS-, CmwLight-, JSON-, or HTML-based
-            output.error = "";                                                              /// std::string < UTF-8 strings containing  error code and/or stack-trace (e.g. "404 Not Found")
+            output.arrivalTime     = std::chrono::system_clock::now();                                /// timePoint   < UTC time when the message was sent/received by the client
+            output.command         = opencmw::mdp::Command::Notify;                                   /// Command     < command type (GET, SET, SUBSCRIBE, UNSUBSCRIBE, PARTIAL, FINAL, NOTIFY, READY, DISCONNECT, HEARTBEAT)
+            output.id              = 0;                                                               /// std::size_t
+            output.protocolName    = "RDA3";                                                          /// std::string < unique protocol name including version (e.g. 'MDPC03' or 'MDPW03')
+            output.serviceName     = "/";                                                             /// std::string < service endpoint name (normally the URI path only), or client source ID (for broker <-> worker messages)
+            output.clientRequestID = IoBuffer{};                                                      /// IoBuffer    < stateful: worker mirrors clientRequestID; stateless: worker generates unique increasing IDs (to detect packet loss)
+            output.topic           = URI{ "/" };                                                      /// URI         < URI containing at least <path> and optionally <query> parameters
+            output.data            = IoBuffer{ con._frames[2].data().data(), con._frames[2].size() }; /// IoBuffer    < request/reply body -- opaque binary, e.g. YaS-, CmwLight-, JSON-, or HTML-based
+            output.error           = "";                                                              /// std::string < UTF-8 strings containing  error code and/or stack-trace (e.g. "404 Not Found")
             return true;
         }
         case NOTIFICATION_EXC: {
