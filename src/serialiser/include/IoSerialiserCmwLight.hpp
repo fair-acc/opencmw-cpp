@@ -232,16 +232,18 @@ struct IoSerialiser<CmwLight, std::set<MemberType>> {
         }
     }
 };
+
 template<>
 struct IoSerialiser<CmwLight, START_MARKER> {
-    inline static constexpr uint8_t getDataTypeId() { return 0xFC; }
+    inline static constexpr uint8_t getDataTypeId() { return 0x08; }
 
     constexpr static void           serialise(IoBuffer &buffer, FieldDescription auto const &field, const START_MARKER           &/*value*/) noexcept {
         buffer.put(static_cast<int32_t>(field.subfields));
     }
 
-    constexpr static void deserialise(IoBuffer & /*buffer*/, FieldDescription auto const & /*field*/, const START_MARKER &) {
-        // do not do anything, as the start marker is of size zero and only the type byte is important
+    constexpr static void deserialise(IoBuffer &buffer, FieldDescription auto &field, const START_MARKER &) {
+        field.subfields         = static_cast<uint16_t>(buffer.get<int32_t>());
+        field.dataStartPosition = buffer.position();
     }
 };
 
@@ -318,7 +320,7 @@ struct FieldHeaderWriter<CmwLight> {
         if (field.hierarchyDepth != 0) {
             buffer.put<IoBuffer::MetaInfo::WITH>(field.fieldName); // full field name with zero termination
         }
-        if constexpr (!is_same_v<DataType, START_MARKER>) {                        // do not put startMarker type id into buffer
+        if (!is_same_v<DataType, START_MARKER> || field.hierarchyDepth != 0) {     // do not put startMarker type id into buffer
             buffer.put(IoSerialiser<CmwLight, StrippedDataType>::getDataTypeId()); // data type ID
         }
         IoSerialiser<CmwLight, StrippedDataType>::serialise(buffer, field, getAnnotatedMember(unwrapPointer(data)));
@@ -334,21 +336,22 @@ struct FieldHeaderReader<CmwLight> {
         field.dataEndPosition = std::numeric_limits<size_t>::max();
         field.modifier        = ExternalModifier::UNKNOWN;
         if (field.subfields == 0) {
-            field.intDataType = IoSerialiser<CmwLight, END_MARKER>::getDataTypeId();
+            field.dataStartPosition = field.headerStart + (field.intDataType == IoSerialiser<CmwLight, START_MARKER>::getDataTypeId() ? 4 : 0);
+            field.intDataType       = IoSerialiser<CmwLight, END_MARKER>::getDataTypeId();
             field.hierarchyDepth--;
-            field.dataStartPosition = buffer.position();
             return;
         }
         if (field.subfields == -1) {
-            if (field.hierarchyDepth != 0) {                      // do not read field description for root element
-                field.fieldName = buffer.get<std::string_view>(); // full field name
+            if (field.hierarchyDepth != 0) {                        // do not read field description for root element
+                field.fieldName   = buffer.get<std::string_view>(); // full field name
+                field.intDataType = buffer.get<uint8_t>();          // data type ID
+            } else {
+                field.intDataType = IoSerialiser<CmwLight, START_MARKER>::getDataTypeId();
             }
-            field.intDataType = IoSerialiser<CmwLight, START_MARKER>::getDataTypeId();
-            field.subfields   = static_cast<int16_t>(buffer.get<int32_t>());
         } else {
             field.fieldName   = buffer.get<std::string_view>(); // full field name
             field.intDataType = buffer.get<uint8_t>();          // data type ID
-            field.subfields--;                                  // decrease the number of remaining fields in the structure... todo: adapt strategy for nested fields (has to somewhere store subfields)
+            field.subfields--;                                  // decrease the number of remaining fields in the structure...
         }
         field.dataStartPosition = buffer.position();
     }
@@ -364,6 +367,70 @@ inline DeserialiserInfo checkHeaderInfo<CmwLight>(IoBuffer &buffer, Deserialiser
     return info;
 }
 
+template<typename ValueType>
+struct IoSerialiser<CmwLight, std::map<std::string, ValueType>> {
+    inline static constexpr uint8_t getDataTypeId() {
+        return IoSerialiser<CmwLight, START_MARKER>::getDataTypeId();
+    }
+
+    constexpr static void serialise(IoBuffer &buffer, FieldDescription auto const &parentField, const std::map<std::string, ValueType> &value) noexcept {
+        buffer.put(static_cast<int32_t>(value.size()));
+        for (auto &[key, val] : value) {
+            if constexpr (isReflectableClass<ValueType>()) { // nested data-structure
+                const auto            subfields            = value.size();
+                FieldDescription auto field                = newFieldHeader<CmwLight, true>(buffer, parentField.hierarchyDepth + 1, FWD(val), subfields);
+                const std::size_t     posSizePositionStart = FieldHeaderWriter<CmwLight>::template put<true>(buffer, field, val);
+                const std::size_t     posStartDataStart    = buffer.size();
+                return;
+            } else { // field is a (possibly annotated) primitive type
+                FieldDescription auto field = opencmw::detail::newFieldHeader<CmwLight, true>(buffer, key.c_str(), parentField.hierarchyDepth + 1, val, 0);
+                FieldHeaderWriter<CmwLight>::template put<true>(buffer, field, val);
+            }
+        }
+    }
+
+    constexpr static void deserialise(IoBuffer &buffer, FieldDescription auto const &parent, std::map<std::string, ValueType> &value) noexcept {
+        DeserialiserInfo        info;
+        constexpr ProtocolCheck check = ProtocolCheck::IGNORE;
+        using protocol                = CmwLight;
+        auto field                    = opencmw::detail::newFieldHeader<CmwLight, true>(buffer, "", parent.hierarchyDepth, ValueType{}, parent.subfields);
+        while (buffer.position() < buffer.size()) {
+            auto previousSubFields = field.subfields;
+            FieldHeaderReader<protocol>::template get<check>(buffer, info, field);
+            buffer.set_position(field.dataStartPosition); // skip to data start
+
+            if (field.intDataType == IoSerialiser<protocol, END_MARKER>::getDataTypeId()) { // reached end of sub-structure
+                try {
+                    IoSerialiser<protocol, END_MARKER>::deserialise(buffer, field, END_MARKER_INST);
+                } catch (...) {
+                    if (opencmw::detail::handleDeserialisationErrorAndSkipToNextField<check>(buffer, field, info, "IoSerialiser<{}, END_MARKER>::deserialise(buffer, {}::{}, END_MARKER_INST): position {} vs. size {} -- exception: {}",
+                                protocol::protocolName(), parent.fieldName, field.fieldName, buffer.position(), buffer.size(), what())) {
+                        continue;
+                    }
+                }
+                return; // step down to previous hierarchy depth
+            }
+
+            const auto [fieldValue, _] = value.insert({ std::string{ field.fieldName }, ValueType{} });
+            if constexpr (isReflectableClass<ValueType>()) {
+                field.intDataType = IoSerialiser<protocol, START_MARKER>::getDataTypeId();
+                buffer.set_position(field.headerStart); // reset buffer position for the nested deserialiser to read again
+                field.hierarchyDepth++;
+                deserialise<protocol, check>(buffer, fieldValue->second, info, field);
+                field.hierarchyDepth--;
+                field.subfields = previousSubFields - 1;
+            } else {
+                constexpr int requestedType = IoSerialiser<protocol, ValueType>::getDataTypeId();
+                if (requestedType != field.intDataType) { // mismatching data-type
+                    opencmw::detail::moveToFieldEndBufferPosition(buffer, field);
+                    opencmw::detail::handleDeserialisationError<check>(info, "mismatched field type for map field {} - requested type: {} (typeID: {}) got: {}", field.fieldName, typeName<ValueType>, requestedType, field.intDataType);
+                    return;
+                }
+                IoSerialiser<protocol, ValueType>::deserialise(buffer, field, fieldValue->second);
+            }
+        }
+    }
+};
 } // namespace opencmw
 
 #pragma clang diagnostic pop
