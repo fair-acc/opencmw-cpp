@@ -20,13 +20,13 @@ jobs:
       matrix:
         configurations:
           - name: Ubuntu Latest gcc13
-            os: ubuntu-22.04
+            os: ubuntu-24.04
             compiler: gcc13
           - name: Ubuntu Latest clang17
-            os: ubuntu-22.04
+            os: ubuntu-24.04
             compiler: clang17
-          - name: ubuntu-22.04 emscripten
-            os: ubuntu-22.04
+          - name: ubuntu-24.04 emscripten
+            os: ubuntu-24.04
             compiler: emscripten
         # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
         cmake-build-type: [ Release, Debug ]
@@ -34,12 +34,12 @@ jobs:
       BUILD_WRAPPER_OUT_DIR: build_wrapper_output_directory
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         fetch-depth: 100
 
     - name: Cache
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       env:
         cache-name: cache-fetchContent-cache
       with:
