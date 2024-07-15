@@ -228,7 +228,7 @@ template<SerialiserProtocol protocol, const bool writeMetaInfo = true>
 constexpr void serialise(IoBuffer &buffer, ReflectableClass auto const &value) {
     putHeaderInfo<protocol>(buffer);
     const auto        subfields            = detail::getNumberOfNonNullSubfields(value);
-    auto              field                = detail::newFieldHeader<protocol, writeMetaInfo>(buffer, sanitizeFieldName<refl::reflect<decltype(value)>().name.size, refl::reflect<decltype(value)>().name>(), 0, value, subfields);
+    auto              field                = detail::newFieldHeader<protocol, writeMetaInfo>(buffer, sanitizeFieldName<refl::reflect<std::remove_reference_t<decltype(value)>>().name.size, refl::reflect<std::remove_reference_t<decltype(value)>>().name>(), 0, value, subfields);
     const std::size_t posSizePositionStart = FieldHeaderWriter<protocol>::template put<writeMetaInfo>(buffer, field, START_MARKER_INST);
     const std::size_t posStartDataStart    = buffer.size();
     detail::serialise<protocol, writeMetaInfo>(buffer, value, field);

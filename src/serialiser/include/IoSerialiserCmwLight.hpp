@@ -5,8 +5,8 @@
 #include <string_view>
 
 #pragma clang diagnostic push
-#pragma ide diagnostic   ignored "cppcoreguidelines-avoid-magic-numbers"
-#pragma ide diagnostic   ignored "cppcoreguidelines-avoid-c-arrays"
+#pragma ide diagnostic ignored "cppcoreguidelines-avoid-magic-numbers"
+#pragma ide diagnostic ignored "cppcoreguidelines-avoid-c-arrays"
 
 namespace opencmw {
 
@@ -336,9 +336,12 @@ struct FieldHeaderReader<CmwLight> {
         field.dataEndPosition = std::numeric_limits<size_t>::max();
         field.modifier        = ExternalModifier::UNKNOWN;
         if (field.subfields == 0) {
-            field.dataStartPosition = field.headerStart + (field.intDataType == IoSerialiser<CmwLight, START_MARKER>::getDataTypeId() ? 4 : 0);
-            field.intDataType       = IoSerialiser<CmwLight, END_MARKER>::getDataTypeId();
+            if (field.hierarchyDepth != 0 && field.intDataType == IoSerialiser<CmwLight, START_MARKER>::getDataTypeId() && buffer.get<int32_t>() != 0) {
+                throw ProtocolException("logic error, parent serialiser claims no data but header differs");
+            }
+            field.intDataType = IoSerialiser<CmwLight, END_MARKER>::getDataTypeId();
             field.hierarchyDepth--;
+            field.dataStartPosition = buffer.position();
             return;
         }
         if (field.subfields == -1) {
