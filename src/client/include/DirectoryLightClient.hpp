@@ -16,10 +16,11 @@ auto parse = [](const std::string &reply) {
         std::size_t len = str.length();
         for (std::size_t i = 0; i < len; i++) {
             if (str[i] != '%') {
-                if (str[i] == '+')
+                if (str[i] == '+') {
                     ret += ' ';
-                else
+                } else {
                     ret += str[i];
+                }
             } else if (i + 2 < len) {
                 auto toHex = [](char c) {
                     if (c >= '0' && c <= '9') return c - '0';
@@ -149,7 +150,7 @@ std::string resolveDirectoryLight(std::vector<std::string> devices, std::string_
         data_received = false;
         opencmw::zmq::MessageFrame idFrame;
         const auto                 byteCountResultId = idFrame.receive(socket, ZMQ_DONTWAIT);
-        if (byteCountResultId.value() < 1) {
+        if (!byteCountResultId.isValid() || byteCountResultId.value() < 1) {
             continue;
         }
         if (idFrame.data() != id) {
