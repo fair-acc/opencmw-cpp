@@ -56,6 +56,7 @@ static std::string hexview(const std::string_view value, std::size_t bytesPerLin
 TEST_CASE("BasicCmwLight example", "[Client]") {
     const std::string digitizerAddress{ "tcp://dal007:2620" };
     // filters2String = "acquisitionModeFilter=int:0&channelNameFilter=GS11MU2:Voltage_1@10Hz";
+    // GS01QS1F:Current@1Hz
     // subscribe("r1", new URI("rda3", null, '/' + DEVICE + '/' + PROPERTY, "ctx=" + SELECTOR + "&" + filtersString, null), null);
     // DEVICE = "GSCD002";
     // PROPERTY = "AcquisitionDAQ";
@@ -74,8 +75,8 @@ TEST_CASE("BasicCmwLight example", "[Client]") {
         received++;
     });
 
-    auto subscriptionEndpoint = URI<STRICT>::factory(URI<STRICT>(digitizerAddress)).scheme("rda3tcp").path("/GSCD002/AcquisitionDAQ").addQueryParameter("ctx", "FAIR.SELECTOR.ALL").build();
-    clientContext.subscribe(endpoint, [&received](const mdp::Message &message) {
+    auto subscriptionEndpoint = URI<STRICT>::factory(URI<STRICT>(digitizerAddress)).scheme("rda3tcp").path("/GSCD002/AcquisitionDAQ").addQueryParameter("ctx", "FAIR.SELECTOR.ALL").addQueryParameter("filter", "acquisitonModeFilter=0;channelNameFilter=GS01QS1F:Current@1Hz").build();
+    clientContext.subscribe(subscriptionEndpoint, [&received](const mdp::Message &message) {
         fmt::print("{}", hexview(message.data.asString()));
         received++;
     });

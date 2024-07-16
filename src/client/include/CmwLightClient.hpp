@@ -53,8 +53,8 @@ struct CmwLightRequestContext {
     std::map<std::string, std::string> x;   // DATA // todo: support arbitrary filter data
     // accessors to make code more readable
     std::string                        &selector() { return x_8; };
-    std::map<std::string, std::string> &data() { return c; }
-    std::map<std::string, std::string> &filters() { return x; }
+    std::map<std::string, std::string> &filters() { return c; }
+    std::map<std::string, std::string> &data() { return x; }
 };
 struct CmwLightDataContext {
     std::string                        x_4; // CYCLE_NAME
@@ -687,16 +687,19 @@ public:
                 for (auto &[id, sub] : con._subscriptions) {
                     if (sub.state == INITIALIZED) {
                         detail::send(con._socket, ZMQ_SNDMORE, "error sending get frame"sv, "\x21"); // 0x20 => detail::MessageType::CLIENT_REQ
+                        opencmw::URI   uri{ sub.uri };
                         CmwLightHeader header;
+                        header.device()      = uri.path()->substr(1, uri.path()->find('/', 1) - 1);
+                        header.property()    = uri.path()->substr(uri.path()->find('/', 1) + 1);
                         header.requestType() = static_cast<uint8_t>(detail::RequestType::SUBSCRIBE);
                         header.sessionId()   = detail::createClientId();
                         detail::send(con._socket, ZMQ_SNDMORE, "failed to send message header"sv, detail::serialiseCmwLight(header)); // send message header
-                        bool hasRequestCtx = false;
+                        bool hasRequestCtx = true;
                         if (hasRequestCtx) {
                             CmwLightRequestContext ctx;
-                            ctx.selector() = "asdf"; // todo: set correct ctx values
-                            // ctx.data = {};
-                            // ctx.filters = {"triggerName", "asdf"};
+                            ctx.selector() = "";                                                                                   // todo: set correct ctx values
+                            ctx.filters()  = { { "acquisitonModeFilter", "0" }, { "channelNameFilter", "GS01QS1F:Current@1Hz" } }; // todo: correct filters from query // acquisitino mode filter needs to be enum/int => needs map of variant
+                            // ctx.data() = {};
                             IoBuffer buffer{};
                             serialise<CmwLight>(buffer, ctx);
                             detail::send(con._socket, ZMQ_SNDMORE, "failed to send context frame"sv, std::move(buffer)); // send requestContext
