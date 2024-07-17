@@ -242,7 +242,7 @@ struct IoSerialiser<CmwLight, START_MARKER> {
     }
 
     constexpr static void deserialise(IoBuffer &buffer, FieldDescription auto &field, const START_MARKER &) {
-        field.subfields         = static_cast<uint16_t>(buffer.get<int32_t>());
+        field.subfields         = static_cast<int16_t>(buffer.get<int32_t>());
         field.dataStartPosition = buffer.position();
     }
 };
@@ -369,6 +369,35 @@ inline DeserialiserInfo checkHeaderInfo<CmwLight>(IoBuffer &buffer, Deserialiser
     }
     return info;
 }
+
+/**
+ * The serialiser for std::variant is a bit special, as it contains a runtime determined type, while in general the IoSerialiser assumes that the
+ * type can be deduced statically from the type via the getDataTypeId function.
+ * Therefore for now only serialisation is implemented and the even there we have to retroactively overwrite the field header's type ID from within the
+ * serialise function.
+ */
+template<typename... Types>
+struct IoSerialiser<CmwLight, std::variant<Types...>> {
+    inline static constexpr uint8_t getDataTypeId() {
+        return IoSerialiser<CmwLight, OTHER>::getDataTypeId(); // this is just a stand-in and will be overwritten with the actual type id in the serialise function
+    }
+
+    constexpr static void serialise(IoBuffer &buffer, FieldDescription auto const &field, const std::variant<Types...> &value) noexcept {
+        std::visit([&buffer, &field]<typename T>(T &val) {
+            using StrippedT = std::remove_cvref_t<T>;
+            // overwrite field header with actual type
+            buffer.resize(buffer.size() - sizeof(uint8_t));
+            buffer.put(IoSerialiser<CmwLight, StrippedT>::getDataTypeId());
+            // serialise the contained value
+            IoSerialiser<CmwLight, StrippedT>::serialise(buffer, field, val);
+        },
+                value);
+    }
+
+    constexpr static void deserialise(IoBuffer & /*buffer*/, FieldDescription auto const & /*parent*/, std::variant<Types...> & /*value*/) noexcept {
+        throw ProtocolException("Deserialisation of variant types not currently supported");
+    }
+};
 
 template<typename ValueType>
 struct IoSerialiser<CmwLight, std::map<std::string, ValueType>> {

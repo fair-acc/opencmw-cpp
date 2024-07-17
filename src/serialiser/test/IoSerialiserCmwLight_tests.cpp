@@ -320,6 +320,41 @@ TEST_CASE("IoClassSerialiserCmwLight deserialise into map", "[IoClassSerialiser]
     debug::resetStats();
 }
 
+TEST_CASE("IoClassSerialiserCmwLight deserialise variant map", "[IoClassSerialiser]") {
+    using namespace opencmw;
+    using namespace ioserialiser_cmwlight_test;
+    debug::resetStats();
+    {
+        const std::string_view                                        expected{ "\x03\x00\x00\x00" // 3 fields
+                                         "\x02\x00\x00\x00"
+                                                                                "a\x00"
+                                                                                "\x03"
+                                                                                "\x23\x00\x00\x00" // "a" -> int:0x23
+                                         "\x02\x00\x00\x00"
+                                                                                "b\x00"
+                                                                                "\x06"
+                                                                                "\xEC\x51\xB8\x1E\x85\xEB\xF5\x3F" // "b" -> double:1.337
+                                         "\x02\x00\x00\x00"
+                                                                                "c\x00"
+                                                                                "\x07"
+                                                                                "\x04\x00\x00\x00"
+                                                                                "foo\x00" // "c" -> "foo"
+            ,
+            45 };
+        std::map<std::string, std::variant<int, double, std::string>> map{ { "a", 0x23 }, { "b", 1.37 }, { "c", "foo" } };
+
+        IoBuffer                                                      buffer;
+        auto                                                          field = opencmw::detail::newFieldHeader<CmwLight, true>(buffer, "map", 0, map, -1);
+        opencmw::IoSerialiser<opencmw::CmwLight, std::map<std::string, std::variant<int, double, std::string>>>::serialise(buffer, field, map);
+        buffer.reset();
+
+        // std::print("expected:\n{}\ngot:\n{}\n", hexview(expected), hexview(buffer.asString()));
+        REQUIRE(buffer.asString() == expected);
+    }
+    REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
+    debug::resetStats();
+}
+
 namespace opencmw::serialiser::cmwlighttests {
 struct CmwLightHeaderOptions {
     int64_t                            b; // SOURCE_ID
