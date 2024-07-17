@@ -69,18 +69,19 @@ TEST_CASE("BasicCmwLight example", "[Client]") {
     // send some requests
     auto             endpoint = URI<STRICT>::factory(URI<STRICT>(digitizerAddress)).scheme("rda3tcp").path("/GSCD002/Version").build();
 
-    std::atomic<int> received{ 0 };
-    clientContext.get(endpoint, [&received](const mdp::Message &message) {
-        fmt::print("{}", hexview(message.data.asString()));
-        received++;
+    std::atomic<int> getReceived{ 0 };
+    clientContext.get(endpoint, [&getReceived](const mdp::Message &message) {
+        fmt::print("get reply: {}", hexview(message.data.asString()));
+        getReceived++;
     });
 
-    auto subscriptionEndpoint = URI<STRICT>::factory(URI<STRICT>(digitizerAddress)).scheme("rda3tcp").path("/GSCD002/AcquisitionDAQ").addQueryParameter("ctx", "FAIR.SELECTOR.ALL").addQueryParameter("filter", "acquisitonModeFilter=0;channelNameFilter=GS01QS1F:Current@1Hz").build();
-    clientContext.subscribe(subscriptionEndpoint, [&received](const mdp::Message &message) {
-        fmt::print("{}", hexview(message.data.asString()));
-        received++;
+    std::atomic<int> subscriptionUpdatesReceived{ 0 };
+    auto             subscriptionEndpoint = URI<STRICT>::factory(URI<STRICT>(digitizerAddress)).scheme("rda3tcp").path("/GSCD002/AcquisitionDAQ").addQueryParameter("ctx", "FAIR.SELECTOR.ALL").addQueryParameter("filter", "acquisitonModeFilter=0;channelNameFilter=GS01QS1F:Current@1Hz").build();
+    clientContext.subscribe(subscriptionEndpoint, [&subscriptionUpdatesReceived](const mdp::Message &message) {
+        fmt::print("subscription update: {}", hexview(message.data.asString()));
+        subscriptionUpdatesReceived++;
     });
 
     std::this_thread::sleep_for(8000ms); // allow the request to reach the server
-    REQUIRE(received == 1);
+    REQUIRE(getReceived == 1);
 }

@@ -48,13 +48,13 @@ struct CmwLightConnectBody {
     std::string &clientInfo() { return x_9; }
 };
 struct CmwLightRequestContext {
-    std::string                        x_8; // SELECTOR
-    std::map<std::string, std::string> c;   // FILTERS // todo: support arbitrary filter data
-    std::map<std::string, std::string> x;   // DATA // todo: support arbitrary filter data
+    std::string                                                       x_8; // SELECTOR
+    std::map<std::string, std::variant<bool, int, long, std::string>> c;   // FILTERS
+    std::map<std::string, std::variant<bool, int, long, std::string>> x;   // DATA
     // accessors to make code more readable
-    std::string                        &selector() { return x_8; };
-    std::map<std::string, std::string> &filters() { return c; }
-    std::map<std::string, std::string> &data() { return x; }
+    std::string                                                       &selector() { return x_8; };
+    std::map<std::string, std::variant<bool, int, long, std::string>> &filters() { return c; }
+    std::map<std::string, std::variant<bool, int, long, std::string>> &data() { return x; }
 };
 struct CmwLightDataContext {
     std::string                        x_4; // CYCLE_NAME
@@ -191,7 +191,7 @@ struct OpenSubscription {
     std::chrono::milliseconds             backOff = 20ms;
     long                                  updateId;
     long                                  reqId = 0L;
-    std::string                           replyId;
+    long                                  replyId;
     SubscriptionState                     state = SubscriptionState::SUBSCRIBING;
     std::chrono::system_clock::time_point nextTry;
     std::string                           uri;
@@ -407,6 +407,7 @@ public:
 
         if (con._connectionState == detail::Connection::ConnectionState::CONNECTING2) {
             if (header.requestType() == static_cast<uint8_t>(detail::RequestType::REPLY)) {
+                fmt::print("connected successfully\n");
                 con._connectionState       = detail::Connection::ConnectionState::CONNECTED;
                 con._lastHeartbeatReceived = currentTime;
                 return true;
@@ -418,11 +419,12 @@ public:
         using enum detail::RequestType;
         switch (detail::RequestType{ header.requestType() }) {
         case REPLY: {
-            // auto request = con._pendingRequests[fmt::format("{}", header.id())];
+            auto request = con._pendingRequests[fmt::format("{}", header.id())];
             // con._pendingRequests.erase(header.id());
-            output.arrivalTime  = std::chrono::system_clock::now();                         /// timePoint   < UTC time when the message was sent/received by the client
-            output.command      = opencmw::mdp::Command::Final;                             /// Command     < command type (GET, SET, SUBSCRIBE, UNSUBSCRIBE, PARTIAL, FINAL, NOTIFY, READY, DISCONNECT, HEARTBEAT)
-            output.id           = 0;                                                        /// std::size_t
+            output.arrivalTime  = std::chrono::system_clock::now(); /// timePoint   < UTC time when the message was sent/received by the client
+            output.command      = opencmw::mdp::Command::Final;     /// Command     < command type (GET, SET, SUBSCRIBE, UNSUBSCRIBE, PARTIAL, FINAL, NOTIFY, READY, DISCONNECT, HEARTBEAT)
+            char *end           = &request.reqId.back();
+            output.id           = std::strtoul(request.reqId.data(), &end, 10);             /// std::size_t
             output.protocolName = "RDA3";                                                   /// std::string < unique protocol name including version (e.g. 'MDPC03' or 'MDPW03')
             output.serviceName  = "/";                                                      /// std::string < service endpoint name (normally the URI path only), or client source ID (for broker <-> worker messages)
             output.clientRequestID;                                                         /// IoBuffer    < stateful: worker mirrors clientRequestID; stateless: worker generates unique increasing IDs (to detect packet loss)
@@ -430,9 +432,11 @@ public:
             output.data  = IoBuffer{ con._frames[2].data().data(), con._frames[2].size() }; /// IoBuffer    < request/reply body -- opaque binary, e.g. YaS-, CmwLight-, JSON-, or HTML-based
             output.error = "";                                                              /// std::string < UTF-8 strings containing  error code and/or stack-trace (e.g. "404 Not Found")
             // output.rbac;                                         ///IoBuffer    < optional RBAC meta-info -- may contain token, role, signed message hash (implementation dependent)
+            // con._pendingRequests.erase("{}", header.id());
             return true;
         }
         case EXCEPTION: {
+            fmt::print("exception\n");
             auto request = con._pendingRequests[fmt::format("{}", header.id())];
             // con._pendingRequests.erase(header.id());
             output.arrivalTime     = std::chrono::system_clock::now();                                /// timePoint   < UTC time when the message was sent/received by the client
@@ -447,13 +451,17 @@ public:
             return true;
         }
         case SUBSCRIBE: {
-            auto sub = con._subscriptions[fmt::format("{}", header.id())];
-            // sub.replyId = header.options()->sourceId();
+            fmt::print("subscription sucessful: request id: {}, update id: {}\n", header.id(), header.options()->sourceId());
+            std::cout << header << std::endl;
+            ;
+            auto &sub   = con._subscriptions[fmt::format("{}", header.id())];
+            sub.replyId = header.options()->sourceId();
             sub.state   = detail::OpenSubscription::SubscriptionState::SUBSCRIBED;
             sub.backOff = 20ms; // reset back-off
             return false;
         }
         case UNSUBSCRIBE: {
+            fmt::print("unsubscribe\n");
             // successfully removed subscription
             auto subscriptionForUnsub  = con._subscriptions[fmt::format("{}", header.id())];
             subscriptionForUnsub.state = detail::OpenSubscription::SubscriptionState::UNSUBSCRIBED;
@@ -461,8 +469,13 @@ public:
             return false;
         }
         case NOTIFICATION_DATA: {
+            fmt::print("notification_data\n");
             std::string replyId;
-            if (con._subscriptions.find(replyId) == con._subscriptions.end()) {
+            std::cout << header << std::endl;
+            ;
+            auto sub = std::find_if(con._subscriptions.begin(), con._subscriptions.end(), [&header](auto &pair) { return pair.second.replyId == header.id(); });
+            if (sub == con._subscriptions.end()) {
+                fmt::print("received unexpected subscription for replyId: {}\n", header.id());
                 return false;
             }
             auto subscriptionForNotification = con._subscriptions[replyId];
@@ -474,7 +487,7 @@ public:
             // }
             output.arrivalTime     = std::chrono::system_clock::now();                                /// timePoint   < UTC time when the message was sent/received by the client
             output.command         = opencmw::mdp::Command::Notify;                                   /// Command     < command type (GET, SET, SUBSCRIBE, UNSUBSCRIBE, PARTIAL, FINAL, NOTIFY, READY, DISCONNECT, HEARTBEAT)
-            output.id              = 0;                                                               /// std::size_t
+            output.id              = static_cast<size_t>(sub->second.reqId);                          /// std::size_t
             output.protocolName    = "RDA3";                                                          /// std::string < unique protocol name including version (e.g. 'MDPC03' or 'MDPW03')
             output.serviceName     = "/";                                                             /// std::string < service endpoint name (normally the URI path only), or client source ID (for broker <-> worker messages)
             output.clientRequestID = IoBuffer{};                                                      /// IoBuffer    < stateful: worker mirrors clientRequestID; stateless: worker generates unique increasing IDs (to detect packet loss)
@@ -484,6 +497,7 @@ public:
             return true;
         }
         case NOTIFICATION_EXC: {
+            fmt::print("notification exception\n");
             std::string replyId;
             if (con._subscriptions.find(replyId) == con._subscriptions.end()) {
                 return false;
@@ -501,6 +515,7 @@ public:
             return true;
         }
         case SUBSCRIBE_EXCEPTION: {
+            fmt::print("subscribe exception\n");
             auto subForSubExc    = con._subscriptions[fmt::format("{}", header.id())];
             subForSubExc.state   = detail::OpenSubscription::SubscriptionState::UNSUBSCRIBED;
             subForSubExc.nextTry = currentTime + subForSubExc.backOff;
@@ -517,13 +532,17 @@ public:
             output.error           = "";                                                              /// std::string < UTF-8 strings containing  error code and/or stack-trace (e.g. "404 Not Found")
             return true;
         }
+        case SESSION_CONFIRM: {
+            fmt::print("received session confirm\n");
+            return false;
+        }
         // unsupported or non-actionable replies
         case GET:
         case SET:
         case CONNECT:
         case EVENT:
-        case SESSION_CONFIRM:
         default:
+            fmt::print("unsupported message: {}\n", header.requestType());
             return false;
         }
     }
@@ -550,14 +569,12 @@ public:
             break;
         case SERVER_HB:
             if (con._connectionState != CONNECTED && con._connectionState != CONNECTING2) {
-                throw std::runtime_error("received a heart-beat message on an unconnected connection");
+                fmt::print("received a heart-beat message on an unconnected connection!\n");
+                return false;
             }
             con._lastHeartbeatReceived = currentTime;
             break;
         case SERVER_REP:
-            if (con._connectionState != CONNECTED && con._connectionState != CONNECTING2) {
-                throw std::runtime_error("received an update on an unconnected connection");
-            }
             con._lastHeartbeatReceived = currentTime;
             return handleServerReply(output, con, currentTime);
         case CLIENT_CONNECT:
@@ -689,25 +706,20 @@ public:
                         detail::send(con._socket, ZMQ_SNDMORE, "error sending get frame"sv, "\x21"); // 0x20 => detail::MessageType::CLIENT_REQ
                         opencmw::URI   uri{ sub.uri };
                         CmwLightHeader header;
+                        header.id()          = sub.reqId;
                         header.device()      = uri.path()->substr(1, uri.path()->find('/', 1) - 1);
                         header.property()    = uri.path()->substr(uri.path()->find('/', 1) + 1);
                         header.requestType() = static_cast<uint8_t>(detail::RequestType::SUBSCRIBE);
                         header.sessionId()   = detail::createClientId();
                         detail::send(con._socket, ZMQ_SNDMORE, "failed to send message header"sv, detail::serialiseCmwLight(header)); // send message header
-                        bool hasRequestCtx = true;
-                        if (hasRequestCtx) {
-                            CmwLightRequestContext ctx;
-                            ctx.selector() = "";                                                                                   // todo: set correct ctx values
-                            ctx.filters()  = { { "acquisitonModeFilter", "0" }, { "channelNameFilter", "GS01QS1F:Current@1Hz" } }; // todo: correct filters from query // acquisitino mode filter needs to be enum/int => needs map of variant
-                            // ctx.data() = {};
-                            IoBuffer buffer{};
-                            serialise<CmwLight>(buffer, ctx);
-                            detail::send(con._socket, ZMQ_SNDMORE, "failed to send context frame"sv, std::move(buffer)); // send requestContext
-                            detail::send(con._socket, 0, "failed to send descriptor frame"sv, descriptorToString(HEADER, BODY_REQUEST_CONTEXT));
-                        } else {
-                            detail::send(con._socket, 0, "failed to send descriptor frame"sv, descriptorToString(HEADER));
-                        }
-                        sub.state = SUBSCRIBING;
+                        CmwLightRequestContext ctx;
+                        ctx.filters() = { { "acquisitionModeFilter", 0 }, { "channelNameFilter", "GS01QS1F:Current@10Hz" } }; // todo: correct filters from query
+                        IoBuffer buffer{};
+                        serialise<CmwLight>(buffer, ctx);
+                        detail::send(con._socket, ZMQ_SNDMORE, "failed to send context frame"sv, std::move(buffer)); // send requestContext
+                        detail::send(con._socket, 0, "failed to send descriptor frame"sv, descriptorToString(HEADER, BODY_REQUEST_CONTEXT));
+                        con._lastHeartBeatSent = now;
+                        sub.state              = SUBSCRIBING;
                     } else if (sub.state == UNSUBSCRIBING) {
                     }
                 }
