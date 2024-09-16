@@ -152,7 +152,7 @@ struct fmt::formatter<opencmw::disruptor::Sequence> {
     }
 
     template<typename FormatContext>
-    auto format(opencmw::disruptor::Sequence const &value, FormatContext &ctx) {
+    auto format(opencmw::disruptor::Sequence const &value, FormatContext &ctx) const {
         return fmt::format_to(ctx.out(), "{}", value.value());
     }
 };
