@@ -65,6 +65,18 @@ if(NOT EMSCRIPTEN)
   # TEST_PREFIX to whatever you want, or use different for different binaries catch_discover_tests(client_tests
   # TEST_PREFIX  "unittests." REPORTER xml OUTPUT_DIR . OUTPUT_PREFIX "unittests." OUTPUT_SUFFIX .xml)
   catch_discover_tests(clientPublisher_tests)
+
+  add_executable(oauthClient_tests catch_main.cpp OAuthClient_tests.cpp)
+  target_link_libraries(
+    oauthClient_tests
+    PUBLIC opencmw_project_warnings
+           opencmw_project_options
+           Catch2::Catch2
+           client)
+  # automatically discover tests that are defined in catch based test files you can modify the unittests. Set
+  # TEST_PREFIX to whatever you want, or use different for different binaries catch_discover_tests(client_tests
+  # TEST_PREFIX  "unittests." REPORTER xml OUTPUT_DIR . OUTPUT_PREFIX "unittests." OUTPUT_SUFFIX .xml)
+  catch_discover_tests(oauthClient_tests)
 endif()
 
 add_executable(rest_client_only_tests RestClientOnly_tests.cpp)
