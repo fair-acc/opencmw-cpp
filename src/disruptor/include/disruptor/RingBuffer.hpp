@@ -27,7 +27,7 @@ static const std::int32_t rbPad = 128 / sizeof(int *);
  * \tparam T implementation storing the data for sharing during exchange or parallel coordination of an event.
  */
 template<typename T, std::size_t SIZE, WaitStrategy WAIT_STRATEGY, template<std::size_t, typename> typename CLAIM_STRATEGY = MultiThreadedStrategy>
-requires opencmw::is_power2_v<SIZE>
+    requires opencmw::is_power2_v<SIZE>
 class RingBuffer : public EventStore<T>, public std::enable_shared_from_this<RingBuffer<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY>> {
     const uint8_t                           padding0[56]{}; // NOSONAR
     mutable std::array<T, SIZE + 2 * rbPad> _entries;       // N.B. includes extra padding in front and back
@@ -160,9 +160,9 @@ class EventPoller {
     std::int64_t                                                        _lastAvailableSequence = kInitialCursorValue;
 
 public:
-    EventPoller()                     = delete;
-    EventPoller(const EventPoller &)  = delete;
-    EventPoller(const EventPoller &&) = delete;
+    EventPoller()                       = delete;
+    EventPoller(const EventPoller &)    = delete;
+    EventPoller(const EventPoller &&)   = delete;
     void operator=(const EventPoller &) = delete;
     EventPoller(const std::shared_ptr<RingBuffer<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY>> &dataProvider,
             const std::shared_ptr<Sequence>                                               &sequence,

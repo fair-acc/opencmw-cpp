@@ -21,8 +21,8 @@ class Sequence {
     alignas(kCacheLine) std::atomic<std::int64_t> _fieldsValue{};
 
 public:
-    Sequence(const Sequence &)  = delete;
-    Sequence(const Sequence &&) = delete;
+    Sequence(const Sequence &)       = delete;
+    Sequence(const Sequence &&)      = delete;
     void operator=(const Sequence &) = delete;
     explicit Sequence(std::int64_t initialValue = kInitialCursorValue) noexcept
         : _fieldsValue(initialValue) {}
