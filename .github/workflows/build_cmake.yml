@@ -8,7 +8,7 @@ on:
     types: [ created ]
 
 env:
-  REFERENCE_CONFIG: 'Ubuntu Latest gcc13' # configuration used for coverage etc
+  REFERENCE_CONFIG: 'Ubuntu gcc14' # configuration used for coverage etc
 
 jobs:
   build:
@@ -19,14 +19,14 @@ jobs:
       fail-fast: false
       matrix:
         configurations:
-          - name: Ubuntu Latest gcc13
-            os: ubuntu-22.04
-            compiler: gcc13
-          - name: Ubuntu Latest clang17
-            os: ubuntu-22.04
-            compiler: clang17
+          - name: Ubuntu gcc14
+            os: ubuntu-24.04
+            compiler: gcc14
+          - name: Ubuntu clang18
+            os: ubuntu-24.04
+            compiler: clang18
           - name: ubuntu-22.04 emscripten
-            os: ubuntu-22.04
+            os: ubuntu-24.04
             compiler: emscripten
         # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
         cmake-build-type: [ Release, Debug ]
@@ -49,25 +49,22 @@ jobs:
     - name: Install gcovr
       shell: bash
       if: matrix.configurations.name == env.REFERENCE_CONFIG && matrix.cmake-build-type == 'Debug'
-      run: |
-        python3 -m pip install gcovr --user --no-warn-script-location
-        gcovr --version
+      run: sudo apt-get install -y gcovr
 
-    - name: Install gcc-13
-      if: matrix.configurations.compiler == 'gcc13'
+    - name: Install gcc-14
+      if: matrix.configurations.compiler == 'gcc14'
       run: |
-        sudo apt-get install -y gcc-13 g++-13 # gcovr # packaged gcovr is too old for gcc13
-        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 110 --slave /usr/bin/g++ g++ /usr/bin/g++-13 --slave /usr/bin/gcov gcov /usr/bin/gcov-13
+        sudo apt-get install -y gcc-14 g++-14
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 110 --slave /usr/bin/g++ g++ /usr/bin/g++-14 --slave /usr/bin/gcov gcov /usr/bin/gcov-14
 
-    - name: Install clang-17
-      if: matrix.configurations.compiler == 'clang17'
+    - name: Install clang-18
+      if: matrix.configurations.compiler == 'clang18'
       run: |
         wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
-        sudo add-apt-repository 'deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main'
         sudo apt update
-        sudo apt upgrade -y # update clang14 to fix packaging conflicts
-        sudo apt install -y clang-17 libc++-17-dev libc++abi-17-dev
-        sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++-17 110
+        sudo apt upgrade -y
+        sudo apt install -y clang-18 libc++-18-dev libc++abi-18-dev
+        sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++-18 110
 
     - name: Install emscripten
       if: matrix.configurations.compiler == 'emscripten'
@@ -76,9 +73,9 @@ jobs:
         git clone https://github.com/emscripten-core/emsdk.git
         cd emsdk
         # Download and install emscripten.
-        ./emsdk install 3.1.43 # 01/2023 (latest = 3.1.46 -> 09/2023)
+        ./emsdk install 3.1.59
         # Make "active" for the current user. (writes .emscripten file)
-        ./emsdk activate 3.1.43
+        ./emsdk activate 3.1.59
 
     - name: Install sonar-scanner and build-wrapper
       if: matrix.configurations.name == env.REFERENCE_CONFIG && matrix.cmake-build-type == 'Debug'
@@ -88,7 +85,7 @@ jobs:
       if: matrix.configurations.compiler != 'emscripten'
       # Use a bash shell, so we can use the same syntax for environment variable access regardless of the host operating system
       shell: bash
-      run: cmake -S . -B ../build -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DENABLE_COVERAGE=${{ matrix.configurations.name == env.REFERENCE_CONFIG && matrix.cmake-build-type == 'Debug' }}
+      run: cmake -S . -B ../build -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DOPENCMW_ENABLE_COVERAGE=${{ matrix.configurations.name == env.REFERENCE_CONFIG && matrix.cmake-build-type == 'Debug' }}
 
     - name: Configure CMake Emscripten
       if: matrix.configurations.compiler == 'emscripten'
