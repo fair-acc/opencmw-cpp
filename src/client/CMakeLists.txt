@@ -5,7 +5,6 @@ add_library(
   include/MockServer.hpp
   include/Client.hpp
   include/ClientContext.hpp
-  include/OAuthClient.hpp
   include/RestClient.hpp)
 target_include_directories(client INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
                                             $<INSTALL_INTERFACE:include/>)
