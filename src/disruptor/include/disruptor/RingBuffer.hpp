@@ -214,7 +214,7 @@ public:
                 } while (processNextEvent && nextSequence <= availableSequence);
             } catch (...) {
                 _sequence->setValue(processedSequence);
-                throw std::current_exception();
+                std::rethrow_exception(std::current_exception());
             }
 
             _sequence->setValue(processedSequence);
