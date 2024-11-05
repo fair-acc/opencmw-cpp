@@ -7,8 +7,8 @@
 #include <queue>
 
 #pragma clang diagnostic push
-#pragma ide diagnostic   ignored "cppcoreguidelines-avoid-magic-numbers"
-#pragma ide diagnostic   ignored "cppcoreguidelines-avoid-c-arrays"
+#pragma ide diagnostic ignored "cppcoreguidelines-avoid-magic-numbers"
+#pragma ide diagnostic ignored "cppcoreguidelines-avoid-c-arrays"
 
 namespace opencmw {
 struct YaS : Protocol<"YaS"> {};
@@ -340,7 +340,7 @@ inline DeserialiserInfo checkHeaderInfo<YaS>(IoBuffer &buffer, DeserialiserInfo 
     const auto magic = buffer.get<int>();
     if (yas::VERSION_MAGIC_NUMBER != magic) {
         if (check == ProtocolCheck::LENIENT) {
-            info.exceptions.template emplace_back(ProtocolException("Wrong serialiser magic number: {} != -1", magic));
+            info.exceptions.emplace_back(ProtocolException("Wrong serialiser magic number: {} != -1", magic));
         }
         if (check == ProtocolCheck::ALWAYS) {
             throw ProtocolException("Wrong serialiser magic number: {} != -1", magic);
@@ -350,7 +350,7 @@ inline DeserialiserInfo checkHeaderInfo<YaS>(IoBuffer &buffer, DeserialiserInfo 
     auto proto_name = buffer.get<std::string>();
     if (yas::PROTOCOL_NAME != proto_name) {
         if (check == ProtocolCheck::LENIENT) {
-            info.exceptions.template emplace_back(ProtocolException("Wrong serialiser identification string: {} != YaS", proto_name));
+            info.exceptions.emplace_back(ProtocolException("Wrong serialiser identification string: {} != YaS", proto_name));
         }
         if (check == ProtocolCheck::ALWAYS) {
             throw ProtocolException("Wrong serialiser identification string: {} != YaS", proto_name);
@@ -362,7 +362,7 @@ inline DeserialiserInfo checkHeaderInfo<YaS>(IoBuffer &buffer, DeserialiserInfo 
     auto ver_micro = buffer.get<int8_t>();
     if (yas::VERSION_MAJOR != ver_major) {
         if (check == ProtocolCheck::LENIENT) {
-            info.exceptions.template emplace_back(ProtocolException("Major versions do not match, received {}.{}.{}", ver_major, ver_minor, ver_micro));
+            info.exceptions.emplace_back(ProtocolException("Major versions do not match, received {}.{}.{}", ver_major, ver_minor, ver_micro));
         }
         if (check == ProtocolCheck::ALWAYS) {
             throw ProtocolException("Major versions do not match, received {}.{}.{}", ver_major, ver_minor, ver_micro);
