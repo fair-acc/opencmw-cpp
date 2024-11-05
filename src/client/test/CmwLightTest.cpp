@@ -8,7 +8,6 @@ TEST_CASE("RDA3", "[Client]") {
     std::string nameserverExample = R"""(GSCD025 DigitizerDU2.dal025 rda3://9#Address:#string#18#tcp:%2F%2Fdal025:16134#ApplicationId:#string#114#app=DigitizerDU2;uid=root;host=dal025;pid=16912;os=Linux%2D3%2E10%2E101%2Drt111%2Dscu03;osArch=64bit;appArch=64bit;lang=C%2B%2B;#Language:#string#3#C%2B%2B#Name:#string#19#DigitizerDU2%2Edal025#Pid:#int#16912#ProcessName:#string#12#DigitizerDU2#StartTime:#long#1699343695922#UserName:#string#4#root#Version:#string#5#3%2E1%2E0
 GSCD023 DigitizerDU2.fel0053 rda3://9#Address:#string#18#tcp:%2F%2Ffel0053:3717#ApplicationId:#string#115#app=DigitizerDU2;uid=root;host=fel0053;pid=31447;os=Linux%2D3%2E10%2E101%2Drt111%2Dscu03;osArch=64bit;appArch=64bit;lang=C%2B%2B;#Language:#string#3#C%2B%2B#Name:#string#20#DigitizerDU2%2Efel0053#Pid:#int#31447#ProcessName:#string#12#DigitizerDU2#StartTime:#long#1701529074225#UserName:#string#4#root#Version:#string#5#3%2E1%2E0
 FantasyDevice3000 *UNKNOWN* *UNKNOWN*)""";
-    std::string nameserver        = "tcp://cmwpro00a.acc.gsi.de:5021";
 
     SECTION("ParseNameserverReply") {
         std::map<std::string, std::map<std::string, std::map<std::string, std::variant<std::string, int, long>>>> devices = parse(nameserverExample);
@@ -19,10 +18,17 @@ FantasyDevice3000 *UNKNOWN* *UNKNOWN*)""";
     }
 
     SECTION("Query rda3 directory server/nameserver") {
-        opencmw::zmq::Context ctx{};
-        auto                  result = resolveDirectoryLight({ "GSCD025", "GSCD023", "FantasyDevice3000" }, nameserver, ctx, 100ms);
-        REQUIRE(!result.empty());
-        REQUIRE(result == nameserverExample);
+        auto env_nameserver = std::getenv("CMW_NAMESERVER");
+        if (env_nameserver == nullptr) {
+            fmt::print("skipping BasicCmwLight example test as it relies on the availability of network infrastructure.");
+            return; // skip test
+        } else {
+            std::string nameserver{env_nameserver};
+            opencmw::zmq::Context ctx{};
+            auto                  result = resolveDirectoryLight({ "GSCD025", "GSCD023", "FantasyDevice3000" }, nameserver, ctx, 100ms);
+            REQUIRE(!result.empty());
+            REQUIRE(result == nameserverExample);
+        }
     };
 }
 
@@ -54,6 +60,10 @@ static std::string hexview(const std::string_view value, std::size_t bytesPerLin
 };
 
 TEST_CASE("BasicCmwLight example", "[Client]") {
+    if (std::getenv("CMW_NAMESERVER") == nullptr) {
+        fmt::print("skipping BasicCmwLight example test as it relies on the availability of network infrastructure.");
+        return; // skip test
+    }
     const std::string digitizerAddress{ "tcp://dal007:2620" };
     // filters2String = "acquisitionModeFilter=int:0&channelNameFilter=GS11MU2:Voltage_1@10Hz";
     // GS01QS1F:Current@1Hz
