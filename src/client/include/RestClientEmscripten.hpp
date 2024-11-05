@@ -18,6 +18,27 @@ using namespace opencmw;
 namespace opencmw::client {
 
 namespace detail {
+
+/***
+ * Get the final URL of a possibly redirected HTTP fetch call.
+ * Uses Javascript to return the the url as a string.
+ */
+static std::string getFinalURL(std::uint32_t id) {
+    auto        finalURLChar = static_cast<char *>(EM_ASM_PTR({
+        var fetch = Fetch.xhrs.get($0);
+        if (fetch) {
+            var finalURL = fetch.responseURL;
+            var lengthBytes = lengthBytesUTF8(finalURL) + 1;
+            var stringOnWasmHeap = _malloc(lengthBytes);
+            stringToUTF8(finalURL, stringOnWasmHeap, lengthBytes);
+            return stringOnWasmHeap;
+        }
+        return 0; }, id));
+    std::string finalURL{ finalURLChar, strlen(finalURLChar) };
+    EM_ASM({ _free($0) }, finalURLChar);
+    return finalURL;
+}
+
 struct pointer_equals {
     using is_transparent = void;
     template<typename Left, typename Right>
@@ -103,6 +124,7 @@ static std::unordered_set<std::unique_ptr<detail::SubscriptionPayload>, detail::
 struct SubscriptionPayload : FetchPayload {
     bool           _live = true;
     MIME::MimeType _mimeType;
+    std::size_t    _update = 0;
 
     SubscriptionPayload(Command &&_command, MIME::MimeType mimeType)
         : FetchPayload(std::move(_command))
@@ -114,7 +136,7 @@ struct SubscriptionPayload : FetchPayload {
     SubscriptionPayload &operator=(SubscriptionPayload &&other) noexcept = default;
 
     void                 requestNext() {
-        auto uri = command.topic;
+        auto uri = opencmw::URI<opencmw::STRICT>::UriFactory(command.topic).addQueryParameter("LongPollingIdx", (_update == 0) ? "Next" : fmt::format("{}", _update)).build();
         fmt::print("URL 1 >>> {}\n", uri.relativeRef());
         auto                                                 preferredHeader = detail::getPreferredContentTypeHeader(command.topic, _mimeType);
         std::array<const char *, preferredHeader.size() + 1> preferredHeaderEmscripten;
@@ -140,14 +162,22 @@ struct SubscriptionPayload : FetchPayload {
         attr.attributes     = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
         attr.requestHeaders = preferredHeaderEmscripten.data();
         attr.onsuccess      = [](emscripten_fetch_t *fetch) {
-            auto  payloadIt = getPayloadIt(fetch);
-            auto &payload   = *payloadIt;
+            auto        payloadIt            = getPayloadIt(fetch);
+            auto       &payload              = *payloadIt;
+            std::string finalURL             = getFinalURL(fetch->id);
+            std::string longPollingIdxString = opencmw::URI<>(finalURL).queryParamMap().at("LongPollingIdx").value_or("0");
+            char       *end                  = longPollingIdxString.data() + longPollingIdxString.size();
+            std::size_t longPollingIdx       = strtoull(longPollingIdxString.data(), &end, 10);
+            if (longPollingIdx != payload->_update) {
+                fmt::print("received unexpected update: {}, expected {}\n", longPollingIdx, payload->_update);
+                return;
+            }
             payload->onsuccess(fetch->status, std::string_view(fetch->data, detail::checkedStringViewSize(fetch->numBytes)));
             emscripten_fetch_close(fetch);
+            payload->_update++;
             if (payload->_live) {
                 payload->requestNext();
             } else {
-                emscripten_fetch_close(fetch);
                 detail::subscriptionPayloads.erase(payloadIt);
             }
         };
@@ -195,7 +225,7 @@ public:
     }
     ~RestClient() { RestClient::stop(); };
 
-    void                      stop() override{};
+    void                      stop() override {};
 
     std::vector<std::string>  protocols() noexcept override { return { "http", "https" }; }
 
@@ -273,26 +303,19 @@ private:
     }
 
     void startSubscription(Command &&cmd) {
-        auto uri        = opencmw::URI<>::factory(cmd.topic).addQueryParameter("LongPollingIdx", "Next").build();
-        cmd.topic       = uri;
-
         auto payload    = std::make_unique<detail::SubscriptionPayload>(std::move(cmd), _mimeType);
         auto rawPayload = payload.get();
         detail::subscriptionPayloads.insert(std::move(payload));
+        fmt::print("starting subscription: {}, existiing subscriptions: {}\n", cmd.topic.str(), detail::subscriptionPayloads.size());
         rawPayload->requestNext();
     }
 
     void stopSubscription(Command &&cmd) {
-        // TODO: Can we provide
-        // Subscription subscribe(...)
-        // void get(...)
-        // void set(...)
-        // instead of going through a fake generic request(...)?
-        auto uri       = opencmw::URI<>::factory(cmd.topic).addQueryParameter("LongPollingIdx", "Next").build();
         auto payloadIt = std::find_if(detail::subscriptionPayloads.begin(), detail::subscriptionPayloads.end(),
                 [&](const auto &ptr) {
-                    return ptr->command.topic == uri;
+                    return ptr->command.topic == cmd.topic;
                 });
+        fmt::print("stopping subscription: {}, existiing subscriptions: {}\n", cmd.topic.str(), detail::subscriptionPayloads.size());
         if (payloadIt == detail::subscriptionPayloads.end()) {
             return;
         }

@@ -33,7 +33,7 @@ class MinIoThreads {
 public:
     MinIoThreads() = default;
     MinIoThreads(int value) noexcept
-        : _minThreads(value){};
+        : _minThreads(value) {};
     constexpr operator int() const noexcept { return _minThreads; };
 };
 
@@ -43,7 +43,7 @@ class MaxIoThreads {
 public:
     MaxIoThreads() = default;
     MaxIoThreads(int value) noexcept
-        : _maxThreads(value){};
+        : _maxThreads(value) {};
     constexpr operator int() const noexcept { return _maxThreads; };
 };
 
@@ -52,9 +52,9 @@ struct ClientCertificates {
 
     ClientCertificates() = default;
     ClientCertificates(const char *X509_ca_bundle) noexcept
-        : _certificates(X509_ca_bundle){};
+        : _certificates(X509_ca_bundle) {};
     ClientCertificates(const std::string &X509_ca_bundle) noexcept
-        : _certificates(X509_ca_bundle){};
+        : _certificates(X509_ca_bundle) {};
     constexpr operator std::string() const noexcept { return _certificates; };
 };
 
@@ -313,37 +313,31 @@ private:
                 {
                     client.set_follow_location(true);
 
-                    auto longPollingEndpoint = [&] {
-                        if (!cmd.topic.queryParamMap().contains(LONG_POLLING_IDX_TAG)) {
-                            return URI<>::factory(cmd.topic).addQueryParameter(LONG_POLLING_IDX_TAG, "Next").build();
-                        } else {
-                            return URI<>::factory(cmd.topic).build();
-                        }
-                    }();
-
-                    const auto pollHeaders = getPreferredContentTypeHeader(longPollingEndpoint);
-                    auto       endpoint    = longPollingEndpoint.relativeRef().value();
+                    std::size_t longPollingIdx = 0;
+                    const auto  pollHeaders    = getPreferredContentTypeHeader(cmd.topic);
                     client.set_read_timeout(cmd.timeout); // default keep-alive value
                     while (_run) {
-                        auto redirect_get = [&client](auto url, auto headers) {
-                            for (;;) {
-                                auto result = client.Get(url, headers);
-                                if (!result) return result;
-
-                                if (result->status >= 300 && result->status < 400) {
-                                    url = httplib::detail::decode_url(result.value().get_header_value("location"), true);
-                                } else {
-                                    return result;
-                                }
+                        auto endpoint = [&]() {
+                            if (longPollingIdx == 0UZ) {
+                                return URI<STRICT>::factory(cmd.topic).addQueryParameter(LONG_POLLING_IDX_TAG, "Next").build().relativeRef().value();
+                            } else {
+                                return URI<STRICT>::factory(cmd.topic).addQueryParameter(LONG_POLLING_IDX_TAG, fmt::format("{}", longPollingIdx)).build().relativeRef().value();
                             }
-                        };
-                        if (const httplib::Result &result = redirect_get(endpoint, pollHeaders)) {
+                        }();
+                        if (const httplib::Result &result = client.Get(endpoint, pollHeaders)) {
                             returnMdpMessage(cmd, result);
-                        } else {                                      // failed or server is down -> wait until retry
-                            std::this_thread::sleep_for(cmd.timeout); // time-out until potential retry
+                            // update long-polling-index
+                            std::string location        = result->location.empty() ? endpoint : result->location;
+                            std::string updateIdxString = URI<STRICT>(location).queryParamMap().at(std::string(LONG_POLLING_IDX_TAG)).value_or("0");
+                            char       *end             = updateIdxString.data() + updateIdxString.size();
+                            longPollingIdx              = strtoull(updateIdxString.data(), &end, 10) + 1;
+                            auto headerTimestamp        = result->get_header_value_u64("X-TIMESTAMP");
+                            auto latency                = headerTimestamp - std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+                        } else { // failed or server is down -> wait until retry
                             if (_run) {
                                 returnMdpMessage(cmd, result, fmt::format("Long-Polling-GET request failed for {}: {}", cmd.topic.str(), static_cast<int>(result.error())));
                             }
+                            std::this_thread::sleep_for(cmd.timeout); // time-out until potential retry
                         }
                     }
                 }
