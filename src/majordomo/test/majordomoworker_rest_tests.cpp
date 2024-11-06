@@ -38,6 +38,29 @@ std::jthread makeGetRequestResponseCheckerThread(const std::string &address, con
     });
 }
 
+std::jthread makeLongPollingRequestResponseCheckerThread(const std::string &address, const std::vector<std::string> &requiredResponses, const std::vector<int> &requiredStatusCodes = {}, [[maybe_unused]] std::source_location location = std::source_location::current()) {
+    return std::jthread([=] {
+        httplib::Client http("localhost", majordomo::DEFAULT_REST_PORT);
+        http.set_follow_location(true);
+        http.set_keep_alive(true);
+#define requireWithSource(arg) \
+    if (!(arg)) opencmw::zmq::debug::withLocation(location) << "<- call got a failed requirement:"; \
+    REQUIRE(arg)
+        for (std::size_t i = 0; i < requiredResponses.size(); ++i) {
+            const std::string url      = fmt::format("{}{}LongPollingIdx={}", address, address.contains('?') ? "&" : "?", i == 0 ? "Next" : fmt::format("{}", i));
+            const auto        response = http.Get(url);
+            if (i == 0) { // check forwarding to the explicit index
+                REQUIRE(response->location.find("&LongPollingIdx=0") != std::string::npos);
+            }
+            requireWithSource(response);
+            const auto requiredStatusCode = i < requiredStatusCodes.size() ? requiredStatusCodes[i] : 200;
+            requireWithSource(response->status == requiredStatusCode);
+            requireWithSource(response->body.find(requiredResponses[i]) != std::string::npos);
+        }
+#undef requireWithSource
+    });
+}
+
 struct ColorContext {
     bool                    red         = false;
     bool                    green       = false;
@@ -252,12 +275,12 @@ TEST_CASE("Subscriptions", "[majordomo][majordomoworker][subscription]") {
 
     REQUIRE(waitUntilWorkerServiceAvailable(broker.context, worker));
 
-    auto allListener    = makeGetRequestResponseCheckerThread("/colors?LongPollingIdx=Next", { "0", "1", "2", "3", "4", "5", "6" });
-    auto redListener    = makeGetRequestResponseCheckerThread("/colors?LongPollingIdx=Next&red", { "0", "3", "4", "6" });
-    auto yellowListener = makeGetRequestResponseCheckerThread("/colors?LongPollingIdx=Next&red&green", { "4", "6" });
-    auto whiteListener1 = makeGetRequestResponseCheckerThread("/colors?LongPollingIdx=Next&red&green&blue", { "6" });
-    auto whiteListener2 = makeGetRequestResponseCheckerThread("/colors?LongPollingIdx=Next&green&red&blue", { "6" });
-    auto whiteListener3 = makeGetRequestResponseCheckerThread("/colors?LongPollingIdx=Next&blue&green&red", { "6" });
+    auto allListener    = makeLongPollingRequestResponseCheckerThread("/colors", { "0", "1", "2", "3", "4", "5", "6" });
+    auto redListener    = makeLongPollingRequestResponseCheckerThread("/colors?red", { "0", "3", "4", "6" });
+    auto yellowListener = makeLongPollingRequestResponseCheckerThread("/colors?red&green", { "4", "6" });
+    auto whiteListener1 = makeLongPollingRequestResponseCheckerThread("/colors?red&green&blue", { "6" });
+    auto whiteListener2 = makeLongPollingRequestResponseCheckerThread("/colors?green&red&blue", { "6" });
+    auto whiteListener3 = makeLongPollingRequestResponseCheckerThread("/colors?blue&green&red", { "6" });
 
     std::this_thread::sleep_for(50ms); // give time for subscriptions to happen
 
