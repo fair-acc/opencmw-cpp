@@ -229,8 +229,7 @@ private:
 
     std::atomic_int             _refCount = 1;
 
-    // Here be dragons! This is not to be used after
-    // the connection was involved in any threading code
+    // Here be dragons! This is not to be used after the connection was involved in any threading code
     Connection(Connection &&other) noexcept
         : notificationSubscriptionSocket(std::move(other.notificationSubscriptionSocket))
         , requestResponseSocket(std::move(other.requestResponseSocket))
@@ -250,8 +249,7 @@ public:
     Connection &operator=(const Connection &) = delete;
     Connection &operator=(Connection &&)      = delete;
 
-    // Here be dragons! This is not to be used after
-    // the connection was involved in any threading code
+    // Here be dragons! This is not to be used after the connection was involved in any threading code
     Connection unsafeMove() && {
         return std::move(*this);
     }
@@ -283,8 +281,7 @@ public:
     }
 
     bool waitForUpdate(std::chrono::milliseconds timeout) {
-        // This could also periodically check for the client connection being dropped (e.g. due to client-side timeout)
-        // if cpp-httplib had API for that.
+        // This could also periodically check for the client connection being dropped (e.g. due to client-side timeout) if cpp-httplib had API for that.
         auto       temporaryLock = writeLock();
         const auto next          = _nextPollingIndex;
         while (_nextPollingIndex == next) {
@@ -331,9 +328,9 @@ protected:
     std::atomic<std::chrono::milliseconds> _majordomoTimeout = 30000ms;
 
 private:
-    std::jthread                                               _connectionUpdaterThread;
-    std::shared_mutex                                          _connectionsMutex;
-    std::map<std::string, std::unique_ptr<detail::Connection>> _connectionForService;
+    std::jthread                                               _mdpConnectionUpdaterThread;
+    std::shared_mutex                                          _mdpConnectionsMutex;
+    std::map<std::string, std::unique_ptr<detail::Connection>> _mdpConnectionForService;
 
 public:
     /**
@@ -350,18 +347,17 @@ public:
     }
 
     using BrokerType = Broker<Roles...>;
-    // returns a connection with refcount 1. Make sure you lower it to
-    // zero at some point
+    // returns a connection with refcount 1. Make sure you lower it to zero at some point
     detail::Connection *notificationSubscriptionConnectionFor(const std::string &subscriptionKey) {
-        detail::WriteLock lock(_connectionsMutex);
+        detail::WriteLock lock(_mdpConnectionsMutex);
         // TODO: No need to find + emplace as separate steps
-        if (auto it = _connectionForService.find(subscriptionKey); it != _connectionForService.end()) {
+        if (auto it = _mdpConnectionForService.find(subscriptionKey); it != _mdpConnectionForService.end()) {
             auto *connection = it->second.get();
             connection->increaseReferenceCount();
             return connection;
         }
 
-        auto [it, inserted] = _connectionForService.emplace(std::piecewise_construct,
+        auto [it, inserted] = _mdpConnectionForService.emplace(std::piecewise_construct,
                 std::forward_as_tuple(subscriptionKey),
                 std::forward_as_tuple(std::make_unique<detail::Connection>(_broker.context, subscriptionKey)));
 
@@ -390,18 +386,20 @@ public:
 
     // Starts the thread to keep the unused subscriptions alive
     void startUpdaterThread() {
-        _connectionUpdaterThread = std::jthread([this](std::stop_token stop_token) {
+        _mdpConnectionUpdaterThread = std::jthread([this](const std::stop_token &stopToken) {
             thread::setThreadName("RestBackend updater thread");
-            while (!stop_token.stop_requested()) {
-                std::this_thread::sleep_for(100ms);
+
+            std::vector<detail::Connection *> connections;
+            std::vector<zmq_pollitem_t>       pollItems;
+            while (!stopToken.stop_requested()) {
+                std::list<detail::Connection::KeepAlive> keep;
                 {
-                    // This is a long lock, alternatively, message reading
-                    // could have separate locks per connection
-                    detail::WriteLock lock(_connectionsMutex);
+                    // This is a long lock, alternatively, message reading could have separate locks per connection
+                    detail::WriteLock lock(_mdpConnectionsMutex);
 
                     // Expired subscriptions cleanup
                     std::vector<std::string> expiredSubscriptions;
-                    for (auto &[subscriptionKey, connection] : _connectionForService) {
+                    for (auto &[subscriptionKey, connection] : _mdpConnectionForService) {
                         // fmt::print("Reference count is {}\n", connection->referenceCount());
                         if (connection->referenceCount() == 0) {
                             auto connectionLock = connection->writeLock();
@@ -414,49 +412,43 @@ public:
                         }
                     }
                     for (const auto &subscriptionKey : expiredSubscriptions) {
-                        _connectionForService.erase(subscriptionKey);
+                        _mdpConnectionForService.erase(subscriptionKey);
                     }
 
-                    // Reading the missed messages
-                    const auto connectionCount = _connectionForService.size();
+                    // setup poller and socket data structures for all connections
+                    const std::size_t connectionCount = _mdpConnectionForService.size();
+                    connections.resize(connectionCount);
+                    pollItems.resize(connectionCount);
+                    for (std::size_t i = 0UZ; auto &[key, connection] : _mdpConnectionForService) {
+                        connections[i] = connection.get();
+                        keep.emplace_back(connection.get());
+                        pollItems[i].events = ZMQ_POLLIN;
+                        pollItems[i].socket = connection->notificationSubscriptionSocket.zmq_ptr;
+                        ++i;
+                    }
+                } // finished copying local state, keep ensures that connections are kept alive, end of lock on _mdpConnectionsForService
 
-                    if (connectionCount != 0) {
-                        std::vector<detail::Connection *> connections;
-                        std::vector<zmq_pollitem_t>       pollItems;
-                        connections.resize(connectionCount);
-                        pollItems.resize(connectionCount);
+                if (pollItems.empty()) {
+                    std::this_thread::sleep_for(100ms); // prevent spinning on connection cleanup if there are no connections to poll on
+                    continue;
+                }
 
-                        std::list<detail::Connection::KeepAlive> keep;
+                auto pollCount = zmq::invoke(zmq_poll, pollItems.data(), static_cast<int>(pollItems.size()), std::chrono::duration_cast<std::chrono::milliseconds>(UPDATER_POLLING_TIME).count());
+                if (!pollCount) {
+                    fmt::print("Error while polling for updates from the broker\n");
+                    std::terminate();
+                }
+                if (pollCount.value() == 0) {
+                    continue;
+                }
 
-                        for (std::size_t i = 0; auto &kvp : _connectionForService) {
-                            auto &[key, connection] = kvp;
-
-                            connections[i]          = connection.get();
-                            keep.emplace_back(connection.get());
-
-                            pollItems[i].events = ZMQ_POLLIN;
-                            pollItems[i].socket = connection->notificationSubscriptionSocket.zmq_ptr;
-                            ++i;
-                        }
-
-                        auto pollCount = zmq::invoke(zmq_poll, pollItems.data(), static_cast<int>(pollItems.size()),
-                                std::chrono::duration_cast<std::chrono::milliseconds>(UPDATER_POLLING_TIME).count());
-                        if (!pollCount) {
-                            std::terminate();
-                        }
-                        if (pollCount.value() == 0) {
-                            continue;
-                        }
-
-                        for (std::size_t i = 0; i < connectionCount; ++i) {
-                            const auto events = pollItems[i].revents;
-                            if (events & ZMQ_POLLIN) {
-                                auto *currentConnection = connections[i];
-                                auto  connectionLock    = currentConnection->writeLock();
-                                if (auto responseMessage = zmq::receive<mdp::MessageFormat::WithoutSourceId>(currentConnection->notificationSubscriptionSocket)) {
-                                    currentConnection->addCachedReply(connectionLock, std::string(responseMessage->data.asString()));
-                                }
-                            }
+                // Reading messages
+                for (std::size_t i = 0; i < connections.size(); ++i) {
+                    if (pollItems[i].revents & ZMQ_POLLIN) {
+                        detail::Connection                 *currentConnection = connections[i];
+                        std::unique_lock<std::shared_mutex> connectionLock    = currentConnection->writeLock();
+                        while (auto responseMessage = zmq::receive<mdp::MessageFormat::WithoutSourceId>(currentConnection->notificationSubscriptionSocket)) {
+                            currentConnection->addCachedReply(connectionLock, std::string(responseMessage->data.asString()));
                         }
                     }
                 }
@@ -483,8 +475,8 @@ public:
     virtual ~RestBackend() {
         _svr.stop();
         // shutdown thread before _connectionForService is destroyed
-        _connectionUpdaterThread.request_stop();
-        _connectionUpdaterThread.join();
+        _mdpConnectionUpdaterThread.request_stop();
+        _mdpConnectionUpdaterThread.join();
     }
 
     auto handleServiceRequest(const httplib::Request &request, httplib::Response &response, const httplib::ContentReader *content_reader_ = nullptr) {
@@ -515,12 +507,8 @@ public:
         auto topic      = std::move(*maybeTopic);
 
         auto restMethod = [&] {
+            auto methodString = request.has_header("X-OPENCMW-METHOD") ? request.get_header_value("X-OPENCMW-METHOD") : request.method;
             // clang-format off
-            auto methodString =
-                request.has_header("X-OPENCMW-METHOD") ?
-                    request.get_header_value("X-OPENCMW-METHOD") :
-                    request.method;
-
             return methodString == "SUB"  ? RestMethod::Subscribe :
                    methodString == "POLL" ? RestMethod::LongPoll :
                    methodString == "PUT"  ? RestMethod::Post :
@@ -532,10 +520,8 @@ public:
 
         for (const auto &[key, value] : request.params) {
             if (key == "LongPollingIdx") {
-                // This parameter is not passed on, it just means we
-                // want to use long polling
+                // This parameter is not passed on, it just means we want to use long polling
                 restMethod = value == "Subscription" ? RestMethod::Subscribe : RestMethod::LongPoll;
-
             } else if (key == "SubscriptionContext") {
                 topic = mdp::Topic::fromString(value, {}); // params are parsed from value
             }
@@ -550,14 +536,11 @@ public:
         switch (restMethod) {
         case RestMethod::Get:
         case RestMethod::Post:
-            return worker.respondWithPubSub(request, response, topic, restMethod, content_reader_);
-
+            return worker.respondWithGetSet(request, response, topic, restMethod, content_reader_);
         case RestMethod::LongPoll:
             return worker.respondWithLongPoll(request, response, topic);
-
         case RestMethod::Subscribe:
             return worker.respondWithSubscription(response, topic);
-
         default:
             // std::unreachable() is C++23
             assert(!"We have already checked that restMethod is not Invalid");
@@ -639,34 +622,27 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         return std::move(connection).unsafeMove();
     }
 
-    bool respondWithPubSub(const httplib::Request &request, httplib::Response &response, mdp::Topic topic, detail::RestMethod restMethod, const httplib::ContentReader *content_reader_ = nullptr) {
-        // clang-format off
-        const mdp::Command mdpMessageCommand =
-                 restMethod == detail::RestMethod::Post      ? mdp::Command::Set :
-                                                 /* default */ mdp::Command::Get;
-        // clang-format on
+    bool respondWithGetSet(const httplib::Request &request, httplib::Response &response, mdp::Topic topic, detail::RestMethod restMethod, const httplib::ContentReader *content_reader_ = nullptr) {
+        const mdp::Command mdpMessageCommand = restMethod == detail::RestMethod::Post ? mdp::Command::Set : mdp::Command::Get;
 
-        auto        uri = URI<>::factory();
-        std::string bodyOverride;
-        std::string contentType;
-        int         contentLength{ 0 };
+        auto               uri               = URI<>::factory();
+        std::string        bodyOverride;
+        std::string        contentType;
+        int                contentLength{ 0 };
         for (const auto &[key, value] : request.params) {
             if (key == "_bodyOverride") {
                 bodyOverride = value;
-
             } else if (key == "LongPollingIdx") {
-                // This parameter is not passed on, it just means we
-                // want to use long polling -- already handled
-
+                // This parameter is not passed on, it just means we want to use long polling -- already handled
             } else {
                 uri = std::move(uri).addQueryParameter(key, value);
             }
         }
 
         for (const auto &[key, value] : request.headers) {
-            if (key == "Content-Length") {
+            if (httplib::detail::case_ignore::equal(key, "Content-Length")) {
                 contentLength = std::stoi(value);
-            } else if (key == "Content-Type") {
+            } else if (httplib::detail::case_ignore::equal(key, "Content-Type")) {
                 contentType = value;
             }
         }
@@ -742,6 +718,7 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
             response.set_header("X-OPENCMW-TOPIC", responseMessage->topic.str().data());
             response.set_header("X-OPENCMW-SERVICE-NAME", responseMessage->serviceName.data());
             response.set_header("Access-Control-Allow-Origin", "*");
+            response.set_header("X-TIMESTAMP", fmt::format("{}", std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count()));
             const auto data = responseMessage->data.asString();
 
             if (request.method != "GET") {
@@ -759,6 +736,8 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         assert(connection);
         const auto majordomoTimeout = restBackend.majordomoTimeout();
         response.set_header("Access-Control-Allow-Origin", "*");
+        response.set_header("X-TIMESTAMP", fmt::format("{}", std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count()));
+
         response.set_chunked_content_provider(
                 "application/json",
                 [connection, majordomoTimeout](std::size_t /*offset*/, httplib::DataSink &sink) mutable {
@@ -818,8 +797,8 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
             detail::Connection  *connection       = nullptr;
         };
         auto fetchCache = [this, &subscriptionKey] {
-            std::shared_lock lock(restBackend._connectionsMutex);
-            auto            &recycledConnectionForService = restBackend._connectionForService;
+            std::shared_lock lock(restBackend._mdpConnectionsMutex);
+            auto            &recycledConnectionForService = restBackend._mdpConnectionForService;
             if (auto it = recycledConnectionForService.find(subscriptionKey); it != recycledConnectionForService.cend()) {
                 auto                         *connectionCache = it->second.get();
                 detail::Connection::KeepAlive keep(connectionCache);
@@ -842,7 +821,7 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
 
         detail::PollingIndex requestedLongPollingIdx = 0;
 
-        // Hoping we already have the requested value in the cache
+        // Hoping we already have the requested value in the cache. Holding this caches blocks all cache entries, so no further updates can be received or other connections initiated.
         {
             const auto cache = fetchCache();
             response.set_header("Access-Control-Allow-Origin", "*");
@@ -888,7 +867,7 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         assert(connection);
         detail::Connection::KeepAlive keep(connection);
 
-        // Since we use KeepAlive object, the inital refCount can go away
+        // Since we use KeepAlive object, the initial refCount can go away
         connection->decreaseReferenceCount();
 
         if (!connection->waitForUpdate(restBackend.majordomoTimeout())) {
@@ -904,7 +883,6 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
             auto connectionCacheLock = newCache.connection->readLock();
             response.set_content(newCache.connection->cachedReply(connectionCacheLock, requestedLongPollingIdx), MIME::JSON.typeName().data());
             return true;
-
         } else {
             return detail::respondWithError(response, "Error: We waited for the new value, but it was not found");
         }
@@ -914,8 +892,7 @@ private:
     void addParameters(const httplib::Request &request, URI<>::UriFactory &uri) {
         for (const auto &[key, value] : request.params) {
             if (key == "LongPollingIdx") {
-                // This parameter is not passed on, it just means we
-                // want to use long polling -- already handled
+                // This parameter is not passed on, it just means we want to use long polling -- already handled
             } else {
                 uri = std::move(uri).addQueryParameter(key, value);
             }
