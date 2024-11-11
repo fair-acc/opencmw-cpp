@@ -2,12 +2,12 @@
 
 # This script requires keycloak to be already running and configures it to be compatible with the unit tests by setting up a realm, a user etc...
 # To start a keycloak instance in the first place, the following is sufficient:
-# docker run -p 8080:8080 -e KEYCLOAK_ADMIN=admin -e KEYCLOAK_ADMIN_PASSWORD=admin quay.io/keycloak/keycloak:25.0.4 start-dev
+# docker run -p 8090:8080 -e KEYCLOAK_ADMIN=admin -e KEYCLOAK_ADMIN_PASSWORD=admin quay.io/keycloak/keycloak:25.0.4 start-dev
 #
 # For more information see: https://www.keycloak.org/getting-started/getting-started-docker
 
-URL="http://localhost:8080"
-REDIRECT_URI="http://localhost:8081"
+URL="http://localhost:8090"
+REDIRECT_URI="http://localhost:8091"
 ADMIN_PASSWORD="admin"
 
 while ! curl -s "$URL"; do

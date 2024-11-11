@@ -88,7 +88,7 @@ bool loginAtUri(const opencmw::URI<opencmw::STRICT> &uri) {
 
 TEST_CASE("Worker test", "[OAuth]") {
     opencmw::majordomo::Broker<> broker{ "/Broker", {} };
-    opencmw::OAuthWorker         oauthWorker{ opencmw::URI("http://localhost:8081"), opencmw::URI("http://localhost:8080/realms/testrealm/protocol/openid-connect/auth"), opencmw::URI("http://localhost:8080/realms/testrealm/protocol/openid-connect/token"), broker };
+    opencmw::OAuthWorker         oauthWorker{ opencmw::URI("http://localhost:8091"), opencmw::URI("http://localhost:8090/realms/testrealm/protocol/openid-connect/auth"), opencmw::URI("http://localhost:8090/realms/testrealm/protocol/openid-connect/token"), broker };
 
     REQUIRE(broker.bind(opencmw::URI<>("mds://127.0.0.1:12345")));
     REQUIRE(broker.bind(opencmw::URI<>("mdp://127.0.0.1:12346")));

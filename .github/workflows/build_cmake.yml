@@ -108,7 +108,7 @@ jobs:
 
     - name: Run Keycloak Docker
       shell: bash
-      run: docker run --network host -d -e KEYCLOAK_ADMIN=admin -e KEYCLOAK_ADMIN_PASSWORD=admin quay.io/keycloak/keycloak:26.0.5 start-dev && src/client/test/setup-keycloak.sh
+      run: docker run -p 8090:8080 -d -e KEYCLOAK_ADMIN=admin -e KEYCLOAK_ADMIN_PASSWORD=admin quay.io/keycloak/keycloak:26.0.5 start-dev && src/client/test/setup-keycloak.sh
 
     - name: Run tests
       if: matrix.configurations.name != env.REFERENCE_CONFIG || matrix.cmake-build-type != 'Debug'
