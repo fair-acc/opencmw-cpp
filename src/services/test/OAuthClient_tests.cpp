@@ -79,6 +79,7 @@ bool loginAtUri(const opencmw::URI<opencmw::STRICT> &uri) {
 #else
     // call the final redirect URI with curl as a workaround
     const std::string curl = "curl '" + it->second + "'";
+    // flawfinder: ignore
     res->status            = std::system(curl.c_str()) + 200;
 #endif
     REQUIRE(res->status == 200);

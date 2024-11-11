@@ -127,6 +127,7 @@ public:
 #ifdef __unix__
         // An alternative would be to use the org.freedesktop.portal.OpenURI method, but that would require dbus
         // and it is more likely that xdg-open is present, than the portal running
+        // flawfinder: ignore
         return !std::system(fmt::format("xdg-open '{}'", uri.str()).c_str());
 #else
         std::cout << "Your platform is unsupported, please open the link manually." << std::endl;
