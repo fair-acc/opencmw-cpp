@@ -137,7 +137,7 @@ struct SubscriptionPayload : FetchPayload {
 
     void                 requestNext() {
         auto uri = opencmw::URI<opencmw::STRICT>::UriFactory(command.topic).addQueryParameter("LongPollingIdx", (_update == 0) ? "Next" : fmt::format("{}", _update)).build();
-        fmt::print("URL 1 >>> {}\n", uri.relativeRef());
+        // fmt::print("URL 1 >>> {}, thread {}\n", uri.relativeRef(), std::this_thread::get_id());
         auto                                                 preferredHeader = detail::getPreferredContentTypeHeader(command.topic, _mimeType);
         std::array<const char *, preferredHeader.size() + 1> preferredHeaderEmscripten;
         std::transform(preferredHeader.cbegin(), preferredHeader.cend(), preferredHeaderEmscripten.begin(),
@@ -162,20 +162,20 @@ struct SubscriptionPayload : FetchPayload {
         attr.attributes     = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
         attr.requestHeaders = preferredHeaderEmscripten.data();
         attr.onsuccess      = [](emscripten_fetch_t *fetch) {
-            auto        payloadIt            = getPayloadIt(fetch);
-            auto       &payload              = *payloadIt;
-            std::string finalURL             = getFinalURL(fetch->id);
-            std::string longPollingIdxString = opencmw::URI<>(finalURL).queryParamMap().at("LongPollingIdx").value_or("0");
-            char       *end                  = longPollingIdxString.data() + longPollingIdxString.size();
-            std::size_t longPollingIdx       = strtoull(longPollingIdxString.data(), &end, 10);
-            if (longPollingIdx != payload->_update) {
-                fmt::print("received unexpected update: {}, expected {}\n", longPollingIdx, payload->_update);
-                return;
-            }
-            payload->onsuccess(fetch->status, std::string_view(fetch->data, detail::checkedStringViewSize(fetch->numBytes)));
-            emscripten_fetch_close(fetch);
-            payload->_update++;
+            auto  payloadIt = getPayloadIt(fetch);
+            auto &payload   = *payloadIt;
             if (payload->_live) {
+                std::string finalURL             = getFinalURL(fetch->id);
+                std::string longPollingIdxString = opencmw::URI<>(finalURL).queryParamMap().at("LongPollingIdx").value_or("0");
+                char       *end                  = longPollingIdxString.data() + longPollingIdxString.size();
+                std::size_t longPollingIdx       = strtoull(longPollingIdxString.data(), &end, 10);
+                if (payload->_update != 0 && longPollingIdx != payload->_update) {
+                    fmt::print("received unexpected update: {}, expected {}\n", longPollingIdx, payload->_update);
+                    return;
+                }
+                payload->onsuccess(fetch->status, std::string_view(fetch->data, detail::checkedStringViewSize(fetch->numBytes)));
+                emscripten_fetch_close(fetch);
+                payload->_update = longPollingIdx + 1;
                 payload->requestNext();
             } else {
                 detail::subscriptionPayloads.erase(payloadIt);
