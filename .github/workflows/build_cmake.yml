@@ -106,6 +106,10 @@ jobs:
       shell: bash
       run: build-wrapper-linux-x86-64 --out-dir ${{ env.BUILD_WRAPPER_OUT_DIR }} cmake --build ../build --config ${{ matrix.cmake-build-type }}
 
+    - name: Run Keycloak Docker
+      shell: bash
+      run: docker run -p 8090:8080 -d -e KEYCLOAK_ADMIN=admin -e KEYCLOAK_ADMIN_PASSWORD=admin quay.io/keycloak/keycloak:26.0.5 start-dev && src/client/test/setup-keycloak.sh
+
     - name: Run tests
       if: matrix.configurations.name != env.REFERENCE_CONFIG || matrix.cmake-build-type != 'Debug'
       working-directory: ${{runner.workspace}}/build
