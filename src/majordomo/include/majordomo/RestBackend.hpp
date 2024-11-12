@@ -766,8 +766,7 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
     bool respondWithLongPollRedirect(const httplib::Request &request, httplib::Response &response, const mdp::Topic &subscription, detail::PollingIndex redirectLongPollingIdx) {
         auto uri = URI<>::factory()
                            .path(request.path)
-                           .addQueryParameter("LongPollingIdx", std::to_string(redirectLongPollingIdx))
-                           .addQueryParameter("SubscriptionContext", subscription.toMdpTopic().str());
+                           .addQueryParameter("LongPollingIdx", std::to_string(redirectLongPollingIdx));
 
         // copy over the original query parameters
         addParameters(request, uri);

@@ -50,7 +50,7 @@ std::jthread makeLongPollingRequestResponseCheckerThread(const std::string &addr
             const std::string url      = fmt::format("{}{}LongPollingIdx={}", address, address.contains('?') ? "&" : "?", i == 0 ? "Next" : fmt::format("{}", i));
             const auto        response = http.Get(url);
             if (i == 0) { // check forwarding to the explicit index
-                REQUIRE(response->location.find("&LongPollingIdx=0") != std::string::npos);
+                REQUIRE(response->location.find("LongPollingIdx=0") != std::string::npos);
             }
             requireWithSource(response);
             const auto requiredStatusCode = i < requiredStatusCodes.size() ? requiredStatusCodes[i] : 200;
