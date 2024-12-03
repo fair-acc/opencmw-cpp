@@ -1,11 +1,8 @@
-# gnutls: optional zeromq dependency for WSS (secure websockets)
-
-# optionally required by zeromq, otherwise uses vendored tweetnacl
-# FetchContent_Declare(
-#         libsodium
-#         GIT_REPOSITORY https://github.com/jedisct1/libsodium.git
-#         GIT_TAG 1.0.18
-# )
+FetchContent_Declare(
+        libsodium
+        GIT_REPOSITORY https://github.com/jedisct1/libsodium.git
+        GIT_TAG 1.0.20
+)
 
 FetchContent_Declare(
         zeromq

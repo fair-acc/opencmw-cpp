@@ -5,7 +5,8 @@ add_library(
   include/services/dns_client.hpp
   include/services/dns_storage.hpp
   include/services/dns_types.hpp
-  include/services/OAuthClient.hpp)
+  include/services/OAuthClient.hpp
+  include/services/KeyStore.hpp)
 
 target_include_directories(services INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
                                               $<INSTALL_INTERFACE:include/>)

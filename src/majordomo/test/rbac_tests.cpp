@@ -30,3 +30,15 @@ TEST_CASE("RBAC parser tests", "[rbac][parsing]") {
     STATIC_REQUIRE2(parse_rbac::roleAndHash("RBAC=ADMIN,hash") == std::pair("ADMIN"sv, "hash"sv));
     STATIC_REQUIRE2(parse_rbac::hash("RBAC=ADMIN,hash,invalidHash") == "hash,invalidHash"); // TODO in java, this throws, should we throw/return "", too?
 }
+
+TEST_CASE("Cryptography tests", "[rbac][cryptography]") {
+    using namespace opencmw::majordomo;
+    using namespace cryptography;
+    opencmw::mdp::Message msg;
+    msg.data               = opencmw::IoBuffer("Test Message");
+    const auto [pub, priv] = generateKeyPair();
+    const auto hash        = publicKeyHash(pub);
+    sign(msg, priv, hash);
+    REQUIRE(msg.rbac.size() > 0);
+    REQUIRE(verify(msg, pub));
+}
