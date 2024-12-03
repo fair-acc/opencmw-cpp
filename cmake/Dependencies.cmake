@@ -45,3 +45,5 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(gsl-lite fmt refl-cpp mp-units catch2)
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/contrib) # replace contrib by extras for catch2 v3.x.x
+
+include(cmake/Sodium.cmake)

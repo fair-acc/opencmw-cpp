@@ -1,10 +1,4 @@
 FetchContent_Declare(
-        libsodium
-        GIT_REPOSITORY https://github.com/jedisct1/libsodium.git
-        GIT_TAG 1.0.20
-)
-
-FetchContent_Declare(
         zeromq
         GIT_REPOSITORY https://github.com/zeromq/libzmq.git
         GIT_TAG v4.3.4 # latest v4.3.4
@@ -42,5 +36,6 @@ add_library(mustache INTERFACE)
 target_include_directories(mustache INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/3rd_party/kainjow)
 add_library(mustache::mustache ALIAS mustache)
 
-FetchContent_MakeAvailable(cpp-httplib zeromq) # libsodium openssl kainjow-mustache
+FetchContent_MakeAvailable(cpp-httplib zeromq) # openssl kainjow-mustache
+
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/contrib) # replace contrib by extras for catch2 v3.x.x

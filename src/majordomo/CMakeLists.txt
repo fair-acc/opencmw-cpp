@@ -18,6 +18,7 @@ target_link_libraries(majordomo
             httplib::httplib
             #OpenSSL::SSL
             pthread
+            sodium
         )
 
 install(
