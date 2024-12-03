@@ -14,7 +14,7 @@ file(GLOB_RECURSE SODIUM_H "${libsodium_SOURCE_DIR}/src/*.h")
 
 add_library(${PROJECT_NAME} ${SODIUM_C} ${SODIUM_H})
 
-target_include_directories(${PROJECT_NAME} PUBLIC $<BUILD_INTERFACE:${libsodium_SOURCE_DIR}/src/libsodium/include/sodium> $<INSTALL_INTERFACE:include/opencmw> PRIVATE "${libsodium_SOURCE_DIR}/src/libsodium/include/sodium")
+target_include_directories(${PROJECT_NAME} PUBLIC $<BUILD_INTERFACE:${libsodium_SOURCE_DIR}/src/libsodium/include> $<INSTALL_INTERFACE:include/opencmw> PRIVATE "${libsodium_SOURCE_DIR}/src/libsodium/include/sodium")
 # silence warnings about being built by a different build system
 target_compile_definitions(${PROJECT_NAME} PRIVATE CONFIGURED)
 

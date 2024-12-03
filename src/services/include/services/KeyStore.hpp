@@ -1,6 +1,7 @@
 #ifndef OPENCMW_CPP_KEYSTORE_HPP
 #define OPENCMW_CPP_KEYSTORE_HPP
 
+#include <majordomo/Cryptography.hpp>
 #include <majordomo/Worker.hpp>
 
 namespace opencmw {
