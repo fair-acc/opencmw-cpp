@@ -3,13 +3,12 @@
 
 #include "IoBuffer.hpp"
 #include "IoSerialiserJson.hpp"
+#include "KeyStore.hpp"
 #include "URI.hpp"
 #include <httplib.h>
 #include <majordomo/Worker.hpp>
 
 namespace opencmw {
-
-using StrictUri = opencmw::URI<opencmw::uri_check::STRICT>;
 
 struct OAuthContext {
     std::string secretToken;
@@ -20,6 +19,7 @@ struct OAuthInput {
     std::string clientId;
     std::string clientSecret;
     std::string secret;
+    std::string publicKey;
 };
 
 struct OAuthOutput {
@@ -31,7 +31,7 @@ struct OAuthOutput {
 } // namespace opencmw
 
 ENABLE_REFLECTION_FOR(opencmw::OAuthContext, secretToken)
-ENABLE_REFLECTION_FOR(opencmw::OAuthInput, scope, clientId, clientSecret, secret)
+ENABLE_REFLECTION_FOR(opencmw::OAuthInput, scope, clientId, clientSecret, secret, publicKey)
 ENABLE_REFLECTION_FOR(opencmw::OAuthOutput, authorizationUri, secret, accessToken, refreshToken)
 
 namespace opencmw {
@@ -81,6 +81,8 @@ struct AccessTokenResponse {
 ENABLE_REFLECTION_FOR(opencmw::AccessTokenResponse, access_token, token_type, expires_in, refresh_token, bullshit)
 
 namespace opencmw {
+
+using StrictUri = opencmw::URI<opencmw::uri_check::STRICT>;
 
 // This class implements an RFC 6749 compliant OAuth client
 // https://datatracker.ietf.org/doc/html/rfc6749
@@ -209,10 +211,6 @@ public:
     }
 };
 
-namespace {
-using OAuthWorkerType = majordomo::Worker<"/oauth", OAuthContext, OAuthInput, OAuthOutput, majordomo::description<"Authorization with OAuth2">>;
-};
-
 template<typename T>
 T makeRandom(uint32_t size) {
     std::random_device               rd;
@@ -234,13 +232,21 @@ inline std::string makeRandom(uint32_t size) {
     return randomString;
 }
 
+namespace {
+using OAuthWorkerType = majordomo::Worker<"/oauth", OAuthContext, OAuthInput, OAuthOutput, majordomo::description<"Authorization with OAuth2">>;
+};
+
 class OAuthWorker : public OAuthWorkerType {
 public:
     explicit OAuthWorker(StrictUri redirectUri, StrictUri endpoint, StrictUri tokenEndpoint, StrictUri brokerAddress, const zmq::Context &context, majordomo::Settings settings = {})
-        : OAuthWorkerType(brokerAddress, {}, context, settings), _client(redirectUri, endpoint, tokenEndpoint) { init(); };
+        : OAuthWorkerType(brokerAddress, {}, context, settings), _client(redirectUri, endpoint, tokenEndpoint), _keystore(brokerAddress, context, settings) { init(); };
     template<typename BrokerType>
     explicit OAuthWorker(StrictUri redirecturi, StrictUri endpoint, StrictUri tokenEndpoint, const BrokerType &broker)
-        : OAuthWorkerType(broker, {}), _client(redirecturi, endpoint, tokenEndpoint) { init(); };
+        : OAuthWorkerType(broker, {}), _client(redirecturi, endpoint, tokenEndpoint), _keystore(broker) { init(); };
+    ~OAuthWorker() {
+        _keystore.shutdown();
+        _keystoreThread.join();
+    }
 
     void stop() {
         _client.stop();
@@ -248,16 +254,28 @@ public:
 
 private:
     std::map<std::string, std::string> _secrets;
+    std::map<std::string, RoleKey>     _pendingKeys;
     OAuthClient                        _client;
+    KeystoreWorker                     _keystore;
+    std::thread                        _keystoreThread;
     void                               init() {
         _client.setEndpointCallback([this](const std::string &code, const std::string &state) {
             _secrets[state] = code;
+            if (_pendingKeys.contains(state)) {
+                // add the key to the public key storage
+                const auto key = _pendingKeys.at(state);
+                _pendingKeys.erase(state);
+                _keystore.addKey(key);
+            }
         });
         OAuthWorkerType::setCallback([this](const majordomo::RequestContext &rawCtx, const OAuthContext &context, const OAuthInput &in, OAuthContext &replyContext, OAuthOutput &out) {
-            if (in.secret.empty()) {
+            if (in.secret.empty() && !in.publicKey.empty()) {
                 // first stage, client gets a secret in the response back plus an URI to authorize at
                 constexpr std::size_t secretLength = 64;
                 const auto            secret       = makeRandom<std::string>(secretLength);
+                // keys expire in 1 year by default
+                const auto expiresAt               = std::chrono::system_clock::now() + std::chrono::years(1);
+                _pendingKeys[secret]               = { in.scope, in.publicKey, expiresAt.time_since_epoch().count() };
                 out.authorizationUri               = _client.authorizationUri(in.scope, in.clientId, secret).str();
                 out.secret                         = secret;
             } else if (_secrets.contains(in.secret)) {
@@ -268,6 +286,7 @@ private:
                 out.refreshToken  = access.refreshToken._token;
             }
         });
+        _keystoreThread = std::thread([this] { _keystore.run(); });
     }
 };
 

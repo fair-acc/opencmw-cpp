@@ -6,6 +6,7 @@
 
 #include <Client.hpp>
 #include <concepts/majordomo/helpers.hpp>
+#include <majordomo/Rbac.hpp>
 #include <services/OAuthClient.hpp>
 
 namespace opencmw_oauth_client_test {
@@ -104,12 +105,16 @@ TEST_CASE("Worker test", "[OAuth]") {
     opencmw::client::ClientContext client{ std::move(clients) };
 
     opencmw::IoBuffer              inBuf;
-    opencmw::OAuthInput            in{ "openid", "testclientid" };
+    const std::string              scope{ "openid" };
+    opencmw::OAuthInput            in{ scope, "testclientid" };
+    const auto [pub, priv] = opencmw::majordomo::cryptography::generateKeyPair();
+    in.publicKey           = std::string(pub.key, pub.key + crypto_sign_PUBLICKEYBYTES);
     opencmw::serialise<opencmw::YaS>(inBuf, in);
 
     std::condition_variable cv;
     std::mutex              m;
     bool                    done = false;
+    std::string             expectedHash;
 
     client.set(opencmw::URI("mdp://127.0.0.1:12346/oauth"), [&](const mdp::Message &reply) {
         opencmw::OAuthOutput out;
@@ -121,7 +126,7 @@ TEST_CASE("Worker test", "[OAuth]") {
         REQUIRE(loginAtUri(opencmw::URI(out.authorizationUri)));
 
         opencmw::IoBuffer iBuf;
-        opencmw::OAuthInput codeIn {"openid", "testclientid", "", out.secret};
+        opencmw::OAuthInput codeIn{ scope, "testclientid", "", out.secret };
         opencmw::serialise<opencmw::YaS>(iBuf, codeIn);
         client.set(opencmw::URI("mdp://127.0.0.1:12346/oauth"), [&](const mdp::Message& rep) {
                 opencmw::OAuthOutput tokenOut;
@@ -131,9 +136,27 @@ TEST_CASE("Worker test", "[OAuth]") {
                 // we must have got an access token now
                 const auto accessToken = tokenOut.accessToken;
                 REQUIRE(accessToken.size());
-                std::lock_guard lk(m);
-                done = true;
-                cv.notify_one();
+
+                // the public key storage should have our key now
+                opencmw::IoBuffer keyBuf;
+                expectedHash = opencmw::KeystoreWorker::keyHash(in.publicKey);
+                opencmw::KeystoreInput keyIn{ expectedHash };
+                opencmw::serialise<opencmw::YaS>(keyBuf, keyIn);
+                client.set(opencmw::URI("mdp://127.0.0.1:12346/keystore"), [&](const mdp::Message &keyResp) {
+                        opencmw::KeystoreOutput keyOut;
+                        auto keyOutBuf = keyResp.data;
+                        opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::IGNORE>(keyOutBuf, keyOut);
+
+                        // the hashes should be the same
+                        REQUIRE(keyOut.key.size());
+                        const auto returnedHash = opencmw::KeystoreWorker::keyHash(keyOut.key);
+                        REQUIRE(expectedHash == returnedHash);
+                        // the key is associated with the correct role
+                        REQUIRE(keyOut.role == scope);
+                        REQUIRE(keyOut.expiryDate > std::chrono::system_clock::now().time_since_epoch().count());
+                        std::lock_guard lk(m);
+                        done = true;
+                        cv.notify_one(); }, std::move(keyBuf));
         }, std::move(iBuf)); }, std::move(inBuf));
 
     std::unique_lock lk(m);

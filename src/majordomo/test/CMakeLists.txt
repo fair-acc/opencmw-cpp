@@ -34,6 +34,7 @@ opencmw_add_test_app(majordomo_benchmark majordomo_benchmark.cpp)
 
 opencmw_add_test_catch2(base64pp_tests base64pp_tests.cpp)
 opencmw_add_test_catch2(RBAC_tests rbac_tests.cpp)
+opencmw_add_test_catch2(Cryptography_tests cryptography_tests.cpp)
 opencmw_add_test_catch2(SubscriptionMatch_tests subscriptionmatcher_tests.cpp)
 opencmw_add_test_catch2(majordomo_tests majordomo_tests.cpp;subscriptionmatcher_tests.cpp)
 opencmw_add_test_catch2(majordomo_worker_tests majordomoworker_tests.cpp;subscriptionmatcher_tests.cpp)

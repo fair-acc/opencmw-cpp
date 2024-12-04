@@ -7,6 +7,8 @@
 #include <array>
 #include <string>
 
+#include <MdpMessage.hpp>
+
 namespace opencmw::majordomo {
 
 enum class Permission {
