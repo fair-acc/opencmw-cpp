@@ -149,9 +149,22 @@ if(OPENCMW_ENABLE_TESTING)
         EXECUTABLE
         ctest
         DEPENDENCIES
+        base64pp_tests
+        clientPublisher_tests
+        client_tests
         core_tests
+        disruptor_core_tests
+        disruptor_tests
+        disruptor_waitstrategy_tests
+        majordomo_worker_rest_tests
+        majordomo_worker_tests
         majordomo_tests
+        mockserver_tests
+        RBAC_tests
+        rest_client_mock_server_tests
+        rest_client_only_tests
         serialiser_tests
+        SubscriptionMatch_tests
         EXCLUDE
         "$CMAKE_BUILD_DIR/*"
         "concepts/.*"
@@ -162,9 +175,22 @@ if(OPENCMW_ENABLE_TESTING)
         EXECUTABLE
         ctest
         DEPENDENCIES
+        base64pp_tests
+        clientPublisher_tests
+        client_tests
         core_tests
+        disruptor_core_tests
+        disruptor_tests
+        disruptor_waitstrategy_tests
+        majordomo_worker_rest_tests
+        majordomo_worker_tests
         majordomo_tests
+        mockserver_tests
+        RBAC_tests
+        rest_client_mock_server_tests
+        rest_client_only_tests
         serialiser_tests
+        SubscriptionMatch_tests
         EXCLUDE
         "$CMAKE_BUILD_DIR/*"
         "concepts/.*"
