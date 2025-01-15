@@ -8,8 +8,8 @@
 #include <queue>
 
 #pragma clang diagnostic push
-#pragma ide diagnostic   ignored "cppcoreguidelines-avoid-magic-numbers"
-#pragma ide diagnostic   ignored "cppcoreguidelines-avoid-c-arrays"
+#pragma ide diagnostic ignored "cppcoreguidelines-avoid-magic-numbers"
+#pragma ide diagnostic ignored "cppcoreguidelines-avoid-c-arrays"
 
 namespace opencmw {
 
@@ -141,10 +141,18 @@ struct IoSerialiser {
     }
 };
 
+template<std::size_t N, refl::const_string<N> string>
+constexpr const char *sanitizeFieldName() {
+    if constexpr (N > 2 && string.data[0] == 'x' && string.data[1] == '_') {
+        return string.c_str() + 2;
+    }
+    return string.c_str();
+}
+
 template<ReflectableClass T>
 forceinline int32_t findMemberIndex(const std::string_view &fieldName) noexcept {
     static constexpr ConstExprMap<std::string_view, int32_t, refl::reflect<T>().members.size> m{ refl::util::map_to_array<std::pair<std::string_view, int32_t>>(refl::reflect<T>().members, [](auto field, auto index) {
-        return std::pair<std::string_view, int32_t>(field.name.c_str(), index);
+        return std::pair<std::string_view, int32_t>(sanitizeFieldName<field.name.size, field.name>(), index);
     }) };
     return m.at(fieldName, -1);
 }
@@ -194,7 +202,7 @@ constexpr void serialise(IoBuffer &buffer, ReflectableClass auto const &value, F
             using UnwrappedMemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(fieldValue)))>;
             if constexpr (isReflectableClass<UnwrappedMemberType>()) { // nested data-structure
                 const auto            subfields            = getNumberOfNonNullSubfields(getAnnotatedMember(unwrapPointer(fieldValue)));
-                FieldDescription auto field                = newFieldHeader<protocol, writeMetaInfo>(buffer, member.name.c_str(), parent.hierarchyDepth + 1, FWD(fieldValue), subfields);
+                FieldDescription auto field                = newFieldHeader<protocol, writeMetaInfo>(buffer, sanitizeFieldName<member.name.size, member.name>(), parent.hierarchyDepth + 1, FWD(fieldValue), subfields);
                 const std::size_t     posSizePositionStart = FieldHeaderWriter<protocol>::template put<writeMetaInfo>(buffer, field, START_MARKER_INST);
                 const std::size_t     posStartDataStart    = buffer.size();
                 serialise<protocol, writeMetaInfo>(buffer, getAnnotatedMember(unwrapPointer(fieldValue)), field); // do not inspect annotation itself
@@ -202,7 +210,7 @@ constexpr void serialise(IoBuffer &buffer, ReflectableClass auto const &value, F
                 updateSize<protocol>(buffer, posSizePositionStart, posStartDataStart);
                 return;
             } else { // field is a (possibly annotated) primitive type
-                FieldDescription auto field = newFieldHeader<protocol, writeMetaInfo>(buffer, member.name.c_str(), parent.hierarchyDepth + 1, fieldValue, 0);
+                FieldDescription auto field = newFieldHeader<protocol, writeMetaInfo>(buffer, sanitizeFieldName<member.name.size, member.name>(), parent.hierarchyDepth + 1, fieldValue, 0);
                 FieldHeaderWriter<protocol>::template put<writeMetaInfo>(buffer, field, fieldValue);
             }
         }
@@ -214,7 +222,7 @@ template<SerialiserProtocol protocol, const bool writeMetaInfo = true>
 constexpr void serialise(IoBuffer &buffer, ReflectableClass auto const &value) {
     putHeaderInfo<protocol>(buffer);
     const auto        subfields            = detail::getNumberOfNonNullSubfields(value);
-    auto              field                = detail::newFieldHeader<protocol, writeMetaInfo>(buffer, refl::reflect(value).name.c_str(), 0, value, subfields);
+    auto              field                = detail::newFieldHeader<protocol, writeMetaInfo>(buffer, sanitizeFieldName<refl::reflect<std::remove_reference_t<decltype(value)>>().name.size, refl::reflect<std::remove_reference_t<decltype(value)>>().name>(), 0, value, subfields);
     const std::size_t posSizePositionStart = FieldHeaderWriter<protocol>::template put<writeMetaInfo>(buffer, field, START_MARKER_INST);
     const std::size_t posStartDataStart    = buffer.size();
     detail::serialise<protocol, writeMetaInfo>(buffer, value, field);
@@ -376,7 +384,7 @@ constexpr void deserialise(IoBuffer &buffer, ReflectableClass auto &value, Deser
                 if constexpr (isReflectableClass<MemberType>()) {
                     buffer.set_position(field.headerStart); // reset buffer position for the nested deserialiser to read again
                     field.hierarchyDepth++;
-                    field.fieldName = member.name.c_str(); // N.B. needed since member.name is referring to compile-time const string
+                    field.fieldName = sanitizeFieldName<member.name.size, member.name>(); // N.B. needed since member.name is referring to compile-time const string
                     deserialise<protocol, check>(buffer, unwrapPointerCreateIfAbsent(member(value)), info, field);
                     field.hierarchyDepth--;
                     field.subfields = previousSubFields - 1;
