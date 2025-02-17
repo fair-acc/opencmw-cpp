@@ -3,6 +3,8 @@
 #include <majordomo/Settings.hpp>
 #include <majordomo/Worker.hpp>
 
+#include <RestClient.hpp>
+
 #include <MIME.hpp>
 #include <opencmw.hpp>
 #include <TimingCtx.hpp>
@@ -130,6 +132,12 @@ struct WaitingContext {
 };
 ENABLE_REFLECTION_FOR(WaitingContext, timeoutMs, contentType)
 
+struct UpdateTime {
+    long updateTime;
+    std::vector<int> payload;
+};
+ENABLE_REFLECTION_FOR(UpdateTime, updateTime, payload)
+
 template<units::basic_fixed_string serviceName, typename... Meta>
 class WaitingWorker : public majordomo::Worker<serviceName, WaitingContext, SingleString, SingleString, Meta...> {
 public:
@@ -145,6 +153,38 @@ public:
             out.value = fmt::format("You said: {}", in.value);
         });
     }
+};
+
+template<units::basic_fixed_string serviceName, int payloadSize, typename... Meta>
+class ClockWorker : public majordomo::Worker<serviceName, SimpleContext, UpdateTime, UpdateTime, Meta...> {
+public:
+    using super_t = majordomo::Worker<serviceName, SimpleContext, UpdateTime, UpdateTime, Meta...>;
+    std::jthread               _notifier;
+    std::chrono::milliseconds _period;
+    std::size_t               _nUpdates;
+    std::atomic<bool>         _shutdownRequested;
+
+    template<typename BrokerType>
+    explicit ClockWorker(const BrokerType &broker, std::chrono::milliseconds period, std::size_t nUpdates)
+            : super_t(broker, {}), _period(period), _nUpdates(nUpdates) {
+        _notifier = std::jthread([this]() {
+            std::chrono::system_clock::time_point updateTime = std::chrono::system_clock::now();
+            while (_nUpdates > 0 && !_shutdownRequested) {
+                std::this_thread::sleep_until(updateTime);
+                fmt::print("publishing update\n");
+                UpdateTime update{std::chrono::duration_cast<std::chrono::milliseconds>(updateTime.time_since_epoch()).count(), std::views::iota(0, payloadSize) | std::ranges::to<std::vector>() };
+                this->notify(SimpleContext(), update);
+                updateTime += _period;
+                _nUpdates--;
+            }
+        });
+    }
+
+    void shutdown() {
+        super_t::shutdown();
+        _shutdownRequested = true;
+    }
+
 };
 
 TEST_CASE("Simple MajordomoWorker example showing its usage", "[majordomo][majordomoworker][simple_example]") {
@@ -290,6 +330,54 @@ TEST_CASE("Subscriptions", "[majordomo][majordomoworker][subscription]") {
     }
     std::ranges::sort(subscriptions);
     REQUIRE(subscriptions == std::vector<std::string>{ "/colors", "/colors?blue&green&red", "/colors?green&red", "/colors?red" });
+}
+
+TEST_CASE("Subscription latencies", "[majordomo][majordomoworker][rest]") {
+    std::atomic<int> nReceived = 0;
+    std::atomic<int> msLatency = 0;
+    {
+        majordomo::Broker                                           broker("/TestBroker", testSettings());
+        auto                                                        fs = cmrc::assets::get_filesystem();
+        majordomo::RestBackend<majordomo::PLAIN_HTTP, decltype(fs)> rest(broker, fs, opencmw::URI<>("http://localhost:12346"));
+
+        ClockWorker<"/clock", 2550> worker(broker, 10ms, 70);
+        RunInThread                restServerRun(rest);
+        RunInThread                brokerRun(broker);
+        RunInThread                workerRun(worker);
+
+        REQUIRE(waitUntilWorkerServiceAvailable(broker.context, worker));
+
+        rest.setMajordomoTimeout(800ms); // set timeout to unit-test friendly interval
+
+        opencmw::client::RestClient client{std::string("RestSubLatencyClient")};
+
+        opencmw::client::Command _command;
+        _command.command  = opencmw::mdp::Command::Subscribe;
+        _command.topic    = opencmw::URI<>("http://localhost:12346/clock");
+        _command.callback = [&nReceived, &msLatency](const opencmw::mdp::Message &reply) {
+            UpdateTime replyData;
+            opencmw::IoBuffer buffer = reply.data;
+            opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::ALWAYS>(buffer, replyData);
+            auto now = std::chrono::system_clock::now();
+            auto latency = now.time_since_epoch() - std::chrono::milliseconds(replyData.updateTime);
+            nReceived++;
+            nReceived.notify_all();
+            msLatency.fetch_add(static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(latency).count()));
+            fmt::print("Received {}th update with a latency of {} ms.\n", nReceived.load(), std::chrono::duration_cast<std::chrono::milliseconds>(latency).count());
+        };
+        client.request(_command);
+
+        fmt::print("waiting for 40 samples to be received\n");
+        int n = nReceived;
+        while (n < 40) {
+            nReceived.wait(n);
+            n = nReceived;
+        }
+    }
+
+    fmt::print("Received {} updates with an average latency of {} ms.\n", nReceived.load(), nReceived > 0 ? static_cast<double>(msLatency)/nReceived : 0.0);
+    REQUIRE(nReceived > 10);
+    REQUIRE(static_cast<double>(msLatency)/nReceived < 20);
 }
 
 TEST_CASE("Majordomo timeouts", "[majordomo][majordomoworker][rest]") {
