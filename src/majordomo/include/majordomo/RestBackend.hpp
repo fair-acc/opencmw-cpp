@@ -8,6 +8,8 @@
 #include <optional>
 #include <regex>
 
+#include <fmt/format.h>
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-nonliteral"
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
@@ -299,6 +301,7 @@ public:
 
     std::string cachedReply(ReadLock & /*lock*/, PollingIndex index) const {
         const auto firstCachedIndex = _nextPollingIndex - _cachedReplies.size();
+        fmt::print("RestBackend::cachedReply({}): requested index; {} buffer: ({}-{} ({}))\n", subscriptionKey, index, firstCachedIndex, _nextPollingIndex, MAX_CACHED_REPLIES);
         return (index >= firstCachedIndex && index < _nextPollingIndex) ? _cachedReplies[index - firstCachedIndex] : std::string{};
     }
 
@@ -307,6 +310,8 @@ public:
     }
 
     void addCachedReply(std::unique_lock<std::shared_mutex> & /*lock*/, std::string reply) {
+        const auto firstCachedIndex = _nextPollingIndex - _cachedReplies.size();
+        fmt::print("RestBackend::addCachedReply({}): message-size; {} buffer: ({}-{} ({}))\n", subscriptionKey, reply.size(), firstCachedIndex, _nextPollingIndex, MAX_CACHED_REPLIES);
         _cachedReplies.push_back(std::move(reply));
         if (_cachedReplies.size() > MAX_CACHED_REPLIES) {
             _cachedReplies.erase(_cachedReplies.begin(), _cachedReplies.begin() + long(_cachedReplies.size() - MAX_CACHED_REPLIES));
@@ -777,6 +782,7 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
     }
 
     bool respondWithLongPoll(const httplib::Request &request, httplib::Response &response, const mdp::Topic &subscription) {
+        auto start = std::chrono::system_clock::now();
         // TODO: After the URIs are formalized, rethink service and topic
         auto uri = URI<>::factory();
         addParameters(request, uri);
@@ -838,18 +844,22 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
             }
 
             if (longPollingIdxParam == "FirstAvailable") {
+                fmt::print("RestBackend::respondWithLongPoll({}): took {} ms, Redirect\n", subscriptionKey, std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - start).count());
                 return respondWithLongPollRedirect(request, response, subscription, cache.firstCachedIndex);
             }
 
             if (std::from_chars(longPollingIdxParam.data(), longPollingIdxParam.data() + longPollingIdxParam.size(), requestedLongPollingIdx).ec != std::errc{}) {
+                fmt::print("RestBackend::respondWithLongPoll({}): took {} ms, Error\n", subscriptionKey, std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - start).count());
                 return detail::respondWithError(response, "Error: Invalid LongPollingIdx value");
             }
 
             if (requestedLongPollingIdx > cache.nextPollingIndex) {
+                fmt::print("RestBackend::respondWithLongPoll({}): took {} ms, Error\n", subscriptionKey, std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - start).count());
                 return detail::respondWithError(response, "Error: LongPollingIdx tries to read the future");
             }
 
             if (requestedLongPollingIdx < cache.firstCachedIndex) {
+                fmt::print("RestBackend::respondWithLongPoll({}): took {} ms, Error\n", subscriptionKey, std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - start).count());
                 return detail::respondWithError(response, "Error: Requested LongPollingIdx is no longer cached");
             }
 
@@ -857,6 +867,7 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
                 auto connectionCacheLock = cache.connection->readLock();
                 // The result is already ready
                 response.set_content(cache.connection->cachedReply(connectionCacheLock, requestedLongPollingIdx), MIME::JSON.typeName().data());
+                fmt::print("RestBackend::respondWithLongPoll({}): took {} ms, cached\n", subscriptionKey, std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - start).count());
                 return true;
             }
         }
@@ -870,6 +881,7 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         connection->decreaseReferenceCount();
 
         if (!connection->waitForUpdate(restBackend.majordomoTimeout())) {
+            fmt::print("RestBackend::respondWithLongPoll({}): took {} ms, Error:Majordomo timeout\n", subscriptionKey, std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - start).count());
             return detail::respondWithError(response, "Timeout waiting for update", HTTP_GATEWAY_TIMEOUT);
         }
 
@@ -881,8 +893,10 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         if (requestedLongPollingIdx >= newCache.firstCachedIndex && requestedLongPollingIdx < newCache.nextPollingIndex) {
             auto connectionCacheLock = newCache.connection->readLock();
             response.set_content(newCache.connection->cachedReply(connectionCacheLock, requestedLongPollingIdx), MIME::JSON.typeName().data());
+            fmt::print("RestBackend::respondWithLongPoll({}): took {} ms, uncached\n", subscriptionKey, std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - start).count());
             return true;
         } else {
+            fmt::print("RestBackend::respondWithLongPoll({}): took {} ms, Error uncached\n", subscriptionKey, std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - start).count());
             return detail::respondWithError(response, "Error: We waited for the new value, but it was not found");
         }
     }
