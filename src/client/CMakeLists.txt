@@ -13,7 +13,7 @@ if(NOT EMSCRIPTEN)
     client
     INTERFACE pthread
               core
-              disruptor
+              buffer
               serialiser
               majordomo
               zmq)
@@ -22,7 +22,7 @@ else()
     client
     INTERFACE pthread
               core
-              disruptor
+              buffer
               serialiser)
 endif()
 set_target_properties(

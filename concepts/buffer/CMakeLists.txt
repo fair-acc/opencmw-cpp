@@ -1,0 +1,5 @@
+#add_executable(SimpleRingBufferExample SimpleRingBufferExample.cpp)
+#target_link_libraries(SimpleRingBufferExample PRIVATE core buffer opencmw_project_options opencmw_project_warnings)
+#
+#add_executable(QueueBenchmark QueueBenchmark.cpp)
+#target_link_libraries(QueueBenchmark PRIVATE core buffer opencmw_project_options opencmw_project_warnings)

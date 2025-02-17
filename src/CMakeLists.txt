@@ -1,7 +1,7 @@
 add_subdirectory(core)
 add_subdirectory(serialiser)
 add_subdirectory(client)
-add_subdirectory(disruptor)
+add_subdirectory(buffer)
 add_subdirectory(services)
 
 if(EMSCRIPTEN)

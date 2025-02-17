@@ -10,7 +10,7 @@ using opencmw::client::Client;
 using opencmw::client::ClientContext;
 using opencmw::client::MDClientCtx;
 using opencmw::client::SubscriptionClient;
-using opencmw::disruptor::Disruptor;
+using opencmw::buffer::CircularBuffer;
 using opencmw::majordomo::MockServer;
 using opencmw::mdp::Command;
 using opencmw::mdp::Message;

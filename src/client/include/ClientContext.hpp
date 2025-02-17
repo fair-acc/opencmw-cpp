@@ -9,7 +9,7 @@
 #include <vector>
 
 #include <Debug.hpp>
-#include <disruptor/Disruptor.hpp>
+#include <CircularBuffer.hpp>
 #include <MdpMessage.hpp>
 #include <URI.hpp>
 
@@ -18,8 +18,8 @@
 namespace opencmw::client {
 
 static constexpr std::size_t CMD_RB_SIZE = 32;
-using CmdBufferType                      = opencmw::disruptor::RingBuffer<Command, CMD_RB_SIZE, opencmw::disruptor::BlockingWaitStrategy>;
-using CmdPollerType                      = disruptor::EventPoller<Command, CMD_RB_SIZE, disruptor::BlockingWaitStrategy, disruptor::MultiThreadedStrategy>;
+using CmdBufferType                      = opencmw::buffer::CircularBuffer<Command, std::dynamic_extent, opencmw::buffer::ProducerType::Multi, opencmw::buffer::BlockingWaitStrategy>;
+using CmdPollerType                      = decltype(std::declval<CmdBufferType>().new_reader());
 
 class ClientBase {
 public:
@@ -38,15 +38,14 @@ public:
 class ClientContext {
     std::vector<std::unique_ptr<ClientBase>>                            _contexts;
     std::shared_ptr<CmdBufferType>                                      _commandRingBuffer;
-    std::shared_ptr<CmdPollerType>                                      _cmdPoller;
+    CmdPollerType                                                       _cmdPoller;
     std::unordered_map<std::string, std::reference_wrapper<ClientBase>> _schemeContexts;
     std::atomic_bool                                                    _stop_requested{ false };
     std::thread                                                         _poller; // thread polling all the sockets
 
 public:
     explicit ClientContext(std::vector<std::unique_ptr<ClientBase>> &&implementations)
-        : _contexts(std::move(implementations)), _commandRingBuffer{ std::make_shared<CmdBufferType>() }, _cmdPoller{ _commandRingBuffer->newPoller() } {
-        _commandRingBuffer->addGatingSequences({ _cmdPoller->sequence() });
+        : _contexts(std::move(implementations)), _commandRingBuffer{ std::make_unique<CmdBufferType>(CMD_RB_SIZE, CmdBufferType::DefaultAllocator()) }, _cmdPoller{ _commandRingBuffer->new_reader() } {
         _poller = std::thread([this]() { this->poll(_stop_requested); });
         for (auto &ctx : _contexts) {
             for (auto &scheme : ctx->protocols()) {
@@ -82,9 +81,9 @@ public:
 private:
     void poll(const std::atomic_bool &stop_requested) {
         while (!stop_requested) { // switch to event processor instead of busy spinning
-            _cmdPoller->poll([this](Command &cmd, std::int64_t /*sequenceID*/, bool /*endOfBatch*/) -> bool {
+            for (auto &cmd : _cmdPoller.get()) {
                 if (cmd.command == mdp::Command::Invalid) {
-                    return false;
+                    return;
                 }
                 auto &c = getClientCtx(cmd.topic);
 #ifdef EMSCRIPTEN
@@ -96,8 +95,8 @@ private:
                 } };
                 ql.join();
 #endif
-                return false;
-            });
+                return;
+            }
         }
     }
 
@@ -110,13 +109,14 @@ private:
     };
 
     void queueCommand(mdp::Command cmd, const URI<STRICT> &endpoint, std::function<void(const mdp::Message &)> &&callback = {}, IoBuffer &&data = IoBuffer{}) {
-        bool published = _commandRingBuffer->tryPublishEvent([&endpoint, &cmd, cb = std::move(callback), d = std::move(data)](Command &&ev, long /*seq*/) mutable {
-            ev.command  = cmd;
-            ev.callback = std::move(cb);
-            ev.topic    = FWD(endpoint);
-            ev.data     = std::move(d);
-        });
-        if (!published) {
+        auto writer = _commandRingBuffer->new_writer();
+        auto ev = writer.tryReserve(1);
+        if (ev.size() == 1) {
+            ev[0].command  = cmd;
+            ev[0].callback = std::move(callback);
+            ev[0].topic    = FWD(endpoint);
+            ev[0].data     = std::move(data);
+        } else {
             fmt::print("failed to publish command\n");
         }
     }

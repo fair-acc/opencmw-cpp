@@ -4,6 +4,6 @@ add_subdirectory(client)
 
 if(NOT EMSCRIPTEN)
   add_subdirectory(serialiser)
-  add_subdirectory(disruptor)
+  add_subdirectory(buffer)
   add_subdirectory(majordomo)
 endif()
