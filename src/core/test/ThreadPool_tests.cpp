@@ -3,6 +3,7 @@
 #include <ThreadPool.hpp>
 
 TEST_CASE("Basic ThreadPool tests", "[ThreadPool]") {
+    using namespace std::chrono_literals;
     SECTION("Basic construction/destruction tests") {
         REQUIRE_NOTHROW(opencmw::BasicThreadPool<opencmw::IO_BOUND>());
         REQUIRE_NOTHROW(opencmw::BasicThreadPool<opencmw::CPU_BOUND>());
@@ -10,11 +11,11 @@ TEST_CASE("Basic ThreadPool tests", "[ThreadPool]") {
         std::atomic<int>                            enqueueCount{ 0 };
         std::atomic<int>                            executeCount{ 0 };
         opencmw::BasicThreadPool<opencmw::IO_BOUND> pool("TestPool", 1, 2);
-        REQUIRE_NOTHROW(pool.sleepDuration = std::chrono::milliseconds(1));
-        REQUIRE_NOTHROW(pool.keepAliveDuration = std::chrono::seconds(10));
+        REQUIRE_NOTHROW(pool.sleepDuration = 1ms);
+        REQUIRE_NOTHROW(pool.keepAliveDuration = 10s);
         pool.waitUntilInitialised();
         REQUIRE(pool.isInitialised());
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        std::this_thread::sleep_for(5ms);
         REQUIRE(pool.poolName() == "TestPool");
         REQUIRE(pool.minThreads() == 1);
         REQUIRE(pool.maxThreads() == 2);
@@ -47,9 +48,9 @@ TEST_CASE("Basic ThreadPool tests", "[ThreadPool]") {
         pool.waitUntilInitialised();
         REQUIRE(pool.isInitialised());
         REQUIRE(pool.numThreads() == 1);
-        pool.execute([&counter] { std::this_thread::sleep_for(std::chrono::milliseconds(10)); std::atomic_fetch_add(&counter, 1); counter.notify_all(); });
+        pool.execute([&counter] { std::this_thread::sleep_for(10ms); std::atomic_fetch_add(&counter, 1); counter.notify_all(); });
         REQUIRE(pool.numThreads() == 1);
-        pool.execute([&counter] { std::this_thread::sleep_for(std::chrono::milliseconds(10)); std::atomic_fetch_add(&counter, 1); counter.notify_all(); });
+        pool.execute([&counter] { std::this_thread::sleep_for(10ms); std::atomic_fetch_add(&counter, 1); counter.notify_all(); });
         REQUIRE(pool.numThreads() >= 1);
         counter.wait(0);
         counter.wait(1);
@@ -58,6 +59,7 @@ TEST_CASE("Basic ThreadPool tests", "[ThreadPool]") {
 }
 
 TEST_CASE("ThreadPool: Thread count tests", "[ThreadPool][MinMaxThreads]") {
+    using namespace std::chrono_literals;
     struct bounds_def {
         std::uint32_t min, max;
     };
@@ -76,12 +78,12 @@ TEST_CASE("ThreadPool: Thread count tests", "[ThreadPool][MinMaxThreads]") {
 
             // Pool with min and max thread count
             opencmw::BasicThreadPool<opencmw::IO_BOUND> pool("count_test", minThreads, maxThreads);
-            pool.keepAliveDuration = std::chrono::milliseconds(10); // default is 10 seconds, reducing for testing
+            pool.keepAliveDuration = 10ms; // default is 10 seconds, reducing for testing
             pool.waitUntilInitialised();
 
             for (int i = 0; i < taskCount; ++i) {
                 pool.execute([&counter] {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    std::this_thread::sleep_for(10ms);
                     std::atomic_fetch_add(&counter, 1);
                     counter.notify_all();
                 });
@@ -97,7 +99,7 @@ TEST_CASE("ThreadPool: Thread count tests", "[ThreadPool][MinMaxThreads]") {
             }
 
             // We should have gotten back to minimum
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            std::this_thread::sleep_for(100ms);
             REQUIRE(pool.numThreads() == minThreads);
             REQUIRE(counter == taskCount);
         }

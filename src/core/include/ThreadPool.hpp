@@ -25,6 +25,7 @@
 #include <ThreadAffinity.hpp>
 
 namespace opencmw {
+using namespace std::chrono_literals;
 
 class TaskQueue;
 
@@ -245,8 +246,8 @@ class BasicThreadPool {
     const uint32_t               _maxThreads;
 
 public:
-    std::chrono::microseconds sleepDuration     = std::chrono::milliseconds(1);
-    std::chrono::milliseconds keepAliveDuration = std::chrono::seconds(10);
+    std::chrono::microseconds sleepDuration     = 1ms;
+    std::chrono::milliseconds keepAliveDuration = 10s;
 
     BasicThreadPool(const std::string_view &name = generateName(), uint32_t min = std::thread::hardware_concurrency(), uint32_t max = std::thread::hardware_concurrency())
         : _poolName(name), _minThreads(min), _maxThreads(max) {
@@ -316,7 +317,7 @@ public:
     requires(std::is_same_v<R, void>) void execute(Callable &&func, Args &&...args) {
         static thread_local SpinWait spinWait;
         if constexpr (cpuID >= 0) {
-            if (cpuID >= _affinityMask.size() || (cpuID >= 0 && !_affinityMask[cpuID])) {
+            if (cpuID >= _affinityMask.size() || !_affinityMask[cpuID]) {
                 throw std::invalid_argument(fmt::format("requested cpuID {} incompatible with set affinity mask({}): [{}]",
                         cpuID, _affinityMask.size(), fmt::join(_affinityMask.begin(), _affinityMask.end(), ", ")));
             }
@@ -344,7 +345,7 @@ public:
     requires(!std::is_same_v<R, void>)
             [[nodiscard]] std::future<R> execute(Callable &&func, Args &&...funcArgs) {
         if constexpr (cpuID >= 0) {
-            if (cpuID >= _affinityMask.size() || (cpuID >= 0 && !_affinityMask[cpuID])) {
+            if (cpuID >= _affinityMask.size() || !_affinityMask[cpuID]) {
                 throw std::invalid_argument(fmt::format("cpuID {} is out of range [0,{}] or incompatible with set affinity mask [{}]",
                         cpuID, _affinityMask.size(), _affinityMask));
             }
@@ -465,7 +466,6 @@ private:
         std::mutex         mutex;
         std::unique_lock   lock(mutex);
         auto               lastUsed              = std::chrono::steady_clock::now();
-        auto               timeDiffSinceLastUsed = std::chrono::steady_clock::now() - lastUsed;
         if (numThreads() >= _minThreads) {
             std::atomic_store_explicit(&_initialised, true, std::memory_order_release);
             _initialised.notify_all();
@@ -500,7 +500,7 @@ private:
                 _condition.wait_for(lock, keepAliveDuration, [this] { return numTasksQueued() > 0 || isShutdown(); });
             }
             // check if this thread is to be kept
-            timeDiffSinceLastUsed = std::chrono::steady_clock::now() - lastUsed;
+            auto timeDiffSinceLastUsed = std::chrono::steady_clock::now() - lastUsed;
             if (isShutdown()) {
                 auto nThread = _numThreads.fetch_sub(1);
                 _numThreads.notify_all();
