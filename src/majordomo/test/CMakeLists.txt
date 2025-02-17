@@ -17,6 +17,7 @@ function(opencmw_add_test_app name sources)
             opencmw_project_warnings
             opencmw_project_options
             serialiser
+            client
             majordomo
             Catch2::Catch2
             assets::rest
