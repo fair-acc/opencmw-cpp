@@ -265,8 +265,8 @@ struct RunInThread {
 
 inline opencmw::majordomo::Settings testSettings() {
     opencmw::majordomo::Settings settings;
-    settings.heartbeatInterval = std::chrono::milliseconds(100);
-    settings.dnsTimeout        = std::chrono::milliseconds(250);
+    settings.heartbeatInterval = 100ms;
+    settings.dnsTimeout        = 250ms;
     return settings;
 }
 
@@ -307,7 +307,7 @@ public:
         return f.send(_socket, 0).isValid(); // blocking for simplicity
     }
 
-    std::optional<mdp::BasicMessage<Format>> tryReadOne(std::chrono::milliseconds timeout = std::chrono::milliseconds(3000)) {
+    std::optional<mdp::BasicMessage<Format>> tryReadOne(std::chrono::milliseconds timeout = 3s) {
         std::array<zmq_pollitem_t, 1> pollerItems;
         pollerItems[0].socket = _socket.zmq_ptr;
         pollerItems[0].events = ZMQ_POLLIN;
@@ -320,7 +320,7 @@ public:
         return zmq::receive<Format>(_socket);
     }
 
-    std::optional<mdp::BasicMessage<Format>> tryReadOneSkipHB(int retries, std::chrono::milliseconds timeout = std::chrono::milliseconds(3000)) {
+    std::optional<mdp::BasicMessage<Format>> tryReadOneSkipHB(int retries, std::chrono::milliseconds timeout = 3s) {
         int  i      = 0;
         auto result = tryReadOne(timeout);
         while (!result || result->command == mdp::Command::Heartbeat) {
@@ -346,7 +346,7 @@ inline bool waitUntilServiceAvailable(const zmq::Context &context, std::string_v
         return false;
     }
 
-    constexpr auto timeout   = std::chrono::seconds(3);
+    constexpr auto timeout   = 3s;
     const auto     startTime = std::chrono::system_clock::now();
 
     while (std::chrono::system_clock::now() - startTime < timeout) {
