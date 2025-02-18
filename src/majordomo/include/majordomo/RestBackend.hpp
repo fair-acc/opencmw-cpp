@@ -70,6 +70,7 @@ constexpr auto        UPDATER_POLLING_TIME                = 1s;
 constexpr auto        LONG_POLL_SERVER_TIMEOUT            = 30s;
 constexpr auto        UNUSED_SUBSCRIPTION_EXPIRATION_TIME = 30s;
 constexpr std::size_t MAX_CACHED_REPLIES                  = 32;
+constexpr std::size_t CACHE_DISTANCE                      = 8; // only allow new readers in the ring buffer to come this close to the write cursor -> should decrease blocking
 
 namespace detail {
 // Provides a safe alternative to getenv
@@ -107,7 +108,6 @@ using WriteLock    = std::unique_lock<std::shared_mutex>;
 
 enum class RestMethod {
     Get,
-    Subscribe,
     LongPoll,
     Post,
     Invalid
@@ -223,12 +223,13 @@ struct Connection {
     using Timestamp                 = std::chrono::time_point<std::chrono::system_clock>;
     std::atomic<Timestamp> lastUsed = std::chrono::system_clock::now();
 
-private:
-    mutable std::shared_mutex   _cachedRepliesMutex;
-    std::deque<std::string>     _cachedReplies; // Ring buffer?
-    PollingIndex                _nextPollingIndex = 0;
-    std::condition_variable_any _pollingIndexCV;
+    std::array<std::string, MAX_CACHED_REPLIES>                        _cachedReplies;
+    std::atomic<std::size_t>                                           _cursor = 0;
+    std::atomic<std::size_t>                                           _reserved = 0;
+    std::array<std::atomic<std::size_t>, CPPHTTPLIB_THREAD_POOL_COUNT> _readIndices;
+    std::atomic<bool>                                                  _expired = false;
 
+private:
     std::atomic_int             _refCount = 1;
 
     // Here be dragons! This is not to be used after the connection was involved in any threading code
@@ -237,15 +238,16 @@ private:
         , requestResponseSocket(std::move(other.requestResponseSocket))
         , subscriptionKey(std::move(other.subscriptionKey))
         , lastUsed(other.lastUsed.load())
-        , _cachedReplies(std::move(other._cachedReplies))
-        , _nextPollingIndex(other._nextPollingIndex) {
+        , _cachedReplies(std::move(other._cachedReplies)) {
+        std::for_each(_readIndices.begin(), _readIndices.end(), [](auto &readIndex) {readIndex = std::numeric_limits<std::size_t>::max();});
     }
 
 public:
     Connection(const zmq::Context &context, std::string _subscriptionKey)
         : notificationSubscriptionSocket(context, ZMQ_DEALER)
         , requestResponseSocket(context, ZMQ_SUB)
-        , subscriptionKey(std::move(_subscriptionKey)) {}
+        , subscriptionKey(std::move(_subscriptionKey)) {
+    }
 
     Connection(const Connection &other)       = delete;
     Connection &operator=(const Connection &) = delete;
@@ -273,53 +275,6 @@ public:
             _connection->decreaseReferenceCount();
         }
     };
-
-    auto writeLock() {
-        return WriteLock(_cachedRepliesMutex);
-    }
-
-    auto readLock() const {
-        return ReadLock(_cachedRepliesMutex);
-    }
-
-    bool waitForUpdate(std::chrono::milliseconds timeout) {
-        // This could also periodically check for the client connection being dropped (e.g. due to client-side timeout) if cpp-httplib had API for that.
-        auto       temporaryLock = writeLock();
-        const auto next          = _nextPollingIndex;
-        while (_nextPollingIndex == next) {
-            if (_pollingIndexCV.wait_for(temporaryLock, timeout) == std::cv_status::timeout) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    std::size_t cachedRepliesSize(ReadLock & /*lock*/) const {
-        return _cachedReplies.size();
-    }
-
-    std::string cachedReply(ReadLock & /*lock*/, PollingIndex index) const {
-        const auto firstCachedIndex = _nextPollingIndex - _cachedReplies.size();
-        fmt::print("RestBackend::cachedReply({}): requested index; {} buffer: ({}-{} ({}))\n", subscriptionKey, index, firstCachedIndex, _nextPollingIndex, MAX_CACHED_REPLIES);
-        return (index >= firstCachedIndex && index < _nextPollingIndex) ? _cachedReplies[index - firstCachedIndex] : std::string{};
-    }
-
-    PollingIndex nextPollingIndex(ReadLock & /*lock*/) const {
-        return _nextPollingIndex;
-    }
-
-    void addCachedReply(std::unique_lock<std::shared_mutex> & /*lock*/, std::string reply) {
-        const auto firstCachedIndex = _nextPollingIndex - _cachedReplies.size();
-        fmt::print("RestBackend::addCachedReply({}): message-size; {} buffer: ({}-{} ({}))\n", subscriptionKey, reply.size(), firstCachedIndex, _nextPollingIndex, MAX_CACHED_REPLIES);
-        _cachedReplies.push_back(std::move(reply));
-        if (_cachedReplies.size() > MAX_CACHED_REPLIES) {
-            _cachedReplies.erase(_cachedReplies.begin(), _cachedReplies.begin() + long(_cachedReplies.size() - MAX_CACHED_REPLIES));
-        }
-
-        _nextPollingIndex++;
-        _pollingIndexCV.notify_all();
-    }
 };
 
 } // namespace detail
@@ -405,20 +360,20 @@ public:
                     // Expired subscriptions cleanup
                     std::vector<std::string> expiredSubscriptions;
                     for (auto &[subscriptionKey, connection] : _mdpConnectionForService) {
-                        // fmt::print("Reference count is {}\n", connection->referenceCount());
                         if (connection->referenceCount() == 0) {
-                            auto connectionLock = connection->writeLock();
+                            // todo: make sure no-one can use the subscription in between
                             if (connection->referenceCount() != 0) {
                                 continue;
                             }
                             if (std::chrono::system_clock::now() - connection->lastUsed.load() > UNUSED_SUBSCRIPTION_EXPIRATION_TIME) {
-                                expiredSubscriptions.push_back(subscriptionKey);
+                                connection->_expired = true;
+                            }
+                            if (connection->referenceCount() > 0) { // if someone subscribed to the Connection in the meantime, don't retire it.
+                                connection->_expired = false;
                             }
                         }
                     }
-                    for (const auto &subscriptionKey : expiredSubscriptions) {
-                        _mdpConnectionForService.erase(subscriptionKey);
-                    }
+                    erase_if(_mdpConnectionForService, [](auto &con) {return con.second->_expired.load();});
 
                     // setup poller and socket data structures for all connections
                     const std::size_t connectionCount = _mdpConnectionForService.size();
@@ -451,9 +406,16 @@ public:
                 for (std::size_t i = 0; i < connections.size(); ++i) {
                     if (pollItems[i].revents & ZMQ_POLLIN) {
                         detail::Connection                 *currentConnection = connections[i];
-                        std::unique_lock<std::shared_mutex> connectionLock    = currentConnection->writeLock();
                         while (auto responseMessage = zmq::receive<mdp::MessageFormat::WithoutSourceId>(currentConnection->notificationSubscriptionSocket)) {
-                            currentConnection->addCachedReply(connectionLock, std::string(responseMessage->data.asString()));
+                            std::size_t writeIndex = currentConnection->_reserved++; // announce that we want wo write a message -> readers cannot read that index anymore
+                            // check that no reader is currently reading that data anymore
+                            while (!std::ranges::all_of(currentConnection->_readIndices, [writeIndex](auto &readIndex) {return readIndex % MAX_CACHED_REPLIES > writeIndex % MAX_CACHED_REPLIES;})) {
+                                std::this_thread::sleep_for(1ms);
+                                // todo: we could probably also sleep on the atomic which is blocking the read... find_first + atomic sleep?
+                            }
+                            currentConnection->_cachedReplies[writeIndex % MAX_CACHED_REPLIES] = std::string(responseMessage->data.asString()); // write the data
+                            currentConnection->_cursor++; // allows readers to read the data
+                            currentConnection->_cursor.notify_all(); // wake up request handlers waiting for their update
                         }
                     }
                 }
@@ -514,8 +476,7 @@ public:
         auto restMethod = [&] {
             auto methodString = request.has_header("X-OPENCMW-METHOD") ? request.get_header_value("X-OPENCMW-METHOD") : request.method;
             // clang-format off
-            return methodString == "SUB"  ? RestMethod::Subscribe :
-                   methodString == "POLL" ? RestMethod::LongPoll :
+            return methodString == "POLL" ? RestMethod::LongPoll :
                    methodString == "PUT"  ? RestMethod::Post :
                    methodString == "POST" ? RestMethod::Post :
                    methodString == "GET"  ? RestMethod::Get :
@@ -524,9 +485,8 @@ public:
         }();
 
         for (const auto &[key, value] : request.params) {
-            if (key == "LongPollingIdx") {
-                // This parameter is not passed on, it just means we want to use long polling
-                restMethod = value == "Subscription" ? RestMethod::Subscribe : RestMethod::LongPoll;
+            if (key == "LongPollingIdx") { // This parameter is not passed on, it just means we want to use long polling
+                restMethod = RestMethod::LongPoll;
             } else if (key == "SubscriptionContext") {
                 topic = mdp::Topic::fromString(value, {}); // params are parsed from value
             }
@@ -544,8 +504,6 @@ public:
             return worker.respondWithGetSet(request, response, topic, restMethod, content_reader_);
         case RestMethod::LongPoll:
             return worker.respondWithLongPoll(request, response, topic);
-        case RestMethod::Subscribe:
-            return worker.respondWithSubscription(response, topic);
         default:
             // std::unreachable() is C++23
             assert(!"We have already checked that restMethod is not Invalid");
@@ -681,7 +639,6 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
                         });
 
                 opencmw::IoBuffer buffer;
-                // opencmw::serialise<opencmw::Json>(buffer, formData);
                 IoSerialiser<opencmw::Json, decltype(formData.fields)>::serialise(buffer, FieldDescriptionShort{}, formData.fields);
 
                 std::string requestData(buffer.asString());
@@ -735,43 +692,8 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         return true;
     }
 
-    bool respondWithSubscription(httplib::Response &response, const mdp::Topic &subscription) {
-        const auto subscriptionKey = subscription.toZmqTopic();
-        auto      *connection      = restBackend.notificationSubscriptionConnectionFor(subscriptionKey);
-        assert(connection);
-        const auto majordomoTimeout = restBackend.majordomoTimeout();
-        response.set_header("Access-Control-Allow-Origin", "*");
-        response.set_header("X-TIMESTAMP", fmt::format("{}", std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count()));
-
-        response.set_chunked_content_provider(
-                "application/json",
-                [connection, majordomoTimeout](std::size_t /*offset*/, httplib::DataSink &sink) mutable {
-                    std::cerr << "Chunked reply...\n";
-
-                    if (!connection->waitForUpdate(majordomoTimeout)) {
-                        return false;
-                    }
-
-                    auto        connectionCacheLock = connection->readLock();
-                    auto        lastIndex           = connection->nextPollingIndex(connectionCacheLock) - 1;
-                    const auto &lastReply           = connection->cachedReply(connectionCacheLock, lastIndex);
-                    std::cerr << "Chunk: " << lastIndex << "'" << lastReply << "'\n";
-
-                    sink.os << lastReply << "\n\n";
-
-                    return true;
-                },
-                [connection](bool) {
-                    connection->decreaseReferenceCount();
-                });
-
-        return true;
-    }
-
     bool respondWithLongPollRedirect(const httplib::Request &request, httplib::Response &response, const mdp::Topic &subscription, detail::PollingIndex redirectLongPollingIdx) {
-        auto uri = URI<>::factory()
-                           .path(request.path)
-                           .addQueryParameter("LongPollingIdx", std::to_string(redirectLongPollingIdx));
+        auto uri = URI<>::factory().path(request.path).addQueryParameter("LongPollingIdx", std::to_string(redirectLongPollingIdx));
 
         // copy over the original query parameters
         addParameters(request, uri);
@@ -786,20 +708,24 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         // TODO: After the URIs are formalized, rethink service and topic
         auto uri = URI<>::factory();
         addParameters(request, uri);
-
         const auto subscriptionKey  = subscription.toZmqTopic();
-
         const auto longPollingIdxIt = request.params.find("LongPollingIdx");
         if (longPollingIdxIt == request.params.end()) {
             return detail::respondWithError(response, "Error: LongPollingIdx parameter not specified");
         }
-
         const auto &longPollingIdxParam = longPollingIdxIt->second;
 
         struct CacheInfo {
             detail::PollingIndex firstCachedIndex = 0;
             detail::PollingIndex nextPollingIndex = 0;
             detail::Connection  *connection       = nullptr;
+            std::size_t          readIndexSlot    = std::numeric_limits<std::size_t>::max();
+
+            ~CacheInfo() { // free the data buffer again
+                if (readIndexSlot != std::numeric_limits<std::size_t>::max()) {
+                    connection->_readIndices[readIndexSlot] = std::numeric_limits<std::size_t>::max();
+                }
+            }
         };
         auto fetchCache = [this, &subscriptionKey] {
             std::shared_lock lock(restBackend._mdpConnectionsMutex);
@@ -808,11 +734,28 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
                 auto                         *connectionCache = it->second.get();
                 detail::Connection::KeepAlive keep(connectionCache);
                 connectionCache->lastUsed = std::chrono::system_clock::now();
-                auto connectionCacheLock  = connectionCache->readLock();
+                std::size_t toReadIndex = 0;
+                std::size_t readIndexSlot = std::numeric_limits<std::size_t>::max();
+                while (readIndexSlot == std::numeric_limits<std::size_t>::max()) { // block the writer from overwriting what we want to read
+                    toReadIndex = connectionCache->_reserved - MAX_CACHED_REPLIES + CACHE_DISTANCE;
+                    for (std::size_t i = 0; i < CPPHTTPLIB_THREAD_POOL_COUNT; i++) {
+                        std::size_t expected = std::numeric_limits<std::size_t>::max();
+                        if (connectionCache->_readIndices[i].compare_exchange_strong(expected, toReadIndex)) {
+                            readIndexSlot = i;
+                            break;
+                        }
+                    }
+                    // recheck that the data is still valid
+                    if (toReadIndex < connectionCache->_reserved - MAX_CACHED_REPLIES) {
+                        connectionCache->_readIndices[readIndexSlot] = std::numeric_limits<std::size_t>::max();
+                        std::size_t readIndexSlot = std::numeric_limits<std::size_t>::max();
+                    }
+                }
                 return CacheInfo{
-                    .firstCachedIndex = connectionCache->nextPollingIndex(connectionCacheLock) - connectionCache->cachedRepliesSize(connectionCacheLock),
-                    .nextPollingIndex = connectionCache->nextPollingIndex(connectionCacheLock),
-                    .connection       = connectionCache
+                    .firstCachedIndex = toReadIndex,
+                    .nextPollingIndex = connectionCache->_cursor,
+                    .connection       = connectionCache,
+                    .readIndexSlot    = readIndexSlot
                 };
             } else {
                 // We didn't have this before, means 0 is the next index
@@ -864,9 +807,8 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
             }
 
             if (cache.connection && requestedLongPollingIdx < cache.nextPollingIndex) {
-                auto connectionCacheLock = cache.connection->readLock();
                 // The result is already ready
-                response.set_content(cache.connection->cachedReply(connectionCacheLock, requestedLongPollingIdx), MIME::JSON.typeName().data());
+                response.set_content(cache.connection->_cachedReplies[requestedLongPollingIdx % MAX_CACHED_REPLIES], MIME::JSON.typeName().data());
                 fmt::print("RestBackend::respondWithLongPoll({}): took {} ms, cached\n", subscriptionKey, std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - start).count());
                 return true;
             }
@@ -880,19 +822,20 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         // Since we use KeepAlive object, the initial refCount can go away
         connection->decreaseReferenceCount();
 
-        if (!connection->waitForUpdate(restBackend.majordomoTimeout())) {
-            fmt::print("RestBackend::respondWithLongPoll({}): took {} ms, Error:Majordomo timeout\n", subscriptionKey, std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - start).count());
-            return detail::respondWithError(response, "Timeout waiting for update", HTTP_GATEWAY_TIMEOUT);
+        std::size_t cursor = 0;
+        while ((cursor = connection->_cursor) < 1) {
+            if (false /* now - start < restBackend.majordomoTimeout() */) { // todo: check timeout
+                fmt::print("RestBackend::respondWithLongPoll({}): took {} ms, Error:Majordomo timeout\n", subscriptionKey, std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - start).count());
+                return detail::respondWithError(response, "Timeout waiting for update", HTTP_GATEWAY_TIMEOUT);
+            }
+            connection->_cursor.wait(cursor);
         }
 
         const auto newCache = fetchCache();
-
-        // This time it needs to exist
-        assert(newCache.connection != nullptr);
+        assert(newCache.connection != nullptr); // This time it needs to exist
 
         if (requestedLongPollingIdx >= newCache.firstCachedIndex && requestedLongPollingIdx < newCache.nextPollingIndex) {
-            auto connectionCacheLock = newCache.connection->readLock();
-            response.set_content(newCache.connection->cachedReply(connectionCacheLock, requestedLongPollingIdx), MIME::JSON.typeName().data());
+            response.set_content(newCache.connection->_cachedReplies[requestedLongPollingIdx % MAX_CACHED_REPLIES], MIME::JSON.typeName().data());
             fmt::print("RestBackend::respondWithLongPoll({}): took {} ms, uncached\n", subscriptionKey, std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - start).count());
             return true;
         } else {
