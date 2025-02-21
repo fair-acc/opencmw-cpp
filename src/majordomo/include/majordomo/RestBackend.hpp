@@ -585,6 +585,12 @@ public:
             throw opencmw::startup_error(fmt::format("REST server URI is not valid {}", _restAddress.str()));
         }
 
+        _svr.set_tcp_nodelay(true);
+        _svr.set_keep_alive_max_count(1000);
+        _svr.set_read_timeout(1, 0);
+        _svr.set_write_timeout(1, 0);
+        _svr.new_task_queue = []() { return new httplib::ThreadPool(/*num_threads=*/32, /*max_queued_requests=*/20); };
+
         bool listening = _svr.listen(_restAddress.hostName().value().data(), _restAddress.port().value());
         if (!listening) {
             throw opencmw::startup_error(fmt::format("Can not start REST server on {}:{}", _restAddress.hostName().value().data(), _restAddress.port().value()));
