@@ -855,8 +855,8 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
                 return detail::respondWithError(response, "Error: LongPollingIdx tries to read the future");
             }
 
-            if (requestedLongPollingIdx < cache.firstCachedIndex) {
-                return detail::respondWithError(response, "Error: Requested LongPollingIdx is no longer cached");
+            if (requestedLongPollingIdx < cache.firstCachedIndex || requestedLongPollingIdx  + 15 < cache.nextPollingIndex) {
+                return respondWithLongPollRedirect(request, response, subscription, cache.nextPollingIndex);
             }
 
             if (cache.connection && requestedLongPollingIdx < cache.nextPollingIndex) {
