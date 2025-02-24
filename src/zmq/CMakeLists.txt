@@ -7,7 +7,7 @@ target_include_directories(zmq INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURC
 target_link_libraries(zmq
         INTERFACE
             core
-            libzmq
+            libzmq-static
             #OpenSSL::SSL
         )
 

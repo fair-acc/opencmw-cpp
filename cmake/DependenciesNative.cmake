@@ -1,4 +1,4 @@
-# Build a static version of openssl to link into opencmw
+# Build a static version of openssl to link into
 set(OPENSSL_INSTALL_DIR "${CMAKE_BINARY_DIR}/openssl-install")
 add_library(OpenSSL::Crypto STATIC IMPORTED GLOBAL)
 add_library(OpenSSL::SSL STATIC IMPORTED GLOBAL)
@@ -38,6 +38,9 @@ FetchContent_Declare(
         GIT_TAG v4.3.4 # latest v4.3.4
 )
 set(ZMQ_BUILD_TESTS OFF CACHE BOOL "Build the tests for ZeroMQ")
+# suppress warnings for missing zeromq dependencies by disabling some features
+set(WITH_TLS OFF CACHE BOOL "TLS support for ZeroMQ WebSockets")
+set(BUILD_SHARED OFF CACHE BOOL "Build cmake shared library")
 option(WITH_PERF_TOOL "Build with perf-tools" OFF)
 
 FetchContent_Declare(

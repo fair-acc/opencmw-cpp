@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.19)
 
-project(opencmw-cpp CXX)
+project(opencmw-cpp CXX C) # C is needed to compile the internal version of libsodium
 set(CMAKE_CXX_STANDARD 23)
 
 # include(cmake/StandardProjectSettings.cmake)
