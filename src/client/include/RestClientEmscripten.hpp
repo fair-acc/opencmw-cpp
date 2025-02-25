@@ -93,14 +93,8 @@ namespace opencmw::client {
                 if (!command.callback) {
                     return;
                 }
-                const bool msgOK = status >= 200 && status < 400 && errorMsgExt.empty();
-                const bool hasErrorMessage = (!msgOK && !body.empty()) || !errorMsgExt.empty();
-                const auto selectedErrorMsg = [&body, &errorMsgExt](const bool hasError) noexcept { return fmt::format("{}{}", hasError ? "\n" : "",
-                                                                                                                       errorMsgExt.empty() ? body
-                                                                                                                                           : errorMsgExt);
-                };
-                const auto errorMsg = msgOK ? "" : fmt::format("{} - {}:{}", status, errorMsgExt, selectedErrorMsg(hasErrorMessage));
-
+                const bool msgOK = status >= 200 && status < 400;
+                const auto errorMsg = msgOK ? errorMsgExt : fmt::format("{} - {}{}{}", status, errorMsgExt, body.empty() ? "" : ":", body);
                 try {
                     command.callback(mdp::Message{
                             .id              = 0,
@@ -110,7 +104,7 @@ namespace opencmw::client {
                             .clientRequestID = command.clientRequestID,
                             .topic           = command.topic,
                             .data            = msgOK ? IoBuffer(body.data(), body.size()) : IoBuffer(),
-                            .error           = errorMsg,
+                            .error           = std::string{errorMsg},
                             .rbac            = IoBuffer()});
                 } catch (const std::exception &e) {
                     std::cerr
@@ -194,9 +188,8 @@ namespace opencmw::client {
                         std::size_t longPollingIdx = strtoull(longPollingIdxString.data(), &end, 10);
                         if (payload->_update != 0 && longPollingIdx != payload->_update) {
                             fmt::print("received unexpected update: {}, expected {}\n", longPollingIdx, payload->_update);
-                            return;
                         }
-                        payload->onsuccess(fetch->status, std::string_view(fetch->data, detail::checkedStringViewSize(fetch->numBytes)));
+                        payload->onsuccess(fetch->status, std::string_view(fetch->data, detail::checkedStringViewSize(fetch->numBytes)), static_cast<long>(longPollingIdx) - static_cast<long>(payload->_update));
                         emscripten_fetch_close(fetch);
                         payload->_update = longPollingIdx + 1;
                         payload->requestNext();
@@ -213,8 +206,12 @@ namespace opencmw::client {
                 emscripten_fetch(&attr, uri.str().data());
             }
 
-            void onsuccess(unsigned short status, std::string_view data) {
-                returnMdpMessage(status, data);
+            void onsuccess(unsigned short status, std::string_view data, long idxDifference = 0) {
+                std::string skippedWarning;
+                if (idxDifference != 0) {
+                    skippedWarning = fmt::format("Warning: skipped {} samples", idxDifference);
+                }
+                returnMdpMessage(status, data, skippedWarning);
             }
 
             void onerror(unsigned short status, std::string_view error, std::string_view data) {
