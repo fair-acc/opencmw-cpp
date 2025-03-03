@@ -90,6 +90,9 @@ public:
     }
 
     static Topic fromZmqTopic(std::string_view topic) {
+        if (topic.ends_with("#")) {
+            topic.remove_suffix(1);
+        }
         return fromString(topic, {});
     }
 
@@ -101,6 +104,7 @@ public:
         using namespace std::string_literals;
         std::string zmqTopic = _service;
         if (_params.empty()) {
+            zmqTopic += "#"s;
             return zmqTopic;
         }
         zmqTopic += "?"s;
@@ -116,6 +120,7 @@ public:
             }
             isFirst = false;
         }
+        zmqTopic += "#"s;
         return zmqTopic;
     }
 

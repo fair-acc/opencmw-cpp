@@ -61,24 +61,27 @@ TEST_CASE("Basic Client Get/Set Test", "[Client]") {
 }
 
 TEST_CASE("Basic Client Subscription Test", "[Client]") {
+    using URI = URI<uri_check::STRICT>;
     const zmq::Context          context{};
     MockServer                  server(context);
 
     std::vector<zmq_pollitem_t> pollitems{};
     SubscriptionClient          subscriptionClient(context, pollitems, 100ms, "subscriptionClientID");
-    auto                        uri = URI<uri_check::STRICT>(server.addressSub());
+    auto                        uri = URI(server.addressSub());
 
     subscriptionClient.connect(uri);
     subscriptionClient.housekeeping(std::chrono::system_clock::now());
 
-    const auto  endpoint = URI<uri_check::STRICT>::UriFactory(uri).path("/a.service").build();
+    // When connecting directly to a worker instead of broker, subscribing do a generic prefix (e.g. "a.service") will not work, as ZMQ appends now "#" to the subscription. Instead, the full URI must be used.
+    const auto endpoint1 = URI::UriFactory(uri).path("a.service").addQueryParameter("ctx", "test_ctx1").build();
+    const auto endpoint2 = URI::UriFactory(uri).path("a.service").addQueryParameter("ctx", "test_ctx2").build();
 
-    std::string reqId    = "2";
-    subscriptionClient.subscribe(endpoint, reqId);
+    subscriptionClient.subscribe(endpoint1, "1");
+    subscriptionClient.subscribe(endpoint2, "2");
     std::this_thread::sleep_for(50ms); // allow for subscription to be established
 
-    server.notify("/a.service?ctx=test_ctx1", "101");
-    server.notify("/a.service?ctx=test_ctx2", "102");
+    server.notify("/a.service?ctx=test_ctx1#", "101");
+    server.notify("/a.service?ctx=test_ctx2#", "102");
 
     Message resultOfNotify1;
     REQUIRE(subscriptionClient.receive(resultOfNotify1));
@@ -90,8 +93,8 @@ TEST_CASE("Basic Client Subscription Test", "[Client]") {
 
     // receive expected exception
     std::string reqId2 = "9";
-    REQUIRE_THROWS(subscriptionClient.get(endpoint, reqId2));
-    REQUIRE_THROWS(subscriptionClient.set(endpoint, reqId2, {}));
+    REQUIRE_THROWS(subscriptionClient.get(endpoint1, reqId2));
+    REQUIRE_THROWS(subscriptionClient.set(endpoint2, reqId2, {}));
 }
 
 } // namespace opencmw_client_test
