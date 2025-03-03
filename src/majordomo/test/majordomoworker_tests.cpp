@@ -185,7 +185,7 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
     BrokerMessageNode subClient(broker.context, ZMQ_SUB);
     REQUIRE(client.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
     REQUIRE(subClient.connect(opencmw::majordomo::INTERNAL_ADDRESS_PUBLISHER));
-    REQUIRE(subClient.subscribe("/addressbook?ctx=FAIR.SELECTOR.C%3D1"));
+    REQUIRE(subClient.subscribe("/addressbook?ctx=FAIR.SELECTOR.C%3D1#"));
 
     {
         auto request            = createClientMessage(mdp::Command::Get);
@@ -320,7 +320,7 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
         const auto notify = subClient.tryReadOne();
         REQUIRE(notify.has_value());
         REQUIRE(notify->command == mdp::Command::Final);
-        REQUIRE(notify->sourceId == "/addressbook?ctx=FAIR.SELECTOR.C%3D1");
+        REQUIRE(notify->sourceId == "/addressbook?ctx=FAIR.SELECTOR.C%3D1#");
         REQUIRE(notify->topic == mdp::Message::URI("/addressbook?contentType=application%2Fjson&ctx=FAIR.SELECTOR.C%3D1"));
         REQUIRE(notify->error.empty());
         REQUIRE(notify->data.asString() == "{\n\"name\": \"Easter Bunny\",\n\"street\": \"Carrot Road\",\n\"streetNumber\": 123,\n\"postalCode\": \"88888\",\n\"city\": \"Easter Island\",\n\"isCurrent\": true\n}");

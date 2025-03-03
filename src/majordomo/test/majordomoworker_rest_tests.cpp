@@ -329,7 +329,7 @@ TEST_CASE("Subscriptions", "[majordomo][majordomoworker][subscription]") {
         subscriptions.push_back(subscription.toZmqTopic());
     }
     std::ranges::sort(subscriptions);
-    REQUIRE(subscriptions == std::vector<std::string>{ "/colors", "/colors?blue&green&red", "/colors?green&red", "/colors?red" });
+    REQUIRE(subscriptions == std::vector<std::string>{ "/colors#", "/colors?blue&green&red#", "/colors?green&red#", "/colors?red#" });
 }
 
 TEST_CASE("Subscription latencies", "[majordomo][majordomoworker][rest]") {

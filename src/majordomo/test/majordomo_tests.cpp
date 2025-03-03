@@ -345,13 +345,13 @@ TEST_CASE("Test Topic class", "[mdp][topic]") {
     SECTION("serialization from/to ZMQ and MDP topic with params") {
         const auto t1 = Topic::fromString("/a/service?p1=foo&p2=bar", {});
         const auto t2 = Topic::fromString("/a/service", { { "p1", "foo" }, { "p2", "bar" } });
-        const auto t3 = Topic::fromZmqTopic("/a/service?p1=foo&p2=bar");
+        const auto t3 = Topic::fromZmqTopic("/a/service?p1=foo&p2=bar#");
         const auto t4 = Topic::fromMdpTopic(URI<>("/a/service?p2=bar&p1=foo"));
         REQUIRE_THROWS_AS(Topic::fromMdpTopic(URI<>("")), std::invalid_argument);
         REQUIRE(t1 == t2);
         REQUIRE(t1 == t3);
         REQUIRE(t1 == t4);
-        REQUIRE(t1.toZmqTopic() == "/a/service?p1=foo&p2=bar");
+        REQUIRE(t1.toZmqTopic() == "/a/service?p1=foo&p2=bar#");
         REQUIRE(t1.toZmqTopic() == t2.toZmqTopic());
         REQUIRE(t1.toZmqTopic() == t3.toZmqTopic());
         REQUIRE(t1.toZmqTopic() == t4.toZmqTopic());
@@ -361,11 +361,11 @@ TEST_CASE("Test Topic class", "[mdp][topic]") {
 
     SECTION("serialization from/to ZMQ and MDP topic without params") {
         const auto t1 = Topic::fromString("/a/service", {});
-        const auto t2 = Topic::fromZmqTopic("/a/service");
+        const auto t2 = Topic::fromZmqTopic("/a/service#");
         const auto t3 = Topic::fromMdpTopic(URI<>("/a/service"));
         REQUIRE(t1 == t2);
         REQUIRE(t1 == t3);
-        REQUIRE(t1.toZmqTopic() == "/a/service");
+        REQUIRE(t1.toZmqTopic() == "/a/service#");
         REQUIRE(t1.toZmqTopic() == t2.toZmqTopic());
         REQUIRE(t1.toZmqTopic() == t3.toZmqTopic());
         REQUIRE(t1.toMdpTopic().path().value_or("") == "/a/service");
@@ -610,9 +610,9 @@ TEST_CASE("Pubsub example using SUB client/DEALER worker", "[broker][pubsub_sub_
     REQUIRE(broker.bind(publisherAddress, BindOption::Pub));
 
     BrokerMessageNode subscriber(broker.context, ZMQ_SUB);
-    REQUIRE(subscriber.connect(publisherAddress, "/a.service?topic=something"));
-    REQUIRE(subscriber.subscribe("/a.service?topic=other"));
-    REQUIRE(subscriber.subscribe("/a-service?topic=something")); // invalid, broker must ignore
+    REQUIRE(subscriber.connect(publisherAddress, "/a.service?topic=something#"));
+    REQUIRE(subscriber.subscribe("/a.service?topic=other#"));
+    REQUIRE(subscriber.subscribe("/a-service?topic=something#")); // invalid, broker must ignore
 
     broker.processMessages();
 
@@ -675,7 +675,7 @@ TEST_CASE("Pubsub example using SUB client/DEALER worker", "[broker][pubsub_sub_
         const auto reply = subscriber.tryReadOne();
         REQUIRE(reply.has_value());
         REQUIRE(reply->protocolName == mdp::clientProtocol);
-        REQUIRE(reply->sourceId == "/a.service?topic=something");
+        REQUIRE(reply->sourceId == "/a.service?topic=something#");
         REQUIRE(reply->serviceName == "/a.service");
         REQUIRE(reply->topic.str() == "/a.service?topic=something");
         REQUIRE(reply->clientRequestID.empty());
@@ -688,7 +688,7 @@ TEST_CASE("Pubsub example using SUB client/DEALER worker", "[broker][pubsub_sub_
         const auto reply = subscriber.tryReadOne();
         REQUIRE(reply.has_value());
         REQUIRE(reply->protocolName == mdp::clientProtocol);
-        REQUIRE(reply->sourceId == "/a.service?topic=other");
+        REQUIRE(reply->sourceId == "/a.service?topic=other#");
         REQUIRE(reply->serviceName == "/a.service");
         REQUIRE(reply->clientRequestID.empty());
         REQUIRE(reply->data.asString() == "Notification about other");
@@ -696,8 +696,8 @@ TEST_CASE("Pubsub example using SUB client/DEALER worker", "[broker][pubsub_sub_
         REQUIRE(reply->rbac.asString() == "rbac_worker");
     }
 
-    REQUIRE(subscriber.unsubscribe("/a.service?topic=something"));
-    REQUIRE(subscriber.unsubscribe("/a%20service?topic=something")); // invalid, broker must ignore
+    REQUIRE(subscriber.unsubscribe("/a.service?topic=something#"));
+    REQUIRE(subscriber.unsubscribe("/a%20service?topic=something#")); // invalid, broker must ignore
 
     broker.processMessages();
 
@@ -731,7 +731,7 @@ TEST_CASE("Pubsub example using SUB client/DEALER worker", "[broker][pubsub_sub_
         const auto reply = subscriber.tryReadOne();
         REQUIRE(reply.has_value());
         REQUIRE(reply->protocolName == mdp::clientProtocol);
-        REQUIRE(reply->sourceId == "/a.service?topic=other");
+        REQUIRE(reply->sourceId == "/a.service?topic=other#");
         REQUIRE(reply->serviceName == "/a.service");
         REQUIRE(reply->clientRequestID.empty());
         REQUIRE(reply->data.asString() == "Notification about other");
@@ -1068,11 +1068,11 @@ TEST_CASE("pubsub example using PUB socket (SUB client)", "[broker][pubsub_subcl
     MessageNode publisherTwo(broker.context);
     REQUIRE(publisherTwo.connect(opencmw::majordomo::INTERNAL_ADDRESS_BROKER));
 
-    subscriber.subscribe("/first.service?origin=italian");
+    subscriber.subscribe("/first.service?origin=italian#");
 
     broker.processMessages();
 
-    subscriber.subscribe("/second.service?origin=indian");
+    subscriber.subscribe("/second.service?origin=indian#");
 
     subscriber.subscribe("/s-e-r-v-i-c-e"); // invalid service name
 
@@ -1105,7 +1105,7 @@ TEST_CASE("pubsub example using PUB socket (SUB client)", "[broker][pubsub_subcl
         const auto reply = subscriber.tryReadOne();
         REQUIRE(reply.has_value());
         REQUIRE(reply->protocolName == mdp::clientProtocol);
-        REQUIRE(reply->sourceId == "/first.service?origin=italian");
+        REQUIRE(reply->sourceId == "/first.service?origin=italian#");
         REQUIRE(reply->command == mdp::Command::Final);
         REQUIRE(reply->serviceName == "/first.service");
         REQUIRE(reply->clientRequestID.empty());
@@ -1132,7 +1132,7 @@ TEST_CASE("pubsub example using PUB socket (SUB client)", "[broker][pubsub_subcl
         const auto reply = subscriber.tryReadOne();
         REQUIRE(reply.has_value());
         REQUIRE(reply->protocolName == mdp::clientProtocol);
-        REQUIRE(reply->sourceId == "/second.service?origin=indian");
+        REQUIRE(reply->sourceId == "/second.service?origin=indian#");
         REQUIRE(reply->command == mdp::Command::Final);
         REQUIRE(reply->serviceName == "/second.service");
         REQUIRE(reply->clientRequestID.empty());
@@ -1142,7 +1142,7 @@ TEST_CASE("pubsub example using PUB socket (SUB client)", "[broker][pubsub_subcl
         REQUIRE(reply->rbac.asString() == "rbac_worker_2");
     }
 
-    subscriber.unsubscribe("/first.service?origin=italian");
+    subscriber.unsubscribe("/first.service?origin=italian#");
 
     broker.processMessages();
 
@@ -1176,7 +1176,7 @@ TEST_CASE("pubsub example using PUB socket (SUB client)", "[broker][pubsub_subcl
         const auto reply = subscriber.tryReadOne();
         REQUIRE(reply.has_value());
         REQUIRE(reply->protocolName == mdp::clientProtocol);
-        REQUIRE(reply->sourceId == "/second.service?origin=indian");
+        REQUIRE(reply->sourceId == "/second.service?origin=indian#");
         REQUIRE(reply->command == mdp::Command::Final);
         REQUIRE(reply->serviceName == "/second.service");
         REQUIRE(reply->clientRequestID.empty());
@@ -1512,8 +1512,8 @@ TEST_CASE("NOTIFY example using the BasicWorker class", "[worker][notify_basic_w
     REQUIRE(client.sendRawFrame("\x1"));
     REQUIRE(client.sendRawFrame("\x0"s));
 
-    REQUIRE(client.sendRawFrame("\x1/beverages?iwant=wine"));
-    REQUIRE(client.sendRawFrame("\x1/beverages?iwant=beer"));
+    REQUIRE(client.sendRawFrame("\x1/beverages?iwant=wine#"));
+    REQUIRE(client.sendRawFrame("\x1/beverages?iwant=beer#"));
 
     bool seenNotification = false;
 
@@ -1533,7 +1533,7 @@ TEST_CASE("NOTIFY example using the BasicWorker class", "[worker][notify_basic_w
                 seenNotification = true;
                 REQUIRE(notification->protocolName == mdp::clientProtocol);
                 REQUIRE(notification->command == mdp::Command::Final);
-                REQUIRE(notification->sourceId == "/beverages?iwant=beer");
+                REQUIRE(notification->sourceId == "/beverages?iwant=beer#");
                 REQUIRE(notification->topic == mdp::Message::URI("/beverages?iwant=beer"));
                 REQUIRE(notification->data.asString() == "Have a beer");
             }
@@ -1560,7 +1560,7 @@ TEST_CASE("NOTIFY example using the BasicWorker class", "[worker][notify_basic_w
 
         REQUIRE(notification->protocolName == mdp::clientProtocol);
         REQUIRE(notification->command == mdp::Command::Final);
-        REQUIRE(notification->sourceId == "/beverages?iwant=beer");
+        REQUIRE(notification->sourceId == "/beverages?iwant=beer#");
         REQUIRE(notification->topic == mdp::Message::URI("/beverages?iwant=beer&fridge=empty"));
         REQUIRE(notification->error == "Fridge empty!");
         seenError = true;
@@ -1580,13 +1580,13 @@ TEST_CASE("NOTIFY example using the BasicWorker class", "[worker][notify_basic_w
         REQUIRE(notification.has_value());
         REQUIRE(notification->protocolName == mdp::clientProtocol);
         REQUIRE(notification->command == mdp::Command::Final);
-        REQUIRE(notification->sourceId == "/beverages?iwant=wine");
+        REQUIRE(notification->sourceId == "/beverages?iwant=wine#");
         REQUIRE(notification->topic == mdp::Message::URI("/beverages?iwant=wine&origin=italian"));
         REQUIRE(notification->data.asString() == "Try our Chianti!");
     }
 
     // unsubscribe from /beer*
-    REQUIRE(client.sendRawFrame("\x0/beverages?iwant=beer"s));
+    REQUIRE(client.sendRawFrame("\x0/beverages?iwant=beer#"s));
 
     // loop until we get two consecutive messages about wine, it means that the beer unsubscribe was processed
     while (true) {
@@ -1611,11 +1611,11 @@ TEST_CASE("NOTIFY example using the BasicWorker class", "[worker][notify_basic_w
 
         const auto msg1 = client.tryReadOne();
         REQUIRE(msg1.has_value());
-        REQUIRE(msg1->sourceId == "/beverages?iwant=wine");
+        REQUIRE(msg1->sourceId == "/beverages?iwant=wine#");
 
         const auto msg2 = client.tryReadOne();
         REQUIRE(msg2.has_value());
-        if (msg2->sourceId == "/beverages?iwant=wine") {
+        if (msg2->sourceId == "/beverages?iwant=wine#") {
             break;
         }
 
