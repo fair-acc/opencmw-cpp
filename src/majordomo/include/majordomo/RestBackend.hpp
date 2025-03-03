@@ -170,7 +170,7 @@ inline bool respondWithServicesList(auto &broker, const httplib::Request &reques
         std::vector<std::string> serviceNames;
         // TODO: Should this be synchronized?
         broker.forEachService([&](std::string_view name, std::string_view) {
-            serviceNames.emplace_back(std::string(name));
+            serviceNames.emplace_back(name);
         });
         response.status = HTTP_OK;
 
@@ -241,8 +241,8 @@ private:
 
 public:
     Connection(const zmq::Context &context, std::string _subscriptionKey)
-        : notificationSubscriptionSocket(context, ZMQ_DEALER)
-        , requestResponseSocket(context, ZMQ_SUB)
+        : notificationSubscriptionSocket(context, ZMQ_SUB)
+        , requestResponseSocket(context, ZMQ_DEALER)
         , subscriptionKey(std::move(_subscriptionKey)) {}
 
     Connection(const Connection &other)       = delete;
@@ -348,18 +348,18 @@ public:
 
     using BrokerType = Broker<Roles...>;
     // returns a connection with refcount 1. Make sure you lower it to zero at some point
-    detail::Connection *notificationSubscriptionConnectionFor(const std::string &subscriptionKey) {
+    detail::Connection *notificationSubscriptionConnectionFor(const std::string &zmqTopic) {
         detail::WriteLock lock(_mdpConnectionsMutex);
         // TODO: No need to find + emplace as separate steps
-        if (auto it = _mdpConnectionForService.find(subscriptionKey); it != _mdpConnectionForService.end()) {
+        if (auto it = _mdpConnectionForService.find(zmqTopic); it != _mdpConnectionForService.end()) {
             auto *connection = it->second.get();
             connection->increaseReferenceCount();
             return connection;
         }
 
         auto [it, inserted] = _mdpConnectionForService.emplace(std::piecewise_construct,
-                std::forward_as_tuple(subscriptionKey),
-                std::forward_as_tuple(std::make_unique<detail::Connection>(_broker.context, subscriptionKey)));
+                std::forward_as_tuple(zmqTopic),
+                std::forward_as_tuple(std::make_unique<detail::Connection>(_broker.context, zmqTopic)));
 
         if (!inserted) {
             assert(inserted);
@@ -368,18 +368,8 @@ public:
 
         auto *connection = it->second.get();
 
-        zmq::invoke(zmq_connect, connection->notificationSubscriptionSocket, INTERNAL_ADDRESS_BROKER.str()).template onFailure<opencmw::startup_error>("Can not connect REST worker to Majordomo broker");
-
-        mdp::Message subscribeMessage;
-        subscribeMessage.protocolName = mdp::clientProtocol;
-        subscribeMessage.command      = mdp::Command::Subscribe;
-        subscribeMessage.topic        = mdp::Message::URI(subscriptionKey);
-        subscribeMessage.serviceName  = subscribeMessage.topic.path().value_or("/");
-
-        if (!zmq::send(std::move(subscribeMessage), connection->notificationSubscriptionSocket)) {
-            std::terminate();
-            return nullptr;
-        }
+        zmq::invoke(zmq_connect, connection->notificationSubscriptionSocket, INTERNAL_ADDRESS_PUBLISHER.str()).template onFailure<opencmw::startup_error>("Can not connect REST worker to Majordomo broker");
+        zmq::invoke(zmq_setsockopt, connection->notificationSubscriptionSocket, ZMQ_SUBSCRIBE, zmqTopic.data(), zmqTopic.size()).assertSuccess();
 
         return connection;
     }
@@ -447,7 +437,7 @@ public:
                     if (pollItems[i].revents & ZMQ_POLLIN) {
                         detail::Connection                 *currentConnection = connections[i];
                         std::unique_lock<std::shared_mutex> connectionLock    = currentConnection->writeLock();
-                        while (auto responseMessage = zmq::receive<mdp::MessageFormat::WithoutSourceId>(currentConnection->notificationSubscriptionSocket)) {
+                        while (auto responseMessage = zmq::receive<mdp::MessageFormat::WithSourceId>(currentConnection->notificationSubscriptionSocket)) {
                             currentConnection->addCachedReply(connectionLock, std::string(responseMessage->data.asString()));
                         }
                     }
@@ -591,7 +581,7 @@ public:
         _svr.set_write_timeout(1, 0);
         _svr.new_task_queue = []() { return new httplib::ThreadPool(/*num_threads=*/32, /*max_queued_requests=*/20); };
 
-        bool listening = _svr.listen(_restAddress.hostName().value().data(), _restAddress.port().value());
+        bool listening      = _svr.listen(_restAddress.hostName().value().data(), _restAddress.port().value());
         if (!listening) {
             throw opencmw::startup_error(fmt::format("Can not start REST server on {}:{}", _restAddress.hostName().value().data(), _restAddress.port().value()));
         }
@@ -622,8 +612,8 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         detail::Connection connection(restBackend._broker.context, {});
         pollItem.events = ZMQ_POLLIN;
 
-        zmq::invoke(zmq_connect, connection.notificationSubscriptionSocket, INTERNAL_ADDRESS_BROKER.str()).template onFailure<opencmw::startup_error>("Can not connect REST worker to Majordomo broker");
-        zmq::invoke(zmq_connect, connection.requestResponseSocket, INTERNAL_ADDRESS_PUBLISHER.str()).template onFailure<opencmw::startup_error>("Can not connect REST worker to Majordomo broker");
+        zmq::invoke(zmq_connect, connection.notificationSubscriptionSocket, INTERNAL_ADDRESS_PUBLISHER.str()).template onFailure<opencmw::startup_error>("Can not connect REST worker to Majordomo broker");
+        zmq::invoke(zmq_connect, connection.requestResponseSocket, INTERNAL_ADDRESS_BROKER.str()).template onFailure<opencmw::startup_error>("Can not connect REST worker to Majordomo broker");
 
         return std::move(connection).unsafeMove();
     }
@@ -706,15 +696,16 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
 
         auto connection = connect();
 
-        if (!zmq::send(std::move(message), connection.notificationSubscriptionSocket)) {
+        if (!zmq::send(std::move(message), connection.requestResponseSocket)) {
             return detail::respondWithError(response, "Error: Failed to send a message to the broker\n");
         }
 
-        pollItem.socket = connection.notificationSubscriptionSocket.zmq_ptr;
+        // blocks waiting for the response
+        pollItem.socket = connection.requestResponseSocket.zmq_ptr;
         auto pollResult = zmq::invoke(zmq_poll, &pollItem, 1, std::chrono::duration_cast<std::chrono::milliseconds>(restBackend.majordomoTimeout()).count());
         if (!pollResult || pollResult.value() == 0) {
             detail::respondWithError(response, "Error: No response from broker\n", HTTP_GATEWAY_TIMEOUT);
-        } else if (auto responseMessage = zmq::receive<mdp::MessageFormat::WithoutSourceId>(connection.notificationSubscriptionSocket); !responseMessage) {
+        } else if (auto responseMessage = zmq::receive<mdp::MessageFormat::WithoutSourceId>(connection.requestResponseSocket); !responseMessage) {
             detail::respondWithError(response, "Error: Empty response from broker\n");
         } else if (!responseMessage->error.empty()) {
             detail::respondWithError(response, responseMessage->error);
@@ -855,7 +846,7 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
                 return detail::respondWithError(response, "Error: LongPollingIdx tries to read the future");
             }
 
-            if (requestedLongPollingIdx < cache.firstCachedIndex || requestedLongPollingIdx  + 15 < cache.nextPollingIndex) {
+            if (requestedLongPollingIdx < cache.firstCachedIndex || requestedLongPollingIdx + 15 < cache.nextPollingIndex) {
                 return respondWithLongPollRedirect(request, response, subscription, cache.nextPollingIndex);
             }
 
