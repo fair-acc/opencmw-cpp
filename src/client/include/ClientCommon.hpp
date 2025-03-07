@@ -43,7 +43,7 @@ constexpr auto find_argument_value_helper(Item &item) {
 }
 
 template<bool exactMatch, typename RequiredType, typename Func, typename... Items>
-requires std::is_invocable_r_v<RequiredType, Func>
+    requires std::is_invocable_r_v<RequiredType, Func>
 constexpr RequiredType find_argument_value(Func defaultGenerator, Items... args) {
     auto ret = std::tuple_cat(find_argument_value_helper<exactMatch, RequiredType>(args)...);
     if constexpr (std::tuple_size_v<decltype(ret)> == 0) {
@@ -66,6 +66,16 @@ public:
     DefaultContentTypeHeader(const std::string_view type_str) noexcept
         : _mimeType(MIME::getType(type_str)){};
     constexpr operator const MIME::MimeType() const noexcept { return _mimeType; };
+};
+
+class VerifyServerCertificates {
+    const bool verifyServerCertificates = false;
+
+public:
+    VerifyServerCertificates() = default;
+    VerifyServerCertificates(bool value) noexcept
+        : verifyServerCertificates(value) {}
+    constexpr operator bool() const noexcept { return verifyServerCertificates; };
 };
 
 } // namespace opencmw::client

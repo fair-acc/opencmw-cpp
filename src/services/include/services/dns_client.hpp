@@ -1,14 +1,13 @@
 #ifndef DNS_CLIENT_HPP
 #define DNS_CLIENT_HPP
 
-#include "Debug.hpp"
+#include "ClientContext.hpp"
 #include "dns_types.hpp"
 #include "MdpMessage.hpp"
-#include "RestClient.hpp"
 #include <atomic>
 #include <chrono>
 #include <IoSerialiserYaS.hpp>
-#include <thread>
+#include <RestClient.hpp>
 #include <URI.hpp>
 #include <utility>
 #include <QuerySerialiser.hpp>

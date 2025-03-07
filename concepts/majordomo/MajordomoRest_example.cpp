@@ -1,13 +1,9 @@
 #include <majordomo/base64pp.hpp>
 #include <majordomo/Broker.hpp>
-#include <majordomo/RestBackend.hpp>
+#include <majordomo/LoadTestWorker.hpp>
 #include <majordomo/Worker.hpp>
 
-#include <atomic>
-#include <fstream>
-#include <iomanip>
 #include <thread>
-#include <variant>
 
 #include "helpers.hpp"
 
@@ -18,49 +14,60 @@ int main(int argc, char **argv) {
     using opencmw::URI;
 
     std::string rootPath = "./";
-    if (argc > 1) {
-        rootPath = argv[1];
+    uint16_t port  = 8080;
+    bool     https = true;
+
+    for (int i = 1; i < argc; i++) {
+        fmt::println(std::cerr, "argv[{}]: '{}'", i, argv[i]);
+        if (std::string_view(argv[i]) == "--port") {
+            if (i + 1 < argc) {
+                port = static_cast<uint16_t>(std::stoi(argv[i + 1]));
+                ++i;
+                continue;
+            }
+        } else if (std::string_view(argv[i]) == "--http") {
+            https = false;
+        } else {
+            rootPath = argv[i];
+        }
     }
 
-    std::cerr << "Starting server for " << rootPath << "\n";
+    const auto scheme      = https ? "https" : "http";
+    auto       makeExample = [scheme, port](std::string_view pathAndQuery) {
+        return fmt::format("{}://localhost:{}/{}", scheme, port, pathAndQuery);
+    };
 
-    std::cerr << "Open up https://localhost:8080/addressbook?contentType=text/html&ctx=FAIR.SELECTOR.ALL in your web browser\n";
-    std::cerr << "Or curl -v -k one of the following:\n";
-    std::cerr
-            << "'https://localhost:8080/addressbook?contentType=application/json&ctx=FAIR.SELECTOR.ALL'\n"
-            << "'https://localhost:8080/addressbook?contentType=application/json&ctx=FAIR.SELECTOR.ALL'\n"
-            << "'https://localhost:8080/addressbook/addresses?LongPollingId=Next'\n"
-            << "'https://localhost:8080/addressbook/addresses?LongPollingId=0'\n"
-            << "'https://localhost:8080/beverages/wine?LongPollingIdx=Subscription'\n";
+    fmt::println(std::cerr, "Starting {} server for {} on port {}", https ? "HTTPS" : "HTTP", rootPath, port);
+
+    fmt::println(std::cerr, "Open up {} in your web browser", makeExample("addressbook?contentType=text/html&ctx=FAIR.SELECTOR.ALL"));
+    fmt::println(std::cerr, "Or curl -v -k one of the following:");
+    fmt::println(std::cerr, "'{}'", makeExample("addressbook?contentType=application/json&ctx=FAIR.SELECTOR.ALL"));
+    fmt::println(std::cerr, "'{}'", makeExample("addressbook?contentType=application/json&ctx=FAIR.SELECTOR.ALL"));
+    fmt::println(std::cerr, "'{}'", makeExample("addressbook/addresses?LongPollingIdx=Next"));
+    fmt::println(std::cerr, "'{}'", makeExample("addressbook/addresses?LongPollingIdx=Last"));
+    fmt::println(std::cerr, "'{}'", makeExample("addressbook/addresses?LongPollingIdx=FirstAvailable"));
+    fmt::println(std::cerr, "'{}'", makeExample("addressbook/addresses?LongPollingIdx=0"));
+    fmt::println(std::cerr, "'{}'", makeExample("beverages/wine?LongPollingIdx=Next"));
 
     // note: inconsistency: brokerName as ctor argument, worker's serviceName as NTTP
     // note: default roles different from java (has: ADMIN, READ_WRITE, READ_ONLY, ANYONE, NULL)
     majordomo::Broker primaryBroker("/PrimaryBroker", testSettings());
     opencmw::query::registerTypes(SimpleContext(), primaryBroker);
+    opencmw::query::registerTypes(majordomo::load_test::Context(), primaryBroker);
 
-    auto fs = cmrc::assets::get_filesystem();
-
-    std::variant<
-            std::monostate,
-            FileServerRestBackend<majordomo::PLAIN_HTTP, decltype(fs)>,
-            FileServerRestBackend<majordomo::HTTPS, decltype(fs)>>
-            rest;
-    if (auto env = ::getenv("DISABLE_REST_HTTPS"); env != nullptr && std::string_view(env) == "1") {
-        rest.emplace<FileServerRestBackend<majordomo::PLAIN_HTTP, decltype(fs)>>(primaryBroker, fs, rootPath);
-    } else {
-        rest.emplace<FileServerRestBackend<majordomo::HTTPS, decltype(fs)>>(primaryBroker, fs, rootPath);
+    opencmw::majordomo::rest::Settings rest;
+    rest.port     = port;
+    rest.handlers = { majordomo::rest::cmrcHandler("/assets/", std::make_shared<cmrc::embedded_filesystem>(cmrc::assets::get_filesystem()), "/assets/") };
+    if (https) {
+        rest.certificateFilePath = "./demo_public.crt";
+        rest.keyFilePath         = "./demo_private.key";
+    }
+    if (const auto bound = primaryBroker.bindRest(rest); !bound) {
+        fmt::println("Could not bind HTTP/2 REST bridge to port {}: {}", rest.port, bound.error());
+        return 1;
     }
 
-    std::jthread restServerThread([&rest] {
-        std::visit([]<typename T>(T &server) {
-            if constexpr (not std::is_same_v<T, std::monostate>) {
-                server.run();
-            }
-        },
-                rest);
-    });
-
-    const auto   brokerRouterAddress = primaryBroker.bind(URI<>("mds://127.0.0.1:12345"));
+    const auto brokerRouterAddress = primaryBroker.bind(URI<>("mds://127.0.0.1:44444"));
     if (!brokerRouterAddress) {
         std::cerr << "Could not bind to broker address" << std::endl;
         return 1;
@@ -82,6 +89,7 @@ int main(int argc, char **argv) {
     majordomo::Worker<"/addressbook", SimpleContext, AddressRequest, AddressEntry>                                                         addressbookWorker(primaryBroker, TestAddressHandler());
     majordomo::Worker<"/addressbookBackup", SimpleContext, AddressRequest, AddressEntry>                                                   addressbookBackupWorker(primaryBroker, TestAddressHandler());
     majordomo::BasicWorker<"/beverages">                                                                                                   beveragesWorker(primaryBroker, TestIntHandler(10));
+    majordomo::load_test::Worker<"/loadTest">                                                                                              loadTestWorker(primaryBroker);
 
     //
     ImageServiceWorker<"/testImage", majordomo::description<"Returns an image">> imageWorker(primaryBroker, std::chrono::seconds(10));
@@ -91,6 +99,7 @@ int main(int argc, char **argv) {
     RunInThread runAddressbook(addressbookWorker);
     RunInThread runAddressbookBackup(addressbookBackupWorker);
     RunInThread runBeverages(beveragesWorker);
+    RunInThread runLoadTest(loadTestWorker);
     RunInThread runImage(imageWorker);
     waitUntilWorkerServiceAvailable(primaryBroker.context, addressbookWorker);
 

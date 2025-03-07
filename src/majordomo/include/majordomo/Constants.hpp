@@ -2,6 +2,7 @@
 #define OPENCMW_MAJORDOMO_CONSTANTS_H
 
 #include <string>
+#include <string_view>
 
 #include <URI.hpp>
 
@@ -10,6 +11,8 @@ namespace opencmw::majordomo {
 /*constexpr*/ const std::string SCHEME_TCP                 = "tcp";
 /*constexpr*/ const std::string SCHEME_MDP                 = "mdp";
 /*constexpr*/ const std::string SCHEME_MDS                 = "mds";
+constexpr std::string_view      SCHEME_HTTP                = "http";
+constexpr std::string_view      SCHEME_HTTPS               = "https";
 /*constexpr*/ const std::string SCHEME_INPROC              = "inproc";
 /*constexpr*/ const std::string SUFFIX_ROUTER              = "router";
 /*constexpr*/ const std::string SUFFIX_PUBLISHER           = "publisher";

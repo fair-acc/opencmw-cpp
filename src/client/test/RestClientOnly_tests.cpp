@@ -1,10 +1,4 @@
-#include <atomic>
-#include <string_view>
-#include <thread>
-
-#include <MIME.hpp>
 #include <RestClient.hpp>
-#include <URI.hpp>
 
 #include "concepts/client/helpers.hpp"
 
@@ -13,9 +7,13 @@ using namespace std::chrono_literals;
 // These are not main-local, as JS doesn't end when
 // C++ main ends
 namespace test {
+#ifndef __EMSCRIPTEN__
+opencmw::client::RestClient client(opencmw::client::VerifyServerCertificates(false));
+#else
 opencmw::client::RestClient client;
+#endif
 
-std::string                 schema() {
+std::string schema() {
     if (auto env = ::getenv("DISABLE_REST_HTTPS"); env != nullptr && std::string_view(env) == "1") {
         return "http";
     } else {
@@ -66,10 +64,6 @@ auto run               = rest_test_runner(
 } // namespace test
 
 int main() {
-#ifndef __EMSCRIPTEN__
-    opencmw::client::RestClient::CHECK_CERTIFICATES = false;
-#endif
-
     using namespace test;
 
 #ifndef __EMSCRIPTEN__

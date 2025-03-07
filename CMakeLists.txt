@@ -104,6 +104,8 @@ else()
   option(OPENCMW_ENABLE_COVERAGE "Enable Coverage" OFF)
 endif()
 option(OPENCMW_ENABLE_CONCEPTS "Enable Concepts Builds" ${opencmw_MASTER_PROJECT})
+option(OPENCMW_DEBUG_HTTP "Enable verbose HTTP output for debugging" OFF)
+option(OPENCMW_PROFILE_HTTP "Enable verbose HTTP output for profiling" OFF)
 
 # Very basic PCH example
 option(ENABLE_PCH "Enable Precompiled Headers" OFF)
@@ -118,6 +120,14 @@ if(ENABLE_PCH)
     <string>
     <map>
     <utility>)
+endif()
+
+if(OPENCMW_DEBUG_HTTP)
+  target_compile_definitions(opencmw_project_options INTERFACE -DOPENCMW_DEBUG_HTTP)
+endif()
+
+if(OPENCMW_PROFILE_HTTP)
+  target_compile_definitions(opencmw_project_options INTERFACE -DOPENCMW_PROFILE_HTTP)
 endif()
 
 if(OPENCMW_ENABLE_TESTING)
