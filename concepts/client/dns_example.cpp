@@ -12,8 +12,9 @@
 #include <emscripten/trace.h>
 #endif // EMSCRIPTEN
 
+#include <RestClient.hpp>
+
 #include <string_view>
-#include <thread>
 
 using namespace std::chrono_literals;
 using namespace opencmw;
@@ -32,12 +33,17 @@ using namespace opencmw::service::dns;
 void run_dns_server(std::string_view httpAddress, std::string_view mdpAddress) {
     majordomo::Broker<>                                         broker{ "Broker", {} };
     std::string                                                 rootPath{ "./" };
-    auto                                                        fs = cmrc::assets::get_filesystem();
-    majordomo::RestBackend<majordomo::PLAIN_HTTP, decltype(fs)> rest_backend{ broker, fs, URI<>{ std::string{ httpAddress } } };
+    majordomo::rest::Settings                                   rest;
+    rest.handlers = { majordomo::rest::cmrcHandler("/assets/*", "", std::make_shared<cmrc::embedded_filesystem>(cmrc::assets::get_filesystem()), "") };
+
+    if (const auto bound = broker.bindRest(rest); !bound) {
+        std::println(std::cerr, "failed to bind REST: {}", bound.error());
+        std::exit(1);
+        return;
+    }
     DnsWorkerType                                               dnsWorker{ broker, DnsHandler{} };
     broker.bind(URI<>{ std::string{ mdpAddress } }, majordomo::BindOption::Router);
 
-    RunInThread restThread(rest_backend);
     RunInThread dnsThread(dnsWorker);
     RunInThread brokerThread(broker);
 

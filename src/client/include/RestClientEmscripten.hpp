@@ -1,11 +1,11 @@
 #ifndef OPENCMW_CPP_RESTCLIENT_EMSCRIPTEN_HPP
 #define OPENCMW_CPP_RESTCLIENT_EMSCRIPTEN_HPP
 
+#include <emscripten.h>
 #include <emscripten/fetch.h>
 
 #include <memory>
 #include <string>
-#include <string_view>
 #include <unordered_set>
 
 #include <ClientCommon.hpp>
@@ -73,13 +73,13 @@ std::array<std::string, 4> getPreferredContentTypeHeader(const URI<STRICT> &uri,
     if (const auto acceptHeader = uri.queryParamMap().find("contentType"); acceptHeader != uri.queryParamMap().end() && acceptHeader->second) {
         mimeType = acceptHeader->second->c_str();
     }
-    return { ACCEPT_HEADER, mimeType, CONTENT_TYPE_HEADER, mimeType };
+    return { "accept", mimeType, "content-type", mimeType };
 }
 
 struct FetchPayload {
     Command command;
 
-    FetchPayload(Command &&_command)
+    explicit FetchPayload(Command &&_command)
         : command(std::move(_command)) {}
 
     FetchPayload(const FetchPayload &other)                = delete;
@@ -94,8 +94,7 @@ struct FetchPayload {
         if (!command.callback) {
             return;
         }
-        const bool msgOK    = status >= 200 && status < 400;
-        const auto errorMsg = msgOK ? errorMsgExt : std::format("{} - {}{}{}", status, errorMsgExt, body.empty() ? "" : ":", body);
+        const bool msgOK = status >= 200 && status < 400;
         try {
             command.callback(mdp::Message{
                              .id              = 0,
@@ -105,7 +104,7 @@ struct FetchPayload {
                              .clientRequestID = command.clientRequestID,
                              .topic           = command.topic,
                              .data            = msgOK ? IoBuffer(body.data(), body.size()) : IoBuffer(),
-                             .error           = std::string{ errorMsg },
+                             .error           = msgOK ? std::string(errorMsgExt) : std::format("{} - {}{}{}", status, errorMsgExt, body.empty() ? "" : ":", body),
                              .rbac            = IoBuffer() });
         } catch (const std::exception &e) {
             std::cerr
@@ -134,9 +133,12 @@ struct SubscriptionPayload;
 static std::unordered_set<std::unique_ptr<detail::SubscriptionPayload>, detail::pointer_hash, detail::pointer_equals> subscriptionPayloads;
 
 struct SubscriptionPayload : FetchPayload {
-    bool           _live = true;
-    MIME::MimeType _mimeType;
-    std::size_t    _update = 0;
+    bool                         _live = true;
+    MIME::MimeType               _mimeType;
+    std::size_t                  _update                      = 0;
+
+    static constexpr std::size_t kParallelLongPollingRequests = 3;
+    std::vector<std::uint64_t>   _requestedIndexes;
 
     SubscriptionPayload(Command &&_command, MIME::MimeType mimeType)
         : FetchPayload(std::move(_command)), _mimeType(std::move(mimeType)) {}
@@ -149,13 +151,25 @@ struct SubscriptionPayload : FetchPayload {
 
     SubscriptionPayload &operator=(SubscriptionPayload &&other) noexcept = default;
 
-    void                 requestNext() {
-        auto uri = opencmw::URI<opencmw::STRICT>::UriFactory(command.topic).addQueryParameter("LongPollingIdx", (_update == 0) ? "Next" : std::format("{}", _update)).build();
-        // std::print("URL 1 >>> {}, thread {}\n", uri.relativeRef(), std::this_thread::get_id());
+    void                 sendFollowUpRequestsFor(std::uint64_t longPollingIdx) {
+        auto it = std::ranges::find(_requestedIndexes, longPollingIdx);
+        if (it != _requestedIndexes.end()) {
+            _requestedIndexes.erase(it);
+        }
+        for (std::uint64_t i = longPollingIdx + 1; i <= longPollingIdx + kParallelLongPollingRequests; ++i) {
+            if (std::ranges::find(_requestedIndexes, i) == _requestedIndexes.end()) {
+                _requestedIndexes.push_back(i);
+                request(std::to_string(i));
+            }
+        }
+    }
+    void request(std::string longPollingIndex) {
+        auto                                                 uri             = opencmw::URI<opencmw::STRICT>::UriFactory(command.topic).addQueryParameter("LongPollingIdx", longPollingIndex).build();
         auto                                                 preferredHeader = detail::getPreferredContentTypeHeader(command.topic, _mimeType);
+
         std::array<const char *, preferredHeader.size() + 1> preferredHeaderEmscripten;
         std::transform(preferredHeader.cbegin(), preferredHeader.cend(), preferredHeaderEmscripten.begin(),
-                                [](const auto &str) { return str.c_str(); });
+                [](const auto &str) { return str.c_str(); });
         preferredHeaderEmscripten[preferredHeaderEmscripten.size() - 1] = nullptr;
 
         emscripten_fetch_attr_t attr{};
@@ -178,21 +192,28 @@ struct SubscriptionPayload : FetchPayload {
         attr.attributes     = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
         attr.requestHeaders = preferredHeaderEmscripten.data();
         attr.onsuccess      = [](emscripten_fetch_t *fetch) {
-            auto  payloadIt = getPayloadIt(fetch);
-            auto &payload   = *payloadIt;
-            // std::print("received update: {}, {}\n", fetch->url, payload->_update);
+            auto          payloadIt      = getPayloadIt(fetch);
+            auto         &payload        = *payloadIt;
+            std::uint64_t longPollingIdx = 0;
             if (payload->_live) {
                 std::string finalURL             = getFinalURL(fetch->id);
                 std::string longPollingIdxString = opencmw::URI<>(finalURL).queryParamMap().at("LongPollingIdx").value_or("0");
-                char       *end                  = longPollingIdxString.data() + longPollingIdxString.size();
-                std::size_t longPollingIdx       = strtoull(longPollingIdxString.data(), &end, 10);
+
+                char       *end                  = nullptr;
+                longPollingIdx                   = strtoull(longPollingIdxString.data(), &end, 10);
+                if (end != longPollingIdxString.data() + longPollingIdxString.size()) {
+                    std::println(std::cerr, "RestClientEmscripten::payloadError: url: {}, bytes: {}\n", fetch->url, fetch->numBytes);
+                    return;
+                }
+
                 if (payload->_update != 0 && longPollingIdx != payload->_update) {
                     std::print("received unexpected update: {}, expected {}\n", longPollingIdx, payload->_update);
                 }
                 payload->onsuccess(fetch->status, std::string_view(fetch->data, detail::checkedStringViewSize(fetch->numBytes)), static_cast<long>(longPollingIdx) - static_cast<long>(payload->_update));
                 emscripten_fetch_close(fetch);
-                payload->_update = longPollingIdx + 1;
-                payload->requestNext();
+
+                payload->_update = longPollingIdx;
+                payload->sendFollowUpRequestsFor(longPollingIdx);
             } else {
                 detail::subscriptionPayloads.erase(payloadIt);
             }
@@ -233,7 +254,7 @@ public:
      * Initialises a basic RestClient
      *
      * usage example:
-     * RestClient client("clientName", DefaultContentTypeHeader(MIME::HTML), MinIoThreads(2), MaxIoThreads(5), ClientCertificates(testCertificate))
+     * RestClient client("clientName", DefaultContentTypeHeader(MIME::HTML), ClientCertificates(testCertificate))
      *
      * @tparam Args see argument example above. Order is arbitrary.
      * @param initArgs
@@ -243,9 +264,9 @@ public:
         : _name(detail::find_argument_value<false, std::string>([] { return "RestClient"; }, initArgs...))
         , _mimeType(detail::find_argument_value<true, DefaultContentTypeHeader>([] { return MIME::BINARY; }, initArgs...)) {
     }
-    ~RestClient() { RestClient::stop(); };
+    ~RestClient() { RestClient::stop(); }
 
-    void                      stop() override {};
+    void                      stop() override {}
 
     std::vector<std::string>  protocols() noexcept override { return { "http", "https" }; }
 
@@ -308,7 +329,6 @@ private:
         attr.attributes     = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
         attr.requestHeaders = preferredHeaderEmscripten.data();
         attr.onsuccess      = [](emscripten_fetch_t *fetch) {
-            // std::print("RestClientEmscripten: got get/set reply: {}\n", fetch->url);
             getPayload(fetch)->onsuccess(fetch->status, std::string_view(fetch->data, detail::checkedStringViewSize(fetch->numBytes)));
             emscripten_fetch_close(fetch);
         };
@@ -330,7 +350,7 @@ private:
         std::print("starting subscription: {}, existing subscriptions: {}, from main thread: \n", cmd.topic.str(), detail::subscriptionPayloads.size(), emscripten_is_main_runtime_thread());
         if (emscripten_is_main_runtime_thread()) {
             try {
-                rawPayload->requestNext();
+                rawPayload->request("Next");
             } catch (std::runtime_error &e) {
                 rawPayload->onerror(500, e.what(), "");
             } catch (...) {
@@ -340,7 +360,7 @@ private:
             emscripten_async_run_in_main_runtime_thread(EM_FUNC_SIG_IP, +[](void *data) {
                 auto subPayload = reinterpret_cast<opencmw::client::detail::SubscriptionPayload *>(data);
                 try {
-                    subPayload->requestNext();
+                    subPayload->request("Next");
                 } catch (std::runtime_error &e) {
                     subPayload->onerror(500, e.what(), "");
                 } catch (...) {
@@ -351,7 +371,7 @@ private:
     }
 
     void stopSubscription(Command &&cmd) {
-        auto payloadIt = std::find_if(detail::subscriptionPayloads.begin(), detail::subscriptionPayloads.end(),
+        auto payloadIt = std::ranges::find_if(detail::subscriptionPayloads,
                 [&](const auto &ptr) {
                     return ptr->command.topic == cmd.topic;
                 });
