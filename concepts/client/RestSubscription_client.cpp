@@ -13,8 +13,11 @@ using namespace std::chrono_literals;
 // These are not main-local, as JS doesn't end when
 // C++ main ends
 namespace test_state {
+#ifndef __EMSCRIPTEN__
+opencmw::client::RestClient client(opencmw::client::VerifyServerCertificates(false));
+#else
 opencmw::client::RestClient client;
-
+#endif
 std::string                 schema() {
     if (auto env = ::getenv("DISABLE_REST_HTTPS"); env != nullptr && std::string_view(env) == "1") {
         return "http";
@@ -39,10 +42,6 @@ auto run              = rest_test_runner(
 } // namespace test_state
 
 int main() {
-#ifndef __EMSCRIPTEN__
-    opencmw::client::RestClient::CHECK_CERTIFICATES = false;
-#endif
-
     using namespace test_state;
 
 #ifndef __EMSCRIPTEN__

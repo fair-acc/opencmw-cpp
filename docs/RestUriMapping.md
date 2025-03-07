@@ -24,11 +24,11 @@ and `POLL` which maps to `LongPoll`.
 
 For clients that don't support a custom request operation,
 the non-standard HTTP requests can be invoked by defining the
-`X-OPENCMW-METHOD` HTTP header.
+`x-opencmw-method` HTTP header.
 
 If this header is defined, its value is used to override
 the HTTP request method.
-This means that if HTTP method is `GET` and `X-OPENCMW-METHOD=POLL`,
+This means that if HTTP method is `GET` and `x-opencmw-method=POLL`,
 that the REST backend will treat it as `LongPoll` request.
 
 Alternatively, one can override the Majordomo method

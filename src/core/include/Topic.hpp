@@ -68,6 +68,7 @@ private:
     Params      _params;
 
 public:
+    Topic()                                = default;
     Topic(const Topic &other)              = default;
     Topic &operator=(const Topic &)        = default;
     Topic(Topic &&) noexcept               = default;
@@ -168,7 +169,7 @@ private:
         , _params(std::move(params)) {
         if (serviceOrServiceAndQuery.find("?") != std::string::npos) {
             if (!_params.empty()) {
-                throw std::invalid_argument(std::format("Parameters are not empty ({}), and there are more in the service string ({})\n", _params, serviceOrServiceAndQuery));
+                throw std::invalid_argument(std::format("Parameters are not empty ({}), and there are more in the service string ({})", _params, serviceOrServiceAndQuery));
             }
             const auto  parsed   = opencmw::URI<RELAXED>(std::string(serviceOrServiceAndQuery));
             const auto &queryMap = parsed.queryParamMap();
@@ -176,7 +177,7 @@ private:
         }
 
         if (!isValidServiceName(_service)) {
-            throw std::invalid_argument(std::format("Invalid service name '{}'\n", _service));
+            throw std::invalid_argument(std::format("Invalid service name '{}'", _service));
         }
     }
 };

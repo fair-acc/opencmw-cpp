@@ -38,6 +38,16 @@ target_link_libraries(
           assets::rest
           assets::testImages)
 
+add_executable(MajordomoRest_LoadTestServer MajordomoRest_LoadTestServer.cpp)
+target_include_directories(MajordomoRest_LoadTestServer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(
+  MajordomoRest_LoadTestServer
+  PRIVATE majordomo
+  opencmw_project_options
+  opencmw_project_warnings
+  assets::rest
+  assets::testImages)
+
 if(NOT
    CMAKE_CXX_COMPILER_ID
    MATCHES
