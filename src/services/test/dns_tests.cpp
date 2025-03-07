@@ -3,15 +3,18 @@
 
 #include <catch2/catch.hpp>
 #include <filesystem>
-#include <services/dns.hpp>
 #include <string>
+
+#include <services/dns.hpp>
 
 #ifndef __EMSCRIPTEN__
 #include <Client.hpp>
+#include <cmrc/cmrc.hpp>
+#include <RestClient.hpp>
+#include <services/dns_client.hpp>
 // Concepts and tests use common types
 #include <concepts/majordomo/helpers.hpp>
 #include <majordomo/Broker.hpp>
-#include <majordomo/RestBackend.hpp>
 #endif
 
 namespace fs = std::filesystem;
@@ -211,12 +214,14 @@ TEST_CASE("data storage - Deleting Entries") {
 TEST_CASE("run services", "[DNS]") {
     FileDeleter                                                 fd;
     majordomo::Broker<>                                         broker{ "/Broker", {} };
-    std::string                                                 rootPath{ "./" };
-    auto                                                        fs = cmrc::assets::get_filesystem();
-    majordomo::RestBackend<majordomo::PLAIN_HTTP, decltype(fs)> rest_backend{ broker, fs };
+    majordomo::rest::Settings                                   rest;
+    const auto bound = broker.bindRest(rest);
+    if (!bound) {
+        FAIL(std::format("Failed to bind REST: {}", bound.error()));
+    }
+    REQUIRE(bound);
     DnsWorkerType                                               dnsWorker{ broker, {} };
 
-    RunInThread                                                 restThread(rest_backend);
     RunInThread                                                 brokerThread(broker);
     RunInThread                                                 dnsThread(dnsWorker);
 }
@@ -224,13 +229,12 @@ TEST_CASE("run services", "[DNS]") {
 TEST_CASE("client", "[DNS]") {
     FileDeleter                                                 fd;
     majordomo::Broker<>                                         broker{ "/Broker", {} };
-    std::string                                                 rootPath{ "./" };
-    auto                                                        fs = cmrc::assets::get_filesystem();
-    majordomo::RestBackend<majordomo::PLAIN_HTTP, decltype(fs)> rest_backend{ broker, fs };
+    majordomo::rest::Settings                                   rest;
+    const auto bound = broker.bindRest(rest);
+    REQUIRE(bound);
     DnsWorkerType                                               dnsWorker{ broker, DnsHandler{} };
     broker.bind(URI<>{ "inproc://dns_server" }, majordomo::BindOption::Router);
 
-    RunInThread                                               restThread(rest_backend);
     RunInThread                                               dnsThread(dnsWorker);
     RunInThread                                               brokerThread(broker);
 
@@ -268,11 +272,11 @@ TEST_CASE("client", "[DNS]") {
 TEST_CASE("query", "[DNS]") {
     FileDeleter                                                 fd;
     majordomo::Broker<>                                         broker{ "/Broker", {} };
-    auto                                                        fs = cmrc::assets::get_filesystem();
-    majordomo::RestBackend<majordomo::PLAIN_HTTP, decltype(fs)> rest_backend{ broker, fs };
-    DnsWorkerType                                               dnsWorker{ broker, DnsHandler{} };
+    majordomo::rest::Settings                                   rest;
+    const auto bound = broker.bindRest(rest);
+    REQUIRE(bound);
 
-    RunInThread                                                 restThread(rest_backend);
+    DnsWorkerType                                               dnsWorker{ broker, DnsHandler{} };
     RunInThread                                                 brokerThread(broker);
     RunInThread                                                 dnsThread(dnsWorker);
 
@@ -308,11 +312,10 @@ TEST_CASE("query", "[DNS]") {
 TEST_CASE("client unregister entries", "[DNS]") {
     FileDeleter                                                 fd;
     majordomo::Broker<>                                         broker{ "/Broker", {} };
-    auto                                                        fs = cmrc::assets::get_filesystem();
-    majordomo::RestBackend<majordomo::PLAIN_HTTP, decltype(fs)> rest_backend{ broker, fs };
+    majordomo::rest::Settings                                   rest;
+    const auto bound = broker.bindRest(rest);
+    REQUIRE(bound);
     DnsWorkerType                                               dnsWorker{ broker, DnsHandler{} };
-
-    RunInThread                                                 restThread(rest_backend);
     RunInThread                                                 brokerThread(broker);
     RunInThread                                                 dnsThread(dnsWorker);
 
@@ -320,7 +323,7 @@ TEST_CASE("client unregister entries", "[DNS]") {
 
     std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
     clients.emplace_back(std::make_unique<client::MDClientCtx>(broker.context, 20ms, "dnsTestClient"));
-    clients.emplace_back(std::make_unique<client::RestClient>(opencmw::client::DefaultContentTypeHeader(MIME::BINARY)));
+    clients.emplace_back(std::make_unique<client::RestClient>(client::DefaultContentTypeHeader(MIME::BINARY)));
     client::ClientContext clientContext{ std::move(clients) };
     DnsClient             restClient{ clientContext, URI<>{ "http://localhost:8080/dns" } };
     restClient.registerSignals({ entry_a, entry_b, entry_c });

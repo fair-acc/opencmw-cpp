@@ -1,7 +1,6 @@
-#ifndef OPENCMW_CPP_DATASOUCREPUBLISHER_HPP
-#define OPENCMW_CPP_DATASOUCREPUBLISHER_HPP
+#ifndef OPENCMW_CPP_CLIENTCONTEXT_HPP
+#define OPENCMW_CPP_CLIENTCONTEXT_HPP
 
-#include <chrono>
 #include <functional>
 #include <memory>
 #include <thread>
@@ -123,4 +122,4 @@ private:
 };
 
 } // namespace opencmw::client
-#endif // OPENCMW_CPP_DATASOUCREPUBLISHER_HPP
+#endif // OPENCMW_CPP_CLIENTCONTEXT_HPP
