@@ -8,6 +8,7 @@ if(EMSCRIPTEN)
   message("Disabled majordomo and mdp client module because they are not compatible with emscripten builds")
 else()
   add_subdirectory(majordomo)
+  add_subdirectory(nghttp2)
   add_subdirectory(zmq)
 endif()
 

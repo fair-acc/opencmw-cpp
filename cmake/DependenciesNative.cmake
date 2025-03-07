@@ -65,3 +65,29 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(cpp-httplib zeromq openssl-source)
 
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/contrib) # replace contrib by extras for catch2 v3.x.x
+
+option(ENABLE_NGHTTP2_DEBUG "Enable verbose nghttp2 debug output" OFF)
+
+include(ExternalProject)
+ExternalProject_Add(Nghttp2Project
+        GIT_REPOSITORY https://github.com/nghttp2/nghttp2
+        GIT_TAG v1.65.0
+        GIT_SHALLOW ON
+        BUILD_BYPRODUCTS ${CMAKE_BINARY_DIR}/nghttp2-install/lib/libnghttp2.a
+        CMAKE_ARGS
+        -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_BINARY_DIR}/nghttp2-install
+        -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
+        -DENABLE_LIB_ONLY:BOOL=ON
+        -DENABLE_HTTP3:BOOL=OFF
+        -DENABLE_DEBUG:BOOL=${ENABLE_NGHTTP2_DEBUG}
+        -DBUILD_STATIC_LIBS:BOOL=ON
+        -BUILD_SHARED_LIBS:BOOL=OFF
+        -DENABLE_DOC:BOOL=OFF
+)
+
+add_library(nghttp2-static STATIC IMPORTED STATIC GLOBAL)
+set_target_properties(nghttp2-static PROPERTIES
+        IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/nghttp2-install/lib/libnghttp2.a"
+        INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/nghttp2-install/include"
+)
+add_dependencies(nghttp2-static Nghttp2Project)

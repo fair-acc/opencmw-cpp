@@ -13,7 +13,7 @@ target_include_directories(services INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_
 target_link_libraries(services INTERFACE serialiser client sodium)
 
 if(NOT EMSCRIPTEN)
-  target_link_libraries(services INTERFACE majordomo)
+  target_link_libraries(services INTERFACE majordomo httplib::httplib)
 endif()
 
 install(
