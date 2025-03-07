@@ -96,7 +96,7 @@ input.topicInput { border: 0; width: 100px; border-bottom: 1px solid silver; }
             };
 
             listenButton.onclick = () => {
-                        let post = { method: 'GET', headers: { 'X-OPENCMW-METHOD' : 'POLL' } };
+                        let post = { method: 'GET', headers: { 'x-opencmw-method' : 'POLL' } };
 
                 fetch(href + "/" + topicInput.value, post)
                     .then(response => response.text())
