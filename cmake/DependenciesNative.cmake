@@ -35,7 +35,7 @@ add_library(mustache::mustache ALIAS mustache)
 FetchContent_Declare(
         zeromq
         GIT_REPOSITORY https://github.com/zeromq/libzmq.git
-        GIT_TAG v4.3.4 # latest v4.3.4
+        GIT_TAG v4.3.5 # latest as of 2025-03-27
 )
 set(ZMQ_BUILD_TESTS OFF CACHE BOOL "Build the tests for ZeroMQ")
 # suppress warnings for missing zeromq dependencies by disabling some features
