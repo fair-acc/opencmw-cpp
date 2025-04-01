@@ -325,11 +325,11 @@ private:
                 }
                 return;
             default:
-                assert(!"not implemented");
+                assert(false && "not implemented");
                 return;
             }
         } else {
-            assert(!"not implemented");
+            assert(false && "not implemented");
         }
     }
 

@@ -157,7 +157,7 @@ TEST_CASE("Multiple Rest Client Get/Set Test - HTTPS", "[Client]") {
     dones[1] = false;
     dones[2] = false;
     dones[3] = false;
-    std::atomic<int> counter{ 0 };
+    std::atomic<std::size_t> counter{ 0 };
     auto             makeCommand = [&]() {
         IoBuffer data;
         data.put('A');
@@ -169,8 +169,8 @@ TEST_CASE("Multiple Rest Client Get/Set Test - HTTPS", "[Client]") {
         command.command  = mdp::Command::Get;
         command.topic    = URI<STRICT>("https://localhost:8080/endPoint");
         command.data     = std::move(data);
-        command.callback = [&dones, &counter](const mdp::Message             &/*rep*/) {
-            int currentCounter = counter.fetch_add(1, std::memory_order_relaxed);
+        command.callback = [&dones, &counter](const mdp::Message         &/*rep*/) {
+            std::size_t currentCounter = counter.fetch_add(1, std::memory_order_relaxed);
             dones[currentCounter].store(true, std::memory_order_release);
             // Assuming you have access to 'done' variable, uncomment the following line
             dones[currentCounter].notify_all();

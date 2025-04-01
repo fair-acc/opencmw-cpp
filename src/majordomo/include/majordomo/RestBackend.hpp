@@ -7,6 +7,7 @@
 #include <iostream>
 #include <optional>
 #include <regex>
+#include <shared_mutex>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-nonliteral"
@@ -15,6 +16,7 @@
 #pragma GCC diagnostic ignored "-Wshadow"
 #pragma GCC diagnostic ignored "-Wuninitialized"
 #pragma GCC diagnostic ignored "-Wuseless-cast"
+#undef CPPHTTPLIB_THREAD_POOL_COUNT
 #define CPPHTTPLIB_THREAD_POOL_COUNT 8
 #include <httplib.h>
 #pragma GCC diagnostic pop
@@ -533,7 +535,7 @@ public:
             return worker.respondWithSubscription(response, topic);
         default:
             // std::unreachable() is C++23
-            assert(!"We have already checked that restMethod is not Invalid");
+            assert(false && "We have already checked that restMethod is not Invalid");
             return false;
         }
     }
