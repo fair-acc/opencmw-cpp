@@ -15,12 +15,10 @@
 #include <fmt/ostream.h>
 #include <fmt/ranges.h>
 #include <refl.hpp>
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wuseless-cast" // suppress warning caused by gsl-lite: https://github.com/gsl-lite/gsl-lite/issues/325
+
 #include <units/concepts.h>
 #include <units/quantity.h>
 #include <units/quantity_io.h>
-#pragma GCC diagnostic pop
 
 #define FWD(x) std::forward<decltype(x)>(x)               // short-hand notation
 #define forceinline inline __attribute__((always_inline)) // use this for hot-spots only <-> may bloat code size, not fit into cache and consequently slow down execution

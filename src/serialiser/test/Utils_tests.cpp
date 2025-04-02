@@ -7,8 +7,6 @@
 #include <iostream>
 #include <string_view>
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wuseless-cast" // suppress warning caused by gsl-lite: https://github.com/gsl-lite/gsl-lite/issues/325
 #include <units/isq/si/electric_current.h>
 #include <units/isq/si/energy.h>
 #include <units/isq/si/length.h>
@@ -16,7 +14,6 @@
 #include <units/isq/si/resistance.h>
 #include <units/isq/si/speed.h>
 #include <units/isq/si/time.h>
-#pragma GCC diagnostic pop
 
 #include <Debug.hpp>
 #include <IoSerialiser.hpp>
