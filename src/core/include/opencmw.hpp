@@ -2,6 +2,8 @@
 #define OPENCMW_H
 
 #include <array>
+#include <cerrno>
+#include <charconv>
 #include <chrono>
 #include <concepts>
 #include <map>
@@ -15,12 +17,10 @@
 #include <fmt/ostream.h>
 #include <fmt/ranges.h>
 #include <refl.hpp>
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wuseless-cast" // suppress warning caused by gsl-lite: https://github.com/gsl-lite/gsl-lite/issues/325
+
 #include <units/concepts.h>
 #include <units/quantity.h>
 #include <units/quantity_io.h>
-#pragma GCC diagnostic pop
 
 #define FWD(x) std::forward<decltype(x)>(x)               // short-hand notation
 #define forceinline inline __attribute__((always_inline)) // use this for hot-spots only <-> may bloat code size, not fit into cache and consequently slow down execution
@@ -751,6 +751,51 @@ inline constexpr void diffView(std::ostream &os, const T &lhs, const T &rhs) {
     if (indent == 0) {
         os << std::endl;
     }
+}
+
+template<typename T>
+static std::errc parseNumber(std::string_view str, T &number) {
+    // wrapper for missing std::from_chars() support for floating point types in clang < 20
+    // Note that this implementation is intolerant to trailing non-number junk in the given string.
+#ifdef __clang__
+    if constexpr (std::is_same_v<T, float>) {
+        char *endPtr = nullptr;
+        float value  = std::strtof(str.data(), &endPtr);
+        if (endPtr == str.data() + str.size() && errno == 0) {
+            number = value;
+            return std::errc{};
+        }
+        return std::errc::invalid_argument;
+    } else if constexpr (std::is_same_v<T, double>) {
+        char  *endPtr = nullptr;
+        double value  = std::strtod(str.data(), &endPtr);
+        if (endPtr == str.data() + str.size() && errno == 0) {
+            number = value;
+            return std::errc{};
+        }
+        return std::errc::invalid_argument;
+    } else if constexpr (std::is_same_v<T, long double>) {
+        char       *endPtr = nullptr;
+        long double value  = std::strtold(str.data(), &endPtr);
+        if (endPtr == str.data() + str.size() && errno == 0) {
+            number = value;
+            return std::errc{};
+        }
+        return std::errc::invalid_argument;
+    } else {
+        const auto rc = std::from_chars(str.data(), str.data() + str.size(), number);
+        if (rc.ptr == str.data() + str.size() && rc.ec == std::errc{}) {
+            return std::errc{};
+        }
+        return rc.ec == std::errc{} ? std::errc::invalid_argument : rc.ec;
+    }
+#else
+    const auto rc = std::from_chars(str.data(), str.data() + str.size(), number);
+    if (rc.ptr == str.data() + str.size() && rc.ec == std::errc{}) {
+        return std::errc{};
+    }
+    return rc.ec == std::errc{} ? std::errc::invalid_argument : rc.ec;
+#endif
 }
 
 } // namespace opencmw

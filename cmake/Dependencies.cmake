@@ -25,7 +25,7 @@ FetchContent_Declare(
 FetchContent_Declare(
         gsl-lite
         GIT_REPOSITORY https://github.com/gsl-lite/gsl-lite.git
-        GIT_TAG v0.40.0
+        GIT_TAG v0.42.0 # latest as of 2025-04-02
 )
 
 set(FMT_INSTALL True)

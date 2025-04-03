@@ -331,8 +331,6 @@ private:
                             std::string updateIdxString = URI<STRICT>(location).queryParamMap().at(std::string(LONG_POLLING_IDX_TAG)).value_or("0");
                             char       *end             = updateIdxString.data() + updateIdxString.size();
                             longPollingIdx              = strtoull(updateIdxString.data(), &end, 10) + 1;
-                            auto headerTimestamp        = result->get_header_value_u64("X-TIMESTAMP");
-                            auto latency                = headerTimestamp - std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
                         } else { // failed or server is down -> wait until retry
                             if (_run) {
                                 returnMdpMessage(cmd, result, fmt::format("Long-Polling-GET request failed for {}: {}", cmd.topic.str(), static_cast<int>(result.error())));

@@ -734,8 +734,9 @@ private:
             auto workerIt = service.waiting.begin();
             while (workerIt != service.waiting.end()) {
                 if ((*workerIt)->expiry < now) {
+                    auto id  = (*workerIt)->id;
                     workerIt = service.waiting.erase(workerIt);
-                    _workers.erase((*workerIt)->id);
+                    _workers.erase(id);
                 } else {
                     ++workerIt;
                 }

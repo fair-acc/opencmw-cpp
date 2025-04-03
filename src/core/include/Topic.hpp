@@ -60,7 +60,7 @@ constexpr bool isValidServiceName(std::string_view str) {
  *    NOTIFY: Here the frame contains a URI (with unspecified ordering of query parameters).
  **/
 struct Topic {
-    using Params = std::unordered_map<std::string, std::optional<std::string>>;
+    using Params = std::map<std::string, std::optional<std::string>>;
 
 private:
     std::string _service;
@@ -86,7 +86,8 @@ public:
 
     template<uri_check CHECK>
     static Topic fromMdpTopic(const URI<CHECK> &topic) {
-        return Topic(topic.path().value_or("/"), topic.queryParamMap());
+        const auto &queryMap = topic.queryParamMap();
+        return Topic(topic.path().value_or("/"), { queryMap.begin(), queryMap.end() });
     }
 
     static Topic fromZmqTopic(std::string_view topic) {
@@ -97,7 +98,7 @@ public:
     }
 
     opencmw::URI<STRICT> toMdpTopic() const {
-        return opencmw::URI<STRICT>::factory().path(_service).setQuery(_params).build();
+        return opencmw::URI<STRICT>::factory().path(_service).setQuery({ _params.begin(), _params.end() }).build();
     }
 
     std::string toZmqTopic() const {
@@ -109,8 +110,8 @@ public:
         }
         zmqTopic += "?"s;
         bool isFirst = true;
-        // sort params
-        for (const auto &[key, value] : std::map{ _params.begin(), _params.end() }) {
+        // relies on std::map being sorted by key
+        for (const auto &[key, value] : _params) {
             if (!isFirst) {
                 zmqTopic += "&"s;
             }
@@ -169,7 +170,8 @@ private:
                 throw std::invalid_argument(fmt::format("Parameters are not empty ({}), and there are more in the service string ({})\n", _params, serviceOrServiceAndQuery));
             }
             const auto parsed = opencmw::URI<RELAXED>(std::string(serviceOrServiceAndQuery));
-            _params           = parsed.queryParamMap();
+            const auto &queryMap = parsed.queryParamMap();
+            _params.insert(queryMap.begin(), queryMap.end());
         }
 
         if (!isValidServiceName(_service)) {

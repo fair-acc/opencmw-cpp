@@ -91,7 +91,12 @@ TEST_CASE("SettingBase basic tests", "[SettingBase]") {
     REQUIRE(!r3);
     REQUIRE(a.getPendingTransactions().size() == 1);
     REQUIRE(a.nHistory() == 3);
-    auto [r4, t4] = a.commit(40);
+#ifdef __clang__ // workaround to ensure t3 != t4 (system_clock::now() must return different values) (issue #368)
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+#endif
+    auto [r4, t4]
+            = a.commit(40);
+    REQUIRE(t3 != t4);
     REQUIRE(r4);
     REQUIRE(a.nHistory() == 4);
     REQUIRE(a.get(t4) == 40);

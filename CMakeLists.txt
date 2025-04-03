@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.19)
+cmake_minimum_required(VERSION 3.5)
 
 project(opencmw-cpp CXX C) # C is needed to compile the internal version of libsodium
 set(CMAKE_CXX_STANDARD 23)
@@ -55,8 +55,12 @@ elseif(EMSCRIPTEN)
     "SHELL:-s PTHREAD_POOL_SIZE=30"
     "SHELL:-s FETCH=1")
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 15.0.0)
-    message(FATAL_ERROR "Clang>=15.0.0 required, but clang ${CMAKE_CXX_COMPILER_VERSION} detected.")
+  # set default C++ STL to Clang's libc++ when using Clang
+  add_compile_options(-stdlib=libc++)
+  add_compile_options(-fexperimental-library) # needed for std::jthread with clang-18
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -stdlib=libc++ -lc++")
+  if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 18.0.0)
+    message(FATAL_ERROR "Clang>=18.0.0 required, but clang ${CMAKE_CXX_COMPILER_VERSION} detected.")
   endif()
 else()
   message(

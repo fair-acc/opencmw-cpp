@@ -8,6 +8,7 @@
 
 #include <charconv>
 #include <cstdlib>
+#include <optional>
 #include <thread>
 
 // Concepts and tests use common types
@@ -370,6 +371,24 @@ TEST_CASE("Test Topic class", "[mdp][topic]") {
         REQUIRE(t1.toZmqTopic() == t3.toZmqTopic());
         REQUIRE(t1.toMdpTopic().path().value_or("") == "/a/service");
         REQUIRE(t1.toMdpTopic().queryParamMap().empty());
+    }
+
+    SECTION("hash function") {
+        const auto t1 = Topic::fromString("/a/service?p1=foo", {});
+        const auto t2 = Topic::fromString("/a/service", { { "p1", "foo" } });
+        REQUIRE(t1 == t2);
+        REQUIRE(t1.hash() == t2.hash());
+        const auto t3 = Topic::fromString("/a/service?p1=foo&p2=bar", {});
+        const auto t4 = Topic::fromString("/a/service?p2=bar&p1=foo", {});
+        const auto t5 = Topic::fromString("/a/service", { { "p1", "foo" }, { "p2", "bar" } });
+        REQUIRE(t3 == t4);
+        REQUIRE(t4 == t5);
+        REQUIRE(t3.hash() == t4.hash());
+        REQUIRE(t4.hash() == t5.hash());
+        const auto t6 = Topic::fromString("/a/service?p1=", {});
+        const auto t7 = Topic::fromString("/a/service", { { "p1", std::nullopt } });
+        REQUIRE(t6 == t7);
+        REQUIRE(t6.hash() == t7.hash());
     }
 }
 

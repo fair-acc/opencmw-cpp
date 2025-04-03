@@ -24,7 +24,7 @@ public:
     [[nodiscard]] static constexpr std::string_view name() { return roleName.data_; }
     [[nodiscard]] static constexpr Permission       rights() { return accessRights; }
     template<typename ROLE>
-    [[nodiscard]] constexpr bool operator==(const ROLE &other) const noexcept {
+    [[nodiscard]] constexpr bool operator==(const ROLE &) const noexcept {
         return std::is_same_v<ROLE, Role<roleName, accessRights>>;
     }
 };

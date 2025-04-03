@@ -347,7 +347,7 @@ public:
         if constexpr (cpuID >= 0) {
             if (cpuID >= _affinityMask.size() || !_affinityMask[cpuID]) {
                 throw std::invalid_argument(fmt::format("cpuID {} is out of range [0,{}] or incompatible with set affinity mask [{}]",
-                        cpuID, _affinityMask.size(), _affinityMask));
+                        cpuID, _affinityMask.size(), fmt::join(_affinityMask, ",")));
             }
         }
         std::promise<R> promise;

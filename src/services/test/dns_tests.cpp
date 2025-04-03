@@ -390,7 +390,7 @@ TEST_CASE("registering", "[DNS]") {
         entries[2].ttl = std::chrono::system_clock::now();
         auto ttl       = entries[2].ttl;
         auto reEntry   = entries[2];
-#ifdef __EMSCRIPTEN__
+#if (defined __EMSCRIPTEN__) || defined(__clang__)
         std::this_thread::sleep_for(0.5s); // seems that the clock resultion results in fReEntry->ttl == ttl
 #endif
         ds.addEntry(reEntry);

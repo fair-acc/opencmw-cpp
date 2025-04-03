@@ -85,8 +85,7 @@ struct QuerySerialiser<T> {
             throw std::invalid_argument("Empty string is not a valid number");
         }
 
-        const auto r = std::from_chars(maybeStr->data(), maybeStr->data() + maybeStr->size(), v);
-        if (r.ec == std::errc::invalid_argument) {
+        if (const auto rc = parseNumber(maybeStr.value(), v); rc == std::errc::invalid_argument) {
             throw std::invalid_argument(fmt::format("Cannot parse as number '{}'", *maybeStr));
         }
     }
@@ -126,8 +125,8 @@ struct QuerySerialiser<opencmw::MIME::MimeType> {
     }
 };
 
-template<ReflectableClass C>
-C deserialise(const QueryMap &m) {
+template<ReflectableClass C, MapLike TMap>
+C deserialise(const TMap &m) {
     C context;
 
     for_each(refl::reflect(context).members, [&](const auto member, [[maybe_unused]] const auto index) {

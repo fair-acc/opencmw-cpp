@@ -47,7 +47,6 @@ public:
     bool processRequest(Callback handler) {
         const auto result           = zmq::invoke(zmq_poll, _pollerItems.data(), static_cast<int>(_pollerItems.size()), _settings.heartbeatInterval.count());
         bool       anythingReceived = false;
-        int        loopCount        = 0;
         do {
             auto maybeMessage = zmq::receive<mdp::MessageFormat::WithoutSourceId>(_socket.value());
             if (!maybeMessage) { // empty message
@@ -62,8 +61,6 @@ public:
             auto reply = replyFromRequest(message);
             handler(message, reply);
             zmq::send(std::move(reply), _socket.value()).assertSuccess();
-
-            loopCount++;
         } while (anythingReceived);
         // N.B. block until data arrived or for at most one heart-beat interval
         return result.isValid();

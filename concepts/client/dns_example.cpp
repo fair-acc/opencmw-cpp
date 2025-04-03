@@ -58,7 +58,8 @@ void register_device(auto &client, std::string_view signal) {
 }
 
 void query_devices(auto &client, std::string_view query) {
-    Entry query_filter{ .signal_name = std::string{ query } };
+    Entry query_filter;
+    query_filter.signal_name = std::string{ query };
     auto  signals = client.querySignals(query_filter);
     std::cout << "found signal: " << signals << std::endl;
 }
