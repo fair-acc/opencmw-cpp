@@ -53,8 +53,6 @@ constexpr RequiredType find_argument_value(Func defaultGenerator, Items... args)
     }
 }
 
-constexpr const char *ACCEPT_HEADER       = "accept";
-constexpr const char *CONTENT_TYPE_HEADER = "content-type";
 } // namespace detail
 
 class DefaultContentTypeHeader {
