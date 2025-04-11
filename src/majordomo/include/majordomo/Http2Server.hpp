@@ -41,15 +41,11 @@ namespace opencmw::majordomo::detail::nghttp2 {
 using namespace opencmw::nghttp2;
 using namespace opencmw::nghttp2::detail;
 
-inline int alpn_select_proto_cb(SSL *ssl, const unsigned char **out,
+inline int alpn_select_proto_cb(SSL * /*ssl*/, const unsigned char **out,
         unsigned char *outlen, const unsigned char *in,
-        unsigned int inlen, void *arg) {
-    int rv;
-    (void) ssl;
-    (void) arg;
-
-    rv = nghttp2_select_alpn(out, outlen, in, inlen);
-    if (rv != 1) {
+        unsigned int inlen,
+        void * /*arg*/) {
+    if (nghttp2_select_alpn(out, outlen, in, inlen) != -1) {
         return SSL_TLSEXT_ERR_NOACK;
     }
 
@@ -229,80 +225,31 @@ struct SharedData {
 
 constexpr int kHttpOk       = 200;
 constexpr int kHttpError    = 500;
-constexpr int kHttpTimeout  = 504;
 constexpr int kFileNotFound = 404;
 
-struct Session {
-    using PendingRequest = std::tuple<std::uint64_t, std::int32_t>;              // requestId, streamId
-    using PendingPoll    = std::tuple<std::string, std::uint64_t, std::int32_t>; // zmqTopic, PollingIndex, streamId
-    TcpSocket                                  _socket;
-    nghttp2_session                           *_session = nullptr;
-    WriteBuffer<4096>                          _writeBuffer;
-    std::map<std::int32_t, Request>            _requestsByStreamId;
-    std::map<std::int32_t, ResponseData>       _responsesByStreamId;
+template<typename Derived, typename TStreamId>
+struct SessionBase {
+    using PendingRequest = std::tuple<std::uint64_t, TStreamId>;              // requestId, streamId
+    using PendingPoll    = std::tuple<std::string, std::uint64_t, TStreamId>; // zmqTopic, PollingIndex, streamId
+    std::map<TStreamId, Request>               _requestsByStreamId;
+    std::map<TStreamId, ResponseData>          _responsesByStreamId;
     std::vector<PendingRequest>                _pendingRequests;
     std::vector<PendingPoll>                   _pendingPolls;
     std::shared_ptr<SharedData>                _sharedData;
 
-    explicit Session(TcpSocket &&socket, std::shared_ptr<SharedData> sharedData)
-        : _socket(std::move(socket)), _sharedData(std::move(sharedData)) {
-        nghttp2_session_callbacks *callbacks;
-        nghttp2_session_callbacks_new(&callbacks);
-        nghttp2_session_callbacks_set_on_frame_recv_callback(callbacks, [](nghttp2_session *, const nghttp2_frame *frame, void *user_data) {
-            auto session = static_cast<Session *>(user_data);
-            return session->frame_recv_callback(frame);
-        });
-        nghttp2_session_callbacks_set_on_frame_send_callback(callbacks, [](nghttp2_session *, const nghttp2_frame *frame, void *user_data) {
-            auto session = static_cast<Session *>(user_data);
-            return session->frame_send_callback(frame);
-        });
-        nghttp2_session_callbacks_set_on_frame_not_send_callback(callbacks, [](nghttp2_session *, const nghttp2_frame *frame, int lib_error_code, void *user_data) {
-            auto session = static_cast<Session *>(user_data);
-            return session->frame_not_send_callback(frame, lib_error_code);
-        });
-        nghttp2_session_callbacks_set_on_data_chunk_recv_callback(callbacks, [](nghttp2_session *, uint8_t flags, int32_t stream_id, const uint8_t *data, size_t len, void *user_data) {
-            auto session = static_cast<Session *>(user_data);
-            return session->data_chunk_recv_callback(flags, stream_id, { reinterpret_cast<const char *>(data), len });
-        });
-        nghttp2_session_callbacks_set_on_stream_close_callback(callbacks, [](nghttp2_session *, int32_t stream_id, uint32_t error_code, void *user_data) {
-            auto session = static_cast<Session *>(user_data);
-            return session->stream_closed_callback(stream_id, error_code);
-        });
-        nghttp2_session_callbacks_set_on_header_callback2(callbacks, [](nghttp2_session *, const nghttp2_frame *frame, nghttp2_rcbuf *name,
-                                                                             nghttp2_rcbuf *value, uint8_t flags, void *user_data) {
-            auto session = static_cast<Session *>(user_data);
-            return session->header_callback(frame, as_view(name), as_view(value), flags);
-        });
-        nghttp2_session_callbacks_set_on_invalid_frame_recv_callback(callbacks, [](nghttp2_session *, const nghttp2_frame *frame, int lib_error_code, void *user_data) {
-            auto session = static_cast<Session *>(user_data);
-            return session->invalid_frame_recv_callback(frame, lib_error_code);
-        });
-        nghttp2_session_callbacks_set_error_callback2(callbacks, [](nghttp2_session *, int lib_error_code, const char *msg, size_t len, void *user_data) {
-            auto session = static_cast<Session *>(user_data);
-            return session->error_callback(lib_error_code, msg, len);
-        });
-        nghttp2_session_server_new(&_session, callbacks, this);
-        nghttp2_session_callbacks_del(callbacks);
+    explicit SessionBase(std::shared_ptr<SharedData> sharedData)
+        : _sharedData(std::move(sharedData)) {
     }
 
-    ~Session() {
-        nghttp2_session_del(_session);
-    }
+    SessionBase(const SessionBase &)                                   = delete;
+    SessionBase &operator=(const SessionBase &)                        = delete;
+    SessionBase(SessionBase &&other)                                   = delete;
+    SessionBase                        &operator=(SessionBase &&other) = delete;
 
-    Session(const Session &)                          = delete;
-    Session &operator=(const Session &)               = delete;
-    Session(Session &&other)                          = delete;
-    Session               &operator=(Session &&other) = delete;
+    [[nodiscard]] constexpr auto       &self() noexcept { return *static_cast<Derived *>(this); }
+    [[nodiscard]] constexpr const auto &self() const noexcept { return *static_cast<const Derived *>(this); }
 
-    bool                   wantsToRead() const {
-        return _socket._state == TcpSocket::Connected ? nghttp2_session_want_read(_session) : (_socket._state == TcpSocket::SSLAcceptWantsRead);
-    }
-
-    bool wantsToWrite() const {
-        return _socket._state == TcpSocket::Connected ? _writeBuffer.wantsToWrite(_session) : (_socket._state == TcpSocket::SSLAcceptWantsWrite);
-    }
-
-    std::optional<Message> processGetSetRequest(std::int32_t streamId, Request &request, IdGenerator &idGenerator) {
+    std::optional<Message>              processGetSetRequest(TStreamId streamId, Request &request, IdGenerator &idGenerator) {
         Message result;
         request.topic.addParam("contentType", request.acceptedMime());
         result.command         = request.method == RestMethod::Get ? mdp::Command::Get : mdp::Command::Set;
@@ -314,6 +261,268 @@ struct Session {
         _pendingRequests.emplace_back(id, streamId);
         return result;
     };
+
+    void respondToLongPoll(TStreamId streamId, std::uint64_t index, Message &&msg) {
+        auto timestamp = std::to_string(opencmw::load_test::timestamp().count());
+        self().sendResponse(streamId, kHttpOk, std::move(msg), { nv(u8span("x-opencmw-long-polling-idx"), u8span(std::to_string(index))), nv(u8span("x-timestamp"), u8span(timestamp)) });
+    }
+
+    void respondToLongPollWithError(TStreamId streamId, std::string_view error, int code, std::uint64_t index) {
+        Message response = {};
+        response.error   = std::string(error);
+        self().sendResponse(streamId, code, std::move(response), { nv(u8span("x-opencmw-long-polling-idx"), u8span(std::to_string(index))) });
+    }
+
+    void respondWithError(TStreamId streamId, std::string_view error, int code = kHttpError, std::vector<nghttp2_nv> extraHeaders = {}) {
+        Message response = {};
+        response.error   = std::string(error);
+        self().sendResponse(streamId, code, std::move(response), std::move(extraHeaders));
+    }
+
+    void respondWithLongPollingRedirect(TStreamId streamId, const URI<> &topic, std::size_t longPollIdx) {
+        auto location = URI<>::UriFactory(topic).addQueryParameter("LongPollingIdx", std::to_string(longPollIdx)).build();
+        self().respondWithRedirect(streamId, location.str());
+    }
+
+    std::optional<Message> processLongPollRequest(TStreamId streamId, const Request &request) {
+        std::optional<Message> result;
+        const auto             zmqTopic = request.topic.toZmqTopic();
+        auto                   entryIt  = _sharedData->_subscriptionCache.find(zmqTopic);
+        if (entryIt == _sharedData->_subscriptionCache.end()) {
+            entryIt         = _sharedData->_subscriptionCache.try_emplace(zmqTopic, SubscriptionCacheEntry{}).first;
+            result          = Message{};
+            result->command = mdp::Command::Subscribe;
+            result->topic   = request.topic.toMdpTopic();
+        }
+        auto &entry = entryIt->second;
+        if (request.longPollIndex == "Next") {
+            respondWithLongPollingRedirect(streamId, request.topic.toMdpTopic(), entry.nextIndex());
+            return result;
+        } else if (request.longPollIndex == "Last") {
+            const std::size_t last = entry.messages.empty() ? entry.nextIndex() : entry.lastIndex();
+            respondWithLongPollingRedirect(streamId, request.topic.toMdpTopic(), last);
+            return result;
+        }
+
+        std::uint64_t index = 0;
+        if (auto [ptr, ec] = std::from_chars(request.longPollIndex.data(), request.longPollIndex.data() + request.longPollIndex.size(), index); ec != std::errc()) {
+            respondWithError(streamId, fmt::format("Malformed LongPollingIdx '{}'", request.longPollIndex));
+            return {};
+        }
+
+#ifdef OPENCMW_PROFILE_HTTP
+        const std::size_t last = entry.messages.empty() ? entry.nextIndex() : entry.lastIndex();
+        if (index < last) {
+            fmt::println(std::cerr, "Server::LongPoll: index {} < last {}", index, last);
+        }
+#endif
+        if (index < entry.firstIndex) {
+            // index is too old, redirect to the next index
+            HTTP_DBG("Server::LongPoll: index {} < firstIndex {}", index, entry.firstIndex);
+            respondWithLongPollingRedirect(streamId, request.topic.toMdpTopic(), entry.nextIndex());
+        } else if (entry.messages.empty() || index > entry.lastIndex()) {
+            // future index, wait for new messages
+            _pendingPolls.emplace_back(zmqTopic, index, streamId);
+        } else {
+            // we have a message for this index, send it
+            respondToLongPoll(streamId, index - entry.firstIndex, Message(entry.messages[index - entry.firstIndex]));
+        }
+        return result;
+    }
+
+    void processCompletedRequest(TStreamId streamId) {
+        auto it = _requestsByStreamId.find(streamId);
+        assert(it != _requestsByStreamId.end());
+        auto &[streamid, request] = *it;
+
+        std::string      path;
+        std::string_view method;
+        std::string_view xOpencmwMethod;
+
+        for (const auto &[name, value] : request.rawHeaders) {
+            if (name == ":path") {
+                path = value;
+            } else if (name == ":method") {
+                method = value;
+            } else if (name == "content-type") {
+                request.contentType = value;
+            } else if (name == "accept") {
+                request.accept = value;
+            } else if (name == "x-opencmw-method") {
+                xOpencmwMethod = value;
+            }
+        }
+
+        // if we have an externally configured handler for this method/path, use it
+        if (auto handler = _sharedData->findHandler(method, path); handler) {
+            rest::Request req;
+            req.method = method;
+            req.path   = path;
+            std::swap(req.headers, request.rawHeaders);
+            auto response = handler->handler(req);
+            self().sendResponse(streamId, std::move(response));
+            _requestsByStreamId.erase(it);
+            return;
+        }
+
+        // redirect "/" request to "/mmi.service"
+        if (path == "/") {
+            path = "/mmi.service";
+        }
+
+        // Everything else is a service request
+        try {
+            auto pathUri                 = URI<>(path);
+            auto factory                 = URI<>::UriFactory(pathUri).setQuery({});
+            bool haveSubscriptionContext = false;
+            for (const auto &[qkey, qvalue] : pathUri.queryParamMap()) {
+                if (qkey == "LongPollingIdx") {
+                    request.method        = RestMethod::LongPoll;
+                    request.longPollIndex = qvalue.value_or("");
+                } else if (qkey == "SubscriptionContext") {
+                    request.topic           = mdp::Topic::fromMdpTopic(URI<>(qvalue.value_or("")));
+                    haveSubscriptionContext = true;
+                } else if (qkey == "_bodyOverride") {
+                    request.payload = qvalue.value_or("");
+                } else {
+                    if (qvalue) {
+                        factory = std::move(factory).addQueryParameter(qkey, qvalue.value());
+                    } else {
+                        factory = std::move(factory).addQueryParameter(qkey);
+                    }
+                }
+            }
+            if (!haveSubscriptionContext) {
+                request.topic = mdp::Topic::fromMdpTopic(factory.build());
+            }
+        } catch (const std::exception &e) {
+            HTTP_DBG("Service::Header: Could not parse service URI '{}': {}", path, e.what());
+            Message response;
+            response.error = e.what();
+            self().sendResponse(streamId, kFileNotFound, std::move(response));
+            _requestsByStreamId.erase(it);
+            return;
+        }
+
+        if (request.method == RestMethod::Invalid && !xOpencmwMethod.empty()) {
+            request.method = parseMethod(xOpencmwMethod);
+        }
+        if (request.method == RestMethod::Invalid) {
+            request.method = parseMethod(method);
+        }
+
+        // Set completed for getMessages() to collect
+        request.complete = true;
+    }
+
+    std::vector<Message> getMessages(IdGenerator &idGenerator) {
+        const auto           completeEnd = std::ranges::partition_point(_requestsByStreamId, [](const auto &pair) { return pair.second.complete; });
+
+        std::vector<Message> result;
+        result.reserve(static_cast<std::size_t>(std::distance(_requestsByStreamId.begin(), completeEnd)));
+
+        for (auto it = _requestsByStreamId.begin(); it != completeEnd; ++it) {
+            auto &[streamId, request] = *it;
+
+            switch (request.method) {
+            case RestMethod::Get:
+            case RestMethod::Post:
+                if (auto m = processGetSetRequest(streamId, request, idGenerator); m.has_value()) {
+                    result.push_back(std::move(m.value()));
+                }
+                break;
+            case RestMethod::LongPoll:
+                if (auto m = processLongPollRequest(streamId, request); m.has_value()) {
+                    result.push_back(std::move(m.value()));
+                }
+                break;
+            case RestMethod::Invalid:
+                respondWithError(it->first, "Invalid REST method", kHttpError);
+                break;
+            }
+        }
+
+        _requestsByStreamId.erase(_requestsByStreamId.begin(), completeEnd);
+        return result;
+    }
+
+    void handleNotification(std::string_view zmqTopic, std::uint64_t index, const Message &msg) {
+        auto pollIt = _pendingPolls.begin();
+        while (pollIt != _pendingPolls.end()) {
+            const auto &[pendingZmqTopic, pollIndex, streamId] = *pollIt;
+            if (pendingZmqTopic == zmqTopic && index == pollIndex) {
+                respondToLongPoll(streamId, pollIndex, Message(msg));
+                pollIt = _pendingPolls.erase(pollIt);
+            } else {
+                ++pollIt;
+            }
+        }
+    }
+};
+
+struct Http2Session : public SessionBase<Http2Session, std::int32_t> {
+    using TStreamId = typename std::int32_t;
+    TcpSocket         _socket;
+    WriteBuffer<4096> _writeBuffer;
+    nghttp2_session  *_session = nullptr;
+
+    explicit Http2Session(TcpSocket &&socket, std::shared_ptr<SharedData> sharedData)
+        : SessionBase<Http2Session, std::int32_t>(std::move(sharedData)), _socket{ std::move(socket) } {
+        nghttp2_session_callbacks *callbacks;
+        nghttp2_session_callbacks_new(&callbacks);
+        nghttp2_session_callbacks_set_on_frame_recv_callback(callbacks, [](nghttp2_session *, const nghttp2_frame *frame, void *user_data) {
+            auto session = static_cast<Http2Session *>(user_data);
+            return session->frame_recv_callback(frame);
+        });
+        nghttp2_session_callbacks_set_on_frame_send_callback(callbacks, [](nghttp2_session *, const nghttp2_frame *frame, void *user_data) {
+            auto session = static_cast<Http2Session *>(user_data);
+            return session->frame_send_callback(frame);
+        });
+        nghttp2_session_callbacks_set_on_frame_not_send_callback(callbacks, [](nghttp2_session *, const nghttp2_frame *frame, int lib_error_code, void *user_data) {
+            auto session = static_cast<Http2Session *>(user_data);
+            return session->frame_not_send_callback(frame, lib_error_code);
+        });
+        nghttp2_session_callbacks_set_on_data_chunk_recv_callback(callbacks, [](nghttp2_session *, uint8_t flags, int32_t stream_id, const uint8_t *data, size_t len, void *user_data) {
+            auto session = static_cast<Http2Session *>(user_data);
+            return session->data_chunk_recv_callback(flags, stream_id, { reinterpret_cast<const char *>(data), len });
+        });
+        nghttp2_session_callbacks_set_on_stream_close_callback(callbacks, [](nghttp2_session *, int32_t stream_id, uint32_t error_code, void *user_data) {
+            auto session = static_cast<Http2Session *>(user_data);
+            return session->stream_closed_callback(stream_id, error_code);
+        });
+        nghttp2_session_callbacks_set_on_header_callback2(callbacks, [](nghttp2_session *, const nghttp2_frame *frame, nghttp2_rcbuf *name,
+                                                                             nghttp2_rcbuf *value, uint8_t flags, void *user_data) {
+            auto session = static_cast<Http2Session *>(user_data);
+            return session->header_callback(frame, as_view(name), as_view(value), flags);
+        });
+        nghttp2_session_callbacks_set_on_invalid_frame_recv_callback(callbacks, [](nghttp2_session *, const nghttp2_frame *frame, int lib_error_code, void *user_data) {
+            auto session = static_cast<Http2Session *>(user_data);
+            return session->invalid_frame_recv_callback(frame, lib_error_code);
+        });
+        nghttp2_session_callbacks_set_error_callback2(callbacks, [](nghttp2_session *, int lib_error_code, const char *msg, size_t len, void *user_data) {
+            auto session = static_cast<Http2Session *>(user_data);
+            return session->error_callback(lib_error_code, msg, len);
+        });
+        nghttp2_session_server_new(&_session, callbacks, this);
+        nghttp2_session_callbacks_del(callbacks);
+    }
+
+    ~Http2Session() {
+        nghttp2_session_del(_session);
+    }
+
+    Http2Session(const Http2Session &)            = delete;
+    Http2Session &operator=(const Http2Session &) = delete;
+    Http2Session(Http2Session &&other)            = delete;
+    Http2Session &operator=(Http2Session &&other) = delete;
+
+    bool          wantsToRead() const {
+        return _socket._state == TcpSocket::Connected ? nghttp2_session_want_read(_session) : (_socket._state == TcpSocket::SSLAcceptWantsRead);
+    }
+
+    bool wantsToWrite() const {
+        return _socket._state == TcpSocket::Connected ? _writeBuffer.wantsToWrite(_session) : (_socket._state == TcpSocket::SSLAcceptWantsWrite);
+    }
 
     static auto ioBufferCallback() {
         return [](nghttp2_session *, int32_t /*stream_id*/, uint8_t *buf, size_t length, uint32_t *data_flags, nghttp2_data_source *source, void * /*user_data*/) {
@@ -328,9 +537,9 @@ struct Session {
         };
     }
 
-    void sendResponse(std::int32_t streamId, rest::Response response) {
+    void sendResponse(TStreamId streamId, rest::Response response) {
         // store message while sending so we don't need to copy the data
-        auto                   &msg = _responsesByStreamId.try_emplace(streamId, ResponseData{ std::move(response) }).first->second;
+        auto                   &msg       = _responsesByStreamId.try_emplace(streamId, ResponseData{ std::move(response) }).first->second;
 
         constexpr auto          noCopy    = NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE;
         const auto              statusStr = std::to_string(msg.restResponse.code);
@@ -389,7 +598,7 @@ struct Session {
         auto          contentLength = std::to_string(buf->size());
         constexpr int noCopy        = NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE;
         // :status must go first
-        auto          headers       = std::vector{ nv(u8span(":status"), u8span(codeStr)), nv(u8span("x-opencmw-topic"), u8span(msg.message.topic.str()), noCopy),
+        auto headers = std::vector{ nv(u8span(":status"), u8span(codeStr)), nv(u8span("x-opencmw-topic"), u8span(msg.message.topic.str()), noCopy),
             nv(u8span("x-opencmw-service-name"), u8span(msg.message.serviceName), noCopy), nv(u8span("access-control-allow-origin"), u8span("*"), noCopy), nv(u8span("content-length"), u8span(contentLength)) };
 
         headers.insert(headers.end(), extraHeaders.begin(), extraHeaders.end());
@@ -410,24 +619,7 @@ struct Session {
         }
     }
 
-    void respondToLongPoll(std::int32_t streamId, std::uint64_t index, Message &&msg) {
-        auto timestamp = std::to_string(opencmw::load_test::timestamp().count());
-        sendResponse(streamId, kHttpOk, std::move(msg), { nv(u8span("x-opencmw-long-polling-idx"), u8span(std::to_string(index))), nv(u8span("x-timestamp"), u8span(timestamp)) });
-    }
-
-    void respondToLongPollWithError(std::int32_t streamId, std::string_view error, int code, std::uint64_t index) {
-        Message response = {};
-        response.error   = std::string(error);
-        sendResponse(streamId, code, std::move(response), { nv(u8span("x-opencmw-long-polling-idx"), u8span(std::to_string(index))) });
-    }
-
-    void respondWithError(std::int32_t streamId, std::string_view error, int code = kHttpError, std::vector<nghttp2_nv> extraHeaders = {}) {
-        Message response = {};
-        response.error   = std::string(error);
-        sendResponse(streamId, code, std::move(response), std::move(extraHeaders));
-    }
-
-    void respondWithRedirect(std::int32_t streamId, std::string_view location) {
+    void respondWithRedirect(TStreamId streamId, std::string_view location) {
         HTTP_DBG("Server::respondWithRedirect: streamId={} location={}", streamId, location);
         // :status must go first
         const auto headers = std::array{ nv(u8span(":status"), u8span("302"), NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE), nv(u8span("location"), u8span(location)) };
@@ -719,14 +911,14 @@ struct Http2Server {
     EVP_PKEY_Ptr                           _key        = EVP_PKEY_Ptr(nullptr, EVP_PKEY_free);
     X509_Ptr                               _cert       = X509_Ptr(nullptr, X509_free);
     std::shared_ptr<SharedData>            _sharedData = std::make_shared<SharedData>();
-    std::map<int, std::unique_ptr<Session>> _sessions;
+    std::map<int, std::unique_ptr<Http2Session>> _sessions;
     IdGenerator                             _requestIdGenerator;
 
-    Http2Server()                                            = default;
-    Http2Server(const Http2Server &)                         = delete;
-    Http2Server &operator=(const Http2Server &)              = delete;
-    Http2Server(Http2Server &&)                              = default;
-    Http2Server &operator=(Http2Server &&)                   = default;
+    Http2Server()                               = default;
+    Http2Server(const Http2Server &)            = delete;
+    Http2Server &operator=(const Http2Server &) = delete;
+    Http2Server(Http2Server &&)                 = default;
+    Http2Server &operator=(Http2Server &&)      = default;
 
     Http2Server(SSL_CTX_Ptr ssl_ctx, EVP_PKEY_Ptr key, X509_Ptr cert)
         : _ssl_ctx(std::move(ssl_ctx)), _key(std::move(key)), _cert(std::move(cert)) {
@@ -810,17 +1002,10 @@ struct Http2Server {
         }
         auto &entry = entryIt->second;
         entry.add(std::move(message));
+        const auto index = entry.lastIndex() - entry.firstIndex;
+
         for (auto &session : _sessions | std::views::values) {
-            auto pollIt = session->_pendingPolls.begin();
-            while (pollIt != session->_pendingPolls.end()) {
-                const auto &[pendingZmqTopic, pollIndex, streamId] = *pollIt;
-                if (pendingZmqTopic == zmqTopic && entry.lastIndex() == pollIndex) {
-                    session->respondToLongPoll(streamId, pollIndex, Message(entry.messages[pollIndex - entry.firstIndex]));
-                    pollIt = session->_pendingPolls.erase(pollIt);
-                } else {
-                    ++pollIt;
-                }
-            }
+            session->handleNotification(zmqTopic, index, entry.messages.back());
         }
     }
 
@@ -850,7 +1035,7 @@ struct Http2Server {
 
             auto newFd                   = clientSocket->fd;
 
-            auto [newSessionIt, inserted] = _sessions.try_emplace(newFd, std::make_unique<Session>(std::move(clientSocket.value()), _sharedData));
+            auto [newSessionIt, inserted] = _sessions.try_emplace(newFd, std::make_unique<Http2Session>(std::move(clientSocket.value()), _sharedData));
             assert(inserted);
             auto                  &newSession = newSessionIt->second;
             nghttp2_settings_entry iv[1]     = { { NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, 1000 } };
