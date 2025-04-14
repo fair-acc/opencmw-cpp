@@ -91,3 +91,61 @@ set_target_properties(nghttp2-static PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/nghttp2-install/include"
 )
 add_dependencies(nghttp2-static Nghttp2Project)
+
+ExternalProject_Add(Nghttp3Project
+        GIT_REPOSITORY https://github.com/ngtcp2/nghttp3.git
+        GIT_TAG v1.9.0
+        GIT_SHALLOW ON
+        BUILD_BYPRODUCTS ${CMAKE_BINARY_DIR}/nghttp3-install/lib/libnghttp3.a
+        CMAKE_ARGS
+        -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_BINARY_DIR}/nghttp3-install
+        -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
+        -DENABLE_LIB_ONLY:BOOL=ON
+        -DBUILD_STATIC_LIBS:BOOL=ON
+        -DBUILD_SHARED_LIBS:BOOL=OFF
+        -DENABLE_DOC:BOOL=OFF
+)
+
+# TODO(Frank) remove
+# ExternalProject_Add(WolfSslProject
+# GIT_REPOSITORY https://github.com/wolfSSL/wolfssl.git
+# GIT_TAG v5.7.6-stable
+# GIT_SHALLOW ON
+# BUILD_BYPRODUCTS ${CMAKE_BINARY_DIR}/ngtcp2-install/lib/libwolfssl.a
+# CMAKE_ARGS
+# -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
+# -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_BINARY_DIR}/ngtcp2-install
+# -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
+# -DBUILD_SHARED_LIBS:BOOL=OFF
+# -DWOLFSSL_QUIC:BOOL=ON
+# -DWOLFSSL_CURL:BOOL=ON
+# )
+externalproject_add(NgTcp2Project
+        GIT_REPOSITORY https://github.com/ngtcp2/ngtcp2.git
+        GIT_TAG v1.12.0
+        PREFIX ${CMAKE_BINARY_DIR}/ngtcp2-install
+        BUILD_BYPRODUCTS ${CMAKE_BINARY_DIR}/ngtcp2-install/lib/libngtcp2.a
+        CMAKE_ARGS
+        -DOPENSSL_ROOT_DIR:PATH=${OPENSSL_INSTALL_DIR}
+        -DENABLE_OPENSSL:BOOL=ON
+        -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_BINARY_DIR}/ngtcp2-install
+        -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
+        -DENABLE_LIB_ONLY:BOOL=ON
+        -DBUILD_STATIC_LIBS:BOOL=ON
+        -DBUILD_SHARED_LIBS:BOOL=OFF
+        DEPENDS OpenSSL::SSL OpenSSL::Crypto
+)
+
+add_library(ngtcp2-static STATIC IMPORTED STATIC GLOBAL)
+set_target_properties(ngtcp2-static PROPERTIES
+        IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/ngtcp2-install/lib/libngtcp2.a"
+        INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/ngtcp2-install/include"
+)
+add_dependencies(ngtcp2-static NgTcp2Project)
+
+add_library(nghttp3-static STATIC IMPORTED STATIC GLOBAL)
+set_target_properties(nghttp3-static PROPERTIES
+        IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/nghttp3-install/lib/libnghttp3.a"
+        INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/nghttp3-install/include"
+)
+add_dependencies(nghttp3-static Nghttp3Project)
