@@ -25,8 +25,11 @@
 #include <openssl/ssl.h>
 
 #include <nghttp2/nghttp2.h>
+#include <nghttp3/nghttp3.h>
 
 #include <fmt/format.h>
+
+#define OPENCMW_DEBUG_HTTP 1
 
 #ifdef OPENCMW_DEBUG_HTTP
 #include <iostream>
@@ -135,7 +138,7 @@ namespace detail {
 inline std::expected<SSL_Ptr, std::string> create_ssl(SSL_CTX *ssl_ctx) {
     auto ssl = SSL_Ptr(SSL_new(ssl_ctx), SSL_free);
     if (!ssl) {
-        return std::unexpected(fmt::format("Could not create SSL/TLS session object: {}", ERR_error_string(ERR_get_error(), nullptr)));
+        return std::unexpected(fmt::format("Could not create TLS session object: {}", ERR_error_string(ERR_get_error(), nullptr)));
     }
     return ssl;
 }
@@ -159,6 +162,11 @@ inline std::chrono::nanoseconds latency(const std::string_view &value) {
 
 inline std::string_view as_view(nghttp2_rcbuf *rcbuf) {
     auto vec = nghttp2_rcbuf_get_buf(rcbuf);
+    return { reinterpret_cast<char *>(vec.base), vec.len };
+}
+
+inline std::string_view as_view(const nghttp3_rcbuf *rcbuf) {
+    auto vec = nghttp3_rcbuf_get_buf(rcbuf);
     return { reinterpret_cast<char *>(vec.base), vec.len };
 }
 
