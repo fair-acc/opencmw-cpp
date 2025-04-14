@@ -6,6 +6,7 @@
 #include "MdpMessage.hpp"
 #include "MIME.hpp"
 #include "nghttp2/NgHttp2Utils.hpp"
+#include "nghttp2/NgHttp3Utils.hpp"
 #include "Rest.hpp"
 #include "Topic.hpp"
 
@@ -20,26 +21,39 @@
 #include <memory>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
-#include <openssl/err.h>
+#include <nghttp2/nghttp2.h>
 #include <optional>
 #include <ranges>
 #include <string>
 #include <sys/socket.h>
 #include <sys/types.h>
-#include <unistd.h>
 #include <vector>
 
 #include <openssl/bio.h>
+#include <openssl/crypto.h>
+#include <openssl/err.h>
+#include <openssl/quic.h>
 #include <openssl/ssl.h>
 
 #include <zmq.h>
 
 #include <fmt/format.h>
 
+#include <nghttp3/nghttp3.h>
+#include <ngtcp2/ngtcp2.h>
+#include <ngtcp2/ngtcp2_crypto.h>
+
+constexpr size_t NGTCP2_SV_SCIDLEN = 18;
+
 namespace opencmw::majordomo::detail::nghttp2 {
 
 using namespace opencmw::nghttp2;
 using namespace opencmw::nghttp2::detail;
+
+enum class ContextType {
+    Tcp,
+    Quic,
+};
 
 inline int alpn_select_proto_cb(SSL * /*ssl*/, const unsigned char **out,
         unsigned char *outlen, const unsigned char *in,
@@ -52,12 +66,16 @@ inline int alpn_select_proto_cb(SSL * /*ssl*/, const unsigned char **out,
     return SSL_TLSEXT_ERR_OK;
 }
 
+template<ContextType TContext>
 inline std::expected<SSL_CTX_Ptr, std::string> create_ssl_ctx(EVP_PKEY *key, X509 *cert) {
-    auto ssl_ctx = SSL_CTX_Ptr(SSL_CTX_new(TLS_server_method()), SSL_CTX_free);
+    constexpr auto Method  = TContext == ContextType::Tcp ? TLS_server_method : OSSL_QUIC_server_method;
+    auto           ssl_ctx = SSL_CTX_Ptr(SSL_CTX_new(Method()), SSL_CTX_free);
     if (!ssl_ctx) {
         return std::unexpected(fmt::format("Could not create SSL/TLS context: {}", ERR_error_string(ERR_get_error(), nullptr)));
     }
-    SSL_CTX_set_options(ssl_ctx.get(), SSL_OP_ALL | SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION | SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION);
+    if constexpr (TContext == ContextType::Tcp) {
+        SSL_CTX_set_options(ssl_ctx.get(), SSL_OP_ALL | SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION | SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION);
+    }
     if (SSL_CTX_set1_curves_list(ssl_ctx.get(), "P-256") != 1) {
         return std::unexpected(fmt::format("SSL_CTX_set1_curves_list failed: {}", ERR_error_string(ERR_get_error(), nullptr)));
     }
@@ -73,7 +91,9 @@ inline std::expected<SSL_CTX_Ptr, std::string> create_ssl_ctx(EVP_PKEY *key, X50
         return std::unexpected("Private key does not match the certificate");
     }
 
-    SSL_CTX_set_alpn_select_cb(ssl_ctx.get(), alpn_select_proto_cb, nullptr);
+    if constexpr (TContext == ContextType::Tcp) {
+        SSL_CTX_set_alpn_select_cb(ssl_ctx.get(), alpn_select_proto_cb, nullptr);
+    }
 
     return ssl_ctx;
 }
@@ -193,6 +213,8 @@ struct SubscriptionCacheEntry {
 };
 
 struct SharedData {
+    std::string                                   _altSvcHeaderValue;
+    nghttp2_nv                                    _altSvcHeader;
     std::map<std::string, SubscriptionCacheEntry> _subscriptionCache;
     std::vector<rest::Handler>                    _handlers;
 
@@ -549,6 +571,7 @@ struct Http2Session : public SessionBase<Http2Session, std::int32_t> {
         // :status must go first, otherwise browsers and curl will not accept the response
         headers.push_back(nv(u8span(":status"), u8span(statusStr), NGHTTP2_NV_FLAG_NO_COPY_NAME));
         headers.push_back(nv(u8span("access-control-allow-origin"), u8span("*"), noCopy));
+        headers.push_back(_sharedData->_altSvcHeader);
 
         for (const auto &[name, value] : msg.restResponse.headers) {
             headers.push_back(nv(u8span(name), u8span(value), noCopy));
@@ -599,7 +622,7 @@ struct Http2Session : public SessionBase<Http2Session, std::int32_t> {
         constexpr int noCopy        = NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE;
         // :status must go first
         auto headers = std::vector{ nv(u8span(":status"), u8span(codeStr)), nv(u8span("x-opencmw-topic"), u8span(msg.message.topic.str()), noCopy),
-            nv(u8span("x-opencmw-service-name"), u8span(msg.message.serviceName), noCopy), nv(u8span("access-control-allow-origin"), u8span("*"), noCopy), nv(u8span("content-length"), u8span(contentLength)) };
+            nv(u8span("x-opencmw-service-name"), u8span(msg.message.serviceName), noCopy), nv(u8span("access-control-allow-origin"), u8span("*"), noCopy), nv(u8span("content-length"), u8span(contentLength)), _sharedData->_altSvcHeader };
 
         headers.insert(headers.end(), extraHeaders.begin(), extraHeaders.end());
 
@@ -622,7 +645,8 @@ struct Http2Session : public SessionBase<Http2Session, std::int32_t> {
     void respondWithRedirect(TStreamId streamId, std::string_view location) {
         HTTP_DBG("Server::respondWithRedirect: streamId={} location={}", streamId, location);
         // :status must go first
-        const auto headers = std::array{ nv(u8span(":status"), u8span("302"), NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE), nv(u8span("location"), u8span(location)) };
+        constexpr auto noCopy  = NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE;
+        const auto     headers = std::array{ nv(u8span(":status"), u8span("302"), noCopy), nv(u8span("location"), u8span(location)), _sharedData->_altSvcHeader };
         nghttp2_submit_response2(_session, streamId, headers.data(), headers.size(), nullptr);
     }
 
@@ -869,12 +893,196 @@ struct Http2Session : public SessionBase<Http2Session, std::int32_t> {
     }
 };
 
-inline std::expected<TcpSocket, std::string> create_server_socket(SSL_CTX *ssl_ctx, std::uint16_t port) {
+struct Http3Session : public SessionBase<Http3Session, std::int64_t> {
+    nghttp3_conn *_httpconn = nullptr;
+    TcpSocket _socket;
+
+    explicit Http3Session(TcpSocket &&socket, std::shared_ptr<SharedData> sharedData)
+        : SessionBase<Http3Session, std::int64_t>(std::move(sharedData)), _socket{ std::move(socket) } {
+        nghttp3_callbacks callbacks;
+        callbacks.acked_stream_data = [](nghttp3_conn *, std::int64_t stream_id, std::uint64_t datalen, void *conn_user_data, void *) {
+            auto session = static_cast<Http3Session *>(conn_user_data);
+            return session->acked_stream_data(stream_id, datalen);
+        };
+        callbacks.stream_close = [](nghttp3_conn *, std::int64_t stream_id, std::uint64_t error_code, void *conn_user_data, void *) {
+            auto session = static_cast<Http3Session *>(conn_user_data);
+            return session->stream_close(stream_id, error_code);
+        };
+        callbacks.recv_data = [](nghttp3_conn *, std::int64_t stream_id, const uint8_t *data, std::size_t datalen, void *conn_user_data, void * /*stream_user_data*/) {
+            auto session   = static_cast<Http3Session *>(conn_user_data);
+            auto data_view = std::string_view(reinterpret_cast<const char *>(data), datalen);
+            return session->recv_data(stream_id, data_view);
+        };
+        callbacks.deferred_consume = [](nghttp3_conn *, std::int64_t stream_id, std::size_t datalen, void *conn_user_data, void *) {
+            auto session = static_cast<Http3Session *>(conn_user_data);
+            return session->deferred_consume(stream_id, datalen);
+        };
+        callbacks.begin_headers = [](nghttp3_conn *, std::int64_t stream_id, void *conn_user_data, void *) {
+            auto session = static_cast<Http3Session *>(conn_user_data);
+            return session->begin_headers(stream_id);
+        };
+        callbacks.recv_header = [](nghttp3_conn *, std::int64_t stream_id, std::int32_t token, nghttp3_rcbuf *name, nghttp3_rcbuf *value, uint8_t flags, void *conn_user_data, void *) {
+            auto session = static_cast<Http3Session *>(conn_user_data);
+            return session->recv_header(stream_id, token, name, value, flags);
+        };
+        callbacks.end_headers = [](nghttp3_conn *, std::int64_t stream_id, int fin, void *conn_user_data, void *) {
+            auto session = static_cast<Http3Session *>(conn_user_data);
+            return session->end_headers(stream_id, fin);
+        };
+        callbacks.stop_sending = [](nghttp3_conn *, std::int64_t stream_id, std::uint64_t app_error_code, void *conn_user_data, void *) {
+            auto session = static_cast<Http3Session *>(conn_user_data);
+            return session->stop_sending(stream_id, app_error_code);
+        };
+        callbacks.end_stream = [](nghttp3_conn *, std::int64_t stream_id, void *conn_user_data, void *) {
+            auto session = static_cast<Http3Session *>(conn_user_data);
+            return session->end_stream(stream_id);
+        };
+        callbacks.reset_stream = [](nghttp3_conn *, std::int64_t stream_id, std::uint64_t error_code, void *conn_user_data, void *) {
+            auto session = static_cast<Http3Session *>(conn_user_data);
+            return session->reset_stream(stream_id, error_code);
+        };
+        callbacks.shutdown = [](nghttp3_conn *, std::int64_t id, void *conn_user_data) {
+            auto session = static_cast<Http3Session *>(conn_user_data);
+            return session->shutdown(id);
+        };
+        callbacks.recv_settings = [](nghttp3_conn *, const nghttp3_settings *settings, void *conn_user_data) {
+            auto session = static_cast<Http3Session *>(conn_user_data);
+            return session->recv_settings(settings);
+        };
+
+        nghttp3_settings settings;
+        nghttp3_settings_default(&settings);
+
+        auto mem = nghttp3_mem_default();
+        // TODO: set settings
+        if (nghttp3_conn_server_new(&_httpconn, &callbacks, &settings, mem, this) != 0) {
+            // TODO use std::expected
+            throw std::runtime_error("Failed to create nghttp3 connection");
+        }
+    }
+
+    ~Http3Session() {
+        nghttp3_conn_del(_httpconn);
+    }
+
+    Http3Session(const Http3Session &)
+            = delete;
+    Http3Session &operator=(const Http3Session &) = delete;
+    Http3Session(Http3Session &&other)            = delete;
+    Http3Session &operator=(Http3Session &&other) = delete;
+
+    int           acked_stream_data(int64_t stream_id, size_t datalen) {
+        HTTP_DBG("Server::H3::acked_stream_data: stream_id={} datalen={}", stream_id, datalen);
+        return 0;
+    }
+
+    int stream_close(std::int64_t stream_id, std::uint64_t error_code) {
+        HTTP_DBG("Server::H3::stream_close: stream_id={} error_code={}", stream_id, error_code);
+        return 0;
+    }
+
+    int recv_data(std::int64_t stream_id, std::string_view data) {
+        HTTP_DBG("Server::H3::recv_data: stream_id={} datalen={}", stream_id, data.size());
+        return 0;
+    }
+
+    int deferred_consume(std::int64_t stream_id, std::size_t datalen) {
+        HTTP_DBG("Server::H3::deferred_consume: stream_id={} datalen={}", stream_id, datalen);
+        return 0;
+    }
+
+    int begin_headers(std::int64_t stream_id) {
+        HTTP_DBG("Server::H3::begin_headers: stream_id={}", stream_id);
+        return 0;
+    }
+
+    int recv_header(std::int64_t stream_id, std::int32_t token, const nghttp3_rcbuf *name, const nghttp3_rcbuf *value, std::uint8_t flags) {
+        HTTP_DBG("Server::H3::recv_header: stream_id={} token={} name={} value={} flags={}", stream_id, token, as_view(name), as_view(value), flags);
+        return 0;
+    }
+
+    int end_headers(std::int64_t stream_id, int fin) {
+        HTTP_DBG("Server::H3::end_headers: stream_id={} fin={}", stream_id, fin);
+        return 0;
+    }
+
+    int stop_sending(std::int64_t stream_id, std::uint64_t error_code) {
+        HTTP_DBG("Server::H3::stop_sending: stream_id={} error_code={}", stream_id, error_code);
+        return 0;
+    }
+
+    int end_stream(std::int64_t stream_id) {
+        HTTP_DBG("Server::H3::end_stream: stream_id={}", stream_id);
+        return 0;
+    }
+    int reset_stream(std::int64_t stream_id, std::uint64_t error_code) {
+        HTTP_DBG("Server::H3::reset_stream: stream_id={} error_code={}", stream_id, error_code);
+        return 0;
+    }
+
+    int recv_settings(const nghttp3_settings *) {
+        HTTP_DBG("Server::H3::recv_settings");
+        return 0;
+    }
+
+    int shutdown(std::int64_t id) {
+        HTTP_DBG("Server::H3::shutdown: id={}", id);
+        return 0;
+    }
+};
+
+struct Http3ServerSocket {
+    int fd              = -1;
+    opencmw::nghttp3::Address addr;
+
+    Http3ServerSocket() = default;
+
+    Http3ServerSocket(int fd_, opencmw::nghttp3::Address addr_)
+        : fd(fd_), addr(std::move(addr_)) {
+    }
+
+    Http3ServerSocket(const Http3ServerSocket &)            = delete;
+    Http3ServerSocket &operator=(const Http3ServerSocket &) = delete;
+
+    Http3ServerSocket(Http3ServerSocket &&other) noexcept
+        : fd(std::exchange(other.fd, -1)), addr(other.addr) {}
+
+    Http3ServerSocket &operator=(Http3ServerSocket &&other) noexcept {
+        if (this != &other) {
+            close();
+            std::swap(fd, other.fd);
+            addr = other.addr;
+        }
+        return *this;
+    }
+
+    void close() {
+        if (fd != -1) {
+            ::close(fd);
+            fd = -1;
+        }
+    }
+
+    static std::expected<Http3ServerSocket, std::string> create(uint16_t port) {
+        using namespace opencmw::nghttp3;
+        Address address;
+        // TODO(Frank) refactor create_sock so we get error details
+        auto              fd = opencmw::nghttp3::create_sock(address, "*", std::to_string(port).c_str(), AF_INET);
+        Http3ServerSocket socket{ fd, address };
+        return socket;
+    }
+
+    ~Http3ServerSocket() {
+        close();
+    }
+};
+
+inline std::expected<TcpSocket, std::string> createTcpServerSocket(SSL_CTX *ssl_ctx, uint16_t port) {
     auto ssl = SSL_Ptr(nullptr, SSL_free);
     if (ssl_ctx) {
         auto maybeSsl = create_ssl(ssl_ctx);
         if (!maybeSsl) {
-            return std::unexpected(fmt::format("Failed to create SSL object: {}", maybeSsl.error()));
+            return std::unexpected(fmt::format("Failed to set up TCP server socket: {}", maybeSsl.error()));
         }
         ssl = std::move(maybeSsl.value());
     }
@@ -889,11 +1097,11 @@ inline std::expected<TcpSocket, std::string> create_server_socket(SSL_CTX *ssl_c
         return std::unexpected(fmt::format("setsockopt(SO_REUSEADDR) failed: {}", strerror(errno)));
     }
 
-    struct sockaddr_in address {};
+    sockaddr_in address;
     address.sin_family      = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
     address.sin_port        = htons(port);
-
+    memset(address.sin_zero, 0, sizeof(address.sin_zero));
     if (::bind(serverSocket->fd, reinterpret_cast<struct sockaddr *>(&address), sizeof(address)) < 0) {
         return std::unexpected(fmt::format("Bind failed: {}", strerror(errno)));
     }
@@ -906,13 +1114,14 @@ inline std::expected<TcpSocket, std::string> create_server_socket(SSL_CTX *ssl_c
 }
 
 struct Http2Server {
-    TcpSocket                              _serverSocket;
-    SSL_CTX_Ptr                            _ssl_ctx    = SSL_CTX_Ptr(nullptr, SSL_CTX_free);
-    EVP_PKEY_Ptr                           _key        = EVP_PKEY_Ptr(nullptr, EVP_PKEY_free);
-    X509_Ptr                               _cert       = X509_Ptr(nullptr, X509_free);
-    std::shared_ptr<SharedData>            _sharedData = std::make_shared<SharedData>();
+    TcpSocket                                    _tcpServerSocket;
+    Http3ServerSocket                            _quicServerSocket;
+    SSL_CTX_Ptr                                  _sslCtxTcp  = SSL_CTX_Ptr(nullptr, SSL_CTX_free);
+    EVP_PKEY_Ptr                                 _key        = EVP_PKEY_Ptr(nullptr, EVP_PKEY_free);
+    X509_Ptr                                     _cert       = X509_Ptr(nullptr, X509_free);
+    std::shared_ptr<SharedData>                  _sharedData = std::make_shared<SharedData>();
     std::map<int, std::unique_ptr<Http2Session>> _sessions;
-    IdGenerator                             _requestIdGenerator;
+    IdGenerator                                  _requestIdGenerator;
 
     Http2Server()                               = default;
     Http2Server(const Http2Server &)            = delete;
@@ -920,9 +1129,9 @@ struct Http2Server {
     Http2Server(Http2Server &&)                 = default;
     Http2Server &operator=(Http2Server &&)      = default;
 
-    Http2Server(SSL_CTX_Ptr ssl_ctx, EVP_PKEY_Ptr key, X509_Ptr cert)
-        : _ssl_ctx(std::move(ssl_ctx)), _key(std::move(key)), _cert(std::move(cert)) {
-        if (_ssl_ctx) {
+    Http2Server(SSL_CTX_Ptr sslCtxTcp, EVP_PKEY_Ptr key, X509_Ptr cert)
+        : _sslCtxTcp(std::move(sslCtxTcp)), _key(std::move(key)), _cert(std::move(cert)) {
+        if (_sslCtxTcp) {
             SSL_library_init();
             SSL_load_error_strings();
             OpenSSL_add_all_algorithms();
@@ -942,11 +1151,11 @@ struct Http2Server {
         if (!maybeKey) {
             return std::unexpected(maybeKey.error());
         }
-        auto maybeSslCtx = create_ssl_ctx(maybeKey->get(), maybeCert->get());
-        if (!maybeSslCtx) {
-            return std::unexpected(maybeSslCtx.error());
+        auto maybeSslCtxTcp = create_ssl_ctx<ContextType::Tcp>(maybeKey->get(), maybeCert->get());
+        if (!maybeSslCtxTcp) {
+            return std::unexpected(maybeSslCtxTcp.error());
         }
-        return Http2Server(std::move(maybeSslCtx.value()), std::move(maybeKey.value()), std::move(maybeCert.value()));
+        return Http2Server(std::move(maybeSslCtxTcp.value()), std::move(maybeKey.value()), std::move(maybeCert.value()));
     }
 
     static std::expected<Http2Server, std::string> sslWithPaths(std::filesystem::path certPath, std::filesystem::path keyPath) {
@@ -958,11 +1167,12 @@ struct Http2Server {
         if (!maybeKey) {
             return std::unexpected(maybeKey.error());
         }
-        auto maybeSslCtx = create_ssl_ctx(maybeKey->get(), maybeCert->get());
-        if (!maybeSslCtx) {
-            return std::unexpected(maybeSslCtx.error());
+        auto maybeSslCtxTcp = create_ssl_ctx<ContextType::Tcp>(maybeKey->get(), maybeCert->get());
+        if (!maybeSslCtxTcp) {
+            return std::unexpected(maybeSslCtxTcp.error());
         }
-        return Http2Server(std::move(maybeSslCtx.value()), std::move(maybeKey.value()), std::move(maybeCert.value()));
+
+        return Http2Server(std::move(maybeSslCtxTcp.value()), std::move(maybeKey.value()), std::move(maybeCert.value()));
     }
 
     void setHandlers(std::vector<opencmw::majordomo::rest::Handler> handlers) {
@@ -979,7 +1189,7 @@ struct Http2Server {
         }
         auto matchesId = [id](const auto &pendingRequest) { return std::get<0>(pendingRequest) == id; };
 
-        auto it = std::ranges::find_if(_sessions, [matchesId](const auto &session) {
+        auto it        = std::ranges::find_if(_sessions, [matchesId](const auto &session) {
             return std::ranges::find_if(session.second->_pendingRequests, matchesId) != session.second->_pendingRequests.end();
         });
 
@@ -1010,7 +1220,8 @@ struct Http2Server {
     }
 
     void populatePollerItems(std::vector<zmq_pollitem_t> &items) {
-        items.push_back(zmq_pollitem_t{ nullptr, _serverSocket.fd, ZMQ_POLLIN, 0 });
+        items.push_back(zmq_pollitem_t{ nullptr, _tcpServerSocket.fd, ZMQ_POLLIN, 0 });
+        items.push_back(zmq_pollitem_t{ nullptr, _quicServerSocket.fd, ZMQ_POLLIN, 0 });
         for (const auto &[_, session] : _sessions) {
             const auto wantsRead  = session->wantsToRead();
             const auto wantsWrite = session->wantsToWrite();
@@ -1021,8 +1232,8 @@ struct Http2Server {
     }
 
     std::vector<Message> processReadWrite(int fd, bool read, bool write) {
-        if (fd == _serverSocket.fd) {
-            auto maybeSocket = _serverSocket.accept(_ssl_ctx.get(), TcpSocket::None);
+        if (fd == _tcpServerSocket.fd) {
+            auto maybeSocket = _tcpServerSocket.accept(_sslCtxTcp.get(), TcpSocket::None);
             if (!maybeSocket) {
                 HTTP_DBG("Failed to accept client: {}", maybeSocket.error());
                 return {};
@@ -1033,16 +1244,21 @@ struct Http2Server {
                 return {};
             }
 
-            auto newFd                   = clientSocket->fd;
+            auto newFd                    = clientSocket->fd;
 
             auto [newSessionIt, inserted] = _sessions.try_emplace(newFd, std::make_unique<Http2Session>(std::move(clientSocket.value()), _sharedData));
             assert(inserted);
             auto                  &newSession = newSessionIt->second;
-            nghttp2_settings_entry iv[1]     = { { NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, 1000 } };
+            nghttp2_settings_entry iv[1]      = { { NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, 1000 } };
             if (nghttp2_submit_settings(newSession->_session, NGHTTP2_FLAG_NONE, iv, 1) != 0) {
                 HTTP_DBG("nghttp2_submit_settings failed");
             }
             return {};
+        }
+
+        if (fd == _quicServerSocket.fd) {
+            fmt::println(std::cerr, "Server::UDP: fd={} read={}", fd, read);
+            on_read();
         }
 
         auto sessionIt = _sessions.find(fd);
@@ -1096,15 +1312,287 @@ struct Http2Server {
 
     std::expected<void, std::string>
     bind(std::uint16_t port) {
-        if (_serverSocket.fd != -1) {
+        if (_tcpServerSocket.fd != -1) {
             return std::unexpected("Server already bound");
         }
-        auto socket = create_server_socket(_ssl_ctx.get(), port);
-        if (!socket) {
-            return std::unexpected(socket.error());
+
+        _sharedData->_altSvcHeaderValue = fmt::format("h3=\"{}\"; ma=2592000", port + 1);
+        _sharedData->_altSvcHeader      = nv(u8span("alt-svc"), u8span(_sharedData->_altSvcHeaderValue), NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE);
+
+        auto tcpSocket                  = createTcpServerSocket(_sslCtxTcp.get(), port);
+        if (!tcpSocket) {
+            return std::unexpected(tcpSocket.error());
         }
-        _serverSocket = std::move(socket.value());
+        _tcpServerSocket = std::move(tcpSocket.value());
+        auto quicSocket  = Http3ServerSocket::create(port + 1);
+        if (!quicSocket) {
+            return std::unexpected(quicSocket.error());
+        }
+        _quicServerSocket = std::move(quicSocket.value());
         return {};
+    }
+
+    int on_read() {
+        fmt::println(std::cerr, "Server::on_read");
+        using namespace opencmw::nghttp3;
+        sockaddr_union                 su;
+        std::array<uint8_t, 64 * 1024> buf;
+        size_t                         pktcnt = 0;
+        ngtcp2_pkt_info                pi;
+
+        iovec                          msg_iov{
+                                     .iov_base = buf.data(),
+                                     .iov_len  = buf.size(),
+        };
+
+        uint8_t msg_ctrl[CMSG_SPACE(sizeof(int)) + CMSG_SPACE(sizeof(in6_pktinfo)) + CMSG_SPACE(sizeof(int))];
+
+        msghdr  msg{
+             .msg_name    = &su,
+             .msg_iov     = &msg_iov,
+             .msg_iovlen  = 1,
+             .msg_control = msg_ctrl,
+        };
+
+        for (; pktcnt < 10;) {
+            msg.msg_namelen    = sizeof(su);
+            msg.msg_controllen = sizeof(msg_ctrl);
+
+            auto nread         = ::recvmsg(_quicServerSocket.fd, &msg, 0);
+            if (nread == -1) {
+                if (!(errno == EAGAIN || errno == ENOTCONN)) {
+                    std::cerr << "recvmsg: " << strerror(errno) << std::endl;
+                }
+                return 0;
+            }
+
+            // Packets less than 21 bytes never be a valid QUIC packet.
+            if (nread < 21) {
+                ++pktcnt;
+
+                continue;
+            }
+#if 0 // TODO(Frank) check if we need this
+            if (util::prohibited_port(util::port(&su))) {
+                ++pktcnt;
+
+                continue;
+            }
+#endif
+            pi.ecn          = msghdr_get_ecn(&msg, su.storage.ss_family);
+            auto local_addr = msghdr_get_local_addr(&msg, su.storage.ss_family);
+            if (!local_addr) {
+                ++pktcnt;
+                std::cerr << "Unable to obtain local address" << std::endl;
+                continue;
+            }
+
+            auto gso_size = msghdr_get_udp_gro(&msg);
+            if (gso_size == 0) {
+                gso_size = static_cast<size_t>(nread);
+            }
+
+            set_port(*local_addr, _quicServerSocket.addr);
+
+            auto data = std::span{ buf.data(), static_cast<size_t>(nread) };
+
+            for (; !data.empty();) {
+                auto datalen = std::min(data.size(), gso_size);
+
+                ++pktcnt;
+
+#if 0
+#ifdef OPENCMW_DEBUG_HTTP
+                std::array<char, IF_NAMESIZE> ifname;
+                std::cerr << "Received packet: local="
+                          << util::straddr(&local_addr->su.sa, local_addr->len)
+                          << " remote=" << util::straddr(&su.sa, msg.msg_namelen)
+                          << " if="
+                          << if_indextoname(local_addr->ifindex, ifname.data())
+                          << " ecn=0x" << std::hex << static_cast<uint32_t>(pi.ecn)
+                          << std::dec << " " << datalen << " bytes" << std::endl;
+#endif
+#endif
+
+                // Packets less than 21 bytes never be a valid QUIC packet.
+                if (datalen < 21) {
+                    break;
+                }
+
+                read_pkt(&su.sa, msg.msg_namelen, &pi,
+                        { data.data(), datalen });
+
+                data = data.subspan(datalen);
+            }
+        }
+
+        return 0;
+    }
+
+    void read_pkt(const sockaddr *sa, socklen_t salen,
+            const ngtcp2_pkt_info   *pi,
+            std::span<const uint8_t> data) {
+#if 0
+        ngtcp2_version_cid vc;
+
+        switch (auto rv = ngtcp2_pkt_decode_version_cid(&vc, data.data(), data.size(),
+                        NGTCP2_SV_SCIDLEN);
+                rv) {
+        case 0:
+            break;
+        case NGTCP2_ERR_VERSION_NEGOTIATION:
+            send_version_negotiation(vc.version, { vc.scid, vc.scidlen },
+                    { vc.dcid, vc.dcidlen }, ep, local_addr, sa, salen);
+            return;
+        default:
+            std::cerr << "Could not decode version and CID from QUIC packet header: "
+                      << ngtcp2_strerror(rv) << std::endl;
+            return;
+        }
+
+        auto dcid_key   = util::make_cid_key({ vc.dcid, vc.dcidlen });
+
+        auto handler_it = handlers_.find(dcid_key);
+        if (handler_it == std::end(handlers_)) {
+            ngtcp2_pkt_hd hd;
+
+            if (auto rv = ngtcp2_accept(&hd, data.data(), data.size()); rv != 0) {
+                if (!config.quiet) {
+                    std::cerr << "Unexpected packet received: length=" << data.size()
+                              << std::endl;
+                }
+
+                if (!(data[0] & 0x80) && data.size() >= NGTCP2_SV_SCIDLEN + 21) {
+                    send_stateless_reset(data.size(), { vc.dcid, vc.dcidlen }, ep, local_addr,
+                            sa, salen);
+                }
+
+                return;
+            }
+
+            ngtcp2_cid        ocid;
+            ngtcp2_cid       *pocid      = nullptr;
+            ngtcp2_token_type token_type = NGTCP2_TOKEN_TYPE_UNKNOWN;
+
+            assert(hd.type == NGTCP2_PKT_INITIAL);
+
+            if (config.validate_addr || hd.tokenlen) {
+                std::cerr << "Perform stateless address validation" << std::endl;
+                if (hd.tokenlen == 0) {
+                    send_retry(&hd, ep, local_addr, sa, salen, data.size() * 3);
+                    return;
+                }
+
+                if (hd.token[0] != NGTCP2_CRYPTO_TOKEN_MAGIC_RETRY2 && hd.dcid.datalen < NGTCP2_MIN_INITIAL_DCIDLEN) {
+                    send_stateless_connection_close(&hd, ep, local_addr, sa, salen);
+                    return;
+                }
+
+                switch (hd.token[0]) {
+                case NGTCP2_CRYPTO_TOKEN_MAGIC_RETRY2:
+                    switch (verify_retry_token(&ocid, &hd, sa, salen)) {
+                    case 0:
+                        pocid      = &ocid;
+                        token_type = NGTCP2_TOKEN_TYPE_RETRY;
+                        break;
+                    case -1:
+                        send_stateless_connection_close(&hd, ep, local_addr, sa, salen);
+                        return;
+                    case 1:
+                        hd.token    = nullptr;
+                        hd.tokenlen = 0;
+                        break;
+                    }
+
+                    break;
+                case NGTCP2_CRYPTO_TOKEN_MAGIC_REGULAR:
+                    if (verify_token(&hd, sa, salen) != 0) {
+                        if (config.validate_addr) {
+                            send_retry(&hd, ep, local_addr, sa, salen, data.size() * 3);
+                            return;
+                        }
+
+                        hd.token    = nullptr;
+                        hd.tokenlen = 0;
+                    } else {
+                        token_type = NGTCP2_TOKEN_TYPE_NEW_TOKEN;
+                    }
+                    break;
+                default:
+                    if (!config.quiet) {
+                        std::cerr << "Ignore unrecognized token" << std::endl;
+                    }
+                    if (config.validate_addr) {
+                        send_retry(&hd, ep, local_addr, sa, salen, data.size() * 3);
+                        return;
+                    }
+                    hd.token    = nullptr;
+                    hd.tokenlen = 0;
+                    break;
+                }
+            }
+
+            auto h = std::make_unique<Handler>(loop_, this);
+            if (h->init(ep, local_addr, sa, salen, &hd.scid, &hd.dcid, pocid,
+                        { hd.token, hd.tokenlen }, token_type, hd.version,
+                        tls_ctx_)
+                    != 0) {
+                return;
+            }
+
+            switch (h->on_read(ep, local_addr, sa, salen, pi, data)) {
+            case 0:
+                break;
+            case NETWORK_ERR_RETRY:
+                send_retry(&hd, ep, local_addr, sa, salen, data.size() * 3);
+                return;
+            default:
+                return;
+            }
+
+            if (h->on_write() != 0) {
+                return;
+            }
+
+            std::array<ngtcp2_cid, 8> scids;
+            auto                      conn     = h->conn();
+
+            auto                      num_scid = ngtcp2_conn_get_scid(conn, nullptr);
+
+            assert(num_scid <= scids.size());
+
+            ngtcp2_conn_get_scid(conn, scids.data());
+
+            for (size_t i = 0; i < num_scid; ++i) {
+                associate_cid(&scids[i], h.get());
+            }
+
+            handlers_.emplace(dcid_key, h.release());
+
+            return;
+        }
+
+        auto h    = (*handler_it).second;
+        auto conn = h->conn();
+        if (ngtcp2_conn_in_closing_period(conn)) {
+            if (h->send_conn_close(ep, local_addr, sa, salen, pi, data) != 0) {
+                remove(h);
+            }
+            return;
+        }
+        if (ngtcp2_conn_in_draining_period(conn)) {
+            return;
+        }
+
+        if (auto rv = h->on_read(ep, local_addr, sa, salen, pi, data); rv != 0) {
+            if (rv != NETWORK_ERR_CLOSE_WAIT) {
+                remove(h);
+            }
+            return;
+        }
+
+        h->signal_write();
+#endif
     }
 };
 } // namespace opencmw::majordomo::detail::nghttp2
