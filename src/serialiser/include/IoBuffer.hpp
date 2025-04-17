@@ -262,13 +262,11 @@ public:
     }
 
     [[nodiscard]] IoBuffer(IoBuffer &&other) noexcept
-        : _allocator(other._allocator.select_on_container_copy_construction()) {
-        _buffer       = resize(other._size);
-        _position     = other._position;
-        _capacity     = other.capacity();
-        _buffer       = other._buffer;
-        other._buffer = nullptr;
-    }
+        : _allocator(other._allocator.select_on_container_copy_construction())
+        , _buffer(std::exchange(other._buffer, nullptr))
+        , _position(other._position)
+        , _size(other._size)
+        , _capacity(other._capacity) {}
 
     constexpr ~IoBuffer() {
         freeInternalBuffer();
@@ -288,6 +286,9 @@ public:
     }
 
     IoBuffer &operator=(IoBuffer &&other) noexcept {
+        if (this == &other) {
+            return *this;
+        }
         auto temp = std::move(other);
         swap(temp);
         return *this;
