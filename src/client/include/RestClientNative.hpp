@@ -185,10 +185,10 @@ struct ClientSession {
                     return static_cast<int>(NGHTTP2_ERR_TEMPORAL_CALLBACK_FAILURE);
                 }
                 client->_requestsByStreamId[frame->hd.stream_id].longPollingIdx = longPollingIdx;
-#ifdef OPENCMW_PROFILE_HTTP
-            } else if (nameView == "x-timestamp") {
-                fmt::println(std::cerr, "Client::Header: x-timestamp: {} (latency {} ns)", valueView, latency(valueView).count());
-#endif
+                // #ifdef OPENCMW_PROFILE_HTTP
+                //            } else if (nameView == "x-timestamp") {
+                //                fmt::println(std::cerr, "Client::Header: x-timestamp: {} (latency {} ns)", valueView, latency(valueView).count());
+                // #endif
             }
 
             return 0;

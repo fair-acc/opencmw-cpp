@@ -28,6 +28,8 @@
 
 #include <fmt/format.h>
 
+#define OPENCMW_PROFILE_HTTP 1
+
 #ifdef OPENCMW_DEBUG_HTTP
 #include <iostream>
 #define HTTP_DBG(...) fmt::println(std::cerr, __VA_ARGS__);

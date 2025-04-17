@@ -654,11 +654,11 @@ struct Session {
         const auto [it, inserted] = _requestsByStreamId.try_emplace(frame->hd.stream_id, Request{});
         auto &request             = it->second;
         request.rawHeaders.emplace_back(name, value);
-#ifdef OPENCMW_PROFILE_HTTP
-        if (name == "x-timestamp") {
-            fmt::println(std::cerr, "Server::Header: x-timestamp: {} (latency {} ns)", value, opencmw::detail::nghttp2::latency(value).count());
-        }
-#endif
+        // #ifdef OPENCMW_PROFILE_HTTP
+        //         if (name == "x-timestamp") {
+        //             fmt::println(std::cerr, "Server::Header: x-timestamp: {} (latency {} ns)", value, opencmw::nghttp2::detail::latency(value).count());
+        //         }
+        // #endif
         return 0;
     }
 
