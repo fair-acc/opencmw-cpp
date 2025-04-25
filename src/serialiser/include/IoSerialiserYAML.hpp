@@ -153,7 +153,7 @@ inline std::string fieldFormatter(ArithmeticType auto const &value, const int nI
 
 template<bool SingleLineParameter>
 constexpr void fieldParser(const std::string_view &data, std::floating_point auto &value) {
-    if (const auto result = fast_float::from_chars(data.cbegin(), data.cend(), value); result.ec != std::errc()) {
+    if (const auto result = fast_float::from_chars(data.data(), data.data() + data.size(), value); result.ec != std::errc()) {
         throw ProtocolException("parsing ArithmeticType (float) from string '{}'", data);
     }
 }

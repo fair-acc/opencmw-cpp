@@ -1,17 +1,16 @@
 #ifndef OPENCMW_CPP_DNS_HPP
 #define OPENCMW_CPP_DNS_HPP
 
-#include "dns_client.hpp"
+#include "ClientCommon.hpp"
 #include "dns_storage.hpp"
 #include "dns_types.hpp"
+#include "MdpMessage.hpp"
+#include "RestClient.hpp"
 
 #ifndef __EMSCRIPTEN__
 
 #include <majordomo/Worker.hpp>
 #include <MIME.hpp>
-
-#include <atomic>
-
 namespace opencmw::service::dns {
 
 using DnsWorkerType = majordomo::Worker<"/dns", Context, FlatEntryList, FlatEntryList, majordomo::description<"Register and Query Signals">>;
@@ -36,57 +35,45 @@ public:
     }
 };
 
-Entry registerSignals(const std::vector<Entry> &entries, std::string scheme_host_port = "http://localhost:8080") {
-    IoBuffer      outBuffer;
-    FlatEntryList entrylist{ entries };
-    opencmw::serialise<opencmw::YaS>(outBuffer, entrylist);
-    std::string contentType{ MIME::BINARY.typeName() };
-    std::string body{ outBuffer.asString() };
+inline Entry registerSignals(const std::vector<Entry> &entries, std::string scheme_host_port = "http://localhost:8080") {
+    client::Command cmd;
+    cmd.command     = mdp::Command::Set;
+    cmd.serviceName = "/dns";
+    cmd.topic       = URI<>::UriFactory{ URI<>(std::move(scheme_host_port)) }.path("/dns").build();
+    opencmw::serialise<opencmw::YaS>(cmd.data, FlatEntryList{ entries });
 
-    // send request to register Signal
-    httplib::Client client{
-        scheme_host_port
-    };
+    client::RestClient  client{ client::DefaultContentTypeHeader(MIME::BINARY) };
+    auto                reply = client.blockingRequest(std::move(cmd));
 
-    auto response = client.Post("dns", body, contentType);
-
-    if (response.error() == httplib::Error::Read) throw std::runtime_error{ "Server did not send an answer" };
-    if (response.error() != httplib::Error::Success || response->status == 500) throw std::runtime_error{ response->reason };
-
-    // deserialise response
-    IoBuffer inBuffer;
-    inBuffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>(response->body);
+    if (!reply.error.empty()) {
+        throw std::runtime_error{ reply.error };
+    }
 
     FlatEntryList res;
     try {
-        opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::ALWAYS>(inBuffer, res);
+        opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::ALWAYS>(reply.data, res);
     } catch (const ProtocolException &exc) {
         throw std::runtime_error{ exc.what() }; // rethrowing, because ProtocolException behaves weird
     }
-
     return res.toEntries().front();
 }
 
-std::vector<Entry> querySignals(const Entry &a = {}, std::string scheme_host_port = "http://localhost:8080") {
-    // send request to register Service
-    httplib::Client client{
-        scheme_host_port
-    };
+inline std::vector<Entry> querySignals(const Entry &a = {}, std::string scheme_host_port = "http://localhost:8080") {
+    client::Command cmd;
+    cmd.command     = mdp::Command::Get;
+    cmd.serviceName = "/dns";
+    cmd.topic       = URI<>::UriFactory{ URI<>(std::move(scheme_host_port)) }.path("/dns").addQueryParameter("service_name", a.service_name).addQueryParameter("signal_name", a.signal_name).addQueryParameter("signal_unit", a.signal_unit).addQueryParameter("signal_rate", std::to_string(a.signal_rate)).addQueryParameter("signal_type", a.signal_type).build();
 
-    auto response = client.Get("dns", httplib::Params{ { "protocol", a.protocol }, { "hostname", a.hostname }, { "port", std::to_string(a.port) }, { "service_name", a.service_name }, { "service_type", a.service_type }, { "signal_name", a.signal_name }, { "signal_unit", a.signal_unit }, { "signal_rate", std::to_string(a.signal_rate) }, { "signal_type", a.signal_type } },
-            httplib::Headers{
-                    { std::string{ "Content-Type" }, std::string{ MIME::BINARY.typeName() } } });
+    client::RestClient  client{ client::DefaultContentTypeHeader(MIME::BINARY) };
+    auto                reply = client.blockingRequest(std::move(cmd));
 
-    if (response.error() == httplib::Error::Read) throw std::runtime_error{ "Server did not send an answer" };
-    if (response.error() != httplib::Error::Success || response->status == 500) throw std::runtime_error{ response->reason };
-
-    // deserialise response
-    IoBuffer inBuffer;
-    inBuffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>(response->body);
+    if (!reply.error.empty()) {
+        throw std::runtime_error{ reply.error };
+    }
 
     FlatEntryList res;
     try {
-        opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::ALWAYS>(inBuffer, res);
+        opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::ALWAYS>(reply.data, res);
     } catch (const ProtocolException &exc) {
         throw std::runtime_error{ exc.what() }; // rethrowing, because ProtocolException behaves weird
     }
