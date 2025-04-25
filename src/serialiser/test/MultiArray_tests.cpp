@@ -1,7 +1,7 @@
 #include <catch2/catch.hpp>
 
 #include <iostream>
-
+#include <ranges>
 #include <MultiArray.hpp>
 
 using namespace opencmw;
@@ -82,6 +82,7 @@ TEST_CASE("MultiArray.floatOrder3Offsets", "[MultiArray]") {
     MultiArray<float, 3> test(elements, { 2, 3, 4 }, { 14, 4, 1 }, { 0, 0, 0 });
     std::cout << test << std::endl;
     // test that internal fields where set correctly
+    REQUIRE(100 == test.element_count());
     REQUIRE(2 == test.n(0));
     REQUIRE(3 == test.n(1));
     REQUIRE(4 == test.n(2));
@@ -91,7 +92,21 @@ TEST_CASE("MultiArray.floatOrder3Offsets", "[MultiArray]") {
     REQUIRE(0 == test.offset(0));
     REQUIRE(0 == test.offset(1));
     REQUIRE(0 == test.offset(2));
+
+    // using [] single index
+    REQUIRE(0.0f == test[0]);
+    REQUIRE(8.0f == test[8]);
+
+    // using () single index
+    REQUIRE(0.0f == test(0));
+    REQUIRE(8.0f == test(8));
+
+    // using get() single index
+    REQUIRE(0.0f == test.get(0));
+    REQUIRE(8.0f == test.get(8));
+
     // multi index access
+    // using ()
     REQUIRE(0.0f == test(0U, 0U, 0U));
     REQUIRE(8.0f == test(0U, 2U, 0U));
     REQUIRE(14.0f == test(1U, 0U, 0U));
@@ -100,4 +115,55 @@ TEST_CASE("MultiArray.floatOrder3Offsets", "[MultiArray]") {
     REQUIRE(11.0f == test(0U, 2U, 3U));
     REQUIRE(17.0f == test(1U, 0U, 3U));
     REQUIRE(25.0f == test(1U, 2U, 3U));
+
+    // using get()
+    REQUIRE(0.0f == test.get(0U, 0U, 0U));
+    REQUIRE(8.0f == test.get(0U, 2U, 0U));
+    REQUIRE(14.0f == test.get(1U, 0U, 0U));
+    REQUIRE(22.0f == test.get(1U, 2U, 0U));
+    REQUIRE(3.0f == test.get(0U, 0U, 3U));
+    REQUIRE(11.0f == test.get(0U, 2U, 3U));
+    REQUIRE(17.0f == test.get(1U, 0U, 3U));
+    REQUIRE(25.0f == test.get(1U, 2U, 3U));
+
+    // using get({indices})
+    REQUIRE(0.0f == test.get({0U, 0U, 0U}));
+    REQUIRE(8.0f == test.get({0U, 2U, 0U}));
+    REQUIRE(14.0f == test.get({1U, 0U, 0U}));
+    REQUIRE(22.0f == test.get({1U, 2U, 0U}));
+    REQUIRE(3.0f == test.get({0U, 0U, 3U}));
+    REQUIRE(11.0f == test.get({0U, 2U, 3U}));
+    REQUIRE(17.0f == test.get({1U, 0U, 3U}));
+    REQUIRE(25.0f == test.get({1U, 2U, 3U}));
+
+    // using []
+    REQUIRE(0.0f == test[{0U, 0U, 0U}]);
+    REQUIRE(8.0f == test[{0U, 2U, 0U}]);
+    REQUIRE(14.0f == test[{1U, 0U, 0U}]);
+    REQUIRE(22.0f == test[{1U, 2U, 0U}]);
+    REQUIRE(3.0f == test[{0U, 0U, 3U}]);
+    REQUIRE(11.0f == test[{0U, 2U, 3U}]);
+    REQUIRE(17.0f == test[{1U, 0U, 3U}]);
+    REQUIRE(25.0f == test[{1U, 2U, 3U}]);
+}
+
+TEST_CASE("operator+ and +=", "[MultiArray]") {
+    MultiArray<float,2> A({1,2,3,4},{2,2});
+    MultiArray<float,2> B({10,20,30,40},{2,2});
+
+    A += B;
+    std::vector<float> refAdd{11,22,33,44};
+    CHECK(std::ranges::equal(A.elements(),refAdd));
+
+    auto C = A + B; // (11,22,33,44) + (10,20,30,40)
+    std::vector<float> refPlus{21,42,63,84};
+    CHECK(std::ranges::equal(C.elements(),refPlus));
+}
+
+TEST_CASE("Move constructor", "[MultiArray]") {
+    MultiArray<double,1> src({0, 1, 2, 3, 4, 5}, {6});
+    MultiArray<double,1> dst(std::move(src));
+
+    REQUIRE(dst.element_count()==6);
+    REQUIRE(src.elements().empty());
 }
