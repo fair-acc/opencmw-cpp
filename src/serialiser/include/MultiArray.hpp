@@ -46,7 +46,7 @@ public:
     /// \param elements the elements in row major format
     /// \param dimensions the size of the MultiArray in every dimension
     [[nodiscard]] constexpr MultiArray(const std::vector<value_type> &elements, const std::array<size_t_, n_dims> &dimensions)
-        : elements_(elements.data(), elements.size()), n_element_(dimensions[n_dims - 1]), dims_(dimensions), strides_(), offsets_() {
+        : elements_(elements.begin(), elements.end()), n_element_(dimensions[n_dims - 1]), dims_(dimensions), strides_(), offsets_() {
         strides_[n_dims - 1] = 1;
         for (auto i = n_dims - 1; i > 0; i--) {
             n_element_ *= dimensions[i - 1];
@@ -57,7 +57,7 @@ public:
     /// move constructor
     /// \param elements the elements in row major format
     /// \param dimensions the size of the MultiArray in every dimension
-    [[nodiscard]] constexpr MultiArray(const std::vector<value_type> &&elements, const std::array<size_t_, n_dims> &&dimensions)
+    [[nodiscard]] constexpr MultiArray(std::vector<value_type> &&elements, std::array<size_t_, n_dims> &&dimensions)
         : elements_(std::move(elements)), n_element_(dimensions[n_dims - 1]), dims_(std::move(dimensions)), strides_(), offsets_() {
         strides_[n_dims - 1] = 1;
         for (auto i = n_dims - 1; i > 0; i--) {
@@ -92,7 +92,7 @@ public:
     }
 
     /// \return the mutable numbers of dimensions of the MultiArray
-    [[nodiscard]] constexpr auto &&dimensions() noexcept {
+    [[nodiscard]] constexpr auto &dimensions() noexcept {
         return dims_;
     }
 
@@ -102,15 +102,15 @@ public:
     }
 
     /// \return the mutable raw vector with the elements of the MultiArray
-    [[nodiscard]] constexpr auto &&elements() noexcept {
+    [[nodiscard]] constexpr auto &elements() noexcept {
         return elements_;
     }
 
     /// \return the number of valid entries in the raw vector
-    [[nodiscard]] constexpr auto &element_count() noexcept {
+    [[nodiscard]] constexpr size_t_ element_count() const noexcept {
         return n_element_;
     }
-    [[nodiscard]] constexpr auto &element_count() const noexcept {
+    [[nodiscard]] constexpr size_t_ &element_count() noexcept {
         return n_element_;
     }
 
@@ -119,7 +119,7 @@ public:
     [[nodiscard]] constexpr auto &offset(size_t_ dim) noexcept {
         return offsets_[dim];
     }
-    [[nodiscard]] constexpr auto &offset(size_t_ dim) const noexcept {
+    [[nodiscard]] constexpr const auto &offset(size_t_ dim) const noexcept {
         return offsets_[dim];
     }
 
@@ -128,7 +128,7 @@ public:
     [[nodiscard]] constexpr auto &stride(size_t_ dim) noexcept {
         return strides_[dim];
     }
-    [[nodiscard]] constexpr auto &stride(size_t_ dim) const noexcept {
+    [[nodiscard]] constexpr const auto &stride(size_t_ dim) const noexcept {
         return strides_[dim];
     }
 
@@ -167,14 +167,23 @@ public:
     [[nodiscard]] constexpr value_type &operator[](const size_t_ index) {
         return elements_[index];
     }
+    [[nodiscard]] constexpr const value_type &operator[](const size_t_ index) const {
+        return elements_[index];
+    }
 
     /// access operator for multiple dimensions
     [[nodiscard]] constexpr value_type &operator[](const std::array<size_t_, n_dims> indices) {
         return elements_[index(indices)];
     }
+    [[nodiscard]] constexpr const value_type &operator[](const std::array<size_t_, n_dims> indices) const {
+        return elements_[index(indices)];
+    }
 
     /// access operator for linear access (parentheses version)
     [[nodiscard]] constexpr value_type &operator()(const size_t_ index) {
+        return elements_[index];
+    }
+    [[nodiscard]] constexpr const value_type &operator()(const size_t_ index) const {
         return elements_[index];
     }
 
@@ -183,9 +192,16 @@ public:
     [[nodiscard]] constexpr value_type &operator()(const R... indices) {
         return elements_[index(std::array{ indices... })];
     }
+    template<typename... R, std::enable_if_t<sizeof...(R) == n_dims && (true && ... && std::convertible_to<R, size_t_>), size_t_> = 0>
+    [[nodiscard]] constexpr const value_type &operator()(const R... indices) const {
+        return elements_[index(std::array{ indices... })];
+    }
 
     /// explicit method linear accessor (bounds checked)
     [[nodiscard]] constexpr value_type &get(const size_t_ index) {
+        return elements_.at(index);
+    }
+    [[nodiscard]] constexpr const value_type &get(const size_t_ index) const {
         return elements_.at(index);
     }
 
@@ -193,8 +209,17 @@ public:
     [[nodiscard]] constexpr value_type &get(const std::array<size_t_, n_dims> indices) {
         return elements_.at(index(indices));
     }
+    [[nodiscard]] constexpr const value_type &get(const std::array<size_t_, n_dims> indices) const {
+        return elements_.at(index(indices));
+    }
+
+    /// explicit method multi array accessor (bounds checked)
     template<typename... R, std::enable_if_t<sizeof...(R) == n_dims && (true && ... && std::convertible_to<R, size_t_>), size_t_> = 0>
     [[nodiscard]] constexpr value_type &get(const R... indices) {
+        return elements_.at(index(std::array{ indices... }));
+    }
+    template<typename... R, std::enable_if_t<sizeof...(R) == n_dims && (true && ... && std::convertible_to<R, size_t_>), size_t_> = 0>
+    [[nodiscard]] constexpr const value_type &get(const R... indices) const {
         return elements_.at(index(std::array{ indices... }));
     }
 
@@ -214,19 +239,19 @@ public:
         return *this;
     }
 
-    MultiArray<value_type, n_dims> operator+(const MultiArray<value_type, n_dims> &operand) {
+    MultiArray<value_type, n_dims> operator+(const MultiArray<value_type, n_dims> &operand) const {
         // todo: verify dimension match. Allow broadcasting (adding a column vector to each row or similar)?
-        MultiArray &result = MultiArray<value_type, n_dims>(this->dims_);
+        MultiArray result = MultiArray<value_type, n_dims>(this->dims_);
         for (size_t_ i = 0; i < n_element_; ++i) { // todo: use iterator to only change valid fields
             result[i] = operator[](i) + operand[i];
         }
         return result;
     }
     template<AnyNumber R>
-    MultiArray &operator+(const R &operand) {
-        MultiArray &result = MultiArray<value_type, n_dims>(this->dims_);
+    MultiArray operator+(const R &operand) const {
+        MultiArray result = MultiArray<value_type, n_dims>(this->dims_);
         for (size_t_ i = 0; i < n_element_; ++i) { // todo: use iterator to only change valid fields
-            operator[](i) += operand;
+            result[i] = elements_[i] + operand;
         }
         return result;
     }
