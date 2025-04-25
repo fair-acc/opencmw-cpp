@@ -59,7 +59,7 @@ FetchContent_Declare(
 FetchContent_Declare(
         openssl-source
         GIT_REPOSITORY https://github.com/openssl/openssl.git
-        GIT_TAG openssl-3.4.1
+        GIT_TAG openssl-3.5.0 # 3.5.0 required for server-side QUIC support
 )
 
 FetchContent_MakeAvailable(cpp-httplib zeromq openssl-source)
