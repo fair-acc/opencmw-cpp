@@ -242,7 +242,7 @@ struct fmt::formatter<opencmw::disruptor::RingBuffer<T, SIZE, WAIT_STRATEGY, CLA
     constexpr auto parse(ParseContext &ctx) { return ctx.begin(); }
 
     template<typename FormatContext>
-    auto format(const opencmw::disruptor::RingBuffer<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY> &ringBuffer, FormatContext &ctx) {
+    auto format(const opencmw::disruptor::RingBuffer<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY> &ringBuffer, FormatContext &ctx) const {
         std::stringstream stream;
         stream << fmt::format("RingBuffer<{}, {}> - WaitStrategy: {{ {} }}, Cursor: {}, GatingSequences: [ ",
                 opencmw::typeName<T>, ringBuffer.bufferSize(), opencmw::typeName<WAIT_STRATEGY>, ringBuffer.cursor());
@@ -268,7 +268,7 @@ struct fmt::formatter<opencmw::disruptor::PollState> {
     constexpr auto parse(ParseContext &ctx) { return ctx.begin(); }
 
     template<typename FormatContext>
-    auto format(opencmw::disruptor::PollState const &value, FormatContext &ctx) {
+    auto format(opencmw::disruptor::PollState const &value, FormatContext &ctx) const {
         switch (value) {
         case opencmw::disruptor::PollState::Processing:
             return fmt::format_to(ctx.out(), "PollState::Processing");
