@@ -60,9 +60,12 @@ int main(int argc, char **argv) {
     if (https) {
         rest.certificateFilePath = "./demo_public.crt";
         rest.keyFilePath         = "./demo_private.key";
+    } else {
+        rest.protocols = majordomo::rest::Protocol::Http2;
+        fmt::println(std::cerr, "HTTP/3 disabled, requires TLS");
     }
     if (const auto bound = primaryBroker.bindRest(rest); !bound) {
-        fmt::println("Could not bind HTTP/2 REST bridge to port {}: {}", rest.port, bound.error());
+        fmt::println("Could not bind REST bridge to port {}: {}", rest.port, bound.error());
         return 1;
     }
 

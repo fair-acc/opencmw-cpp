@@ -1,28 +1,37 @@
-#ifndef OPENCMW_MAJORDOMO_HTTP2SERVER_HPP
-#define OPENCMW_MAJORDOMO_HTTP2SERVER_HPP
+#ifndef OPENCMW_MAJORDOMO_RESTSERVER_HPP
+#define OPENCMW_MAJORDOMO_RESTSERVER_HPP
 
 #include "IoBuffer.hpp"
 #include "LoadTest.hpp"
 #include "MdpMessage.hpp"
 #include "MIME.hpp"
 #include "nghttp2/NgHttp2Utils.hpp"
-#include "nghttp2/NgHttp3Utils.hpp"
 #include "Rest.hpp"
 #include "Topic.hpp"
 
+#include "network.h"
+#include "template.h"
+#include "tls_server_context_ossl.h"
+#include "tls_server_session_ossl.h"
+#include "util.h"
+
 #include <algorithm>
 #include <charconv>
+#include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <expected>
 #include <filesystem>
+#include <iterator>
 #include <memory>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
-#include <nghttp2/nghttp2.h>
+#include <netinet/udp.h>
 #include <optional>
+#include <random>
 #include <ranges>
 #include <string>
 #include <sys/socket.h>
@@ -39,43 +48,236 @@
 
 #include <fmt/format.h>
 
+#include <nghttp2/nghttp2.h>
 #include <nghttp3/nghttp3.h>
 #include <ngtcp2/ngtcp2.h>
 #include <ngtcp2/ngtcp2_crypto.h>
 
-constexpr size_t NGTCP2_SV_SCIDLEN = 18;
+// TODO(Frank) from ngtcp2 examples/server.cc
+
+#ifdef OPENCMW_DEBUG_HTTP
+
+inline void print_debug2(const char *format, va_list args) {
+    vfprintf(stderr, format, args);
+}
+
+inline void print_debug(void *user_data, const char *fmt, ...) {
+    va_list                ap;
+    std::array<char, 4096> buf;
+
+    va_start(ap, fmt);
+    auto n = vsnprintf(buf.data(), buf.size(), fmt, ap);
+    va_end(ap);
+
+    if (static_cast<size_t>(n) >= buf.size()) {
+        n = buf.size() - 1;
+    }
+
+    buf[n++] = '\n';
+
+    while (write(fileno(stderr), buf.data(), n) == -1 && errno == EINTR);
+}
+#endif
+
+constexpr size_t NGTCP2_SV_SCIDLEN            = 18;
+
+constexpr size_t max_preferred_versionslen    = 4;
+
+constexpr size_t NGTCP2_STATELESS_RESET_BURST = 100;
+
+// Endpoint is a local endpoint.
+struct Endpoint {
+    Address addr;
+    int     fd;
+};
+
+struct Buffer {
+    Buffer(const uint8_t *data, size_t datalen)
+        : buf{ data, data + datalen }, begin(buf.data()), tail(begin + datalen) {}
+    explicit Buffer(size_t datalen)
+        : buf(datalen), begin(buf.data()), tail(begin) {}
+
+    size_t                   size() const { return tail - begin; }
+    size_t                   left() const { return buf.data() + buf.size() - tail; }
+    uint8_t *const           wpos() { return tail; }
+    std::span<const uint8_t> data() const { return { begin, size() }; }
+    void                     push(size_t len) { tail += len; }
+    void                     reset() { tail = begin; }
+
+    std::vector<uint8_t>     buf;
+    // begin points to the beginning of the buffer.  This might point to
+    // buf.data() if a buffer space is allocated by this object.  It is
+    // also allowed to point to the external shared buffer.
+    uint8_t *begin;
+    // tail points to the position of the buffer where write should
+    // occur.
+    uint8_t *tail;
+};
+
+// TODO(Frank) improve error handling/reporting
+inline int create_sock(Address &local_addr, const char *addr, const char *port,
+        int family) {
+    addrinfo hints{
+        .ai_flags    = AI_PASSIVE,
+        .ai_family   = family,
+        .ai_socktype = SOCK_DGRAM,
+    };
+    addrinfo *res, *rp;
+    int       val = 1;
+
+    if (strcmp(addr, "*") == 0) {
+        addr = nullptr;
+    }
+
+    if (auto rv = getaddrinfo(addr, port, &hints, &res); rv != 0) {
+        std::cerr << "getaddrinfo: " << gai_strerror(rv) << std::endl;
+        return -1;
+    }
+
+    auto res_d = defer(freeaddrinfo, res);
+
+    int  fd    = -1;
+
+    for (rp = res; rp; rp = rp->ai_next) {
+        fd = util::create_nonblock_socket(rp->ai_family, rp->ai_socktype,
+                rp->ai_protocol);
+        if (fd == -1) {
+            continue;
+        }
+
+        if (rp->ai_family == AF_INET6) {
+            if (setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &val,
+                        static_cast<socklen_t>(sizeof(val)))
+                    == -1) {
+                close(fd);
+                continue;
+            }
+
+            if (setsockopt(fd, IPPROTO_IPV6, IPV6_RECVPKTINFO, &val,
+                        static_cast<socklen_t>(sizeof(val)))
+                    == -1) {
+                close(fd);
+                continue;
+            }
+        } else if (setsockopt(fd, IPPROTO_IP, IP_PKTINFO, &val,
+                           static_cast<socklen_t>(sizeof(val)))
+                   == -1) {
+            close(fd);
+            continue;
+        }
+
+        if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &val,
+                    static_cast<socklen_t>(sizeof(val)))
+                == -1) {
+            close(fd);
+            continue;
+        }
+
+        fd_set_recv_ecn(fd, rp->ai_family);
+        fd_set_ip_mtu_discover(fd, rp->ai_family);
+        fd_set_ip_dontfrag(fd, family);
+
+        if (bind(fd, rp->ai_addr, rp->ai_addrlen) != -1) {
+            break;
+        }
+
+        close(fd);
+    }
+
+    if (!rp) {
+        std::cerr << "Could not bind" << std::endl;
+        return -1;
+    }
+
+    socklen_t len = sizeof(local_addr.su.storage);
+    if (getsockname(fd, &local_addr.su.sa, &len) == -1) {
+        std::cerr << "getsockname: " << strerror(errno) << std::endl;
+        close(fd);
+        return -1;
+    }
+    local_addr.len     = len;
+    local_addr.ifindex = 0;
+
+    return fd;
+}
+
+inline uint32_t generate_reserved_version(const sockaddr *sa, socklen_t salen,
+        uint32_t version) {
+    uint32_t       h  = 0x811C9DC5u;
+    const uint8_t *p  = (const uint8_t *) sa;
+    const uint8_t *ep = p + salen;
+    for (; p != ep; ++p) {
+        h ^= *p;
+        h *= 0x01000193u;
+    }
+    version = htonl(version);
+    p       = (const uint8_t *) &version;
+    ep      = p + sizeof(version);
+    for (; p != ep; ++p) {
+        h ^= *p;
+        h *= 0x01000193u;
+    }
+    h &= 0xf0f0f0f0u;
+    h |= 0x0a0a0a0au;
+    return h;
+}
 
 namespace opencmw::majordomo::detail::nghttp2 {
 
 using namespace opencmw::nghttp2;
 using namespace opencmw::nghttp2::detail;
 
-enum class ContextType {
-    Tcp,
-    Quic,
-};
-
-inline int alpn_select_proto_cb(SSL * /*ssl*/, const unsigned char **out,
-        unsigned char *outlen, const unsigned char *in,
-        unsigned int inlen,
+inline int alpn_select_proto_cb(SSL * /*ssl*/,
+        const unsigned char **out,
+        unsigned char        *outlen,
+        const unsigned char  *in,
+        unsigned int          inlen,
         void * /*arg*/) {
-    if (nghttp2_select_alpn(out, outlen, in, inlen) != -1) {
-        return SSL_TLSEXT_ERR_NOACK;
+    // List of supported protocols (in order of preference)
+    static const unsigned char supported_alpns[] = { 2, 'h', '2', 2, 'h', '3' };
+
+    HTTP_DBG("Client-supported ALPN protocols:");
+    for (unsigned int i = 0; i < inlen;) {
+        unsigned char    proto_len = in[i];
+        std::string_view proto(reinterpret_cast<const char *>(&in[i + 1]), proto_len);
+        HTTP_DBG("  - {}", proto);
+        i += 1 + proto_len;
+    }
+
+    // Try to select one that both client and server support
+    int ret = SSL_select_next_proto(
+            const_cast<unsigned char **>(out), outlen,
+            supported_alpns, sizeof(supported_alpns),
+            in, inlen);
+
+    HTTP_DBG("alpn_select_proto_cb: Selected ALPN: {}",
+            ret == OPENSSL_NPN_NEGOTIATED ? std::string_view(reinterpret_cast<const char *>(*out), *outlen) : "none");
+    if (ret != OPENSSL_NPN_NEGOTIATED) {
+        return SSL_TLSEXT_ERR_NOACK; // No match
     }
 
     return SSL_TLSEXT_ERR_OK;
 }
 
-template<ContextType TContext>
+#if 0
+inline int alpn_select_proto_cb(SSL * /*ssl*/, const unsigned char **out,
+        unsigned char *outlen, const unsigned char *in,
+        unsigned int inlen,
+        void * /*arg*/) {
+    if (nghttp2_select_alpn(out, outlen, in, inlen) != 1) {
+        return SSL_TLSEXT_ERR_NOACK;
+    }
+
+    return SSL_TLSEXT_ERR_OK;
+}
+#endif
+
 inline std::expected<SSL_CTX_Ptr, std::string> create_ssl_ctx(EVP_PKEY *key, X509 *cert) {
-    constexpr auto Method  = TContext == ContextType::Tcp ? TLS_server_method : OSSL_QUIC_server_method;
-    auto           ssl_ctx = SSL_CTX_Ptr(SSL_CTX_new(Method()), SSL_CTX_free);
+    auto ssl_ctx = SSL_CTX_Ptr(SSL_CTX_new(TLS_server_method()), SSL_CTX_free);
     if (!ssl_ctx) {
         return std::unexpected(fmt::format("Could not create SSL/TLS context: {}", ERR_error_string(ERR_get_error(), nullptr)));
     }
-    if constexpr (TContext == ContextType::Tcp) {
-        SSL_CTX_set_options(ssl_ctx.get(), SSL_OP_ALL | SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION | SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION);
-    }
+    SSL_CTX_set_options(ssl_ctx.get(), SSL_OP_ALL | SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION | SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION);
     if (SSL_CTX_set1_curves_list(ssl_ctx.get(), "P-256") != 1) {
         return std::unexpected(fmt::format("SSL_CTX_set1_curves_list failed: {}", ERR_error_string(ERR_get_error(), nullptr)));
     }
@@ -91,9 +293,7 @@ inline std::expected<SSL_CTX_Ptr, std::string> create_ssl_ctx(EVP_PKEY *key, X50
         return std::unexpected("Private key does not match the certificate");
     }
 
-    if constexpr (TContext == ContextType::Tcp) {
-        SSL_CTX_set_alpn_select_cb(ssl_ctx.get(), alpn_select_proto_cb, nullptr);
-    }
+    SSL_CTX_set_alpn_select_cb(ssl_ctx.get(), alpn_select_proto_cb, nullptr);
 
     return ssl_ctx;
 }
@@ -123,10 +323,10 @@ struct Request {
     std::string                                      longPollIndex;
     std::string                                      contentType;
     std::string                                      accept;
-    std::string      payload;
-    bool             complete = false;
+    std::string                                      payload;
+    bool                                             complete = false;
 
-    std::string_view acceptedMime() const {
+    std::string_view                                 acceptedMime() const {
         static constexpr auto acceptableMimeTypes = std::array{
             opencmw::MIME::JSON.typeName(), MIME::HTML.typeName(), MIME::BINARY.typeName()
         };
@@ -169,18 +369,34 @@ struct Request {
     }
 };
 
-struct ResponseData {
-    explicit ResponseData(Message &&m)
-        : message(std::move(m))
-        , errorBuffer(message.error.data(), message.error.size()) {}
+struct BodyReaderChunk {
+    std::array<std::uint8_t, 16384> buffer;
+    std::size_t                     unacked                        = 0;
+    std::size_t                     offset                         = 0;
 
-    explicit ResponseData(rest::Response &&r)
-        : restResponse(std::move(r)) {}
+    std::span<std::uint8_t>         data() {
+        return { buffer.data() + offset, buffer.size() - offset };
+    }
 
-    Message  message;
-    IoBuffer errorBuffer;
+    void bytesAdded(std::size_t len) {
+        unacked += len;
+        offset += len;
+    }
 
-    rest::Response restResponse;
+    void clear() {
+        unacked = 0;
+        offset  = 0;
+    }
+
+    bool full() const {
+        return offset == buffer.size();
+    }
+
+    BodyReaderChunk()                                            = default;
+    BodyReaderChunk &operator=(BodyReaderChunk &&other) noexcept = delete;
+    BodyReaderChunk(BodyReaderChunk &&other) noexcept            = delete;
+    BodyReaderChunk(const BodyReaderChunk &)                     = delete;
+    BodyReaderChunk &operator=(const BodyReaderChunk &)          = delete;
 };
 
 struct IdGenerator {
@@ -217,8 +433,18 @@ struct SharedData {
     nghttp2_nv                                    _altSvcHeader;
     std::map<std::string, SubscriptionCacheEntry> _subscriptionCache;
     std::vector<rest::Handler>                    _handlers;
+    std::deque<std::unique_ptr<BodyReaderChunk>>  _bodyReaderChunks;
 
-    rest::Handler                                *findHandler(std::string_view method, std::string_view path) {
+    std::array<uint8_t, 32>                       _static_secret = [] {
+        std::array<uint8_t, 32> secret{};
+        // TODO(Frank) avoid throwing
+        if (util::generate_secret(secret) != 0) {
+            throw std::runtime_error("Failed to generate static secret");
+        }
+        return secret;
+    }();
+
+    rest::Handler *findHandler(std::string_view method, std::string_view path) {
         auto bestMatch = _handlers.end();
 
         for (auto itHandler = _handlers.begin(); itHandler != _handlers.end(); ++itHandler) {
@@ -243,6 +469,42 @@ struct SharedData {
 
         return bestMatch != _handlers.end() ? &*bestMatch : nullptr;
     }
+
+    std::unique_ptr<BodyReaderChunk> acquireChunk() {
+        if (!_bodyReaderChunks.empty()) {
+            auto chunk = std::move(_bodyReaderChunks.back());
+            _bodyReaderChunks.pop_back();
+            return chunk;
+        }
+        return std::make_unique<BodyReaderChunk>();
+    }
+
+    void releaseChunk(std::unique_ptr<BodyReaderChunk> chunk) {
+        chunk->clear();
+        _bodyReaderChunks.push_back(std::move(chunk));
+    }
+};
+
+struct ResponseData {
+    explicit ResponseData(std::shared_ptr<SharedData> sharedData_, Message &&m)
+        : sharedData(std::move(sharedData_))
+        , message(std::move(m))
+        , errorBuffer(message.error.data(), message.error.size()) {}
+
+    explicit ResponseData(std::shared_ptr<SharedData> sharedData_, rest::Response &&r)
+        : sharedData(std::move(sharedData_))
+        , restResponse(std::move(r)) {}
+
+    std::shared_ptr<SharedData> sharedData;
+    Message                     message;
+    IoBuffer                    errorBuffer;
+
+    rest::Response              restResponse;
+    // Http3-specific (TODO: try to unify with Http2)
+    // Used when streaming data from restResponse.bodyReader
+    std::deque<std::unique_ptr<BodyReaderChunk>> bodyReaderChunks;
+    // Used when streaming data from an IoBuffer
+    IoBuffer *bodyBuffer = nullptr;
 };
 
 constexpr int kHttpOk       = 200;
@@ -253,11 +515,11 @@ template<typename Derived, typename TStreamId>
 struct SessionBase {
     using PendingRequest = std::tuple<std::uint64_t, TStreamId>;              // requestId, streamId
     using PendingPoll    = std::tuple<std::string, std::uint64_t, TStreamId>; // zmqTopic, PollingIndex, streamId
-    std::map<TStreamId, Request>               _requestsByStreamId;
-    std::map<TStreamId, ResponseData>          _responsesByStreamId;
-    std::vector<PendingRequest>                _pendingRequests;
-    std::vector<PendingPoll>                   _pendingPolls;
-    std::shared_ptr<SharedData>                _sharedData;
+    std::map<TStreamId, Request>      _requestsByStreamId;
+    std::map<TStreamId, ResponseData> _responsesByStreamId;
+    std::vector<PendingRequest>       _pendingRequests;
+    std::vector<PendingPoll>          _pendingPolls;
+    std::shared_ptr<SharedData>       _sharedData;
 
     explicit SessionBase(std::shared_ptr<SharedData> sharedData)
         : _sharedData(std::move(sharedData)) {
@@ -283,6 +545,21 @@ struct SessionBase {
         _pendingRequests.emplace_back(id, streamId);
         return result;
     };
+
+    void addData(TStreamId streamId, std::string_view data) {
+        _requestsByStreamId[streamId].payload += data;
+    }
+
+    void addHeader(TStreamId streamId, std::string_view name, std::string_view value) {
+        const auto [it, inserted] = _requestsByStreamId.try_emplace(streamId, Request{});
+        auto &request             = it->second;
+        request.rawHeaders.emplace_back(name, value);
+#ifdef OPENCMW_PROFILE_HTTP
+        if (name == "x-timestamp") {
+            fmt::println(std::cerr, "x-timestamp: {} (latency {} ns)", value, opencmw::detail::nghttp2::latency(value).count());
+        }
+#endif
+    }
 
     void respondToLongPoll(TStreamId streamId, std::uint64_t index, Message &&msg) {
         auto timestamp = std::to_string(opencmw::load_test::timestamp().count());
@@ -483,7 +760,6 @@ struct SessionBase {
 };
 
 struct Http2Session : public SessionBase<Http2Session, std::int32_t> {
-    using TStreamId = typename std::int32_t;
     TcpSocket         _socket;
     WriteBuffer<4096> _writeBuffer;
     nghttp2_session  *_session = nullptr;
@@ -548,8 +824,9 @@ struct Http2Session : public SessionBase<Http2Session, std::int32_t> {
 
     static auto ioBufferCallback() {
         return [](nghttp2_session *, int32_t /*stream_id*/, uint8_t *buf, size_t length, uint32_t *data_flags, nghttp2_data_source *source, void * /*user_data*/) {
-            auto   ioBuffer = static_cast<IoBuffer *>(source->ptr);
-            size_t copy_len = std::min(length, ioBuffer->size() - ioBuffer->position());
+            auto              ioBuffer = static_cast<IoBuffer *>(source->ptr);
+            const std::size_t copy_len = std::min(length, ioBuffer->size() - ioBuffer->position());
+            fmt::println("COPY {} bytes from {} to {} (sz={})", copy_len, ioBuffer->position(), length, ioBuffer->size());
             std::copy(ioBuffer->data() + ioBuffer->position(), ioBuffer->data() + ioBuffer->position() + copy_len, buf);
             ioBuffer->skip(static_cast<int>(copy_len));
             if (ioBuffer->position() == ioBuffer->size()) {
@@ -559,9 +836,22 @@ struct Http2Session : public SessionBase<Http2Session, std::int32_t> {
         };
     }
 
-    void sendResponse(TStreamId streamId, rest::Response response) {
+    static auto viewCallback() {
+        return [](nghttp2_session *, int32_t /*stream_id*/, uint8_t *buf, size_t length, uint32_t *data_flags, nghttp2_data_source *source, void * /*user_data*/) {
+            auto              view     = static_cast<std::span<const std::uint8_t> *>(source->ptr);
+            const std::size_t copy_len = std::min(length, view->size());
+            std::copy(view->data(), view->data() + copy_len, buf);
+            *view = view->subspan(copy_len);
+            if (view->empty()) {
+                *data_flags |= NGHTTP2_DATA_FLAG_EOF;
+            }
+            return static_cast<ssize_t>(copy_len);
+        };
+    }
+
+    void sendResponse(std::int32_t streamId, rest::Response response) {
         // store message while sending so we don't need to copy the data
-        auto                   &msg       = _responsesByStreamId.try_emplace(streamId, ResponseData{ std::move(response) }).first->second;
+        auto                   &msg       = _responsesByStreamId.try_emplace(streamId, ResponseData{ _sharedData, std::move(response) }).first->second;
 
         constexpr auto          noCopy    = NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE;
         const auto              statusStr = std::to_string(msg.restResponse.code);
@@ -571,7 +861,9 @@ struct Http2Session : public SessionBase<Http2Session, std::int32_t> {
         // :status must go first, otherwise browsers and curl will not accept the response
         headers.push_back(nv(u8span(":status"), u8span(statusStr), NGHTTP2_NV_FLAG_NO_COPY_NAME));
         headers.push_back(nv(u8span("access-control-allow-origin"), u8span("*"), noCopy));
-        headers.push_back(_sharedData->_altSvcHeader);
+        if (!_sharedData->_altSvcHeaderValue.empty()) {
+            headers.push_back(_sharedData->_altSvcHeader);
+        }
 
         for (const auto &[name, value] : msg.restResponse.headers) {
             headers.push_back(nv(u8span(name), u8span(value), noCopy));
@@ -595,7 +887,10 @@ struct Http2Session : public SessionBase<Http2Session, std::int32_t> {
                 }
                 return static_cast<ssize_t>(bytesRead);
             };
-        } else {
+        } else if (!msg.restResponse.bodyView.empty()) {
+            data_prd.source.ptr    = &msg.restResponse.bodyView;
+            data_prd.read_callback = viewCallback();
+        } else if (!msg.restResponse.body.empty()) {
             data_prd.source.ptr    = &msg.restResponse.body;
             data_prd.read_callback = ioBufferCallback();
         }
@@ -604,17 +899,17 @@ struct Http2Session : public SessionBase<Http2Session, std::int32_t> {
         auto formattedHeaders = headers | std::views::transform([](const auto &header) {
             return fmt::format("'{}'='{}'", std::string_view(reinterpret_cast<const char *>(header.name), header.namelen), std::string_view(reinterpret_cast<const char *>(header.value), header.valuelen));
         });
-        HTTP_DBG("Sending response {} to streamId {}. Headers:\n{}\n Body: {}", msg.restResponse.code, streamId, fmt::join(formattedHeaders, "\n"), msg.restResponse.bodyReader ? "reader" : fmt::format("{} bytes", msg.restResponse.body.size()));
+        HTTP_DBG("Server::H2: Sending response {} to streamId {}. Headers:\n{}\n Body: {}", msg.restResponse.code, streamId, fmt::join(formattedHeaders, "\n"), msg.restResponse.bodyReader ? "reader" : fmt::format("{} bytes", msg.restResponse.body.size()));
 #endif
         if (auto rc = nghttp2_submit_response2(_session, streamId, headers.data(), headers.size(), &data_prd); rc != 0) {
-            HTTP_DBG("Server: nghttp2_submit_response2 for stream ID {} failed: {}", streamId, nghttp2_strerror(rc));
+            HTTP_DBG("Server::H2: nghttp2_submit_response2 for stream ID {} failed: {}", streamId, nghttp2_strerror(rc));
             _responsesByStreamId.erase(streamId);
         }
     }
 
     void sendResponse(std::int32_t streamId, int responseCode, Message &&responseMessage, std::vector<nghttp2_nv> extraHeaders = {}) {
         // store message while sending so we don't need to copy the data
-        auto         &msg           = _responsesByStreamId.try_emplace(streamId, ResponseData{ std::move(responseMessage) }).first->second;
+        auto         &msg           = _responsesByStreamId.try_emplace(streamId, ResponseData{ _sharedData, std::move(responseMessage) }).first->second;
         IoBuffer     *buf           = msg.errorBuffer.empty() ? &msg.message.data : &msg.errorBuffer;
 
         auto          codeStr       = std::to_string(responseCode);
@@ -622,8 +917,11 @@ struct Http2Session : public SessionBase<Http2Session, std::int32_t> {
         constexpr int noCopy        = NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE;
         // :status must go first
         auto headers = std::vector{ nv(u8span(":status"), u8span(codeStr)), nv(u8span("x-opencmw-topic"), u8span(msg.message.topic.str()), noCopy),
-            nv(u8span("x-opencmw-service-name"), u8span(msg.message.serviceName), noCopy), nv(u8span("access-control-allow-origin"), u8span("*"), noCopy), nv(u8span("content-length"), u8span(contentLength)), _sharedData->_altSvcHeader };
+            nv(u8span("x-opencmw-service-name"), u8span(msg.message.serviceName), noCopy), nv(u8span("access-control-allow-origin"), u8span("*"), noCopy), nv(u8span("content-length"), u8span(contentLength)) };
 
+        if (!_sharedData->_altSvcHeaderValue.empty()) {
+            headers.push_back(_sharedData->_altSvcHeader);
+        }
         headers.insert(headers.end(), extraHeaders.begin(), extraHeaders.end());
 
         nghttp2_data_provider2 data_prd;
@@ -634,19 +932,22 @@ struct Http2Session : public SessionBase<Http2Session, std::int32_t> {
         auto formattedHeaders = headers | std::views::transform([](const auto &header) {
             return fmt::format("'{}'='{}'", std::string_view(reinterpret_cast<const char *>(header.name), header.namelen), std::string_view(reinterpret_cast<const char *>(header.value), header.valuelen));
         });
-        HTTP_DBG("Sending response {} to streamId {}. Headers:\n{}", responseCode, streamId, fmt::join(formattedHeaders, "\n"));
+        HTTP_DBG("Server::H2: Sending response {} to streamId {}. Headers:\n{}", responseCode, streamId, fmt::join(formattedHeaders, "\n"));
 #endif
         if (auto rc = nghttp2_submit_response2(_session, streamId, headers.data(), headers.size(), &data_prd); rc != 0) {
-            HTTP_DBG("Server: nghttp2_submit_response2 for stream ID {} failed: {}", streamId, nghttp2_strerror(rc));
+            HTTP_DBG("Server::H2: nghttp2_submit_response2 for stream ID {} failed: {}", streamId, nghttp2_strerror(rc));
             _responsesByStreamId.erase(streamId);
         }
     }
 
-    void respondWithRedirect(TStreamId streamId, std::string_view location) {
+    void respondWithRedirect(std::int32_t streamId, std::string_view location) {
         HTTP_DBG("Server::respondWithRedirect: streamId={} location={}", streamId, location);
         // :status must go first
         constexpr auto noCopy  = NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE;
-        const auto     headers = std::array{ nv(u8span(":status"), u8span("302"), noCopy), nv(u8span("location"), u8span(location)), _sharedData->_altSvcHeader };
+        auto           headers = std::vector{ nv(u8span(":status"), u8span("302"), noCopy), nv(u8span("location"), u8span(location)) };
+        if (!_sharedData->_altSvcHeaderValue.empty()) {
+            headers.push_back(_sharedData->_altSvcHeader);
+        }
         nghttp2_submit_response2(_session, streamId, headers.data(), headers.size(), nullptr);
     }
 
@@ -699,91 +1000,6 @@ struct Http2Session : public SessionBase<Http2Session, std::int32_t> {
             respondToLongPoll(streamId, index - entry.firstIndex, Message(entry.messages[index - entry.firstIndex]));
         }
         return result;
-    }
-
-    void processCompletedRequest(std::int32_t streamId) {
-        auto it = _requestsByStreamId.find(streamId);
-        assert(it != _requestsByStreamId.end());
-        auto &[streamid, request] = *it;
-
-        std::string      path;
-        std::string_view method;
-        std::string_view xOpencmwMethod;
-
-        for (const auto &[name, value] : request.rawHeaders) {
-            if (name == ":path") {
-                path = value;
-            } else if (name == ":method") {
-                method = value;
-            } else if (name == "content-type") {
-                request.contentType = value;
-            } else if (name == "accept") {
-                request.accept = value;
-            } else if (name == "x-opencmw-method") {
-                xOpencmwMethod = value;
-            }
-        }
-
-        // if we have an externally configured handler for this method/path, use it
-        if (auto handler = _sharedData->findHandler(method, path); handler) {
-            rest::Request req;
-            req.method = method;
-            req.path   = path;
-            std::swap(req.headers, request.rawHeaders);
-            auto response = handler->handler(req);
-            sendResponse(streamId, std::move(response));
-            _requestsByStreamId.erase(it);
-            return;
-        }
-
-        // redirect "/" request to "/mmi.service"
-        if (path == "/") {
-            path = "/mmi.service";
-        }
-
-        // Everything else is a service request
-        try {
-            auto pathUri                 = URI<>(path);
-            auto factory                 = URI<>::UriFactory(pathUri).setQuery({});
-            bool haveSubscriptionContext = false;
-            for (const auto &[qkey, qvalue] : pathUri.queryParamMap()) {
-                if (qkey == "LongPollingIdx") {
-                    request.method        = RestMethod::LongPoll;
-                    request.longPollIndex = qvalue.value_or("");
-                } else if (qkey == "SubscriptionContext") {
-                    request.topic           = mdp::Topic::fromMdpTopic(URI<>(qvalue.value_or("")));
-                    haveSubscriptionContext = true;
-                } else if (qkey == "_bodyOverride") {
-                    request.payload = qvalue.value_or("");
-                } else {
-                    if (qvalue) {
-                        factory = std::move(factory).addQueryParameter(qkey, qvalue.value());
-                    } else {
-                        factory = std::move(factory).addQueryParameter(qkey);
-                    }
-                }
-            }
-            if (!haveSubscriptionContext) {
-                request.topic = mdp::Topic::fromMdpTopic(factory.build());
-            }
-        } catch (const std::exception &e) {
-            HTTP_DBG("Service::Header: Could not parse service URI '{}': {}", path, e.what());
-            Message response;
-            response.error = e.what();
-            sendResponse(streamId, kFileNotFound, std::move(response));
-            _requestsByStreamId.erase(it);
-            return;
-        }
-
-        if (request.method == RestMethod::Invalid && !xOpencmwMethod.empty()) {
-            request.method = parseMethod(xOpencmwMethod);
-        }
-        if (request.method == RestMethod::Invalid) {
-            request.method = parseMethod(method);
-        }
-
-        // Set completed for getMessages() to collect
-        request.complete = true;
     }
 
     std::vector<Message> getMessages(IdGenerator &idGenerator) {
@@ -849,7 +1065,7 @@ struct Http2Session : public SessionBase<Http2Session, std::int32_t> {
 
     int data_chunk_recv_callback(uint8_t /*flags*/, int32_t stream_id, std::string_view data) {
         HTTP_DBG("Server::Data id={} {} bytes", stream_id, data.size());
-        _requestsByStreamId[stream_id].payload += data;
+        addData(stream_id, data);
         return 0;
     }
 
@@ -867,14 +1083,7 @@ struct Http2Session : public SessionBase<Http2Session, std::int32_t> {
 
     int header_callback(const nghttp2_frame *frame, std::string_view name, std::string_view value, uint8_t /*flags*/) {
         HTTP_DBG("Server::Header id={} {} = {}", frame->hd.stream_id, name, value);
-        const auto [it, inserted] = _requestsByStreamId.try_emplace(frame->hd.stream_id, Request{});
-        auto &request             = it->second;
-        request.rawHeaders.emplace_back(name, value);
-#ifdef OPENCMW_PROFILE_HTTP
-        if (name == "x-timestamp") {
-            fmt::println(std::cerr, "Server::Header: x-timestamp: {} (latency {} ns)", value, opencmw::detail::nghttp2::latency(value).count());
-        }
-#endif
+        addHeader(frame->hd.stream_id, name, value);
         return 0;
     }
 
@@ -893,13 +1102,611 @@ struct Http2Session : public SessionBase<Http2Session, std::int32_t> {
     }
 };
 
-struct Http3Session : public SessionBase<Http3Session, std::int64_t> {
-    nghttp3_conn *_httpconn = nullptr;
-    TcpSocket _socket;
+template<typename TServer>
+struct Http3Session : public SessionBase<Http3Session<TServer>, std::int64_t>, public std::enable_shared_from_this<Http3Session<TServer>> {
+    enum class State {
+        Initial,
+        Closing,
+        Draining,
+    };
+    State                  _state = State::Initial;
+    TServer               *server_;
+    ngtcp2_conn           *_conn = nullptr;
+    ngtcp2_crypto_conn_ref _conn_ref;
+    nghttp3_conn          *_httpconn = nullptr;
+    ngtcp2_cid             _scid;
+    TLSServerSession       _tlsSession;
+    ngtcp2_ccerr           _last_error;
+    // conn_closebuf_ contains a packet which contains CONNECTION_CLOSE.
+    // This packet is repeatedly sent as a response to the incoming
+    // packet in draining period.
+    std::unique_ptr<Buffer> _conn_closebuf;
+    bool                    _no_gso = false;
+    struct {
+        size_t bytes_recv;
+        size_t bytes_sent;
+        size_t num_pkts_recv;
+        size_t next_pkts_recv = 1;
+    } _close_wait;
 
-    explicit Http3Session(TcpSocket &&socket, std::shared_ptr<SharedData> sharedData)
-        : SessionBase<Http3Session, std::int64_t>(std::move(sharedData)), _socket{ std::move(socket) } {
+    struct {
+        bool   send_blocked     = false;
+        size_t num_blocked      = 0;
+        size_t num_blocked_sent = 0;
+        // blocked field is effective only when send_blocked is true.
+        struct {
+            Endpoint                *endpoint = nullptr;
+            Address                  local_addr;
+            Address                  remote_addr;
+            unsigned int             ecn = 0;
+            std::span<const uint8_t> data;
+            size_t                   gso_size = 0;
+        } blocked[2];
+        std::unique_ptr<uint8_t[]> data = std::unique_ptr<uint8_t[]>(new uint8_t[64 * 1024]);
+    } _tx;
+
+    static ngtcp2_conn *get_conn(ngtcp2_crypto_conn_ref *conn_ref) {
+        auto session = static_cast<Http3Session *>(conn_ref->user_data);
+        return session->_conn;
+    }
+
+    explicit Http3Session(TServer *server_, std::shared_ptr<SharedData> sharedData)
+        : SessionBase<Http3Session, std::int64_t>(std::move(sharedData)), server_(server_), _conn_ref({ .get_conn = get_conn, .user_data = this }) {
+    }
+
+    ~Http3Session() {
+        nghttp3_conn_del(_httpconn);
+    }
+
+    Http3Session(const Http3Session &)
+            = delete;
+    Http3Session &operator=(const Http3Session &) = delete;
+    Http3Session(Http3Session &&other)            = delete;
+    Http3Session &operator=(Http3Session &&other) = delete;
+
+    int stream_close(std::int64_t stream_id, std::uint64_t error_code) {
+        HTTP_DBG("Server::H3::stream_close: stream_id={} error_code={}", stream_id, error_code);
+        return 0;
+    }
+
+    int recv_data(std::int64_t stream_id, std::string_view data) {
+        HTTP_DBG("Server::H3::recv_data: stream_id={} datalen={}", stream_id, data.size());
+        this->addData(stream_id, data);
+        return 0;
+    }
+
+    int deferred_consume(std::int64_t stream_id, std::size_t datalen) {
+        HTTP_DBG("Server::H3::deferred_consume: stream_id={} datalen={}", stream_id, datalen);
+        return 0;
+    }
+
+    int begin_headers(std::int64_t stream_id) {
+        HTTP_DBG("Server::H3::begin_headers: stream_id={}", stream_id);
+        return 0;
+    }
+
+    int recv_header(std::int64_t stream_id, std::int32_t token, std::string_view name, std::string_view value, std::uint8_t flags) {
+        HTTP_DBG("Server::H3::recv_header: stream_id={} token={} name={} value={} flags={}", stream_id, token, name, value, flags);
+        this->addHeader(stream_id, name, value);
+        return 0;
+    }
+
+    int end_headers(std::int64_t stream_id, int fin) {
+        HTTP_DBG("Server::H3::end_headers: stream_id={} fin={}", stream_id, fin);
+        return 0;
+    }
+
+    int stop_sending(std::int64_t stream_id, std::uint64_t error_code) {
+        HTTP_DBG("Server::H3::stop_sending: stream_id={} error_code={}", stream_id, error_code);
+        return 0;
+    }
+
+    int end_stream(std::int64_t stream_id) {
+        HTTP_DBG("Server::H3::end_stream: stream_id={}", stream_id);
+        this->processCompletedRequest(stream_id);
+        return 0;
+    }
+
+    int reset_stream(std::int64_t stream_id, std::uint64_t error_code) {
+        HTTP_DBG("Server::H3::reset_stream: stream_id={} error_code={}", stream_id, error_code);
+        return 0;
+    }
+
+    int recv_settings(const nghttp3_settings *) {
+        HTTP_DBG("Server::H3::recv_settings");
+        return 0;
+    }
+
+    int shutdown(std::int64_t id) {
+        HTTP_DBG("Server::H3::shutdown: id={}", id);
+        return 0;
+    }
+
+    static auto viewCallback() {
+        return [](nghttp3_conn *, int64_t stream_id, nghttp3_vec *vec, std::size_t /*veccnt*/, std::uint32_t *pflags, void * /*conn_user_data*/, void *stream_user_data) -> nghttp3_ssize {
+            auto  res      = static_cast<ResponseData *>(stream_user_data);
+            auto &bodyView = res->restResponse.bodyView;
+            vec[0].base    = const_cast<std::uint8_t *>(bodyView.data());
+            vec[0].len     = bodyView.size();
+            HTTP_DBG("Server::H3::viewCallback: stream_id={} sz={} vec[0].len={}", stream_id, bodyView.size(), vec[0].len);
+            *pflags = NGHTTP3_DATA_FLAG_EOF;
+            return 1;
+        };
+    }
+
+    static auto ioBufferCallback() {
+        return [](nghttp3_conn *, int64_t stream_id, nghttp3_vec *vec, std::size_t /*veccnt*/, std::uint32_t *pflags, void * /*conn_user_data*/, void *stream_user_data) -> nghttp3_ssize {
+            auto res    = static_cast<ResponseData *>(stream_user_data);
+            vec[0].base = res->bodyBuffer->data();
+            vec[0].len  = res->bodyBuffer->size();
+            HTTP_DBG("Server::H3::ioBufferCallback: stream_id={} sz={} vec[0].len={}", stream_id, res->bodyBuffer->size(), vec[0].len);
+            *pflags = NGHTTP3_DATA_FLAG_EOF;
+            return 1;
+        };
+    }
+
+    void sendResponse(std::int64_t streamId, rest::Response response) {
+        // store message while sending so we don't need to copy the data
+        auto &msg = this->_responsesByStreamId.try_emplace(streamId, ResponseData{ this->_sharedData, std::move(response) }).first->second;
+        nghttp3_conn_set_stream_user_data(_httpconn, streamId, &msg);
+
+        constexpr auto          noCopy    = NGHTTP3_NV_FLAG_NO_COPY_NAME | NGHTTP3_NV_FLAG_NO_COPY_VALUE;
+        const auto              statusStr = std::to_string(msg.restResponse.code);
+
+        std::vector<nghttp3_nv> headers;
+        headers.reserve(msg.restResponse.headers.size() + 2);
+        // :status must go first, otherwise browsers and curl will not accept the response
+        headers.push_back(nv3(u8span(":status"), u8span(statusStr), NGHTTP3_NV_FLAG_NO_COPY_NAME));
+        headers.push_back(nv3(u8span("access-control-allow-origin"), u8span("*"), noCopy));
+
+        for (const auto &[name, value] : msg.restResponse.headers) {
+            headers.push_back(nv3(u8span(name), u8span(value), noCopy));
+        }
+
+        nghttp3_data_reader data_prd;
+
+        if (msg.restResponse.bodyReader) {
+            data_prd.read_data = [](nghttp3_conn *conn, int64_t stream_id, nghttp3_vec *vec, size_t veccnt, uint32_t *pflags, void *conn_user_data, void *stream_user_data) -> nghttp3_ssize {
+                std::ignore    = stream_id;
+                auto res       = static_cast<ResponseData *>(stream_user_data);
+
+                // We need to cache the data from the reader until nghttp3 stream_data_acked confirms that the data was sent.
+                // Use a chunk pool to avoid constant allocation/deallocation.
+                if (res->bodyReaderChunks.empty() || res->bodyReaderChunks.back()->full()) {
+                    res->bodyReaderChunks.push_back(res->sharedData->acquireChunk());
+                }
+                auto      &chunk = res->bodyReaderChunks.back();
+
+                const auto r     = res->restResponse.bodyReader(chunk->data());
+                if (!r) {
+                    HTTP_DBG("Server::H3::bodyReaderCallback: stream_id={} Error reading body: {}", stream_id, r.error());
+                    return NGHTTP3_ERR_CALLBACK_FAILURE;
+                }
+                const auto &[bytesRead, hasMore] = *r;
+                HTTP_DBG("Server::H3::bodyReaderCallback: stream_id={} bytesRead={} hasMore={}", stream_id, bytesRead, hasMore);
+
+                vec[0].base  = &chunk->buffer[chunk->offset];
+                vec[0].len   = bytesRead;
+                chunk->bytesAdded(bytesRead);
+
+                HTTP_DBG("Server::H3::bodyReaderCallback: stream_id={} chunks={} vec[0].len={}", stream_id, res->bodyReaderChunks.size(), vec[0].len);
+
+                if (!hasMore) {
+                    *pflags = NGHTTP3_DATA_FLAG_EOF;
+                }
+                return 1;
+            };
+        } else if (!msg.restResponse.bodyView.empty()) {
+            data_prd.read_data = viewCallback();
+        } else {
+            msg.bodyBuffer     = &msg.restResponse.body;
+            data_prd.read_data = ioBufferCallback();
+        }
+
+#ifdef OPENCMW_DEBUG_HTTP
+        auto formattedHeaders = headers | std::views::transform([](const auto &header) {
+            return fmt::format("'{}'='{}'", std::string_view(reinterpret_cast<const char *>(header.name), header.namelen), std::string_view(reinterpret_cast<const char *>(header.value), header.valuelen));
+        });
+        HTTP_DBG("Server::H3: Sending response {} to streamId {}. Headers:\n{}\n Body: {}", msg.restResponse.code, streamId, fmt::join(formattedHeaders, "\n"), msg.restResponse.bodyReader ? "reader" : fmt::format("{} bytes", msg.restResponse.body.size()));
+#endif
+        if (auto rc = nghttp3_conn_submit_response(_httpconn, streamId, headers.data(), headers.size(), &data_prd); rc != 0) {
+            HTTP_DBG("Server::H3: nghttp3_conn_submit_response for stream ID {} failed: {}", streamId, nghttp3_strerror(rc));
+            this->_responsesByStreamId.erase(streamId);
+        }
+    }
+
+    void sendResponse(std::int64_t streamId, int responseCode, Message &&responseMessage, std::vector<nghttp2_nv> extraHeaders = {}) {
+        // store message while sending so we don't need to copy the data
+        auto &msg                            = this->_responsesByStreamId.try_emplace(streamId, ResponseData{ this->_sharedData, std::move(responseMessage) }).first->second;
+        msg.bodyBuffer                       = msg.errorBuffer.empty() ? &msg.message.data : &msg.errorBuffer;
+
+        auto                   codeStr       = std::to_string(responseCode);
+        auto                   contentLength = std::to_string(msg.bodyBuffer->size());
+        constexpr std::uint8_t noCopy        = NGHTTP3_NV_FLAG_NO_COPY_NAME | NGHTTP3_NV_FLAG_NO_COPY_VALUE;
+        // :status must go first
+        auto headers  = std::vector{ nv3(u8span(":status"), u8span(codeStr)), nv3(u8span("x-opencmw-topic"), u8span(msg.message.topic.str()), noCopy),
+            nv3(u8span("x-opencmw-service-name"), u8span(msg.message.serviceName), noCopy), nv3(u8span("access-control-allow-origin"), u8span("*"), noCopy), nv3(u8span("content-length"), u8span(contentLength)) };
+
+        auto nv2ToNv3 = [](const auto &nv) {
+            auto mapFlags = [](uint8_t flags) {
+                uint8_t r;
+                if (flags & NGHTTP2_NV_FLAG_NO_COPY_NAME) {
+                    r = NGHTTP3_NV_FLAG_NO_COPY_NAME;
+                }
+                if (flags & NGHTTP2_NV_FLAG_NO_COPY_VALUE) {
+                    r |= NGHTTP3_NV_FLAG_NO_COPY_VALUE;
+                }
+                return r;
+            };
+            return nghttp3_nv{ nv.name, nv.value, nv.namelen, nv.valuelen, mapFlags(nv.flags) };
+        };
+        std::transform(extraHeaders.begin(), extraHeaders.end(), std::back_inserter(headers), nv2ToNv3);
+
+        nghttp3_data_reader data_prd;
+        nghttp3_conn_set_stream_user_data(_httpconn, streamId, &msg);
+        data_prd.read_data = ioBufferCallback();
+
+#ifdef OPENCMW_DEBUG_HTTP
+        auto formattedHeaders = headers | std::views::transform([](const auto &header) {
+            return fmt::format("'{}'='{}'", std::string_view(reinterpret_cast<const char *>(header.name), header.namelen), std::string_view(reinterpret_cast<const char *>(header.value), header.valuelen));
+        });
+        HTTP_DBG("Server::H3: Sending response {} to streamId {}. Headers:\n{}", responseCode, streamId, fmt::join(formattedHeaders, "\n"));
+#endif
+        if (auto rc = nghttp3_conn_submit_response(_httpconn, streamId, headers.data(), headers.size(), &data_prd); rc != 0) {
+            HTTP_DBG("Server::H3: nghttp3_conn_submit_response for stream ID {} failed: {}", streamId, nghttp2_strerror(rc));
+            this->_responsesByStreamId.erase(streamId);
+        }
+    }
+
+    void respondWithRedirect(std::int64_t streamId, std::string_view location) {
+        HTTP_DBG("Server::H3::respondWithRedirect: streamId={} location={}", streamId, location);
+        // :status must go first
+        constexpr auto noCopy  = NGHTTP3_NV_FLAG_NO_COPY_NAME | NGHTTP3_NV_FLAG_NO_COPY_VALUE;
+        const auto     headers = std::array{ nv3(u8span(":status"), u8span("302"), noCopy), nv3(u8span("location"), u8span(location)) };
+        nghttp3_conn_submit_response(_httpconn, streamId, headers.data(), headers.size(), nullptr);
+    }
+
+    int init(const Endpoint &ep, const Address &local_addr,
+            const sockaddr *sa, socklen_t salen, const ngtcp2_cid *dcid,
+            const ngtcp2_cid *scid, const ngtcp2_cid *ocid,
+            std::span<const uint8_t> token, ngtcp2_token_type token_type,
+            uint32_t version, TLSServerContext &tls_ctx) {
+        auto callbacks = ngtcp2_callbacks{
+            .recv_client_initial      = ngtcp2_crypto_recv_client_initial_cb,
+            .recv_crypto_data         = ngtcp2_crypto_recv_crypto_data_cb,
+            .handshake_completed      = [](ngtcp2_conn *conn, void *user_data) {
+            auto session = static_cast<Http3Session *>(user_data);
+            if (session->handshake_completed() != 0) {
+                HTTP_DBG("Server::H3: handshake_completed failed");
+                return NGTCP2_ERR_CALLBACK_FAILURE;
+            }
+            return 0; },
+            .encrypt                  = ngtcp2_crypto_encrypt_cb,
+            .decrypt                  = ngtcp2_crypto_decrypt_cb,
+            .hp_mask                  = ngtcp2_crypto_hp_mask_cb,
+            .recv_stream_data         = [](ngtcp2_conn *conn, std::uint32_t flags, std::int64_t stream_id,
+                                        std::uint64_t offset, const std::uint8_t *data, std::size_t datalen,
+                                        void *user_data, void         */*stream_user_data*/) {
+                auto session = static_cast<Http3Session *>(user_data);
+                if (session->recv_stream_data(flags, stream_id, {data, datalen}) != 0) {
+                    return NGTCP2_ERR_CALLBACK_FAILURE;
+                }
+                return 0; },
+            .acked_stream_data_offset = [](ngtcp2_conn *conn, int64_t stream_id,
+                                                uint64_t offset, uint64_t datalen,
+                                                void *user_data, void *stream_user_data) {
+                auto session = static_cast<Http3Session *>(user_data);
+                if (session->acked_stream_data_offset(stream_id, datalen) != 0) {
+                    return NGTCP2_ERR_CALLBACK_FAILURE;
+                }
+                return 0; },
+            .stream_open              = [](ngtcp2_conn *conn, int64_t stream_id, void *user_data) { return 0; },
+            .stream_close = [](ngtcp2_conn *conn, uint32_t flags, int64_t stream_id,
+                                    uint64_t app_error_code, void *user_data,
+                                    void *stream_user_data) {
+                auto session = static_cast<Http3Session *>(user_data);
+
+                if (!(flags & NGTCP2_STREAM_CLOSE_FLAG_APP_ERROR_CODE_SET)) {
+                app_error_code = NGHTTP3_H3_NO_ERROR;
+                }
+
+                if (session->on_stream_close(stream_id, app_error_code) != 0) {
+                return NGTCP2_ERR_CALLBACK_FAILURE;
+                }
+                return 0; },
+            .rand      = [](uint8_t *dest, size_t destlen, const ngtcp2_rand_ctx *rand_ctx) {
+                // TODO(Frank) check if this is the "error handling" we want
+                auto rv = util::generate_secure_random({dest, destlen});
+                if (rv != 0) {
+                  assert(0);
+                  abort();
+                } },
+            .get_new_connection_id = [](ngtcp2_conn *conn, ngtcp2_cid *cid, uint8_t *token,
+                                             size_t cidlen, void *user_data) {
+                if (util::generate_secure_random({cid->data, cidlen}) != 0) {
+                    return NGTCP2_ERR_CALLBACK_FAILURE;
+                  }
+
+                  auto session = static_cast<Http3Session *>(user_data);
+                  auto &static_secret = session->_sharedData->_static_secret;
+
+                  cid->datalen = cidlen;
+                  if (ngtcp2_crypto_generate_stateless_reset_token(
+                        token, static_secret.data(), static_secret.size(), cid) !=
+                      0) {
+                    return NGTCP2_ERR_CALLBACK_FAILURE;
+                  }
+                  session->server_->associate_cid(*cid, session->shared_from_this());
+
+                  return 0; },
+            .remove_connection_id = [](ngtcp2_conn *conn, const ngtcp2_cid *cid, void *user_data) {
+            auto session = static_cast<Http3Session *>(user_data);
+            session->server_->dissociate_cid(*cid);
+            return 0; },
+            .update_key = [](ngtcp2_conn *conn, uint8_t *rx_secret, uint8_t *tx_secret,
+                                  ngtcp2_crypto_aead_ctx *rx_aead_ctx, uint8_t *rx_iv,
+                                  ngtcp2_crypto_aead_ctx *tx_aead_ctx, uint8_t *tx_iv,
+                                  const uint8_t *current_rx_secret,
+                                  const uint8_t *current_tx_secret, size_t secretlen,
+                                  void *user_data) {
+            auto session = static_cast<Http3Session *>(user_data);
+            if (session->update_key(rx_secret, tx_secret, rx_aead_ctx, rx_iv, tx_aead_ctx,
+                              tx_iv, current_rx_secret, current_tx_secret,
+                              secretlen) != 0) {
+              return NGTCP2_ERR_CALLBACK_FAILURE;
+            }
+            return 0; },
+            .path_validation = [](ngtcp2_conn *conn, uint32_t flags, const ngtcp2_path *path,
+                                       const ngtcp2_path            *old_path,
+                                       ngtcp2_path_validation_result res, void *user_data) {
+
+                if (res != NGTCP2_PATH_VALIDATION_RESULT_SUCCESS ||
+                !(flags & NGTCP2_PATH_VALIDATION_FLAG_NEW_TOKEN)) {
+                return 0;
+                }
+
+                std::array<uint8_t, NGTCP2_CRYPTO_MAX_REGULAR_TOKENLEN> token;
+                auto t = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::system_clock::now().time_since_epoch())
+                        .count();
+
+                auto session = static_cast<Http3Session *>(user_data);
+                auto &static_secret = session->_sharedData->_static_secret;
+                auto tokenlen = ngtcp2_crypto_generate_regular_token(token.data(), static_secret.data(), static_secret.size(), path->remote.addr, path->remote.addrlen, t);
+                if (tokenlen < 0) {
+                    HTTP_DBG("ngtcp2_crypto_generate_regular_token: {}", ngtcp2_strerror(tokenlen));
+                    return 0;
+                }
+
+                if (auto rv = ngtcp2_conn_submit_new_token(conn, token.data(), tokenlen); rv != 0) {
+                    HTTP_DBG("ngtcp2_conn_submit_new_token: {}", ngtcp2_strerror(rv));
+                    return NGTCP2_ERR_CALLBACK_FAILURE;
+                }
+
+                return 0; },
+            .stream_reset                   = [](ngtcp2_conn *conn, int64_t stream_id, uint64_t final_size,
+                                    uint64_t app_error_code, void *user_data,
+                                    void *stream_user_data) {
+            auto session = static_cast<Http3Session *>(user_data);
+            if (session->on_stream_reset(stream_id) != 0) {
+                return NGTCP2_ERR_CALLBACK_FAILURE;
+            }
+            return 0; },
+            .extend_max_remote_streams_bidi = [](ngtcp2_conn *conn, uint64_t max_streams,
+                                                      void *user_data) {
+            auto session = static_cast<Http3Session *>(user_data);
+            session->extend_max_remote_streams_bidi(max_streams);
+            return 0; },
+
+            .extend_max_stream_data         = [](ngtcp2_conn *conn, int64_t stream_id,
+                                              uint64_t max_data, void *user_data,
+                                              void *stream_user_data) {
+                auto session = static_cast<Http3Session *>(user_data);
+                if (session->extend_max_stream_data(stream_id, max_data) != 0) {
+                    return NGTCP2_ERR_CALLBACK_FAILURE;
+                }
+                return 0; },
+            .delete_crypto_aead_ctx         = ngtcp2_crypto_delete_crypto_aead_ctx_cb,
+            .delete_crypto_cipher_ctx       = ngtcp2_crypto_delete_crypto_cipher_ctx_cb,
+            .get_path_challenge_data        = ngtcp2_crypto_get_path_challenge_data_cb,
+            .stream_stop_sending            = [](ngtcp2_conn *conn, int64_t stream_id,
+                                           uint64_t app_error_code, void *user_data,
+                                           void *stream_user_data) {
+            auto session = static_cast<Http3Session *>(user_data);
+            if (session->on_stream_stop_sending(stream_id) != 0) {
+                return NGTCP2_ERR_CALLBACK_FAILURE;
+            }
+            return 0; },
+            .version_negotiation            = ngtcp2_crypto_version_negotiation_cb,
+            .recv_tx_key                    = [](ngtcp2_conn *conn, ngtcp2_encryption_level level, void *user_data) {
+                if (level != NGTCP2_ENCRYPTION_LEVEL_1RTT) {
+                    return 0;
+                }
+                auto session = static_cast<Http3Session *>(user_data);
+                if (session->setup_httpconn() != 0) {
+                    return NGTCP2_ERR_CALLBACK_FAILURE;
+                }
+                return 0; },
+
+        };
+
+        _scid.datalen = NGTCP2_SV_SCIDLEN;
+        if (util::generate_secure_random({ _scid.data, _scid.datalen }) != 0) {
+            HTTP_DBG("Could not generate connection ID");
+            return -1;
+        }
+
+        ngtcp2_settings settings;
+        ngtcp2_settings_default(&settings);
+#ifdef OPENCMW_DEBUG_HTTP
+        settings.log_printf = print_debug;
+#endif
+        ngtcp2_transport_params params;
+        ngtcp2_transport_params_default(&params);
+        params.initial_max_stream_data_bidi_local  = 65535;
+        params.initial_max_stream_data_bidi_remote = 65535;
+        params.initial_max_stream_data_uni         = 65535;
+        params.initial_max_data                    = 128 * 1024;
+        params.initial_max_streams_bidi            = 100;
+        params.initial_max_streams_uni             = 3;
+        params.max_idle_timeout                    = 3600 * NGTCP2_SECONDS; // TODO(Frank) for long-poll, we might want to make this longer
+        params.stateless_reset_token_present       = 0;
+        params.active_connection_id_limit          = 8;
+
+        if (ocid) {
+            params.original_dcid      = *ocid;
+            params.retry_scid         = *scid;
+            params.retry_scid_present = 1;
+        } else {
+            params.original_dcid = *scid;
+        }
+
+        params.original_dcid_present = 1;
+
+        if (ngtcp2_crypto_generate_stateless_reset_token(
+                    params.stateless_reset_token, this->_sharedData->_static_secret.data(),
+                    this->_sharedData->_static_secret.size(), &_scid)
+                != 0) {
+            return -1;
+        }
+
+#if 0
+        if (config.preferred_ipv4_addr.len || config.preferred_ipv6_addr.len) {
+            params.preferred_addr_present = 1;
+
+            if (config.preferred_ipv4_addr.len) {
+                params.preferred_addr.ipv4         = config.preferred_ipv4_addr.su.in;
+                params.preferred_addr.ipv4_present = 1;
+            }
+
+            if (config.preferred_ipv6_addr.len) {
+                params.preferred_addr.ipv6         = config.preferred_ipv6_addr.su.in6;
+                params.preferred_addr.ipv6_present = 1;
+            }
+
+            if (util::generate_secure_random(
+                        params.preferred_addr.stateless_reset_token)
+                    != 0) {
+                std::cerr << "Could not generate preferred address stateless reset token"
+                          << std::endl;
+                return -1;
+            }
+
+            params.preferred_addr.cid.datalen = NGTCP2_SV_SCIDLEN;
+            if (util::generate_secure_random({ params.preferred_addr.cid.data,
+                        params.preferred_addr.cid.datalen })
+                    != 0) {
+                std::cerr << "Could not generate preferred address connection ID"
+                          << std::endl;
+                return -1;
+            }
+        }
+#endif
+
+        auto path = ngtcp2_path{
+            .local = {
+                    .addr    = const_cast<sockaddr *>(&local_addr.su.sa),
+                    .addrlen = local_addr.len,
+            },
+            .remote = {
+                    .addr    = const_cast<sockaddr *>(sa),
+                    .addrlen = salen,
+            },
+            .user_data = const_cast<Endpoint *>(&ep),
+        };
+        if (auto rv = ngtcp2_conn_server_new(&_conn, dcid, &_scid, &path, version, &callbacks,
+                    &settings, &params, nullptr, this);
+                rv != 0) {
+            HTTP_DBG("ngtcp2_conn_server_new: {}", ngtcp2_strerror(rv));
+            return -1;
+        }
+        if (_tlsSession.init(tls_ctx, &_conn_ref) != 0) {
+            return -1;
+        }
+
+        _tlsSession.enable_keylog();
+
+        ngtcp2_conn_set_tls_native_handle(_conn, _tlsSession.get_native_handle());
+
+#if 0 // TODO(Frank) make sure the fd makes it to the poll()
+        ev_io_set(&wev_, ep.fd, EV_WRITE);
+#else
+        assert(ep.fd == server_->_quicServerSocket.fd);
+        // server_->_write_fd = ep.fd;
+#endif
+        return 0;
+    }
+
+    int on_stream_reset(int64_t stream_id) {
+        if (_httpconn) {
+            if (auto rv = nghttp3_conn_shutdown_stream_read(_httpconn, stream_id);
+                    rv != 0) {
+                std::cerr << "nghttp3_conn_shutdown_stream_read: " << nghttp3_strerror(rv)
+                          << std::endl;
+                return -1;
+            }
+        }
+        return 0;
+    }
+
+    int on_stream_close(int64_t stream_id, uint64_t app_error_code) {
+        HTTP_DBG("Server::H3::on_stream_close: stream_id={} app_error_code={}", stream_id, app_error_code);
+
+        if (_httpconn) {
+            if (app_error_code == 0) {
+                app_error_code = NGHTTP3_H3_NO_ERROR;
+            }
+            auto rv = nghttp3_conn_close_stream(_httpconn, stream_id, app_error_code);
+            switch (rv) {
+            case 0:
+                break;
+            case NGHTTP3_ERR_STREAM_NOT_FOUND:
+                if (ngtcp2_is_bidi_stream(stream_id)) {
+                    assert(!ngtcp2_conn_is_local_stream(_conn, stream_id));
+                    ngtcp2_conn_extend_max_streams_bidi(_conn, 1);
+                }
+                break;
+            default:
+                HTTP_DBG("Server::H3::on_stream_close: nghttp3_conn_close_stream: {}", nghttp3_strerror(rv));
+                ngtcp2_ccerr_set_application_error(
+                        &_last_error, nghttp3_err_infer_quic_app_error_code(rv), nullptr, 0);
+                return -1;
+            }
+        }
+
+        return 0;
+    }
+
+    void extend_max_remote_streams_bidi(uint64_t max_streams) {
+        if (!_httpconn) {
+            return;
+        }
+
+        nghttp3_conn_set_max_client_streams_bidi(_httpconn, max_streams);
+    }
+
+    int extend_max_stream_data(int64_t stream_id, uint64_t max_data) {
+        if (auto rv = nghttp3_conn_unblock_stream(_httpconn, stream_id); rv != 0) {
+            HTTP_DBG("Server::H3::extend_max_stream_data: nghttp3_conn_unblock_stream: {}", nghttp3_strerror(rv));
+            return -1;
+        }
+        return 0;
+    }
+
+    int setup_httpconn() {
+        if (_httpconn) {
+            return 0;
+        }
+
+        if (const auto n = ngtcp2_conn_get_streams_uni_left(_conn); n < 3) {
+            HTTP_DBG("peer does not allow at least 3 unidirectional streams. (allows {})", n);
+            return -1;
+        }
+
         nghttp3_callbacks callbacks;
+#ifdef OPENCMW_DEBUG_HTTP
+        nghttp3_set_debug_vprintf_callback(print_debug2);
+#endif
         callbacks.acked_stream_data = [](nghttp3_conn *, std::int64_t stream_id, std::uint64_t datalen, void *conn_user_data, void *) {
             auto session = static_cast<Http3Session *>(conn_user_data);
             return session->acked_stream_data(stream_id, datalen);
@@ -923,7 +1730,7 @@ struct Http3Session : public SessionBase<Http3Session, std::int64_t> {
         };
         callbacks.recv_header = [](nghttp3_conn *, std::int64_t stream_id, std::int32_t token, nghttp3_rcbuf *name, nghttp3_rcbuf *value, uint8_t flags, void *conn_user_data, void *) {
             auto session = static_cast<Http3Session *>(conn_user_data);
-            return session->recv_header(stream_id, token, name, value, flags);
+            return session->recv_header(stream_id, token, as_view(name), as_view(value), flags);
         };
         callbacks.end_headers = [](nghttp3_conn *, std::int64_t stream_id, int fin, void *conn_user_data, void *) {
             auto session = static_cast<Http3Session *>(conn_user_data);
@@ -952,92 +1759,662 @@ struct Http3Session : public SessionBase<Http3Session, std::int64_t> {
 
         nghttp3_settings settings;
         nghttp3_settings_default(&settings);
+        settings.qpack_max_dtable_capacity = 4096;
+        settings.qpack_blocked_streams     = 100;
 
-        auto mem = nghttp3_mem_default();
-        // TODO: set settings
-        if (nghttp3_conn_server_new(&_httpconn, &callbacks, &settings, mem, this) != 0) {
-            // TODO use std::expected
-            throw std::runtime_error("Failed to create nghttp3 connection");
+        auto mem                           = nghttp3_mem_default();
+
+        if (auto rv = nghttp3_conn_server_new(&_httpconn, &callbacks, &settings, mem, this);
+                rv != 0) {
+            HTTP_DBG("nghttp3_conn_server_new: {}", nghttp3_strerror(rv));
+            return -1;
+        }
+
+        auto params = ngtcp2_conn_get_local_transport_params(_conn);
+
+        nghttp3_conn_set_max_client_streams_bidi(_httpconn,
+                params->initial_max_streams_bidi);
+
+        int64_t ctrl_stream_id;
+
+        if (auto rv = ngtcp2_conn_open_uni_stream(_conn, &ctrl_stream_id, nullptr);
+                rv != 0) {
+            HTTP_DBG("ngtcp2_conn_open_uni_stream: {}", ngtcp2_strerror(rv));
+            return -1;
+        }
+        if (auto rv = nghttp3_conn_bind_control_stream(_httpconn, ctrl_stream_id);
+                rv != 0) {
+            HTTP_DBG("nghttp3_conn_bind_control_stream: {}", nghttp3_strerror(rv));
+            return -1;
+        }
+
+        HTTP_DBG("Server::H3::setup_httpconn: stream_id={}", ctrl_stream_id);
+
+        int64_t qpack_enc_stream_id, qpack_dec_stream_id;
+
+        if (auto rv = ngtcp2_conn_open_uni_stream(_conn, &qpack_enc_stream_id, nullptr);
+                rv != 0) {
+            HTTP_DBG("ngtcp2_conn_open_uni_stream: {}", ngtcp2_strerror(rv));
+            return -1;
+        }
+
+        if (auto rv = ngtcp2_conn_open_uni_stream(_conn, &qpack_dec_stream_id, nullptr);
+                rv != 0) {
+            HTTP_DBG("ngtcp2_conn_open_uni_stream: {}", ngtcp2_strerror(rv));
+            return -1;
+        }
+
+        if (auto rv = nghttp3_conn_bind_qpack_streams(_httpconn, qpack_enc_stream_id,
+                    qpack_dec_stream_id);
+                rv != 0) {
+            HTTP_DBG("nghttp3_conn_bind_qpack_streams: {}", nghttp3_strerror(rv));
+            return -1;
+        }
+
+        HTTP_DBG("Server::H3::setup_httpconn: qpack streams encoder={} decoder={}", qpack_enc_stream_id, qpack_dec_stream_id);
+        return 0;
+    }
+
+    int acked_stream_data(std::int64_t stream_id, std::size_t datalen) {
+        HTTP_DBG("Server::H3::acked_stream_data: stream_id={} datalen={}", stream_id, datalen);
+        auto it = this->_responsesByStreamId.find(stream_id);
+        assert(it != this->_responsesByStreamId.end());
+        auto &response = it->second;
+        if (response.restResponse.bodyReader) {
+            while (datalen > 0) {
+                assert(!response.bodyReaderChunks.empty());
+                auto      &front = response.bodyReaderChunks.front();
+                const auto toAck = std::min(datalen, front->unacked);
+                front->unacked -= toAck;
+                datalen -= toAck;
+                HTTP_DBG("Server::H3::acked_stream_data: stream_id={} acked {} bytes; left={}", stream_id, toAck, front->unacked);
+                if (front->unacked == 0) {
+                    this->_sharedData->releaseChunk(std::move(response.bodyReaderChunks.front()));
+                    response.bodyReaderChunks.pop_front();
+                }
+                HTTP_DBG("Server::H3::acked_stream_data: stream_id={} chunks={}", stream_id, response.bodyReaderChunks.size());
+            }
+        } else {
+            // BodyBuffer/BodyView, nothing to do
+            HTTP_DBG("Server::H3::acked_stream_data: stream_id={} acked {}", stream_id, datalen);
+        }
+
+        return 0;
+    }
+
+    int acked_stream_data_offset(int64_t stream_id, uint64_t datalen) {
+        HTTP_DBG("Server::H3::acked_stream_data_offset: stream_id={} datalen={}", stream_id, datalen);
+        if (!_httpconn) {
+            return 0;
+        }
+
+        if (auto rv = nghttp3_conn_add_ack_offset(_httpconn, stream_id, datalen);
+                rv != 0) {
+            HTTP_DBG("nghttp3_conn_add_ack_offset: {}", nghttp3_strerror(rv));
+            return -1;
+        }
+
+        return 0;
+    }
+
+    int handshake_completed() {
+        if (_tlsSession.send_session_ticket() != 0) {
+            HTTP_DBG("Unable to send session ticket");
+        }
+
+        std::array<uint8_t, NGTCP2_CRYPTO_MAX_REGULAR_TOKENLEN> token;
+
+        auto                                                    path = ngtcp2_conn_get_path(_conn);
+        auto                                                    t    = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::system_clock::now().time_since_epoch())
+                         .count();
+
+        auto tokenlen = ngtcp2_crypto_generate_regular_token(
+                token.data(), this->_sharedData->_static_secret.data(), this->_sharedData->_static_secret.size(),
+                path->remote.addr, path->remote.addrlen, t);
+        if (tokenlen < 0) {
+            HTTP_DBG("Server::H3::handshake_completed: ngtcp2_crypto_generate_regular_token failed");
+            return 0;
+        }
+
+        if (auto rv = ngtcp2_conn_submit_new_token(_conn, token.data(), tokenlen);
+                rv != 0) {
+            HTTP_DBG("Server::H3::handshake_completed: ngtcp2_conn_submit_new_token failed: {}", ngtcp2_strerror(rv));
+            return -1;
+        }
+
+        return 0;
+    }
+
+    int on_read(const Endpoint &ep, const Address &local_addr, const sockaddr *sa, socklen_t salen, const ngtcp2_pkt_info *pi, std::span<const uint8_t> data) {
+        auto path = ngtcp2_path{
+            .local = {
+                    .addr    = const_cast<sockaddr *>(&local_addr.su.sa),
+                    .addrlen = local_addr.len,
+            },
+            .remote = {
+                    .addr    = const_cast<sockaddr *>(sa),
+                    .addrlen = salen,
+            },
+            .user_data = const_cast<Endpoint *>(&ep),
+        };
+        if (auto rv = ngtcp2_conn_read_pkt(_conn, &path, pi, data.data(), data.size(),
+                    util::timestamp());
+                rv != 0) {
+            std::cerr << "ngtcp2_conn_read_pkt: " << ngtcp2_strerror(rv) << std::endl;
+            switch (rv) {
+            case NGTCP2_ERR_DRAINING:
+                start_draining_period();
+                return NETWORK_ERR_CLOSE_WAIT;
+            case NGTCP2_ERR_RETRY:
+                return NETWORK_ERR_RETRY;
+            case NGTCP2_ERR_DROP_CONN:
+                return NETWORK_ERR_DROP_CONN;
+            case NGTCP2_ERR_CRYPTO:
+                if (!_last_error.error_code) {
+                    ngtcp2_ccerr_set_tls_alert(
+                            &_last_error, ngtcp2_conn_get_tls_alert(_conn), nullptr, 0);
+                }
+                break;
+            default:
+                if (!_last_error.error_code) {
+                    ngtcp2_ccerr_set_liberr(&_last_error, rv, nullptr, 0);
+                }
+            }
+            return handle_error();
+        }
+
+        fmt::println(std::cerr, "ngtcp2_conn_read_pkt: {} bytes", data.size());
+        return 0;
+    }
+
+    void start_draining_period() {
+        HTTP_DBG("Server::H3::start_draining_period");
+#if 0 // TODO(Frank) port ev usage
+      // make do the check in close_waitcb in every iteration of poll()
+        ev_io_stop(loop_, &wev_);
+
+        ev_set_cb(&timer_, close_waitcb);
+        timer_.repeat =
+          static_cast<ev_tstamp>(ngtcp2_conn_get_pto(conn_)) / NGTCP2_SECONDS * 3;
+        ev_timer_again(loop_, &timer_);
+#else
+        // server_->_write_fd = -1;
+        _state = State::Draining;
+#endif
+    }
+
+    int on_stream_stop_sending(std::int64_t stream_id) {
+        if (!_httpconn) {
+            return 0;
+        }
+
+        if (auto rv = nghttp3_conn_shutdown_stream_read(_httpconn, stream_id); rv != 0) {
+            HTTP_DBG("nghttp3_conn_shutdown_stream_read: {}", nghttp3_strerror(rv));
+            return -1;
+        }
+
+        return 0;
+    }
+
+    int send_blocked_packet() {
+        assert(_tx.send_blocked);
+
+        for (; _tx.num_blocked_sent < _tx.num_blocked; ++_tx.num_blocked_sent) {
+            auto       &p = _tx.blocked[_tx.num_blocked_sent];
+
+            ngtcp2_addr local_addr{
+                .addr    = &p.local_addr.su.sa,
+                .addrlen = p.local_addr.len,
+            };
+            ngtcp2_addr remote_addr{
+                .addr    = &p.remote_addr.su.sa,
+                .addrlen = p.remote_addr.len,
+            };
+
+            auto [rest, rv] = server_->send_packet(*p.endpoint, _no_gso, local_addr, remote_addr, p.ecn, p.data, p.gso_size);
+            if (rv != 0) {
+                assert(NETWORK_ERR_SEND_BLOCKED == rv);
+
+                p.data = rest;
+
+                start_wev_endpoint(*p.endpoint);
+
+                return 0;
+            }
+        }
+
+        _tx.send_blocked     = false;
+        _tx.num_blocked      = 0;
+        _tx.num_blocked_sent = 0;
+
+        return 0;
+    }
+
+    int on_write() {
+        if (ngtcp2_conn_in_closing_period(_conn) || ngtcp2_conn_in_draining_period(_conn)) {
+            return 0;
+        }
+
+        if (_tx.send_blocked) {
+            if (auto rv = send_blocked_packet(); rv != 0) {
+                return rv;
+            }
+
+            if (_tx.send_blocked) {
+                return 0;
+            }
+        }
+
+#if 0 // TODO(Frank) port ev usage
+        ev_io_stop(loop_, &wev_);
+#else
+        // server_->_write_fd = -1;
+#endif
+
+        if (auto rv = write_streams(); rv != 0) {
+            return rv;
+        }
+
+        return 0;
+    }
+
+    void signal_write() {
+#if 0 // TODO(Frank) mark as wantsToWrite?
+         ev_io_start(loop_, &wev_);
+#endif
+    }
+
+    void write_handler() {
+        // this tries to mimick the state handling from the example, where different ev callbacks are set at different times
+
+        switch (_state) {
+        case State::Initial: // writecb
+            switch (on_write()) {
+            case 0:
+            case NETWORK_ERR_CLOSE_WAIT:
+                return;
+            default:
+                server_->remove(_conn);
+            }
+            break;
+        case State::Closing:
+        case State::Draining: { // close_waitcb
+            if (ngtcp2_conn_in_closing_period(_conn)) {
+                HTTP_DBG("Server::H3::write_handler: closing period is over");
+                server_->remove(_conn);
+                return;
+            }
+            if (ngtcp2_conn_in_draining_period(_conn)) {
+                HTTP_DBG("Server::H3::write_handler: draining period is over");
+                server_->remove(_conn);
+                return;
+            }
+
+            assert(0);
+        } break;
         }
     }
 
-    ~Http3Session() {
-        nghttp3_conn_del(_httpconn);
+    void start_wev_endpoint(Endpoint &ep) {
+        // TODO(Frank) check if we need this handling of multiple Endpoints at all
+#if 0 // TODO(Frank) port ev usage
+
+        // We do not close ep.fd, so we can expect that each Endpoint has
+  // unique fd.
+  if (ep.fd != wev_.fd) {
+    if (ev_is_active(&wev_)) {
+      ev_io_stop(loop_, &wev_);
     }
 
-    Http3Session(const Http3Session &)
-            = delete;
-    Http3Session &operator=(const Http3Session &) = delete;
-    Http3Session(Http3Session &&other)            = delete;
-    Http3Session &operator=(Http3Session &&other) = delete;
+    ev_io_set(&wev_, ep.fd, EV_WRITE);
+  }
 
-    int           acked_stream_data(int64_t stream_id, size_t datalen) {
-        HTTP_DBG("Server::H3::acked_stream_data: stream_id={} datalen={}", stream_id, datalen);
+  ev_io_start(loop_, &wev_);
+#else
+        assert(ep.fd == server_->_quicServerSocket.fd);
+        // server_->_write_fd = ep.fd;
+#endif
+    }
+
+    void on_send_blocked(Endpoint &ep, const ngtcp2_addr &local_addr,
+            const ngtcp2_addr &remote_addr, unsigned int ecn,
+            std::span<const uint8_t> data, size_t gso_size) {
+        assert(_tx.num_blocked || !_tx.send_blocked);
+        assert(_tx.num_blocked < 2);
+        assert(gso_size);
+
+        _tx.send_blocked = true;
+
+        auto &p          = _tx.blocked[_tx.num_blocked++];
+
+        memcpy(&p.local_addr.su, local_addr.addr, local_addr.addrlen);
+        memcpy(&p.remote_addr.su, remote_addr.addr, remote_addr.addrlen);
+
+        p.local_addr.len  = local_addr.addrlen;
+        p.remote_addr.len = remote_addr.addrlen;
+        p.endpoint        = &ep;
+        p.ecn             = ecn;
+        p.data            = data;
+        p.gso_size        = gso_size;
+    }
+
+    int write_streams() {
+        std::array<nghttp3_vec, 16> vec;
+        ngtcp2_path_storage         ps, prev_ps;
+        uint32_t                    prev_ecn                  = 0;
+        auto                        max_udp_payload_size      = ngtcp2_conn_get_max_tx_udp_payload_size(_conn);
+        auto                        path_max_udp_payload_size = ngtcp2_conn_get_path_max_tx_udp_payload_size(_conn);
+        ngtcp2_pkt_info             pi;
+        size_t                      gso_size = 0;
+        auto                        ts       = util::timestamp();
+        auto                        txbuf    = std::span{ _tx.data.get(), std::max(ngtcp2_conn_get_send_quantum(_conn), path_max_udp_payload_size) };
+        auto                        buf      = txbuf;
+
+        ngtcp2_path_storage_zero(&ps);
+        ngtcp2_path_storage_zero(&prev_ps);
+
+        for (;;) {
+            int64_t       stream_id = -1;
+            int           fin       = 0;
+            nghttp3_ssize sveccnt   = 0;
+
+            if (_httpconn && ngtcp2_conn_get_max_data_left(_conn)) {
+                sveccnt = nghttp3_conn_writev_stream(_httpconn, &stream_id, &fin, vec.data(), vec.size());
+                if (sveccnt < 0) {
+                    HTTP_DBG("nghttp3_conn_writev_stream: {}", nghttp3_strerror(sveccnt));
+                    ngtcp2_ccerr_set_application_error(
+                            &_last_error, nghttp3_err_infer_quic_app_error_code(sveccnt), nullptr,
+                            0);
+                    return handle_error();
+                }
+            }
+
+            ngtcp2_ssize ndatalen;
+            auto         v     = vec.data();
+            auto         vcnt  = static_cast<size_t>(sveccnt);
+
+            uint32_t     flags = NGTCP2_WRITE_STREAM_FLAG_MORE;
+            if (fin) {
+                flags |= NGTCP2_WRITE_STREAM_FLAG_FIN;
+            }
+
+            auto buflen = buf.size() >= max_udp_payload_size
+                                ? max_udp_payload_size
+                                : path_max_udp_payload_size;
+
+            auto nwrite = ngtcp2_conn_writev_stream(
+                    _conn, &ps.path, &pi, buf.data(), buflen, &ndatalen, flags, stream_id,
+                    reinterpret_cast<const ngtcp2_vec *>(v), vcnt, ts);
+            if (nwrite < 0) {
+                switch (nwrite) {
+                case NGTCP2_ERR_STREAM_DATA_BLOCKED:
+                    assert(ndatalen == -1);
+                    nghttp3_conn_block_stream(_httpconn, stream_id);
+                    continue;
+                case NGTCP2_ERR_STREAM_SHUT_WR:
+                    assert(ndatalen == -1);
+                    nghttp3_conn_shutdown_stream_write(_httpconn, stream_id);
+                    continue;
+                case NGTCP2_ERR_WRITE_MORE:
+                    assert(ndatalen >= 0);
+                    if (auto rv = nghttp3_conn_add_write_offset(_httpconn, stream_id, ndatalen); rv != 0) {
+                        HTTP_DBG("nghttp3_conn_add_write_offset: {}", nghttp3_strerror(rv));
+                        ngtcp2_ccerr_set_application_error(
+                                &_last_error, nghttp3_err_infer_quic_app_error_code(rv), nullptr,
+                                0);
+                        return handle_error();
+                    }
+                    continue;
+                }
+
+                assert(ndatalen == -1);
+
+                HTTP_DBG("ngtcp2_conn_writev_stream: {}", ngtcp2_strerror(nwrite));
+                ngtcp2_ccerr_set_liberr(&_last_error, nwrite, nullptr, 0);
+                return handle_error();
+            } else if (ndatalen >= 0) {
+                if (auto rv = nghttp3_conn_add_write_offset(_httpconn, stream_id, ndatalen);
+                        rv != 0) {
+                    HTTP_DBG("nghttp3_conn_add_write_offset: {}", nghttp3_strerror(rv));
+                    ngtcp2_ccerr_set_application_error(
+                            &_last_error, nghttp3_err_infer_quic_app_error_code(rv), nullptr, 0);
+                    return handle_error();
+                }
+            }
+
+            if (nwrite == 0) {
+                auto data = std::span{ std::begin(txbuf), std::begin(buf) };
+                if (!data.empty()) {
+                    auto &ep = *static_cast<Endpoint *>(prev_ps.path.user_data);
+
+                    if (auto [rest, rv] = server_->send_packet(ep, _no_gso, prev_ps.path.local, prev_ps.path.remote, prev_ecn, data, gso_size); rv != NETWORK_ERR_OK) {
+                        assert(NETWORK_ERR_SEND_BLOCKED == rv);
+
+                        on_send_blocked(ep, prev_ps.path.local, prev_ps.path.remote, prev_ecn,
+                                rest, gso_size);
+
+                        start_wev_endpoint(ep);
+                    }
+                }
+
+                // We are congestion limited.
+                ngtcp2_conn_update_pkt_tx_time(_conn, ts);
+                return 0;
+            }
+
+            auto last_pkt = std::begin(buf);
+
+            buf           = buf.subspan(nwrite);
+
+            if (last_pkt == std::begin(txbuf)) {
+                ngtcp2_path_copy(&prev_ps.path, &ps.path);
+                prev_ecn = pi.ecn;
+                gso_size = nwrite;
+            } else if (!ngtcp2_path_eq(&prev_ps.path, &ps.path) || prev_ecn != pi.ecn || static_cast<size_t>(nwrite) > gso_size || (gso_size > path_max_udp_payload_size && static_cast<size_t>(nwrite) != gso_size)) {
+                auto &ep   = *static_cast<Endpoint *>(prev_ps.path.user_data);
+                auto  data = std::span{ std::begin(txbuf), last_pkt };
+
+                if (auto [rest, rv] = server_->send_packet(ep, _no_gso, prev_ps.path.local,
+                            prev_ps.path.remote, prev_ecn, data, gso_size);
+                        rv != 0) {
+                    assert(NETWORK_ERR_SEND_BLOCKED == rv);
+
+                    on_send_blocked(ep, prev_ps.path.local, prev_ps.path.remote, prev_ecn,
+                            rest, gso_size);
+
+                    data = std::span{ last_pkt, std::begin(buf) };
+                    on_send_blocked(*static_cast<Endpoint *>(ps.path.user_data), ps.path.local, ps.path.remote, pi.ecn, data, data.size());
+
+                    start_wev_endpoint(ep);
+                }
+
+                ngtcp2_conn_update_pkt_tx_time(_conn, ts);
+                return 0;
+            }
+
+            if (buf.size() < path_max_udp_payload_size || static_cast<size_t>(nwrite) < gso_size) {
+                auto &ep   = *static_cast<Endpoint *>(ps.path.user_data);
+                auto  data = std::span{ std::begin(txbuf), std::begin(buf) };
+
+                if (auto [rest, rv] = server_->send_packet(ep, _no_gso, ps.path.local, ps.path.remote, pi.ecn, data, gso_size); rv != 0) {
+                    assert(NETWORK_ERR_SEND_BLOCKED == rv);
+
+                    on_send_blocked(ep, ps.path.local, ps.path.remote, pi.ecn, rest, gso_size);
+
+                    start_wev_endpoint(ep);
+                }
+
+                ngtcp2_conn_update_pkt_tx_time(_conn, ts);
+                return 0;
+            }
+        }
+    }
+
+    int recv_stream_data(uint32_t flags, int64_t stream_id, std::span<const uint8_t> data) {
+        HTTP_DBG("Server::QUIC::recv_stream_data: stream_id={} datalen={}", stream_id, data.size());
+
+        auto nconsumed = nghttp3_conn_read_stream(_httpconn, stream_id, data.data(), data.size(),
+                flags & NGTCP2_STREAM_DATA_FLAG_FIN);
+        if (nconsumed < 0) {
+            HTTP_DBG("nghttp3_conn_read_stream: {}", nghttp3_strerror(nconsumed));
+            ngtcp2_ccerr_set_application_error(&_last_error, nghttp3_err_infer_quic_app_error_code(nconsumed), nullptr, 0);
+            return -1;
+        }
+
+        ngtcp2_conn_extend_max_stream_offset(_conn, stream_id, nconsumed);
+        ngtcp2_conn_extend_max_offset(_conn, nconsumed);
+
         return 0;
     }
 
-    int stream_close(std::int64_t stream_id, std::uint64_t error_code) {
-        HTTP_DBG("Server::H3::stream_close: stream_id={} error_code={}", stream_id, error_code);
+    int send_conn_close() {
+        HTTP_DBG("Server::QUIC::send_conn_close");
+        assert(_conn_closebuf && _conn_closebuf->size());
+        assert(_conn);
+        assert(!ngtcp2_conn_in_draining_period(_conn));
+
+        auto path = ngtcp2_conn_get_path(_conn);
+
+        return server_->send_packet(*static_cast<Endpoint *>(path->user_data), path->local, path->remote, /* ecn = */ 0, _conn_closebuf->data());
+    }
+
+    int update_key(uint8_t *rx_secret, uint8_t *tx_secret, ngtcp2_crypto_aead_ctx *rx_aead_ctx, uint8_t *rx_iv, ngtcp2_crypto_aead_ctx *tx_aead_ctx, uint8_t *tx_iv, const uint8_t *current_rx_secret, const uint8_t *current_tx_secret, size_t secretlen) {
+        auto                    crypto_ctx = ngtcp2_conn_get_crypto_ctx(_conn);
+        auto                    aead       = &crypto_ctx->aead;
+        auto                    keylen     = ngtcp2_crypto_aead_keylen(aead);
+        auto                    ivlen      = ngtcp2_crypto_packet_protection_ivlen(aead);
+
+        std::array<uint8_t, 64> rx_key, tx_key;
+
+        if (ngtcp2_crypto_update_key(_conn, rx_secret, tx_secret, rx_aead_ctx,
+                    rx_key.data(), rx_iv, tx_aead_ctx, tx_key.data(),
+                    tx_iv, current_rx_secret, current_tx_secret,
+                    secretlen)
+                != 0) {
+            return -1;
+        }
+
+#if 0 // TODO(Frank) print debug; member nkey_update_ = 0 simply counts the updates
+        if (!config.quiet && config.show_secret) {
+            std::cerr << "application_traffic rx secret " << nkey_update_ << std::endl;
+            debug::print_secrets({ rx_secret, secretlen }, { rx_key.data(), keylen },
+                    { rx_iv, ivlen });
+            std::cerr << "application_traffic tx secret " << nkey_update_ << std::endl;
+            debug::print_secrets({ tx_secret, secretlen }, { tx_key.data(), keylen },
+                    { tx_iv, ivlen });
+        }
+#endif
+
         return 0;
     }
 
-    int recv_data(std::int64_t stream_id, std::string_view data) {
-        HTTP_DBG("Server::H3::recv_data: stream_id={} datalen={}", stream_id, data.size());
+    int send_conn_close(const Endpoint &ep, const Address &local_addr, const sockaddr *sa, socklen_t salen, const ngtcp2_pkt_info *pi, std::span<const uint8_t> data) {
+        assert(_conn_closebuf && _conn_closebuf->size());
+
+        _close_wait.bytes_recv += data.size();
+        ++_close_wait.num_pkts_recv;
+
+        if (_close_wait.num_pkts_recv < _close_wait.next_pkts_recv || _close_wait.bytes_recv * 3 < _close_wait.bytes_sent + _conn_closebuf->size()) {
+            return 0;
+        }
+
+        auto path = ngtcp2_path{
+            .local = {
+                    .addr    = const_cast<sockaddr *>(&local_addr.su.sa),
+                    .addrlen = local_addr.len,
+            },
+            .remote = {
+                    .addr    = const_cast<sockaddr *>(sa),
+                    .addrlen = salen,
+            },
+            .user_data = const_cast<Endpoint *>(&ep),
+        };
+
+        auto rv = server_->send_packet(ep, path.local, path.remote,
+                /* ecn = */ 0, _conn_closebuf->data());
+        if (rv != 0) {
+            return rv;
+        }
+
+        _close_wait.bytes_sent += _conn_closebuf->size();
+        _close_wait.next_pkts_recv *= 2;
+
         return 0;
     }
 
-    int deferred_consume(std::int64_t stream_id, std::size_t datalen) {
-        HTTP_DBG("Server::H3::deferred_consume: stream_id={} datalen={}", stream_id, datalen);
+    int start_closing_period() {
+        if (!_conn || ngtcp2_conn_in_closing_period(_conn) || ngtcp2_conn_in_draining_period(_conn)) {
+            return 0;
+        }
+
+#if 0 // TODO(Frank) port ev usage
+        ev_io_stop(loop_, &wev_);
+
+        ev_set_cb(&timer_, close_waitcb);
+        timer_.repeat =
+          static_cast<ev_tstamp>(ngtcp2_conn_get_pto(conn_)) / NGTCP2_SECONDS * 3;
+        ev_timer_again(loop_, &timer_);
+
+        if (!config.quiet) {
+          std::cerr << "Closing period has started (" << timer_.repeat << " seconds)"
+                    << std::endl;
+        }
+#else
+        _state = State::Closing;
+#endif
+
+        _conn_closebuf = std::make_unique<Buffer>(NGTCP2_MAX_UDP_PAYLOAD_SIZE);
+
+        ngtcp2_path_storage ps;
+
+        ngtcp2_path_storage_zero(&ps);
+
+        ngtcp2_pkt_info pi;
+        auto            n = ngtcp2_conn_write_connection_close(
+                _conn, &ps.path, &pi, _conn_closebuf->wpos(), _conn_closebuf->left(),
+                &_last_error, util::timestamp());
+        if (n < 0) {
+            HTTP_DBG("ngtcp2_conn_write_connection_close: {}", ngtcp2_strerror(n));
+            return -1;
+        }
+
+        if (n == 0) {
+            return 0;
+        }
+
+        _conn_closebuf->push(n);
         return 0;
     }
 
-    int begin_headers(std::int64_t stream_id) {
-        HTTP_DBG("Server::H3::begin_headers: stream_id={}", stream_id);
-        return 0;
-    }
+    int handle_error() {
+        if (_last_error.type == NGTCP2_CCERR_TYPE_IDLE_CLOSE) {
+            return -1;
+        }
 
-    int recv_header(std::int64_t stream_id, std::int32_t token, const nghttp3_rcbuf *name, const nghttp3_rcbuf *value, std::uint8_t flags) {
-        HTTP_DBG("Server::H3::recv_header: stream_id={} token={} name={} value={} flags={}", stream_id, token, as_view(name), as_view(value), flags);
-        return 0;
-    }
+        if (start_closing_period() != 0) {
+            return -1;
+        }
 
-    int end_headers(std::int64_t stream_id, int fin) {
-        HTTP_DBG("Server::H3::end_headers: stream_id={} fin={}", stream_id, fin);
-        return 0;
-    }
+        if (ngtcp2_conn_in_draining_period(_conn)) {
+            return NETWORK_ERR_CLOSE_WAIT;
+        }
 
-    int stop_sending(std::int64_t stream_id, std::uint64_t error_code) {
-        HTTP_DBG("Server::H3::stop_sending: stream_id={} error_code={}", stream_id, error_code);
-        return 0;
-    }
+        if (auto rv = send_conn_close(); rv != NETWORK_ERR_OK) {
+            return rv;
+        }
 
-    int end_stream(std::int64_t stream_id) {
-        HTTP_DBG("Server::H3::end_stream: stream_id={}", stream_id);
-        return 0;
-    }
-    int reset_stream(std::int64_t stream_id, std::uint64_t error_code) {
-        HTTP_DBG("Server::H3::reset_stream: stream_id={} error_code={}", stream_id, error_code);
-        return 0;
-    }
-
-    int recv_settings(const nghttp3_settings *) {
-        HTTP_DBG("Server::H3::recv_settings");
-        return 0;
-    }
-
-    int shutdown(std::int64_t id) {
-        HTTP_DBG("Server::H3::shutdown: id={}", id);
-        return 0;
+        return NETWORK_ERR_CLOSE_WAIT;
     }
 };
 
 struct Http3ServerSocket {
-    int fd              = -1;
-    opencmw::nghttp3::Address addr;
+    int     fd = -1;
+    Address addr;
 
     Http3ServerSocket() = default;
 
-    Http3ServerSocket(int fd_, opencmw::nghttp3::Address addr_)
+    Http3ServerSocket(int fd_, Address addr_)
         : fd(fd_), addr(std::move(addr_)) {
     }
 
@@ -1064,10 +2441,9 @@ struct Http3ServerSocket {
     }
 
     static std::expected<Http3ServerSocket, std::string> create(uint16_t port) {
-        using namespace opencmw::nghttp3;
         Address address;
         // TODO(Frank) refactor create_sock so we get error details
-        auto              fd = opencmw::nghttp3::create_sock(address, "*", std::to_string(port).c_str(), AF_INET);
+        auto              fd = create_sock(address, "*", std::to_string(port).c_str(), AF_INET);
         Http3ServerSocket socket{ fd, address };
         return socket;
     }
@@ -1113,23 +2489,32 @@ inline std::expected<TcpSocket, std::string> createTcpServerSocket(SSL_CTX *ssl_
     return serverSocket;
 }
 
-struct Http2Server {
-    TcpSocket                                    _tcpServerSocket;
-    Http3ServerSocket                            _quicServerSocket;
-    SSL_CTX_Ptr                                  _sslCtxTcp  = SSL_CTX_Ptr(nullptr, SSL_CTX_free);
-    EVP_PKEY_Ptr                                 _key        = EVP_PKEY_Ptr(nullptr, EVP_PKEY_free);
-    X509_Ptr                                     _cert       = X509_Ptr(nullptr, X509_free);
-    std::shared_ptr<SharedData>                  _sharedData = std::make_shared<SharedData>();
-    std::map<int, std::unique_ptr<Http2Session>> _sessions;
-    IdGenerator                                  _requestIdGenerator;
+struct RestServer {
+    TcpSocket                                                                  _tcpServerSocket;
+    Http3ServerSocket                                                          _quicServerSocket;
+    SSL_CTX_Ptr                                                                _sslCtxTcp  = SSL_CTX_Ptr(nullptr, SSL_CTX_free);
+    EVP_PKEY_Ptr                                                               _key        = EVP_PKEY_Ptr(nullptr, EVP_PKEY_free);
+    X509_Ptr                                                                   _cert       = X509_Ptr(nullptr, X509_free);
+    std::shared_ptr<SharedData>                                                _sharedData = std::make_shared<SharedData>();
+    std::map<int, std::unique_ptr<Http2Session>>                               _h2Sessions;
+    std::unordered_map<ngtcp2_cid, std::shared_ptr<Http3Session<RestServer>>>  _h3Sessions;
+    std::vector<ngtcp2_cid>                                                    _touchedSessions;
+    IdGenerator                                                                _requestIdGenerator;
 
-    Http2Server()                               = default;
-    Http2Server(const Http2Server &)            = delete;
-    Http2Server &operator=(const Http2Server &) = delete;
-    Http2Server(Http2Server &&)                 = default;
-    Http2Server &operator=(Http2Server &&)      = default;
+    Endpoint                                                                   _endpoint;
+    TLSServerContext                                                           _tls_ctx;
+    std::mt19937                                                               _randgen                = [] {
+        std::random_device rd{};
+        return std::mt19937{ rd() }; }();
+    std::size_t                                                                _stateless_reset_bucket = NGTCP2_STATELESS_RESET_BURST;
 
-    Http2Server(SSL_CTX_Ptr sslCtxTcp, EVP_PKEY_Ptr key, X509_Ptr cert)
+    RestServer()                                                                                       = default;
+    RestServer(const RestServer &)                                                                     = delete;
+    RestServer &operator=(const RestServer &)                                                          = delete;
+    RestServer(RestServer &&)                                                                          = default;
+    RestServer &operator=(RestServer &&)                                                               = default;
+
+    RestServer(SSL_CTX_Ptr sslCtxTcp, EVP_PKEY_Ptr key, X509_Ptr cert)
         : _sslCtxTcp(std::move(sslCtxTcp)), _key(std::move(key)), _cert(std::move(cert)) {
         if (_sslCtxTcp) {
             SSL_library_init();
@@ -1138,11 +2523,11 @@ struct Http2Server {
         }
     }
 
-    static std::expected<Http2Server, std::string> unencrypted() {
-        return Http2Server(SSL_CTX_Ptr(nullptr, SSL_CTX_free), EVP_PKEY_Ptr(nullptr, EVP_PKEY_free), X509_Ptr(nullptr, X509_free));
+    static std::expected<RestServer, std::string> unencrypted() {
+        return RestServer(SSL_CTX_Ptr(nullptr, SSL_CTX_free), EVP_PKEY_Ptr(nullptr, EVP_PKEY_free), X509_Ptr(nullptr, X509_free));
     }
 
-    static std::expected<Http2Server, std::string> sslWithBuffers(std::string_view certBuffer, std::string_view keyBuffer) {
+    static std::expected<RestServer, std::string> sslWithBuffers(std::string_view certBuffer, std::string_view keyBuffer) {
         auto maybeCert = nghttp2::readServerCertificateFromBuffer(certBuffer);
         if (!maybeCert) {
             return std::unexpected(maybeCert.error());
@@ -1151,14 +2536,14 @@ struct Http2Server {
         if (!maybeKey) {
             return std::unexpected(maybeKey.error());
         }
-        auto maybeSslCtxTcp = create_ssl_ctx<ContextType::Tcp>(maybeKey->get(), maybeCert->get());
+        auto maybeSslCtxTcp = create_ssl_ctx(maybeKey->get(), maybeCert->get());
         if (!maybeSslCtxTcp) {
             return std::unexpected(maybeSslCtxTcp.error());
         }
-        return Http2Server(std::move(maybeSslCtxTcp.value()), std::move(maybeKey.value()), std::move(maybeCert.value()));
+        return RestServer(std::move(maybeSslCtxTcp.value()), std::move(maybeKey.value()), std::move(maybeCert.value()));
     }
 
-    static std::expected<Http2Server, std::string> sslWithPaths(std::filesystem::path certPath, std::filesystem::path keyPath) {
+    static std::expected<RestServer, std::string> sslWithPaths(std::filesystem::path certPath, std::filesystem::path keyPath) {
         auto maybeCert = nghttp2::readServerCertificateFromFile(certPath);
         if (!maybeCert) {
             return std::unexpected(maybeCert.error());
@@ -1167,12 +2552,12 @@ struct Http2Server {
         if (!maybeKey) {
             return std::unexpected(maybeKey.error());
         }
-        auto maybeSslCtxTcp = create_ssl_ctx<ContextType::Tcp>(maybeKey->get(), maybeCert->get());
+        auto maybeSslCtxTcp = create_ssl_ctx(maybeKey->get(), maybeCert->get());
         if (!maybeSslCtxTcp) {
             return std::unexpected(maybeSslCtxTcp.error());
         }
 
-        return Http2Server(std::move(maybeSslCtxTcp.value()), std::move(maybeKey.value()), std::move(maybeCert.value()));
+        return RestServer(std::move(maybeSslCtxTcp.value()), std::move(maybeKey.value()), std::move(maybeCert.value()));
     }
 
     void setHandlers(std::vector<opencmw::majordomo::rest::Handler> handlers) {
@@ -1187,20 +2572,29 @@ struct Http2Server {
             HTTP_DBG("Failed to parse request ID: '{}'", view);
             return;
         }
-        auto matchesId = [id](const auto &pendingRequest) { return std::get<0>(pendingRequest) == id; };
 
-        auto it        = std::ranges::find_if(_sessions, [matchesId](const auto &session) {
-            return std::ranges::find_if(session.second->_pendingRequests, matchesId) != session.second->_pendingRequests.end();
-        });
+        auto handleResp = [&message, id](auto &sessions) {
+            auto matchesId = [id](const auto &pendingRequest) { return std::get<0>(pendingRequest) == id; };
 
-        if (it != _sessions.end()) {
-            auto &session                 = it->second;
-            auto  pendingIt               = std::ranges::find_if(session->_pendingRequests, matchesId);
-            const auto &[reqId, streamId] = *pendingIt;
-            const auto code               = message.error.empty() ? kHttpOk : kHttpError;
-            session->sendResponse(streamId, code, std::move(message));
-            session->_pendingRequests.erase(pendingIt);
+            auto it        = std::ranges::find_if(sessions, [matchesId](const auto &session) {
+                return std::ranges::find_if(session.second->_pendingRequests, matchesId) != session.second->_pendingRequests.end();
+            });
+
+            if (it != sessions.end()) {
+                auto &session                 = it->second;
+                auto  pendingIt               = std::ranges::find_if(session->_pendingRequests, matchesId);
+                const auto &[reqId, streamId] = *pendingIt;
+                const auto code               = message.error.empty() ? kHttpOk : kHttpError;
+                session->sendResponse(streamId, code, std::move(message));
+                session->_pendingRequests.erase(pendingIt);
+                return true;
+            };
+            return false;
         };
+
+        if (!handleResp(_h2Sessions)) {
+            handleResp(_h3Sessions);
+        }
     }
 
     void handleNotification(const mdp::Topic &topic, Message &&message) {
@@ -1214,15 +2608,20 @@ struct Http2Server {
         entry.add(std::move(message));
         const auto index = entry.lastIndex() - entry.firstIndex;
 
-        for (auto &session : _sessions | std::views::values) {
+        for (auto &session : _h2Sessions | std::views::values) {
+            session->handleNotification(zmqTopic, index, entry.messages.back());
+        }
+        for (auto &session : _h3Sessions | std::views::values) {
             session->handleNotification(zmqTopic, index, entry.messages.back());
         }
     }
 
     void populatePollerItems(std::vector<zmq_pollitem_t> &items) {
         items.push_back(zmq_pollitem_t{ nullptr, _tcpServerSocket.fd, ZMQ_POLLIN, 0 });
-        items.push_back(zmq_pollitem_t{ nullptr, _quicServerSocket.fd, ZMQ_POLLIN, 0 });
-        for (const auto &[_, session] : _sessions) {
+        if (_quicServerSocket.fd != -1) {
+            items.push_back(zmq_pollitem_t{ nullptr, _quicServerSocket.fd, ZMQ_POLLIN | ZMQ_POLLOUT, 0 });
+        }
+        for (const auto &[_, session] : _h2Sessions) {
             const auto wantsRead  = session->wantsToRead();
             const auto wantsWrite = session->wantsToWrite();
             if (wantsRead || wantsWrite) {
@@ -1246,7 +2645,7 @@ struct Http2Server {
 
             auto newFd                    = clientSocket->fd;
 
-            auto [newSessionIt, inserted] = _sessions.try_emplace(newFd, std::make_unique<Http2Session>(std::move(clientSocket.value()), _sharedData));
+            auto [newSessionIt, inserted] = _h2Sessions.try_emplace(newFd, std::make_unique<Http2Session>(std::move(clientSocket.value()), _sharedData));
             assert(inserted);
             auto                  &newSession = newSessionIt->second;
             nghttp2_settings_entry iv[1]      = { { NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, 1000 } };
@@ -1257,19 +2656,45 @@ struct Http2Server {
         }
 
         if (fd == _quicServerSocket.fd) {
-            fmt::println(std::cerr, "Server::UDP: fd={} read={}", fd, read);
-            on_read();
+            if (read) {
+                on_read();
+            }
+            if (write) {
+                // TODO(frank) now which session's write_handler() do we call?
+                // call it for all sessions might not be correct/efficient?
+                // TODO note that the drain/close handling modifies _h3Sessions. copying is not the most efficient way to do this
+
+                auto sessionView = _h3Sessions | std::views::values;
+                auto sessions    = std::vector(sessionView.begin(), sessionView.end());
+
+                for (auto &session : sessions) {
+                    // TODO(Frank) check if we need to call this
+                    // also, if the same session is registered multiple times, we will call it multiple times
+                    session->write_handler();
+                }
+            }
+            std::vector<Message> messages;
+            for (const auto &dcid : _touchedSessions) {
+                auto sessionIt = _h3Sessions.find(dcid);
+                if (sessionIt == _h3Sessions.end()) {
+                    continue;
+                }
+                auto ms = sessionIt->second->getMessages(_requestIdGenerator);
+                messages.insert(messages.end(), std::make_move_iterator(ms.begin()), std::make_move_iterator(ms.end()));
+            }
+            _touchedSessions.clear();
+            return messages;
         }
 
-        auto sessionIt = _sessions.find(fd);
-        assert(sessionIt != _sessions.end());
+        auto sessionIt = _h2Sessions.find(fd);
+        assert(sessionIt != _h2Sessions.end());
         assert(sessionIt->second->_socket.fd == fd);
         auto &session = sessionIt->second;
 
         if (session->_socket._state != TcpSocket::Connected) {
             if (auto r = session->_socket.continueHandshake(); !r) {
                 HTTP_DBG("Handshake failed: {}", r.error());
-                _sessions.erase(sessionIt);
+                _h2Sessions.erase(sessionIt);
                 return {};
             }
             return {};
@@ -1278,7 +2703,7 @@ struct Http2Server {
         if (write) {
             if (!session->_writeBuffer.write(session->_session, session->_socket)) {
                 HTTP_DBG("Failed to write to peer");
-                _sessions.erase(sessionIt);
+                _h2Sessions.erase(sessionIt);
                 return {};
             }
         }
@@ -1296,12 +2721,12 @@ struct Http2Server {
                 if (bytes_read < 0) {
                     HTTP_DBG("Server::read failed: {} {}", bytes_read, session->_socket.lastError());
                 }
-                _sessions.erase(sessionIt);
+                _h2Sessions.erase(sessionIt);
                 return {};
             }
             if (nghttp2_session_mem_recv2(session->_session, buffer.data(), static_cast<size_t>(bytes_read)) < 0) {
                 HTTP_DBG("Server: nghttp2_session_mem_recv2 failed");
-                _sessions.erase(sessionIt);
+                _h2Sessions.erase(sessionIt);
                 return {};
             }
             mightHaveMore = bytes_read == static_cast<ssize_t>(buffer.size());
@@ -1311,30 +2736,86 @@ struct Http2Server {
     }
 
     std::expected<void, std::string>
-    bind(std::uint16_t port) {
+    bind(std::uint16_t port, int protocols) {
         if (_tcpServerSocket.fd != -1) {
             return std::unexpected("Server already bound");
         }
 
-        _sharedData->_altSvcHeaderValue = fmt::format("h3=\"{}\"; ma=2592000", port + 1);
-        _sharedData->_altSvcHeader      = nv(u8span("alt-svc"), u8span(_sharedData->_altSvcHeaderValue), NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE);
+        const auto quicPort              = port;
 
-        auto tcpSocket                  = createTcpServerSocket(_sslCtxTcp.get(), port);
+        auto tcpSocket             = createTcpServerSocket(_sslCtxTcp.get(), port);
         if (!tcpSocket) {
             return std::unexpected(tcpSocket.error());
         }
         _tcpServerSocket = std::move(tcpSocket.value());
-        auto quicSocket  = Http3ServerSocket::create(port + 1);
+
+        if ((protocols & rest::Http3) == 0) {
+            return {};
+        }
+
+        if (!_sslCtxTcp) {
+            return std::unexpected("HTTP/3 requires TLS");
+        }
+
+        auto quicSocket  = Http3ServerSocket::create(quicPort);
         if (!quicSocket) {
             return std::unexpected(quicSocket.error());
         }
+        if (_tls_ctx.init(_key, _cert, AppProtocol::H3) != 0) {
+            return std::unexpected("Failed to initialize TLS context for HTTP/3");
+        }
+        _sharedData->_altSvcHeaderValue = fmt::format("h3=\":{}\"; ma=86400", quicPort);
+        _sharedData->_altSvcHeader      = nv(u8span("alt-svc"), u8span(_sharedData->_altSvcHeaderValue), NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE);
         _quicServerSocket = std::move(quicSocket.value());
+        _endpoint.fd      = _quicServerSocket.fd;
         return {};
     }
 
+    inline int send_version_negotiation(uint32_t version, std::span<const uint8_t> dcid, std::span<const uint8_t> scid, Endpoint &ep, const Address &local_addr, const sockaddr *sa, socklen_t salen) {
+        Buffer                                              buf{ NGTCP2_MAX_UDP_PAYLOAD_SIZE };
+        std::array<uint32_t, 1 + max_preferred_versionslen> sv;
+
+        auto                                                p = std::begin(sv);
+
+        *p++                                                  = generate_reserved_version(sa, salen, version);
+
+#if 0
+        if (config.preferred_versions.empty()) {
+#endif
+        *p++ = NGTCP2_PROTO_VER_V1;
+#if 0 // TODO(frank) check if we should support V2
+        } else {
+            for (auto v : config.preferred_versions) {
+                *p++ = v;
+            }
+        }
+#endif
+
+        auto nwrite = ngtcp2_pkt_write_version_negotiation(buf.wpos(), buf.left(), std::uniform_int_distribution<uint8_t>()(_randgen), dcid.data(), dcid.size(), scid.data(), scid.size(), sv.data(), p - std::begin(sv));
+        if (nwrite < 0) {
+            HTTP_DBG("ngtcp2_pkt_write_version_negotiation: {}", ngtcp2_strerror(nwrite));
+            return -1;
+        }
+
+        buf.push(nwrite);
+
+        ngtcp2_addr laddr{
+            .addr    = const_cast<sockaddr *>(&local_addr.su.sa),
+            .addrlen = local_addr.len,
+        };
+        ngtcp2_addr raddr{
+            .addr    = const_cast<sockaddr *>(sa),
+            .addrlen = salen,
+        };
+
+        if (send_packet(ep, laddr, raddr, /* ecn = */ 0, buf.data()) != NETWORK_ERR_OK) {
+            return -1;
+        }
+
+        return 0;
+    }
+
     int on_read() {
-        fmt::println(std::cerr, "Server::on_read");
-        using namespace opencmw::nghttp3;
         sockaddr_union                 su;
         std::array<uint8_t, 64 * 1024> buf;
         size_t                         pktcnt = 0;
@@ -1361,7 +2842,7 @@ struct Http2Server {
             auto nread         = ::recvmsg(_quicServerSocket.fd, &msg, 0);
             if (nread == -1) {
                 if (!(errno == EAGAIN || errno == ENOTCONN)) {
-                    std::cerr << "recvmsg: " << strerror(errno) << std::endl;
+                    HTTP_DBG("recvmsg: {}", strerror(errno));
                 }
                 return 0;
             }
@@ -1383,7 +2864,7 @@ struct Http2Server {
             auto local_addr = msghdr_get_local_addr(&msg, su.storage.ss_family);
             if (!local_addr) {
                 ++pktcnt;
-                std::cerr << "Unable to obtain local address" << std::endl;
+                HTTP_DBG("Unable to obtain local address");
                 continue;
             }
 
@@ -1419,8 +2900,16 @@ struct Http2Server {
                     break;
                 }
 
-                read_pkt(&su.sa, msg.msg_namelen, &pi,
-                        { data.data(), datalen });
+                // TODO(Frank) Endpoint, Address kept for upstream with example code
+                // check if correct/needed; do we need one or multiple?
+                // note that it cannot be a temporary, as pointers to it are stored
+                _endpoint.addr = *local_addr;
+                _endpoint.fd   = _quicServerSocket.fd;
+
+                auto dcid      = read_pkt(_endpoint, _endpoint.addr, &su.sa, msg.msg_namelen, &pi, { data.data(), datalen });
+                if (dcid) {
+                    _touchedSessions.push_back(*dcid);
+                }
 
                 data = data.subspan(datalen);
             }
@@ -1429,45 +2918,391 @@ struct Http2Server {
         return 0;
     }
 
-    void read_pkt(const sockaddr *sa, socklen_t salen,
-            const ngtcp2_pkt_info   *pi,
-            std::span<const uint8_t> data) {
+    int send_stateless_connection_close(const ngtcp2_pkt_hd *chd, Endpoint &ep, const Address &local_addr, const sockaddr *sa, socklen_t salen) {
+        HTTP_DBG("Server::QUIC::send_stateless_connection_close");
+        Buffer buf{ NGTCP2_MAX_UDP_PAYLOAD_SIZE };
+
+        auto   nwrite = ngtcp2_crypto_write_connection_close(buf.wpos(), buf.left(), chd->version, &chd->scid, &chd->dcid, NGTCP2_INVALID_TOKEN, nullptr, 0);
+        if (nwrite < 0) {
+            HTTP_DBG("ngtcp2_crypto_write_connection_close: {}", ngtcp2_strerror(nwrite));
+            return -1;
+        }
+
+        buf.push(nwrite);
+
+        ngtcp2_addr laddr{
+            .addr    = const_cast<sockaddr *>(&local_addr.su.sa),
+            .addrlen = local_addr.len,
+        };
+        ngtcp2_addr raddr{
+            .addr    = const_cast<sockaddr *>(sa),
+            .addrlen = salen,
+        };
+
+        if (send_packet(ep, laddr, raddr, /* ecn = */ 0, buf.data()) != NETWORK_ERR_OK) {
+            return -1;
+        }
+
+        return 0;
+    }
+
+    int send_stateless_reset(size_t pktlen, std::span<const uint8_t> dcid, Endpoint &ep, const Address &local_addr, const sockaddr *sa, socklen_t salen) {
+        if (_stateless_reset_bucket == 0) {
+            return 0;
+        }
+
+        --_stateless_reset_bucket;
+
+#if 0 // TODO(Frank) what do do about this?
+        if (!ev_is_active(&stateless_reset_regen_timer_)) {
+            ev_timer_again(loop_, &stateless_reset_regen_timer_);
+        }
+#endif
+
+        ngtcp2_cid cid;
+
+        ngtcp2_cid_init(&cid, dcid.data(), dcid.size());
+
+        std::array<uint8_t, NGTCP2_STATELESS_RESET_TOKENLEN> token;
+
+        if (ngtcp2_crypto_generate_stateless_reset_token(token.data(), _sharedData->_static_secret.data(), _sharedData->_static_secret.size(), &cid) != 0) {
+            return -1;
+        }
+
+        // SCID + minimum expansion - NGTCP2_STATELESS_RESET_TOKENLEN
+        constexpr size_t max_rand_byteslen = NGTCP2_MAX_CIDLEN + 22 - NGTCP2_STATELESS_RESET_TOKENLEN;
+
+        size_t           rand_byteslen;
+
+        if (pktlen <= 43) {
+            // As per https://datatracker.ietf.org/doc/html/rfc9000#section-10.3
+            rand_byteslen = pktlen - NGTCP2_STATELESS_RESET_TOKENLEN - 1;
+        } else {
+            rand_byteslen = max_rand_byteslen;
+        }
+
+        std::array<uint8_t, max_rand_byteslen> rand_bytes;
+
+        if (util::generate_secure_random({ rand_bytes.data(), rand_byteslen }) != 0) {
+            return -1;
+        }
+
+        Buffer buf{ NGTCP2_MAX_UDP_PAYLOAD_SIZE };
+
+        auto   nwrite = ngtcp2_pkt_write_stateless_reset(buf.wpos(), buf.left(), token.data(), rand_bytes.data(), rand_byteslen);
+        if (nwrite < 0) {
+            HTTP_DBG("ngtcp2_pkt_write_stateless_reset: {}", ngtcp2_strerror(nwrite));
+            return -1;
+        }
+
+        buf.push(nwrite);
+
+        ngtcp2_addr laddr{
+            .addr    = const_cast<sockaddr *>(&local_addr.su.sa),
+            .addrlen = local_addr.len,
+        };
+        ngtcp2_addr raddr{
+            .addr    = const_cast<sockaddr *>(sa),
+            .addrlen = salen,
+        };
+
+        if (send_packet(ep, laddr, raddr, /* ecn = */ 0, buf.data()) != NETWORK_ERR_OK) {
+            return -1;
+        }
+
+        return 0;
+    }
+
+    int verify_retry_token(ngtcp2_cid *ocid, const ngtcp2_pkt_hd *hd, const sockaddr *sa, socklen_t salen) {
+        int rv;
+
+        HTTP_DBG("Received Retry token from [{}]:{}", util::straddr(sa, salen),
+                util::straddr(sa, salen));
+
+        auto t = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+
+        rv     = ngtcp2_crypto_verify_retry_token2(ocid, hd->token, hd->tokenlen, _sharedData->_static_secret.data(), _sharedData->_static_secret.size(), hd->version, sa, salen, &hd->dcid, 10 * NGTCP2_SECONDS, t);
+        switch (rv) {
+        case 0:
+            break;
+        case NGTCP2_CRYPTO_ERR_VERIFY_TOKEN:
+            HTTP_DBG("Could not verify Retry token");
+            return -1;
+        default:
+            HTTP_DBG("Could not verify Retry token: {}. Continue without the token", ngtcp2_strerror(rv));
+            return 1;
+        }
+
+        HTTP_DBG("Token was successfully validated");
+        return 0;
+    }
+
+    int verify_token(const ngtcp2_pkt_hd *hd, const sockaddr *sa, socklen_t salen) {
+        std::array<char, NI_MAXHOST> host;
+        std::array<char, NI_MAXSERV> port;
+
+        if (auto rv = getnameinfo(sa, salen, host.data(), host.size(), port.data(), port.size(), NI_NUMERICHOST | NI_NUMERICSERV); rv != 0) {
+            HTTP_DBG("getnameinfo: {}", gai_strerror(rv));
+            return -1;
+        }
+
+        HTTP_DBG("Received token from [{}]:{}", host.data(), port.data());
+
+        auto t = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::system_clock::now().time_since_epoch())
+                         .count();
+
+        if (ngtcp2_crypto_verify_regular_token(hd->token, hd->tokenlen, _sharedData->_static_secret.data(), _sharedData->_static_secret.size(), sa, salen, 3600 * NGTCP2_SECONDS, t) != 0) {
+            HTTP_DBG("Could not verify token");
+            return -1;
+        }
+
+        HTTP_DBG("Token was successfully validated");
+        return 0;
+    }
+
+    int send_packet(const Endpoint &ep, const ngtcp2_addr &local_addr, const ngtcp2_addr &remote_addr, unsigned int ecn, std::span<const uint8_t> data) {
+        auto no_gso  = false;
+        auto [_, rv] = send_packet(ep, no_gso, local_addr, remote_addr, ecn, data, data.size());
+        return rv;
+    }
+
+    std::pair<std::span<const uint8_t>, int> send_packet(const Endpoint &ep, bool &no_gso, const ngtcp2_addr &local_addr, const ngtcp2_addr &remote_addr, unsigned int ecn, std::span<const uint8_t> data, size_t gso_size) {
+        assert(gso_size);
+
+        if (no_gso && data.size() > gso_size) {
+            for (; !data.empty();) {
+                auto len     = std::min(gso_size, data.size());
+
+                auto [_, rv] = send_packet(ep, no_gso, local_addr, remote_addr, ecn, { std::begin(data), len }, len);
+                if (rv != 0) {
+                    return { data, rv };
+                }
+
+                data = data.subspan(len);
+            }
+
+            return { {}, 0 };
+        }
+
+        iovec msg_iov{
+            .iov_base = const_cast<uint8_t *>(data.data()),
+            .iov_len  = data.size(),
+        };
+
+        uint8_t msg_ctrl[CMSG_SPACE(sizeof(int)) + CMSG_SPACE(sizeof(uint16_t)) + CMSG_SPACE(sizeof(in6_pktinfo))]{};
+
+        msghdr  msg{
+             .msg_name       = const_cast<sockaddr *>(remote_addr.addr),
+             .msg_namelen    = remote_addr.addrlen,
+             .msg_iov        = &msg_iov,
+             .msg_iovlen     = 1,
+             .msg_control    = msg_ctrl,
+             .msg_controllen = sizeof(msg_ctrl),
+        };
+
+        size_t controllen = 0;
+
+        auto   cm         = CMSG_FIRSTHDR(&msg);
+
+        switch (local_addr.addr->sa_family) {
+        case AF_INET: {
+            controllen += CMSG_SPACE(sizeof(in_pktinfo));
+            cm->cmsg_level    = IPPROTO_IP;
+            cm->cmsg_type     = IP_PKTINFO;
+            cm->cmsg_len      = CMSG_LEN(sizeof(in_pktinfo));
+            auto       addrin = reinterpret_cast<sockaddr_in *>(local_addr.addr);
+            in_pktinfo pktinfo{
+                .ipi_spec_dst = addrin->sin_addr,
+            };
+            memcpy(CMSG_DATA(cm), &pktinfo, sizeof(pktinfo));
+
+            break;
+        }
+        case AF_INET6: {
+            controllen += CMSG_SPACE(sizeof(in6_pktinfo));
+            cm->cmsg_level     = IPPROTO_IPV6;
+            cm->cmsg_type      = IPV6_PKTINFO;
+            cm->cmsg_len       = CMSG_LEN(sizeof(in6_pktinfo));
+            auto        addrin = reinterpret_cast<sockaddr_in6 *>(local_addr.addr);
+            in6_pktinfo pktinfo{
+                .ipi6_addr = addrin->sin6_addr,
+            };
+            memcpy(CMSG_DATA(cm), &pktinfo, sizeof(pktinfo));
+
+            break;
+        }
+        default:
+            assert(0);
+        }
+
+        // #ifdef UDP_SEGMENT
+        if (data.size() > gso_size) {
+            controllen += CMSG_SPACE(sizeof(uint16_t));
+            cm             = CMSG_NXTHDR(&msg, cm);
+            cm->cmsg_level = SOL_UDP;
+            cm->cmsg_type  = UDP_SEGMENT;
+            cm->cmsg_len   = CMSG_LEN(sizeof(uint16_t));
+            uint16_t n     = gso_size;
+            memcpy(CMSG_DATA(cm), &n, sizeof(n));
+        }
+        // #endif // defined(UDP_SEGMENT)
+
+        controllen += CMSG_SPACE(sizeof(int));
+        cm           = CMSG_NXTHDR(&msg, cm);
+        cm->cmsg_len = CMSG_LEN(sizeof(int));
+        memcpy(CMSG_DATA(cm), &ecn, sizeof(ecn));
+
+        switch (local_addr.addr->sa_family) {
+        case AF_INET:
+            cm->cmsg_level = IPPROTO_IP;
+            cm->cmsg_type  = IP_TOS;
+
+            break;
+        case AF_INET6:
+            cm->cmsg_level = IPPROTO_IPV6;
+            cm->cmsg_type  = IPV6_TCLASS;
+
+            break;
+        default:
+            assert(0);
+        }
+
+        msg.msg_controllen = controllen;
+
+        ssize_t nwrite     = 0;
+
+        do {
+            assert(ep.fd == _quicServerSocket.fd); // TODO(Frank) remove
+            nwrite = sendmsg(ep.fd, &msg, 0);
+        } while (nwrite == -1 && errno == EINTR);
+
+        if (nwrite == -1) {
+            switch (errno) {
+            case EAGAIN:
+#if EAGAIN != EWOULDBLOCK
+            case EWOULDBLOCK:
+#endif // EAGAIN != EWOULDBLOCK
+                return { data, NETWORK_ERR_SEND_BLOCKED };
+                //              #ifdef UDP_SEGMENT
+            case EIO:
+                if (data.size() > gso_size) {
+                    // GSO failure; send each packet in a separate sendmsg call.
+                    HTTP_DBG("sendmsg: disabling GSO due to {}", strerror(errno));
+                    no_gso = true;
+                    return send_packet(ep, no_gso, local_addr, remote_addr, ecn, data, gso_size);
+                }
+                break;
+                //         #endif // defined(UDP_SEGMENT)
+            }
+
+            HTTP_DBG("sendmsg: {}", strerror(errno));
+            // TODO We have packet which is expected to fail to send (e.g.,
+            // path validation to old path).
+            return { {}, NETWORK_ERR_OK };
+        }
+
 #if 0
+        if (!config.quiet) {
+            std::cerr << "Sent packet: local="
+                      << util::straddr(local_addr.addr, local_addr.addrlen)
+                      << " remote="
+                      << util::straddr(remote_addr.addr, remote_addr.addrlen)
+                      << " ecn=0x" << std::hex << ecn << std::dec << " " << nwrite
+                      << " bytes" << std::endl;
+        }
+#endif
+
+        return { {}, NETWORK_ERR_OK };
+    }
+
+    int send_retry(const ngtcp2_pkt_hd *chd, Endpoint &ep, const Address &local_addr, const sockaddr *sa, socklen_t salen, size_t max_pktlen) {
+        std::array<char, NI_MAXHOST> host;
+        std::array<char, NI_MAXSERV> port;
+
+        if (auto rv = getnameinfo(sa, salen, host.data(), host.size(), port.data(), port.size(), NI_NUMERICHOST | NI_NUMERICSERV); rv != 0) {
+            HTTP_DBG("getnameinfo: {}", gai_strerror(rv));
+            return -1;
+        }
+
+        HTTP_DBG("Server::send_retry: host={} port={}", host.data(), port.data());
+
+        ngtcp2_cid scid;
+
+        scid.datalen = NGTCP2_SV_SCIDLEN;
+        if (util::generate_secure_random({ scid.data, scid.datalen }) != 0) {
+            return -1;
+        }
+
+        std::array<uint8_t, NGTCP2_CRYPTO_MAX_RETRY_TOKENLEN2> token;
+
+        auto                                                   t = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::system_clock::now().time_since_epoch())
+                         .count();
+
+        auto tokenlen = ngtcp2_crypto_generate_retry_token2(token.data(), _sharedData->_static_secret.data(), _sharedData->_static_secret.size(), chd->version, sa, salen, &scid, &chd->dcid, t);
+        if (tokenlen < 0) {
+            return -1;
+        }
+
+        HTTP_DBG("Generated address validation token: {}", util::hexdump(stderr, token.data(), tokenlen));
+
+        Buffer buf{
+            std::min(static_cast<size_t>(NGTCP2_MAX_UDP_PAYLOAD_SIZE), max_pktlen)
+        };
+
+        auto nwrite = ngtcp2_crypto_write_retry(buf.wpos(), buf.left(), chd->version, &chd->scid, &scid, &chd->dcid, token.data(), tokenlen);
+        if (nwrite < 0) {
+            std::cerr << "ngtcp2_crypto_write_retry failed" << std::endl;
+            return -1;
+        }
+
+        buf.push(nwrite);
+
+        ngtcp2_addr laddr{
+            .addr    = const_cast<sockaddr *>(&local_addr.su.sa),
+            .addrlen = local_addr.len,
+        };
+        ngtcp2_addr raddr{
+            .addr    = const_cast<sockaddr *>(sa),
+            .addrlen = salen,
+        };
+
+        if (send_packet(ep, laddr, raddr, /* ecn = */ 0, buf.data()) != NETWORK_ERR_OK) {
+            return -1;
+        }
+
+        return 0;
+    }
+
+    std::optional<ngtcp2_cid> read_pkt(Endpoint &ep, const Address &local_addr, const sockaddr *sa, socklen_t salen, const ngtcp2_pkt_info *pi, std::span<const uint8_t> data) {
         ngtcp2_version_cid vc;
 
-        switch (auto rv = ngtcp2_pkt_decode_version_cid(&vc, data.data(), data.size(),
-                        NGTCP2_SV_SCIDLEN);
-                rv) {
+        switch (auto rv = ngtcp2_pkt_decode_version_cid(&vc, data.data(), data.size(), NGTCP2_SV_SCIDLEN); rv) {
         case 0:
             break;
         case NGTCP2_ERR_VERSION_NEGOTIATION:
-            send_version_negotiation(vc.version, { vc.scid, vc.scidlen },
-                    { vc.dcid, vc.dcidlen }, ep, local_addr, sa, salen);
-            return;
+            send_version_negotiation(vc.version, { vc.scid, vc.scidlen }, { vc.dcid, vc.dcidlen }, ep, local_addr, sa, salen);
+            return std::nullopt;
         default:
-            std::cerr << "Could not decode version and CID from QUIC packet header: "
-                      << ngtcp2_strerror(rv) << std::endl;
-            return;
+            HTTP_DBG("Could not decode version and CID from QUIC packet header: {}", ngtcp2_strerror(rv));
+            return std::nullopt;
         }
 
         auto dcid_key   = util::make_cid_key({ vc.dcid, vc.dcidlen });
 
-        auto handler_it = handlers_.find(dcid_key);
-        if (handler_it == std::end(handlers_)) {
+        auto handler_it = _h3Sessions.find(dcid_key);
+        if (handler_it == std::end(_h3Sessions)) {
             ngtcp2_pkt_hd hd;
 
             if (auto rv = ngtcp2_accept(&hd, data.data(), data.size()); rv != 0) {
-                if (!config.quiet) {
-                    std::cerr << "Unexpected packet received: length=" << data.size()
-                              << std::endl;
-                }
+                HTTP_DBG("Unexpected packet received: length={}", data.size());
 
                 if (!(data[0] & 0x80) && data.size() >= NGTCP2_SV_SCIDLEN + 21) {
-                    send_stateless_reset(data.size(), { vc.dcid, vc.dcidlen }, ep, local_addr,
-                            sa, salen);
+                    send_stateless_reset(data.size(), { vc.dcid, vc.dcidlen }, ep, local_addr, sa, salen);
                 }
 
-                return;
+                return std::nullopt;
             }
 
             ngtcp2_cid        ocid;
@@ -1476,16 +3311,18 @@ struct Http2Server {
 
             assert(hd.type == NGTCP2_PKT_INITIAL);
 
-            if (config.validate_addr || hd.tokenlen) {
-                std::cerr << "Perform stateless address validation" << std::endl;
+            constexpr bool config_validate_addr = true; // TODO(Frank) check how to handle this conf.validate_addr in example
+
+            if (config_validate_addr || hd.tokenlen) {
+                HTTP_DBG("Perform stateless address validation");
                 if (hd.tokenlen == 0) {
                     send_retry(&hd, ep, local_addr, sa, salen, data.size() * 3);
-                    return;
+                    return std::nullopt;
                 }
 
                 if (hd.token[0] != NGTCP2_CRYPTO_TOKEN_MAGIC_RETRY2 && hd.dcid.datalen < NGTCP2_MIN_INITIAL_DCIDLEN) {
                     send_stateless_connection_close(&hd, ep, local_addr, sa, salen);
-                    return;
+                    return std::nullopt;
                 }
 
                 switch (hd.token[0]) {
@@ -1497,7 +3334,7 @@ struct Http2Server {
                         break;
                     case -1:
                         send_stateless_connection_close(&hd, ep, local_addr, sa, salen);
-                        return;
+                        return std::nullopt;
                     case 1:
                         hd.token    = nullptr;
                         hd.tokenlen = 0;
@@ -1507,9 +3344,9 @@ struct Http2Server {
                     break;
                 case NGTCP2_CRYPTO_TOKEN_MAGIC_REGULAR:
                     if (verify_token(&hd, sa, salen) != 0) {
-                        if (config.validate_addr) {
+                        if (config_validate_addr) {
                             send_retry(&hd, ep, local_addr, sa, salen, data.size() * 3);
-                            return;
+                            return std::nullopt;
                         }
 
                         hd.token    = nullptr;
@@ -1519,12 +3356,10 @@ struct Http2Server {
                     }
                     break;
                 default:
-                    if (!config.quiet) {
-                        std::cerr << "Ignore unrecognized token" << std::endl;
-                    }
-                    if (config.validate_addr) {
+                    HTTP_DBG("Ignore unrecognized token");
+                    if (config_validate_addr) {
                         send_retry(&hd, ep, local_addr, sa, salen, data.size() * 3);
-                        return;
+                        return std::nullopt;
                     }
                     hd.token    = nullptr;
                     hd.tokenlen = 0;
@@ -1532,12 +3367,9 @@ struct Http2Server {
                 }
             }
 
-            auto h = std::make_unique<Handler>(loop_, this);
-            if (h->init(ep, local_addr, sa, salen, &hd.scid, &hd.dcid, pocid,
-                        { hd.token, hd.tokenlen }, token_type, hd.version,
-                        tls_ctx_)
-                    != 0) {
-                return;
+            auto h = std::make_shared<Http3Session<RestServer>>(this, _sharedData);
+            if (h->init(ep, local_addr, sa, salen, &hd.scid, &hd.dcid, pocid, { hd.token, hd.tokenlen }, token_type, hd.version, _tls_ctx) != 0) {
+                return std::nullopt;
             }
 
             switch (h->on_read(ep, local_addr, sa, salen, pi, data)) {
@@ -1545,56 +3377,74 @@ struct Http2Server {
                 break;
             case NETWORK_ERR_RETRY:
                 send_retry(&hd, ep, local_addr, sa, salen, data.size() * 3);
-                return;
+                return std::nullopt;
             default:
-                return;
+                return std::nullopt;
             }
 
             if (h->on_write() != 0) {
-                return;
+                return std::nullopt;
             }
 
             std::array<ngtcp2_cid, 8> scids;
-            auto                      conn     = h->conn();
 
-            auto                      num_scid = ngtcp2_conn_get_scid(conn, nullptr);
+            auto                      num_scid = ngtcp2_conn_get_scid(h->_conn, nullptr);
 
             assert(num_scid <= scids.size());
 
-            ngtcp2_conn_get_scid(conn, scids.data());
+            ngtcp2_conn_get_scid(h->_conn, scids.data());
 
             for (size_t i = 0; i < num_scid; ++i) {
-                associate_cid(&scids[i], h.get());
+                associate_cid(scids[i], h);
             }
 
-            handlers_.emplace(dcid_key, h.release());
+            _h3Sessions.emplace(dcid_key, std::move(h));
 
-            return;
+            return dcid_key;
         }
 
         auto h    = (*handler_it).second;
-        auto conn = h->conn();
+        auto conn = h->_conn;
         if (ngtcp2_conn_in_closing_period(conn)) {
             if (h->send_conn_close(ep, local_addr, sa, salen, pi, data) != 0) {
-                remove(h);
+                remove(conn);
             }
-            return;
+            return std::nullopt;
         }
         if (ngtcp2_conn_in_draining_period(conn)) {
-            return;
+            return std::nullopt;
         }
 
         if (auto rv = h->on_read(ep, local_addr, sa, salen, pi, data); rv != 0) {
             if (rv != NETWORK_ERR_CLOSE_WAIT) {
-                remove(h);
+                remove(conn);
             }
-            return;
+            return std::nullopt;
         }
 
         h->signal_write();
-#endif
+        return dcid_key;
+    }
+
+    void associate_cid(const ngtcp2_cid &cid, const std::shared_ptr<Http3Session<RestServer>> &session) {
+        _h3Sessions.emplace(cid, session);
+    }
+
+    void dissociate_cid(const ngtcp2_cid &cid) {
+        _h3Sessions.erase(cid);
+    }
+
+    void remove(ngtcp2_conn *conn) {
+        dissociate_cid(*ngtcp2_conn_get_client_initial_dcid(conn));
+
+        std::vector<ngtcp2_cid> cids(ngtcp2_conn_get_scid(conn, nullptr));
+        ngtcp2_conn_get_scid(conn, cids.data());
+
+        for (const auto &cid : cids) {
+            dissociate_cid(cid);
+        }
     }
 };
 } // namespace opencmw::majordomo::detail::nghttp2
 
-#endif // OPENCMW_MAJORDOMO_HTTP2SERVER_HPP
+#endif // OPENCMW_MAJORDOMO_RESTSERVER_HPP

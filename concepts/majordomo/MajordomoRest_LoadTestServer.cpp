@@ -36,6 +36,9 @@ int main(int argc, char **argv) {
     if (https) {
         rest.certificateFilePath = "./demo_public.crt";
         rest.keyFilePath         = "./demo_private.key";
+    } else {
+        rest.protocols = majordomo::rest::Protocol::Http2;
+        fmt::println(std::cerr, "HTTP/3 disabled, requires TLS");
     }
 
     majordomo::Broker broker("/Broker", testSettings());

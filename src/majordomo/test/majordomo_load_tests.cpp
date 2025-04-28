@@ -36,8 +36,9 @@ void waitFor(std::atomic<T> &responseCount, T expected, std::chrono::millisecond
 TEST_CASE("Load test", "[majordomo][majordomoworker][load_test][http2]") {
     majordomo::Broker             broker("/TestBroker", testSettings());
     majordomo::rest::Settings     rest;
-    rest.port     = kServerPort;
-    auto bound    = broker.bindRest(rest);
+    rest.port      = kServerPort;
+    rest.protocols = majordomo::rest::Protocol::Http2;
+    auto bound     = broker.bindRest(rest);
     if (!bound) {
         FAIL(fmt::format("Failed to bind REST server: {}", bound.error()));
         return;
