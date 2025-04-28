@@ -265,7 +265,7 @@ public:
     const std::string  brokerName;
 
 private:
-    std::unique_ptr<detail::nghttp2::Http2Server>           _restServer;
+    std::unique_ptr<detail::nghttp2::RestServer>            _restServer;
     Timestamp                                               _heartbeatAt = Clock::now() + settings.heartbeatInterval;
     SubscriptionMatcher                                     _subscriptionMatcher;
     std::unordered_map<mdp::Topic, std::set<std::string>>   _subscribedClientsByTopic; // topic -> client IDs
@@ -462,20 +462,20 @@ public:
             return std::unexpected("Provide both certificate and key file paths (for HTTPS) or none (for HTTP)");
         }
 
-        std::expected<detail::nghttp2::Http2Server, std::string> maybeServer;
+        std::expected<detail::nghttp2::RestServer, std::string> maybeServer;
         if (!restSettings.certificateFilePath.empty()) {
-            maybeServer = detail::nghttp2::Http2Server::sslWithPaths(std::move(restSettings.certificateFilePath), std::move(restSettings.keyFilePath));
+            maybeServer = detail::nghttp2::RestServer::sslWithPaths(std::move(restSettings.certificateFilePath), std::move(restSettings.keyFilePath));
         } else if (!restSettings.certificateFileBuffer.empty()) {
-            maybeServer = detail::nghttp2::Http2Server::sslWithBuffers(std::move(restSettings.certificateFileBuffer), std::move(restSettings.keyFileBuffer));
+            maybeServer = detail::nghttp2::RestServer::sslWithBuffers(std::move(restSettings.certificateFileBuffer), std::move(restSettings.keyFileBuffer));
         } else {
-            maybeServer = detail::nghttp2::Http2Server::unencrypted();
+            maybeServer = detail::nghttp2::RestServer::unencrypted();
         }
         if (!maybeServer) {
             return std::unexpected(maybeServer.error());
         }
-        _restServer = std::make_unique<detail::nghttp2::Http2Server>(std::move(maybeServer.value()));
+        _restServer = std::make_unique<detail::nghttp2::RestServer>(std::move(maybeServer.value()));
         _restServer->setHandlers(std::move(restSettings.handlers));
-        return _restServer->bind(restSettings.port);
+        return _restServer->bind(restSettings.port, restSettings.protocols);
     }
 
     void run() {
