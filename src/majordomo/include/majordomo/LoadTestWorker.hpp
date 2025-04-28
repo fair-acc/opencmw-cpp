@@ -22,9 +22,9 @@ struct Worker : public opencmw::majordomo::Worker<serviceName, Context, Payload,
         SubscriptionInfo(const Context &ctx)
             : Context(ctx) {}
 
-        std::int64_t nextIndex   = 0;
+        std::int64_t nextIndex          = 0;
         std::int64_t initialDelayLeftMs = initialDelayMs;
-        std::int64_t updatesLeft = nUpdates;
+        std::int64_t updatesLeft        = nUpdates;
     };
     std::unordered_map<mdp::Topic, SubscriptionInfo> _subscriptions;
 
@@ -38,7 +38,7 @@ struct Worker : public opencmw::majordomo::Worker<serviceName, Context, Payload,
             out.timestampNs = opencmw::load_test::timestamp().count();
         });
         _notifier = std::jthread([this](std::stop_token stopToken) {
-            std::int64_t                                    timecounter = 0;
+            std::int64_t                                     timecounter = 0;
 
             std::unordered_map<mdp::Topic, SubscriptionInfo> subscriptions;
 
@@ -53,7 +53,7 @@ struct Worker : public opencmw::majordomo::Worker<serviceName, Context, Payload,
                     if (it == subscriptions.end()) {
                         // TODO protect against unexpected queries
                         auto ctx = query::deserialise<Context>(active.params());
-                        it = subscriptions.try_emplace(active, ctx).first;
+                        it       = subscriptions.try_emplace(active, ctx).first;
                     }
                     auto &sub = it->second;
 

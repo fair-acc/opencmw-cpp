@@ -18,6 +18,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <vector>
 
 #include <openssl/bio.h>
 #include <openssl/crypto.h>
@@ -28,8 +29,7 @@
 #include <nghttp3/nghttp3.h>
 
 #include <fmt/format.h>
-
-#define OPENCMW_DEBUG_HTTP 1
+#include <fmt/std.h>
 
 #ifdef OPENCMW_DEBUG_HTTP
 #include <iostream>
@@ -148,6 +148,10 @@ inline std::span<uint8_t> u8span(std::string_view view) {
 }
 
 inline nghttp2_nv nv(const std::span<uint8_t> &name, const std::span<uint8_t> &value, uint8_t flags = NGHTTP2_NV_FLAG_NO_COPY_NAME) {
+    return { name.data(), value.data(), name.size(), value.size(), flags };
+}
+
+inline nghttp3_nv nv3(const std::span<uint8_t> &name, const std::span<uint8_t> &value, uint8_t flags = NGHTTP3_NV_FLAG_NO_COPY_NAME) {
     return { name.data(), value.data(), name.size(), value.size(), flags };
 }
 
