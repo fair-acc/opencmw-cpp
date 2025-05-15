@@ -609,12 +609,13 @@ struct SessionBase {
             return {};
         }
 
-#ifdef OPENCMW_PROFILE_HTTP
-        const std::size_t last = entry.messages.empty() ? entry.nextIndex() : entry.lastIndex();
-        if (index < last) {
-            fmt::println(std::cerr, "Server::LongPoll: index {} < last {} => {}", index, last, last - index);
+        // #ifdef OPENCMW_PROFILE_HTTP
+        if (index % 100 == 0) {
+            const std::size_t last = entry.messages.empty() ? entry.nextIndex() : entry.lastIndex();
+            fmt::println(std::cerr, "{}: {}; delta: {}", zmqTopic, index, index <= last ? (last - index) : 0);
         }
-#endif
+        // #endif
+
         if (index < entry.firstIndex) {
             // index is too old, redirect to the next index
             HTTP_DBG("Server::LongPoll: index {} < firstIndex {}", index, entry.firstIndex);
