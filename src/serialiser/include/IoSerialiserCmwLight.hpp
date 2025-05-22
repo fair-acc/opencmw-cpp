@@ -223,7 +223,7 @@ struct IoSerialiser<CmwLight, std::set<MemberType>> {
                 .dataStartPosition = buffer.position(),
                 .dataEndPosition   = 0U,
                 .subfields         = 0,
-                .fieldName         = fmt::format("{}[{}]", field.fieldName, i),
+                .fieldName         = std::format("{}[{}]", field.fieldName, i),
                 .intDataType       = IoSerialiser<CmwLight, MemberType>::getDataTypeId(),
                 .hierarchyDepth    = static_cast<uint8_t>(field.hierarchyDepth + 1),
             };
@@ -300,7 +300,7 @@ struct IoSerialiser<CmwLight, OTHER> {
         else if (typeId == getTypeIdMultiArray<std::string, 2>() || typeId == getTypeIdMultiArray<std::string, 3>()) { skipMultiArray<std::string>(buffer); }
         // nested
         // unsupported
-        else { throw ProtocolException(fmt::format("Skipping data type {} is not supported", typeId)); }
+        else { throw ProtocolException(std::format("Skipping data type {} is not supported", typeId)); }
         // clang-format on
     }
 };

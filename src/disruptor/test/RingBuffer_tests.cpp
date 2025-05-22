@@ -1,7 +1,7 @@
 #include <catch2/catch.hpp>
 
 #include <barrier>
-#include <fmt/format.h>
+#include <format>
 #include <iostream>
 #include <queue>
 
@@ -157,7 +157,7 @@ TEST_CASE("RingBuffer single-thread poller", "[Disruptor]") {
     std::chrono::duration<double, std::milli> time_elapsed = std::chrono::system_clock::now() - time_start;
     REQUIRE(counter == nLoop);
     REQUIRE(ringBuffer->getRemainingCapacity() == ringBuffer->bufferSize());
-    fmt::print("RingBuffer read-write performance (single-thread):    {} events in {:6.2f} ms -> {:.1E} ops/s\n", nLoop, time_elapsed.count(), 1e3 * nLoop / time_elapsed.count());
+    std::print("RingBuffer read-write performance (single-thread):    {} events in {:6.2f} ms -> {:.1E} ops/s\n", nLoop, time_elapsed.count(), 1e3 * nLoop / time_elapsed.count());
 }
 
 template<std::size_t SIZE, template<size_t, typename> typename CLAIM_STRATEGY>
@@ -220,9 +220,9 @@ void ringBufferPollerTest() {
     REQUIRE(received == nLoop);
     REQUIRE(ringBuffer->getRemainingCapacity() == ringBuffer->bufferSize());
     if (is_same_template<CLAIM_STRATEGY<SIZE, BusySpinWaitStrategy>, SingleThreadedStrategy<SIZE, BusySpinWaitStrategy>>::value) {
-        fmt::print("RingBuffer read-write performance (two-threads,SPSC): {} events in {:6.2f} ms -> {:.1E} ops/s (waitingForReader: {})\n", nLoop, time_elapsed.count(), 1e3 * nLoop / time_elapsed.count(), waitingForReader);
+        std::print("RingBuffer read-write performance (two-threads,SPSC): {} events in {:6.2f} ms -> {:.1E} ops/s (waitingForReader: {})\n", nLoop, time_elapsed.count(), 1e3 * nLoop / time_elapsed.count(), waitingForReader);
     } else {
-        fmt::print("RingBuffer read-write performance (two-threads,MPSC): {} events in {:6.2f} ms -> {:.1E} ops/s (waitingForReader: {})\n", nLoop, time_elapsed.count(), 1e3 * nLoop / time_elapsed.count(), waitingForReader);
+        std::print("RingBuffer read-write performance (two-threads,MPSC): {} events in {:6.2f} ms -> {:.1E} ops/s (waitingForReader: {})\n", nLoop, time_elapsed.count(), 1e3 * nLoop / time_elapsed.count(), waitingForReader);
     }
 }
 
@@ -271,17 +271,17 @@ TEST_CASE("BlockingQueue two-thread poller (classic)", "[Disruptor]") {
     std::chrono::duration<double, std::milli> time_elapsed = std::chrono::system_clock::now() - time_start;
     REQUIRE(counter == nLoop);
     REQUIRE(received == nLoop);
-    fmt::print("BlockingQueue read-write performance (two-threads):   {} events in {:6.2f} ms -> {:.1E} ops/s\n", nLoop, time_elapsed.count(), 1e3 * nLoop / time_elapsed.count());
+    std::print("BlockingQueue read-write performance (two-threads):   {} events in {:6.2f} ms -> {:.1E} ops/s\n", nLoop, time_elapsed.count(), 1e3 * nLoop / time_elapsed.count());
 }
 
 TEST_CASE("RingBuffer helper", "[Disruptor]") {
     using namespace opencmw;
     using namespace opencmw::disruptor;
 
-    REQUIRE(!fmt::format("{}", PollState::Idle).empty());
-    REQUIRE(!fmt::format("{}", PollState::Processing).empty());
-    REQUIRE(!fmt::format("{}", PollState::Gating).empty());
-    REQUIRE(!fmt::format("{}", PollState::UNKNOWN).empty());
+    REQUIRE(!std::format("{}", PollState::Idle).empty());
+    REQUIRE(!std::format("{}", PollState::Processing).empty());
+    REQUIRE(!std::format("{}", PollState::Gating).empty());
+    REQUIRE(!std::format("{}", PollState::UNKNOWN).empty());
     const auto testStream = [](PollState state) {
         std::stringstream stream;
         stream << state;

@@ -253,7 +253,7 @@ struct IoSerialiser<YaS, T> {
                     .dataStartPosition = buffer.position(),
                     .dataEndPosition   = 0U,
                     .subfields         = 0,
-                    .fieldName         = fmt::format("{}[{}]", field.fieldName, i),
+                    .fieldName         = std::format("{}[{}]", field.fieldName, i),
                     .intDataType       = IoSerialiser<YaS, V>::getDataTypeId(),
                     .hierarchyDepth    = static_cast<uint8_t>(field.hierarchyDepth + 1),
                 };

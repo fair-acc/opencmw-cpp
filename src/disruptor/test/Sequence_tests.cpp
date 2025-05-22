@@ -1,6 +1,6 @@
 #include <catch2/catch.hpp>
 
-#include <fmt/format.h>
+#include <format>
 #include <iostream>
 
 #include "disruptor/Sequence.hpp"
@@ -56,6 +56,6 @@ TEST_CASE("Sequence basic tests", "[Disruptor]") {
     using namespace opencmw;
     std::stringstream ss;
     REQUIRE(ss.str().size() == 0);
-    REQUIRE_NOTHROW(ss << fmt::format("{}", *s3));
+    REQUIRE_NOTHROW(ss << std::format("{}", *s3));
     REQUIRE(ss.str().size() != 0);
 }

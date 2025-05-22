@@ -17,9 +17,9 @@
 #include <type_traits>
 #include <utility>
 
-#include <fmt/format.h>
-#include <fmt/ranges.h>
+#include <format>
 
+#include <Formatter.hpp>
 #include <opencmw.hpp>
 #include <SpinWait.hpp>
 #include <ThreadAffinity.hpp>
@@ -45,11 +45,13 @@ public:
     constexpr move_only_function() = default;
 
     template<typename F>
-    requires(!std::is_reference_v<F>) constexpr move_only_function(F &&fun)
+        requires(!std::is_reference_v<F>)
+    constexpr move_only_function(F &&fun)
         : _erased_fun(new F(std::forward<F>(fun)), [](void *ptr) { delete static_cast<F *>(ptr); }), _call([](void *ptr) { (*static_cast<F *>(ptr))(); }) {}
 
     template<typename F>
-    requires(!std::is_reference_v<F>) constexpr move_only_function &operator=(F &&fun) {
+        requires(!std::is_reference_v<F>)
+    constexpr move_only_function &operator=(F &&fun) {
         _erased_fun = FunPtr(new F(std::forward<F>(fun)), [](void *ptr) { delete static_cast<F *>(ptr); });
         _call       = [](void *ptr) { (*static_cast<F *>(ptr))(); };
         return *this;
@@ -88,7 +90,7 @@ struct conditional_lock : public std::scoped_lock<Args...> {
 
 template<typename... Args>
 struct conditional_lock<false, Args...> {
-    conditional_lock(const Args &...){};
+    conditional_lock(const Args &...) {};
 };
 
 class TaskQueue {
@@ -104,8 +106,8 @@ private:
     using conditional_lock = conditional_lock<shouldLock, AtomicMutex<>>;
 
 public:
-    TaskQueue()                       = default;
-    TaskQueue(const TaskQueue &queue) = delete;
+    TaskQueue()                                  = default;
+    TaskQueue(const TaskQueue &queue)            = delete;
     TaskQueue &operator=(const TaskQueue &queue) = delete;
     ~TaskQueue() {
         clear();
@@ -137,7 +139,7 @@ public:
                 return std::find_if(_tasks.begin(), _tasks.end(),
                             [currentJobPriority](const auto &task) {
                             return task.priority < currentJobPriority;
-                            });
+                        });
             }
         }();
 
@@ -193,8 +195,8 @@ concept ThreadPool = requires(T t, std::function<void()> &&func) {
  * // pool for CPU-bound tasks with exactly 1 thread
  * opencmw::BasicThreadPool&lt;opencmw::CPU_BOUND&gt; poolWork("CustomCpuPool", 1, 1);
  * // enqueue and add task to list -- w/o return type
- * poolWork.execute([] { fmt::print("Hello World from thread '{}'!\n", getThreadName()); }); // here: caller thread-name
- * poolWork.execute([](const auto &...args) { fmt::print(fmt::runtime("Hello World from thread '{}'!\n"), args...); }, getThreadName()); // here: executor thread-name
+ * poolWork.execute([] { std::print("Hello World from thread '{}'!\n", getThreadName()); }); // here: caller thread-name
+ * poolWork.execute([](const auto &...args) { std::print(std::runtime_format("Hello World from thread '{}'!\n"), args...); }, getThreadName()); // here: executor thread-name
  * // [..]
  *
  * // pool for IO-bound (potentially blocking) tasks with at least 1 and a max of 1000 threads
@@ -203,16 +205,16 @@ concept ThreadPool = requires(T t, std::function<void()> &&func) {
  * poolIO.waitUntilInitialised();                       // wait until the pool is initialised (optional)
  * poolIO.setAffinityMask({ true, true, true, false }); // allows executor threads to run on the first four CPU cores
  *
- * constexpr auto           func1  = [](const auto &...args) { return fmt::format(fmt::runtime("thread '{1}' scheduled task '{0}'!\n"), getThreadName(), args...); };
+ * constexpr auto           func1  = [](const auto &...args) { return std::format(std::runtime_format("thread '{1}' scheduled task '{0}'!\n"), getThreadName(), args...); };
  * std::future&lt;std::string&gt; result = poolIO.execute&lt;"customTaskName"&gt;(func1, getThreadName()); // N.B. the calling thread is owner of the std::future
  *
  * // execute a task with a name, a priority and single-core affinity (here: 2)
- * poolIO.execute&lt;"task name", 20U, 2&gt;([]() { fmt::print("Hello World from custom thread '{}'!\n", getThreadName()); });
+ * poolIO.execute&lt;"task name", 20U, 2&gt;([]() { std::print("Hello World from custom thread '{}'!\n", getThreadName()); });
  *
  * try {
  *     poolIO.execute&lt;"customName", 20U, 3&gt;([]() {  [..] this potentially long-running task is trackable via it's 'customName' thread name [..] });
  * } catch (const std::invalid_argument &e) {
- *     fmt::print("caught exception: {}\n", e.what());
+ *     std::print("caught exception: {}\n", e.what());
  * }
  * @endcode
  */
@@ -222,7 +224,7 @@ class BasicThreadPool {
     using TaskQueue = thread_pool::detail::TaskQueue;
     static std::atomic<uint64_t> _globalPoolId;
     static std::atomic<uint64_t> _taskID;
-    static std::string           generateName() { return fmt::format("BasicThreadPool#{}", _globalPoolId.fetch_add(1)); }
+    static std::string           generateName() { return std::format("BasicThreadPool#{}", _globalPoolId.fetch_add(1)); }
 
     std::atomic<bool>            _initialised = ATOMIC_FLAG_INIT;
     bool                         _shutdown    = false;
@@ -266,10 +268,10 @@ public:
         }
     }
 
-    BasicThreadPool(const BasicThreadPool &) = delete;
-    BasicThreadPool(BasicThreadPool &&)      = delete;
+    BasicThreadPool(const BasicThreadPool &)                     = delete;
+    BasicThreadPool(BasicThreadPool &&)                          = delete;
     BasicThreadPool          &operator=(const BasicThreadPool &) = delete;
-    BasicThreadPool          &operator=(BasicThreadPool &&) = delete;
+    BasicThreadPool          &operator=(BasicThreadPool &&)      = delete;
 
     [[nodiscard]] std::string poolName() const noexcept { return _poolName; }
     [[nodiscard]] uint32_t    minThreads() const noexcept { return _minThreads; };
@@ -314,12 +316,13 @@ public:
 
     // TODO: Do we need support for cancellation?
     template<const basic_fixed_string taskName = "", uint32_t priority = 0, int32_t cpuID = -1, std::invocable Callable, typename... Args, typename R = std::invoke_result_t<Callable, Args...>>
-    requires(std::is_same_v<R, void>) void execute(Callable &&func, Args &&...args) {
+        requires(std::is_same_v<R, void>)
+    void execute(Callable &&func, Args &&...args) {
         static thread_local SpinWait spinWait;
         if constexpr (cpuID >= 0) {
             if (cpuID >= _affinityMask.size() || !_affinityMask[cpuID]) {
-                throw std::invalid_argument(fmt::format("requested cpuID {} incompatible with set affinity mask({}): [{}]",
-                        cpuID, _affinityMask.size(), fmt::join(_affinityMask.begin(), _affinityMask.end(), ", ")));
+                throw std::invalid_argument(std::format("requested cpuID {} incompatible with set affinity mask({}): [{}]",
+                        cpuID, _affinityMask.size(), opencmw::join(_affinityMask, ", ")));
             }
         }
         _numTaskedQueued.fetch_add(1U);
@@ -342,12 +345,12 @@ public:
     }
 
     template<const basic_fixed_string taskName = "", uint32_t priority = 0, int32_t cpuID = -1, std::invocable Callable, typename... Args, typename R = std::invoke_result_t<Callable, Args...>>
-    requires(!std::is_same_v<R, void>)
-            [[nodiscard]] std::future<R> execute(Callable &&func, Args &&...funcArgs) {
+        requires(!std::is_same_v<R, void>)
+    [[nodiscard]] std::future<R> execute(Callable &&func, Args &&...funcArgs) {
         if constexpr (cpuID >= 0) {
             if (cpuID >= _affinityMask.size() || !_affinityMask[cpuID]) {
-                throw std::invalid_argument(fmt::format("cpuID {} is out of range [0,{}] or incompatible with set affinity mask [{}]",
-                        cpuID, _affinityMask.size(), fmt::join(_affinityMask, ",")));
+                throw std::invalid_argument(std::format("cpuID {} is out of range [0,{}] or incompatible with set affinity mask [{}]",
+                        cpuID, _affinityMask.size(), opencmw::join(_affinityMask, ",")));
             }
         }
         std::promise<R> promise;
@@ -381,7 +384,7 @@ private:
     }
 
     void updateThreadConstraints(const std::size_t threadID, std::thread &thread) const {
-        thread::setThreadName(fmt::format("{}#{}", _poolName, threadID), thread);
+        thread::setThreadName(std::format("{}#{}", _poolName, threadID), thread);
         thread::setThreadSchedulingParameter(_schedulingPolicy, _schedulingPriority, thread);
         if (!_affinityMask.empty()) {
             if (taskType == TaskType::IO_BOUND) {
@@ -389,7 +392,7 @@ private:
                 return;
             }
             const std::vector<bool> affinityMask = distributeThreadAffinityAcrossCores(_affinityMask, threadID);
-            std::cout << fmt::format("{}#{} affinity mask: {}", _poolName, threadID, fmt::join(affinityMask.begin(), affinityMask.end(), ",")) << std::endl;
+            std::cout << std::format("{}#{} affinity mask: {}", _poolName, threadID, opencmw::join(affinityMask, ",")) << std::endl;
             thread::setThreadAffinity(affinityMask);
         }
     }
@@ -465,7 +468,7 @@ private:
         const auto         threadID     = _numThreads.fetch_add(1);
         std::mutex         mutex;
         std::unique_lock   lock(mutex);
-        auto               lastUsed              = std::chrono::steady_clock::now();
+        auto               lastUsed = std::chrono::steady_clock::now();
         if (numThreads() >= _minThreads) {
             std::atomic_store_explicit(&_initialised, true, std::memory_order_release);
             _initialised.notify_all();
@@ -488,7 +491,7 @@ private:
                 _recycledTasks.push(std::move(currentTaskContainer));
                 _numTasksRunning.fetch_sub(1);
                 if (nameSet) {
-                    thread::setThreadName(fmt::format("{}#{}", _poolName, threadID));
+                    thread::setThreadName(std::format("{}#{}", _poolName, threadID));
                 }
                 lastUsed     = std::chrono::steady_clock::now();
                 noop_counter = 0;

@@ -49,9 +49,9 @@ struct rest_test_step {
         _command.command  = command;
         _command.topic    = endpoint;
         _command.callback = [this](const opencmw::mdp::Message &reply) {
-            fmt::print("Reply R\"({})\"\n", reply.data.asString());
+            std::print("Reply R\"({})\"\n", reply.data.asString());
             if (_resultChecker && !_resultChecker(reply)) {
-                _state.error(fmt::format("ERROR: bad result {}", reply.data.asString()));
+                _state.error(std::format("ERROR: bad result {}", reply.data.asString()));
             }
 
             _repliesCounter++;
@@ -116,7 +116,7 @@ struct rest_test_runner {
     template<typename Step, typename... Steps>
     explicit rest_test_runner(Step &step, Steps &...steps) {
         (step >> ... >> steps).finally([](rest_test_state &&state) {
-            fmt::print("All tests finished.\n");
+            std::print("All tests finished.\n");
             if (!state.all_ok) {
                 for (const auto &line : state.log) {
                     std::cerr << line << std::endl;

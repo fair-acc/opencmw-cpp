@@ -20,7 +20,7 @@ cases:
 
 - they are unavoidable (such as 0mq);
 - they implement features that are planned for inclusion into
-  a future C++ version in some form or another (such as refl-cpp and fmt);
+  a future C++ version in some form or another (such as refl-cpp);
 - they are small enough to be incorporated into this project
   and a fork be developed and maintained inside of this project.
 

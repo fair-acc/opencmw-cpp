@@ -1,6 +1,6 @@
 #pragma clang diagnostic push
-#pragma ide diagnostic   ignored "LoopDoesntUseConditionVariableInspection"
-#pragma ide diagnostic   ignored "cppcoreguidelines-avoid-magic-numbers"
+#pragma ide diagnostic ignored "LoopDoesntUseConditionVariableInspection"
+#pragma ide diagnostic ignored "cppcoreguidelines-avoid-magic-numbers"
 #include <catch2/catch.hpp>
 
 #include <algorithm>
@@ -103,7 +103,7 @@ TEST_CASE("IoClassSerialiser basic syntax", "[IoClassSerialiser]") {
         IoBuffer     buffer;
         Data         data;
 
-        std::cout << fmt::format("buffer size (before): {} bytes\n", buffer.size());
+        std::cout << std::format("buffer size (before): {} bytes\n", buffer.size());
 
         Data data2;
         REQUIRE(data == data2);
@@ -125,14 +125,14 @@ TEST_CASE("IoClassSerialiser basic syntax", "[IoClassSerialiser]") {
 
         opencmw::serialise<opencmw::YaS>(buffer, data);
         std::cout << "object (short): " << ClassInfoShort << data << '\n';
-        std::cout << fmt::format("object (fmt): {}\n", data);
+        std::cout << std::format("object (std::format): {}\n", data);
         std::cout << "object (long):  " << ClassInfoVerbose << data << '\n';
 
         // check (de-)serialisation identity
         std::cout << ClassInfoVerbose << "before: ";
         diffView(std::cout, data, data2);
         checkSerialiserIdentity<opencmw::YaS>(buffer, data, data2);
-        std::cout << fmt::format("buffer size (after): {} bytes\n", buffer.size());
+        std::cout << std::format("buffer size (after): {} bytes\n", buffer.size());
         std::cout << "after: " << std::flush;
         diffView(std::cout, data, data2);
         REQUIRE(data == data2);
@@ -408,7 +408,7 @@ struct TestData {
     // bla blaa
 
     explicit TestData(double val = 0)
-        : value(val){};
+        : value(val) {};
 };
 
 TEST_CASE("IoSerialiser syntax", "[IoSerialiser]") {
@@ -442,13 +442,13 @@ TEST_CASE("IoSerialiser basic syntax", "[IoSerialiser]") {
         TestData              data(42);
 
         REQUIRE(opencmw::is_annotated<decltype(data.value)> == true);
-        std::cout << fmt::format("buffer size (before): {} bytes\n", buffer.size());
+        std::cout << std::format("buffer size (before): {} bytes\n", buffer.size());
 
         auto fieldA = FieldDescriptionShort{ .fieldName = "fieldNameA" };
         opencmw::FieldHeaderWriter<opencmw::YaS>::template put<true>(buffer, fieldA, 43.0);
         auto fieldB = FieldDescriptionShort{ .fieldName = "fieldNameB" };
         opencmw::FieldHeaderWriter<opencmw::YaS>::template put<true>(buffer, fieldB, data.value.value());
-        std::cout << fmt::format("buffer size (after): {} bytes\n", buffer.size());
+        std::cout << std::format("buffer size (after): {} bytes\n", buffer.size());
     }
     REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
     opencmw::debug::resetStats();
@@ -468,15 +468,15 @@ TEST_CASE("IoSerialiser primitive numbers YaS", "[IoSerialiser]") {
             }
             return sizeof(value);
         };
-        auto writeTest = [&buffer, &oldBufferPosition, &expectedSize]<typename T, opencmw::SerialiserProtocol protocol = opencmw::YaS>(T && value) {
-            const auto &msg = fmt::format("writeTest(IoBuffer&, size_t&,({}){})", opencmw::typeName<T>, std::forward<T>(value));
+        auto writeTest = [&buffer, &oldBufferPosition, &expectedSize]<typename T, opencmw::SerialiserProtocol protocol = opencmw::YaS>(T &&value) {
+            const auto &msg = std::format("writeTest(IoBuffer&, size_t&,({}){})", opencmw::typeName<T>, std::forward<T>(value));
             REQUIRE_MESSAGE(buffer.size() == oldBufferPosition, msg);
             opencmw::IoSerialiser<protocol, T>::serialise(buffer, FieldDescriptionShort{ .fieldName = std::string(opencmw::typeName<T>) + "TestDataClass" }, value);
             REQUIRE_MESSAGE((buffer.size() - oldBufferPosition) == expectedSize(value), msg);
             oldBufferPosition += expectedSize(value);
         };
 
-        std::cout << fmt::format("buffer size (before): {} bytes\n", buffer.size());
+        std::cout << std::format("buffer size (before): {} bytes\n", buffer.size());
         writeTest(static_cast<int8_t>(1));
         writeTest(static_cast<int16_t>(2));
         writeTest(3);
@@ -492,7 +492,7 @@ TEST_CASE("IoSerialiser primitive numbers YaS", "[IoSerialiser]") {
         oldBufferPosition = buffer.position();
         REQUIRE(oldBufferPosition == 0);
         auto readTest = [&buffer, &oldBufferPosition, &expectedSize]<typename T, opencmw::SerialiserProtocol protocol = opencmw::YaS>(T expected) {
-            const auto &msg = fmt::format("ioserialiser_basicReadTests(basicReadTest&, size_t&,({}){})", opencmw::typeName<T>, expected);
+            const auto &msg = std::format("ioserialiser_basicReadTests(basicReadTest&, size_t&,({}){})", opencmw::typeName<T>, expected);
             T           actual;
             opencmw::IoSerialiser<protocol, T>::deserialise(buffer, FieldDescriptionShort{ .fieldName = std::string(opencmw::typeName<T>) + "TestDataClass" }, actual);
             REQUIRE_MESSAGE(actual == expected, msg);
@@ -510,7 +510,7 @@ TEST_CASE("IoSerialiser primitive numbers YaS", "[IoSerialiser]") {
         readTest(std::string("Γειά σου Κόσμε!"));
         readTest(std::string("Γειά σου Κόσμε!")); // read string that was written as string_view
 
-        std::cout << fmt::format("buffer size (after): {} bytes\n", buffer.size());
+        std::cout << std::format("buffer size (after): {} bytes\n", buffer.size());
     }
     REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
     opencmw::debug::resetStats();

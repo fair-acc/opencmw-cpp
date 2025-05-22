@@ -88,7 +88,7 @@ TEST_CASE("Basic subscription test", "[ClientContext]") {
         server.notify("/a.service?C=3", payload); // not received by client
     }
     std::this_thread::sleep_for(10ms); // allow for all the notifications to reach the client
-    fmt::print("received notifications {}\n", received.load());
+    std::print("received notifications {}\n", received.load());
     REQUIRE(received == 100);
     clientContext.unsubscribe(endpoint);
     std::this_thread::sleep_for(10ms); // allow for the unsubscription request to be processed

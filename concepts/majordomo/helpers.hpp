@@ -129,7 +129,7 @@ struct HelloWorldHandler {
         const auto        sinceEpoch = system_clock::to_time_t(now);
         std::stringstream buffer{};
         buffer << std::put_time(std::localtime(&sinceEpoch), "%Y-%m-%d %H:%M:%S");
-        out.name           = fmt::format("Hello World! The local time is: {}", buffer.str());
+        out.name           = std::format("Hello World! The local time is: {}", buffer.str());
         out.byteArray      = in.name; // doesn't really make sense atm
         out.byteReturnType = 42;
 
@@ -142,7 +142,7 @@ struct HelloWorldHandler {
         replyContext.ctx         = out.timingCtx;
         replyContext.ctx         = opencmw::TimingCtx(3, {}, {}, {}, duration_cast<microseconds>(now.time_since_epoch()));
         replyContext.contentType = requestContext.contentType;
-        replyContext.testFilter  = fmt::format("HelloWorld - reply topic = {}", requestContext.testFilter);
+        replyContext.testFilter  = std::format("HelloWorld - reply topic = {}", requestContext.testFilter);
     }
 };
 
@@ -164,7 +164,7 @@ public:
         const auto fs = cmrc::testImages::get_filesystem();
         for (const auto &path : fs.iterate_directory("/assets/testImages")) {
             if (path.is_file()) {
-                const auto file = fs.open(fmt::format("assets/testImages/{}", path.filename()));
+                const auto file = fs.open(std::format("assets/testImages/{}", path.filename()));
                 imageData.push_back(std::vector<std::uint8_t>(file.begin(), file.end()));
             }
         }

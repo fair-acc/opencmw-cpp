@@ -4,7 +4,7 @@
 #include <majordomo/Worker.hpp>
 
 #include <catch2/catch.hpp>
-#include <fmt/format.h>
+#include <format>
 
 #include <charconv>
 #include <cstdlib>
@@ -881,7 +881,7 @@ TEST_CASE("Test RBAC role priority handling", "[broker][rbac]") {
         const auto reqId    = std::to_string(clientRequestId++);
         msg.clientRequestID = IoBuffer(reqId.data(), reqId.size());
         msg.serviceName     = "/a.service";
-        const auto rbac     = fmt::format("RBAC={},123456abcdef", role);
+        const auto rbac     = std::format("RBAC={},123456abcdef", role);
         msg.rbac            = IoBuffer(rbac.data(), rbac.size());
         client.send(std::move(msg));
     }

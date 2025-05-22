@@ -42,10 +42,10 @@ public:
         : super_t(broker, {}) {
         super_t::setCallback([this](const RequestContext &rawCtx, const FilterContext &filterIn, const Empty & /*in - unused*/, FilterContext &filterOut, Reply &out) {
             if (rawCtx.request.command == mdp::Command::Get) {
-                fmt::print("worker received 'get' request\n");
+                std::print("worker received 'get' request\n");
                 handleGetRequest(filterIn, filterOut, out);
             } else if (rawCtx.request.command == mdp::Command::Set) {
-                fmt::print("worker received 'set' request\n");
+                std::print("worker received 'set' request\n");
                 // do some set action
             }
         });
@@ -56,12 +56,12 @@ public:
         const auto notifySignal = counter % 2 == false ? "A" : "B";
         const auto value        = counter % 2 == false ? sinf(M_2_PIf * static_cast<float>(counter) / 10.0f) : cosf(M_2_PIf * static_cast<float>(counter) / 10.0f);
         if (mockSignals.contains(notifySignal)) {
-            fmt::print("updateData({}) - update signal '{}'\n", counter, notifySignal);
+            std::print("updateData({}) - update signal '{}'\n", counter, notifySignal);
             std::lock_guard lockGuard(mockSignalsLock);
             mockSignals[notifySignal].first++;
             mockSignals[notifySignal].second = value;
         } else {
-            fmt::print("updateData({}) - updated nothing\n", counter);
+            std::print("updateData({}) - updated nothing\n", counter);
         }
         counter++;
         notifyUpdate();
@@ -73,7 +73,7 @@ private:
         for (const auto &signal : signals) {
             out.signalNames.emplace_back(std::string_view(signal.begin(), signal.end()));
         }
-        fmt::print("handleGetRequest for '{}'\n", out.signalNames);
+        std::print("handleGetRequest for '{}'\n", out.signalNames);
         out.signalValues.resize(out.signalNames.size());
         std::lock_guard lockGuard(mockSignalsLock);
         for (std::size_t i = 0; i < out.signalNames.size(); i++) {
@@ -93,7 +93,7 @@ private:
         int updateCount = -1;
         for (const auto &signal : requestedSignals) {
             if (!mockSignals.contains(signal)) {
-                fmt::print("requested unknown signal '{}'\n", signal);
+                std::print("requested unknown signal '{}'\n", signal);
                 return false;
             }
             if (updateCount < 0) {
@@ -121,9 +121,9 @@ private:
                 handleGetRequest(filterIn, filterOut, subscriptionReply);
                 super_t::notify(filterOut, subscriptionReply);
             } catch (const std::exception &ex) {
-                fmt::print("caught specific exception '{}'\n", ex.what());
+                std::print("caught specific exception '{}'\n", ex.what());
             } catch (...) {
-                fmt::print("caught unknown generic exception\n");
+                std::print("caught unknown generic exception\n");
             }
         }
     }
@@ -145,7 +145,7 @@ int main() {
     std::jthread workerThread([&acquisitionWorker] { acquisitionWorker.run(); });
 
     // start some simple subscription client
-    fmt::print("starting some client subscriptions\n");
+    std::print("starting some client subscriptions\n");
     const opencmw::zmq::Context                               zctx{};
     std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
     clients.emplace_back(std::make_unique<opencmw::client::MDClientCtx>(zctx, 20ms, ""));
@@ -154,11 +154,11 @@ int main() {
     std::atomic<int>               receivedA{ 0 };
     std::atomic<int>               receivedAB{ 0 };
     client.subscribe(URI("mds://127.0.0.1:12345/DeviceName/Acquisition?signalFilter=A"), [&receivedA](const opencmw::mdp::Message &update) {
-        fmt::print("Client('A') received message from service '{}' for endpoint '{}'\n", update.serviceName, update.topic.str());
+        std::print("Client('A') received message from service '{}' for endpoint '{}'\n", update.serviceName, update.topic.str());
         receivedA++;
     });
     client.subscribe(URI("mds://127.0.0.1:12345/DeviceName/Acquisition?signalFilter=A%2CB"), [&receivedAB](const opencmw::mdp::Message &update) {
-        fmt::print("Client('A,B') received message from service '{}' for endpoint '{}'\n", update.serviceName, update.topic.str());
+        std::print("Client('A,B') received message from service '{}' for endpoint '{}'\n", update.serviceName, update.topic.str());
         receivedAB++;
     });
 
@@ -169,7 +169,7 @@ int main() {
         }
     }).join();
 
-    fmt::print("received client updates: {} for 'A' and {} for 'A,B'\n", receivedA.load(), receivedAB.load());
+    std::print("received client updates: {} for 'A' and {} for 'A,B'\n", receivedA.load(), receivedAB.load());
     client.stop();
     // workers terminate when broker shuts down
     brokerThread.join();

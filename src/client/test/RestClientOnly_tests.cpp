@@ -73,7 +73,7 @@ int main() {
     using namespace test;
 
 #ifndef __EMSCRIPTEN__
-    fmt::print("Waiting for everything to finish");
+    std::print("Waiting for everything to finish");
     auto waiting_since = std::chrono::system_clock::now();
     while (!run.all_done && std::chrono::system_clock::now() - waiting_since < 20s) {
         std::this_thread::sleep_for(250ms);

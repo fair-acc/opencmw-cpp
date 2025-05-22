@@ -22,15 +22,15 @@ TEST_CASE("basic access", "[MIME]") {
     static_assert(MIME::getTypeByFileName("TEST.TXT") == MIME::TEXT);
 
     for (auto &type : MIME::ALL) {
-        REQUIRE_MESSAGE(MIME::getType(type.typeName()) == type, fmt::format("error for type '{}'", type.typeName()));
+        REQUIRE_MESSAGE(MIME::getType(type.typeName()) == type, std::format("error for type '{}'", type.typeName()));
         for (auto fileExt : type.fileExtensions()) {
-            REQUIRE_MESSAGE(MIME::getTypeByFileName(fmt::format("FileName{}", fileExt)) == type, fmt::format("error for type '{}' and ext '{}'", type.typeName(), fileExt));
+            REQUIRE_MESSAGE(MIME::getTypeByFileName(std::format("FileName{}", fileExt)) == type, std::format("error for type '{}' and ext '{}'", type.typeName(), fileExt));
         }
 
         // test print handler
         std::ostringstream dummyStream;
         auto               resetStream = [&dummyStream]() { dummyStream.str(""); dummyStream.clear(); REQUIRE(dummyStream.str().size() == 0); };
-        dummyStream << fmt::format("MIME::MimeType fmt::print: '{}'\n", type);
+        dummyStream << std::format("MIME::MimeType std::print: '{}'\n", type);
         REQUIRE(dummyStream.str().size() != 0);
         resetStream();
         dummyStream << "std::cout MIME::MimeType print: " << type << std::endl;

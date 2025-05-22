@@ -37,7 +37,7 @@ int main() {
     className a{ 1, 0.5F, "Hello World!" };
     className b{ 1, 0.501F, "Γειά σου Κόσμε!" };
 
-    std::cout << fmt::format("class info a: {}\n", a);
+    std::cout << std::format("class info a: {}\n", a);
     std::cout << ClassInfoVerbose << "class info b: " << b << '\n';
     diffView(std::cout, a, b);
 
@@ -58,7 +58,7 @@ int main() {
         std::cout << "caught unknown exception " << std::endl;
     }
     assert(a == b && "a & b should be equal here"); // just checking
-    std::cout << fmt::format("finished simple serialise-deserialise identity -- IoBuffer required {} bytes\n", buffer.size());
+    std::cout << std::format("finished simple serialise-deserialise identity -- IoBuffer required {} bytes\n", buffer.size());
     diffView(std::cout, a, b);
     // N.B. the buffer size is larger than the mere field sizes because of additional meta information that is required
     // for safely transmitting the data via the network and between different programming languages.

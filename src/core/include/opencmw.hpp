@@ -8,16 +8,16 @@
 #include <concepts>
 #include <map>
 #include <set>
+#include <span>
 #include <unordered_map>
 #include <vector>
 #include <version>
 
-#include <fmt/color.h>
-#include <fmt/format.h>
-#include <fmt/ostream.h>
-#include <fmt/ranges.h>
+#include <format>
+#include <print>
 #include <refl.hpp>
 
+#include <Formatter.hpp>
 #include <units/concepts.h>
 #include <units/quantity.h>
 #include <units/quantity_io.h>
@@ -110,7 +110,7 @@ template<typename T>
 concept ArrayOrVector = is_vector<T> || is_array<T>;
 
 template<typename C, typename T = typename C::value_type, std::size_t size = 0>
-concept StringArray = (is_array<C> || is_vector<C>) &&is_stringlike<T>;
+concept StringArray = (is_array<C> || is_vector<C>) && is_stringlike<T>;
 
 template<typename T, class Deleter = std::default_delete<T>>
 inline constexpr const bool is_smart_pointer = false;
@@ -295,19 +295,19 @@ constexpr ExternalModifier get_ext_modifier(const uint8_t byteValue) {
 } // namespace opencmw
 
 template<>
-struct fmt::formatter<opencmw::ExternalModifier> {
+struct std::formatter<opencmw::ExternalModifier> {
     template<typename ParseContext>
     constexpr auto parse(ParseContext &ctx) { return ctx.begin(); }
     template<typename FormatContext>
     constexpr auto format(const opencmw::ExternalModifier &state, FormatContext &ctx) const {
         using namespace opencmw;
         switch (state) {
-        case RW: return fmt::format_to(ctx.out(), "RW");
-        case RO: return fmt::format_to(ctx.out(), "RO");
-        case RW_DEPRECATED: return fmt::format_to(ctx.out(), "RW_DEPRECATED");
-        case RO_DEPRECATED: return fmt::format_to(ctx.out(), "RO_DEPRECATED");
-        case RW_PRIVATE: return fmt::format_to(ctx.out(), "RW_PRIVATE");
-        case RO_PRIVATE: return fmt::format_to(ctx.out(), "RO_PRIVATE");
+        case RW: return std::format_to(ctx.out(), "RW");
+        case RO: return std::format_to(ctx.out(), "RO");
+        case RW_DEPRECATED: return std::format_to(ctx.out(), "RW_DEPRECATED");
+        case RO_DEPRECATED: return std::format_to(ctx.out(), "RO_DEPRECATED");
+        case RW_PRIVATE: return std::format_to(ctx.out(), "RW_PRIVATE");
+        case RO_PRIVATE: return std::format_to(ctx.out(), "RO_PRIVATE");
         case UNKNOWN: [[fallthrough]];
             default:
                 throw std::logic_error("unknown ExternalModifier state");
@@ -316,7 +316,7 @@ struct fmt::formatter<opencmw::ExternalModifier> {
 };
 
 inline std::ostream &operator<<(std::ostream &os, const opencmw::ExternalModifier &v) {
-    return os << fmt::format("{}", v);
+    return os << std::format("{}", v);
 }
 
 namespace opencmw {
@@ -456,7 +456,7 @@ constexpr typename T::rep &getAnnotatedMember(T &&annotatedValue) noexcept {
 
 /* just some helper function to return nicer human-readable type names */
 #pragma clang diagnostic push
-#pragma ide diagnostic   ignored "misc-definitions-in-headers"
+#pragma ide diagnostic ignored "misc-definitions-in-headers"
 // clang-format off
 template<typename T> const std::string_view typeName = typeid(T).name(); // safe fall-back
 template<ReflectableClass T> inline constexpr const std::string_view typeName<T> = refl::reflect<T>().name.data;
@@ -484,25 +484,25 @@ template<typename T> requires is_same_v<std::remove_const_t<T>, double_t>  inlin
 template<StringLike T> requires units::is_derived_from_specialization_of<T, std::basic_string> inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "string const" : "string";
 template<StringLike T> requires units::is_derived_from_specialization_of<T, std::basic_string_view> inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "string_view const" : "string_view";
 
-template<typename T, std::size_t N> inline const std::string &typeName<std::array<T,N>> = fmt::format("array<{},{}>", typeName<T>, N);
-template<typename T, std::size_t N> inline const std::string &typeName<std::array<T,N> const> = fmt::format("array<{},{}> const", typeName<T>, N);
-template<typename T, typename A> inline const std::string &typeName<std::vector<T,A>> = fmt::format("vector<{}>", typeName<T>);
-template<typename T, typename A> inline const std::string &typeName<std::vector<T,A> const> = fmt::format("vector<{}> const", typeName<T>);
+template<typename T, std::size_t N> inline const std::string &typeName<std::array<T,N>> = std::format("array<{},{}>", typeName<T>, N);
+template<typename T, std::size_t N> inline const std::string &typeName<std::array<T,N> const> = std::format("array<{},{}> const", typeName<T>, N);
+template<typename T, typename A> inline const std::string &typeName<std::vector<T,A>> = std::format("vector<{}>", typeName<T>);
+template<typename T, typename A> inline const std::string &typeName<std::vector<T,A> const> = std::format("vector<{}> const", typeName<T>);
 
-template<MapLike T> inline const std::string &typeName<T> =  fmt::format("map<{},{}>", opencmw::typeName<typename T::key_type>, opencmw::typeName<typename T::mapped_type>);
-template<MapLike T> inline const std::string &typeName<T const> =  fmt::format("map<{},{}> const", opencmw::typeName<typename T::key_type>, opencmw::typeName<typename T::mapped_type>);
+template<MapLike T> inline const std::string &typeName<T> =  std::format("map<{},{}>", opencmw::typeName<typename T::key_type>, opencmw::typeName<typename T::mapped_type>);
+template<MapLike T> inline const std::string &typeName<T const> =  std::format("map<{},{}> const", opencmw::typeName<typename T::key_type>, opencmw::typeName<typename T::mapped_type>);
 
 template<typename T, units::Quantity Q, const basic_fixed_string description, const ExternalModifier modifier, const basic_fixed_string... groups>
-inline const std::string &typeName<Annotated<T, Q, description, modifier, groups...>> = fmt::format("Annotated<{}>", opencmw::typeName<T>);
+inline const std::string &typeName<Annotated<T, Q, description, modifier, groups...>> = std::format("Annotated<{}>", opencmw::typeName<T>);
 template<typename T, units::Quantity Q, const basic_fixed_string description, const ExternalModifier modifier, const basic_fixed_string... groups>
-inline const std::string &typeName<Annotated<T, Q, description, modifier, groups...> const> =  fmt::format("Annotated<{}> const", opencmw::typeName<T>);
+inline const std::string &typeName<Annotated<T, Q, description, modifier, groups...> const> =  std::format("Annotated<{}> const", opencmw::typeName<T>);
 
 // legacy arrays
-template<ArithmeticType T, std::size_t size> inline const std::string &typeName<T[size]> = fmt::format("{}[{}]", opencmw::typeName<T>, size);
-template<ArithmeticType T, std::size_t size> inline const std::string &typeName<const T[size]> = fmt::format("{}[{}] const", opencmw::typeName<T>, size);
-template<ArithmeticType T> inline const std::string &typeName<T*> = fmt::format("{}[?]", opencmw::typeName<T>);
-template<ArithmeticType T> inline const std::string &typeName<const T*> = fmt::format("({} const)[?] ", opencmw::typeName<T>);
-template<ArithmeticType T> inline const std::string &typeName<T* const> = fmt::format("{} [?] const", opencmw::typeName<T>);
+template<ArithmeticType T, std::size_t size> inline const std::string &typeName<T[size]> = std::format("{}[{}]", opencmw::typeName<T>, size);
+template<ArithmeticType T, std::size_t size> inline const std::string &typeName<const T[size]> = std::format("{}[{}] const", opencmw::typeName<T>, size);
+template<ArithmeticType T> inline const std::string &typeName<T*> = std::format("{}[?]", opencmw::typeName<T>);
+template<ArithmeticType T> inline const std::string &typeName<const T*> = std::format("({} const)[?] ", opencmw::typeName<T>);
+template<ArithmeticType T> inline const std::string &typeName<T* const> = std::format("{} [?] const", opencmw::typeName<T>);
 
 // clang-format off
 #pragma clang diagnostic pop
@@ -513,7 +513,7 @@ struct ConstExprMap {
 
     [[nodiscard]] constexpr Value           at(const Key &key) const {
         const auto itr = std::find_if(begin(data), end(data), [&key](const auto &v) { return v.first == key; });
-        return (itr != end(data)) ? itr->second : throw std::out_of_range(fmt::format("key '{}' not found", key));
+        return (itr != end(data)) ? itr->second : throw std::out_of_range(std::format("key '{}' not found", key));
     }
 
     [[nodiscard]] constexpr Value           at(const Key &key, const Value &defaultValue) const noexcept {
@@ -604,13 +604,13 @@ template<typename Rep, units::Quantity Q, const basic_fixed_string description, 
 inline std::ostream &operator<<(std::ostream &os, const Annotated<Rep, Q, description, modifier, groups...> &annotatedValue) {
     if (os.iword(getClassInfoVerbose())) {
         if constexpr (!is_array<Rep> && !is_vector<Rep> && !units::is_derived_from_specialization_of<Rep, std::set>) {
-            os << fmt::format("{:<5}  // [{}] - {}", annotatedValue.value(), annotatedValue.getUnit(), annotatedValue.getDescription()); // print as number
+            os << std::format("{:<5}  // [{}] - {}", annotatedValue.value(), annotatedValue.getUnit(), annotatedValue.getDescription()); // print as number
         } else {
-            os << fmt::format("{}  // [{}] - {}", annotatedValue.value(), annotatedValue.getUnit(), annotatedValue.getDescription()); // print as array
+            os << std::format("{}  // [{}] - {}", annotatedValue.value(), annotatedValue.getUnit(), annotatedValue.getDescription()); // print as array
         }
         return os;
     }
-    os << fmt::format("{}", annotatedValue.value()); // print as number
+    os << std::format("{}", annotatedValue.value()); // print as number
     return os;
 }
 
@@ -650,7 +650,19 @@ inline std::ostream &operator<<(std::ostream &os, const T &map) {
 
 template<typename T>
 inline std::ostream &operator<<(std::ostream &os, const std::set<T> &set) {
-    os << fmt::format("{{{}}}", fmt::join(set, ", "));
+    os << std::format("{{{}}}", opencmw::join(set, ", "));
+    return os;
+}
+
+template<typename T>
+inline std::ostream &operator<<(std::ostream &os, const std::vector<T> &v) {
+    os << std::format("[{}]", opencmw::join(v, ", "));
+    return os;
+}
+
+template<typename T>
+inline std::ostream &operator<<(std::ostream &os, const std::span<T> &v) {
+    os << std::format("[{}]", opencmw::join(v, ", "));
     return os;
 }
 
@@ -659,7 +671,7 @@ inline std::ostream &operator<<(std::ostream &os, const T &value) {
     const bool    verbose    = os.iword(getClassInfoVerbose());
     const int64_t indent     = os.iword(getClassInfoIndent());
     const int64_t indentStep = os.iword(getClassInfoIndentStep()) == 0 ? (os.iword(getClassInfoIndentStep()) = 2) : os.iword(getClassInfoIndentStep());
-    os << fmt::format("{}({}", (indent == 0) ? refl::reflect(value).name.data : "", verbose ? "\n" : "");
+    os << std::format("{}({}", (indent == 0) ? refl::reflect(value).name.data : "", verbose ? "\n" : "");
     using ValueType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(value)))>;
     if constexpr (isReflectableClass<ValueType>()) {
         for_each(
@@ -668,24 +680,24 @@ inline std::ostream &operator<<(std::ostream &os, const T &value) {
 //                    const auto &typeNameShort = typeName<MemberType>;
                     // const auto& typeNameShort = refl::reflect(getAnnotatedMember(member(value))).name.data; // alt type-definition:
                     if (verbose) {
-//                        os << fmt::format("{:{}} {}: {:<25} {:<35}= ", "", indent * indentStep + 1, index, typeNameShort, get_debug_name(member));
+//                        os << std::format("{:{}} {}: {:<25} {:<35}= ", "", indent * indentStep + 1, index, typeNameShort, get_debug_name(member));
                     } else {
-//                        os << fmt::format("{}{}=", (index > 0) ? ", " : "", get_display_name(member));
+//                        os << std::format("{}{}=", (index > 0) ? ", " : "", get_display_name(member));
                     }
                     ClassInfoIndentInc(os);
                     if constexpr (SmartPointerType<decltype(member(value))>) {
                         if (!member(value)) {
                             os << "{nullPointer}";
                         } else {
-                            os << fmt::format("{}", getAnnotatedMember(unwrapPointer(member(value))));
+                            os << std::format("{}", getAnnotatedMember(unwrapPointer(member(value))));
                         }
                     } else {
-                        os << fmt::format("{}", getAnnotatedMember(unwrapPointer(member(value))));
+                        os << std::format("{}", getAnnotatedMember(unwrapPointer(member(value))));
                     }
-                    ClassInfoIndentDec(os);
+                   ClassInfoIndentDec(os);
                     os << (verbose ? "\n" : ""); // calls this operator<< if necessary
                 });
-        os << fmt::format("{:{}})", "", verbose ? (indent * indentStep + 1) : 0);
+        os << std::format("{:{}})", "", verbose ? (indent * indentStep + 1) : 0);
     }
     return os;
 }
@@ -697,15 +709,15 @@ inline constexpr void diffView(std::ostream &os, const T &lhs, const T &rhs) {
     const int64_t indentStep = os.iword(getClassInfoIndentStep()) == 0 ? (os.iword(getClassInfoIndentStep()) = 2) : os.iword(getClassInfoIndentStep());
     using ValueType          = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(lhs)))>;
     if constexpr (isReflectableClass<ValueType>()) {
-        os << fmt::format("{}{}({}", (indent == 0) ? "diffView: " : "", (indent == 0) ? refl::reflect(lhs).name.data : "", verbose ? "\n" : "");
+        os << std::format("{}{}({}", (indent == 0) ? "diffView: " : "", (indent == 0) ? refl::reflect(lhs).name.data : "", verbose ? "\n" : "");
         for_each(
                 refl::reflect(lhs).members, [&](const auto member, const auto index) constexpr {
                     if constexpr (is_field(member)) {
                         using MemberType = std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(member(lhs))))>;
                         if (verbose) {
-                            os << fmt::format("{:{}} {}: {:<20} {:<30}= ", "", indent * indentStep + 1, index, typeName<MemberType>, fmt::format("{}::{}", member.declarator.name, member.name));
+                            os << std::format("{:{}} {}: {:<20} {:<30}= ", "", indent * indentStep + 1, index, typeName<MemberType>, std::format("{}::{}", member.declarator.name, member.name));
                         } else {
-                            os << fmt::format("{}{}=", (index > 0) ? ", " : "", member.name);
+                            os << std::format("{}{}=", (index > 0) ? ", " : "", member.name);
                         }
                         ClassInfoIndentInc(os);
                         if constexpr (isReflectableClass<MemberType>()) {
@@ -715,7 +727,11 @@ inline constexpr void diffView(std::ostream &os, const T &lhs, const T &rhs) {
                                 if (!member(lhs) || !member(rhs)) {
                                     // clang-format off
                                     if (!member(lhs) && !member(rhs)) { os << "{nullPointer}" << (verbose ? "\n" : ""); return; }
-                                    os << fmt::format(fg(fmt::color::red), "differ: ");
+#ifdef __linux__
+                                    os << std::format("\033[31m{}\033[0m", "differ: "); // 31 = red, 0 = reset
+#else
+                                    os << "differ: ";                        // no colour on non-Linux
+#endif
                                     if (member(lhs)) { os << *member(lhs).get(); } else { os << "{nullPointer}"; }
                                     os << " vs. ";
                                     if (member(rhs)) { os << *member(rhs).get(); } else { os << "{nullPointer}"; }
@@ -737,7 +753,7 @@ inline constexpr void diffView(std::ostream &os, const T &lhs, const T &rhs) {
                         os << (verbose ? "\n" : ""); // calls this operator<< if necessary
                     }
                 });
-        os << fmt::format("{:{}})", "", verbose ? (indent * indentStep + 1) : 0);
+        os << std::format("{:{}})", "", verbose ? (indent * indentStep + 1) : 0);
     } else {
         // primitive type
         auto lhsValue = getAnnotatedMember(unwrapPointer(lhs));
@@ -745,7 +761,11 @@ inline constexpr void diffView(std::ostream &os, const T &lhs, const T &rhs) {
         if (lhsValue == rhsValue) {
             os << lhsValue;
         } else {
-            os << fmt::format(fg(fmt::color::red), "{} vs. {}", lhsValue, rhsValue); // coloured terminal output
+#ifdef __linux__
+            os << std::format("\033[31m{} vs. {}\033[0m", lhsValue, rhsValue);
+#else
+            os << std::format("{} vs. {}", lhsValue, rhsValue); // no colour on non-Linux
+#endif
         }
     }
     if (indent == 0) {
@@ -801,7 +821,7 @@ static std::errc parseNumber(std::string_view str, T &number) {
 } // namespace opencmw
 
 template<opencmw::ReflectableClass T>
-struct fmt::formatter<T> {
+struct std::formatter<T> {
     template<typename ParseContext>
     constexpr auto parse(ParseContext &ctx) {
         return ctx.begin();
@@ -809,15 +829,18 @@ struct fmt::formatter<T> {
 
     template<typename FormatContext>
     auto format(T const &value, FormatContext &ctx) const {
-        using namespace opencmw; // for operator<< overloading
-        std::stringstream ss;    // N.B. std::stringstream construct to avoid recursion with 'operator<<' definition
+        using namespace opencmw;
+        // clang-format off
+        using opencmw::operator<<;
+        // clang-format on
+        std::stringstream ss;
         ss << value << std::flush;
-        return fmt::format_to(ctx.out(), "{}", ss.str());
+        return std::format_to(ctx.out(), "{}", ss.str());
     }
 };
 
 template<std::size_t N>
-struct fmt::formatter<refl::const_string<N>> {
+struct std::formatter<refl::const_string<N>> {
     template<typename ParseContext>
     constexpr auto parse(ParseContext &ctx) {
         return ctx.begin();
@@ -825,7 +848,7 @@ struct fmt::formatter<refl::const_string<N>> {
 
     template<typename FormatContext>
     auto format(refl::const_string<N> const &value, FormatContext &ctx) const {
-        return fmt::format_to(ctx.out(), "{:.{}}", value.data, value.size);
+        return std::format_to(ctx.out(), "{:.{}}", value.data, value.size);
     }
 };
 

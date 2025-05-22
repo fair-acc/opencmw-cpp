@@ -3,10 +3,10 @@
 
 #include <algorithm>
 #include <atomic>
+#include <format>
+#include <opencmw.hpp>
 #include <ostream>
 #include <span>
-
-#include <opencmw.hpp>
 
 namespace opencmw::disruptor {
 
@@ -142,27 +142,22 @@ inline bool removeSequence(std::shared_ptr<std::vector<std::shared_ptr<Sequence>
 
 } // namespace opencmw::disruptor
 
-#ifdef FMT_FORMAT_H_
-
 template<>
-struct fmt::formatter<opencmw::disruptor::Sequence> {
-    template<typename ParseContext>
-    constexpr auto parse(ParseContext &ctx) {
+struct std::formatter<opencmw::disruptor::Sequence, char> {
+    constexpr auto parse(std::format_parse_context &ctx) {
         return ctx.begin();
     }
 
     template<typename FormatContext>
-    auto format(opencmw::disruptor::Sequence const &value, FormatContext &ctx) {
-        return fmt::format_to(ctx.out(), "{}", value.value());
+    auto format(const opencmw::disruptor::Sequence &value, FormatContext &ctx) const {
+        return std::format_to(ctx.out(), "{}", value.value());
     }
 };
 
 namespace opencmw {
 inline std::ostream &operator<<(std::ostream &os, const opencmw::disruptor::Sequence &v) {
-    return os << fmt::format("{}", v);
+    return os << std::format("{}", v);
 }
 } // namespace opencmw
-
-#endif // FMT_FORMAT_H_
 
 #endif // SEQUENCE_HPP

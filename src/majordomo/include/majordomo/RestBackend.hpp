@@ -80,7 +80,7 @@ inline const char *getEnvFilenameOr(const char *field, const char *defaultValue)
     }
 
     if (!std::filesystem::exists(result)) {
-        throw opencmw::startup_error(fmt::format("File {} not found. Current path is {}", result, std::filesystem::current_path().string()));
+        throw opencmw::startup_error(std::format("File {} not found. Current path is {}", result, std::filesystem::current_path().string()));
     }
     return result;
 }
@@ -392,7 +392,7 @@ public:
                     // Expired subscriptions cleanup
                     std::vector<std::string> expiredSubscriptions;
                     for (auto &[subscriptionKey, connection] : _mdpConnectionForService) {
-                        // fmt::print("Reference count is {}\n", connection->referenceCount());
+                        // std::print("Reference count is {}\n", connection->referenceCount());
                         if (connection->referenceCount() == 0) {
                             auto connectionLock = connection->writeLock();
                             if (connection->referenceCount() != 0) {
@@ -427,7 +427,7 @@ public:
 
                 auto pollCount = zmq::invoke(zmq_poll, pollItems.data(), static_cast<int>(pollItems.size()), std::chrono::duration_cast<std::chrono::milliseconds>(UPDATER_POLLING_TIME).count());
                 if (!pollCount) {
-                    fmt::print("Error while polling for updates from the broker\n");
+                    std::print("Error while polling for updates from the broker\n");
                     std::terminate();
                 }
                 if (pollCount.value() == 0) {
@@ -494,7 +494,7 @@ public:
         try {
             maybeTopic = mdp::Topic::fromString(request.path, convertParams(request.params));
         } catch (const std::exception &e) {
-            return detail::respondWithError(response, fmt::format("Error: {}\n", e.what()));
+            return detail::respondWithError(response, std::format("Error: {}\n", e.what()));
         }
         auto topic      = std::move(*maybeTopic);
 
@@ -574,7 +574,7 @@ public:
         registerHandlers();
 
         if (!_restAddress.hostName() || !_restAddress.port()) {
-            throw opencmw::startup_error(fmt::format("REST server URI is not valid {}", _restAddress.str()));
+            throw opencmw::startup_error(std::format("REST server URI is not valid {}", _restAddress.str()));
         }
 
         _svr.set_tcp_nodelay(true);
@@ -585,7 +585,7 @@ public:
 
         bool listening      = _svr.listen(_restAddress.hostName().value().data(), _restAddress.port().value());
         if (!listening) {
-            throw opencmw::startup_error(fmt::format("Can not start REST server on {}:{}", _restAddress.hostName().value().data(), _restAddress.port().value()));
+            throw opencmw::startup_error(std::format("Can not start REST server on {}:{}", _restAddress.hostName().value().data(), _restAddress.port().value()));
         }
     }
 
@@ -717,7 +717,7 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
             response.set_header("X-OPENCMW-TOPIC", responseMessage->topic.str().data());
             response.set_header("X-OPENCMW-SERVICE-NAME", responseMessage->serviceName.data());
             response.set_header("Access-Control-Allow-Origin", "*");
-            response.set_header("X-TIMESTAMP", fmt::format("{}", std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count()));
+            response.set_header("X-TIMESTAMP", std::format("{}", std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count()));
             const auto data = responseMessage->data.asString();
 
             if (request.method != "GET") {
@@ -735,7 +735,7 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
         assert(connection);
         const auto majordomoTimeout = restBackend.majordomoTimeout();
         response.set_header("Access-Control-Allow-Origin", "*");
-        response.set_header("X-TIMESTAMP", fmt::format("{}", std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count()));
+        response.set_header("X-TIMESTAMP", std::format("{}", std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count()));
 
         response.set_chunked_content_provider(
                 "application/json",

@@ -6,7 +6,7 @@
 #include <iostream>
 #include <mutex>
 
-#include <fmt/format.h>
+#include <format>
 
 #ifdef EMSCRIPTEN
 #include <emscripten/threading.h>
@@ -159,14 +159,13 @@ static std::size_t           dealloc{ 0 }; // NOLINT(cppcoreguidelines-avoid-non
 }
 
 [[maybe_unused]] static void printAllocationStats(const char *message = "") {
-    std::cout << fmt::format("{} - alloc-/re-/free: {} / {} / {}  diff: {}\n", message, alloc, realloc, dealloc, alloc - dealloc) << std::flush;
-    // do not account for allocation due to fmt::format etc.
+    std::cout << std::format("{} - alloc-/re-/free: {} / {} / {}  diff: {}\n", message, alloc, realloc, dealloc, alloc - dealloc) << std::flush;
     alloc -= 1;
     dealloc -= 1;
 }
 
 #pragma clang diagnostic push
-#pragma ide diagnostic   ignored "UnusedLocalVariable"
+#pragma ide diagnostic ignored "UnusedLocalVariable"
 class Timer {
 private:
     const char       *_message;
@@ -195,20 +194,19 @@ public:
         const double      cpu_time_used   = static_cast<double>(1000 * diff) / CLOCKS_PER_SEC;
         if (diffAllocations == 0) {
 #ifdef OPENCMW_INSTRUMENT_ALLOC
-            std::cout << fmt::format("{:<{}}:{:>{}} clock cycles or {:>{}} ms - balanced memory (de-)allocation: {} - reallocs: {}\n",
+            std::cout << std::format("{:<{}}:{:>{}} clock cycles or {:>{}} ms - balanced memory (de-)allocation: {} - reallocs: {}\n",
                     _message, _alignMsg, diff, _alignClock, cpu_time_used, _alignTime, allocation, reallocs);
 #else
-            std::cout << fmt::format("{:<{}}:{:>{}} clock cycles or {:>{}} ms\n", _message, _alignMsg, diff, _alignClock, cpu_time_used, _alignTime);
+            std::cout << std::format("{:<{}}:{:>{}} clock cycles or {:>{}} ms\n", _message, _alignMsg, diff, _alignClock, cpu_time_used, _alignTime);
 #endif
             std::cout << std::flush;
         } else {
             std::cout << std::flush;
-            std::cerr << fmt::format("{:<{}}:{:>{}} clock cycles or {:>{}} ms - memory-leak (de-)allocation: {} vs. {} - reallocs: {}\n",
+            std::cerr << std::format("{:<{}}:{:>{}} clock cycles or {:>{}} ms - memory-leak (de-)allocation: {} vs. {} - reallocs: {}\n",
                     _message, _alignMsg, diff, _alignClock, cpu_time_used, _alignTime, allocation, deallocation, reallocs);
             std::cerr << std::flush;
         }
 
-        // do not account for allocation due to fmt::format etc.
         alloc -= 1;
         dealloc -= 1;
     }
@@ -218,7 +216,7 @@ public:
 } // namespace opencmw::debug
 
 #pragma clang diagnostic push
-#pragma ide diagnostic   ignored "cppcoreguidelines-macro-usage"
+#pragma ide diagnostic ignored "cppcoreguidelines-macro-usage"
 // TODO: make this a prettier overloaded namespace-global 'operator<<'
 // option: put this and other similar things into 'opencmw::debug' namespace?
 #define PRINT_VECTOR(a) \
@@ -236,11 +234,11 @@ public:
 /* # override malloc/realloc/free/new/delete for diagnostics purposes # */
 /* #################################################################### */
 #pragma clang diagnostic push
-#pragma ide diagnostic   ignored "cppcoreguidelines-no-malloc"
-#pragma ide diagnostic   ignored "cppcoreguidelines-owning-memory"
-#pragma ide diagnostic   ignored "cppcoreguidelines-macro-usage"
-#pragma ide diagnostic   ignored "misc-definitions-in-headers"
-void                    *opencmw_malloc(size_t size) {
+#pragma ide diagnostic ignored "cppcoreguidelines-no-malloc"
+#pragma ide diagnostic ignored "cppcoreguidelines-owning-memory"
+#pragma ide diagnostic ignored "cppcoreguidelines-macro-usage"
+#pragma ide diagnostic ignored "misc-definitions-in-headers"
+void *opencmw_malloc(size_t size) {
     opencmw::debug::alloc += 1;
     return std::malloc(size);
 }
@@ -260,9 +258,9 @@ void opencmw_free(void *ptr) {
 #define free(X) opencmw_free(X)
 #define realloc(X, Y) opencmw_realloc(X, Y)
 
-void                    *operator new(std::size_t size) { return malloc(size); }
-void                     operator delete(void *ptr) noexcept { free(ptr); }
-void                     operator delete(void *ptr, std::size_t /*unused*/) noexcept { free(ptr); }
+void *operator new(std::size_t size) { return malloc(size); }
+void  operator delete(void *ptr) noexcept { free(ptr); }
+void  operator delete(void *ptr, std::size_t /*unused*/) noexcept { free(ptr); }
 #pragma clang diagnostic pop
 #endif // OPENCMW_INSTRUMENT_ALLOC
 

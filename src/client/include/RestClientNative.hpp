@@ -94,7 +94,7 @@ inline X509_STORE *createCertificateStore(const std::string_view &X509_ca_bundle
     X509_STORE *cert_store = X509_STORE_new();
     if (detail::readCertificateBundleFromBuffer(*cert_store, X509_ca_bundle) <= 0) {
         X509_STORE_free(cert_store);
-        throw std::invalid_argument(fmt::format("failed to read certificate bundle from buffer:\n#---start---\n{}\n#---end---\n", X509_ca_bundle));
+        throw std::invalid_argument(std::format("failed to read certificate bundle from buffer:\n#---start---\n{}\n#---end---\n", X509_ca_bundle));
     }
     return cert_store;
 }
@@ -108,7 +108,7 @@ inline X509 *readServerCertificateFromFile(const std::string_view &X509_ca_bundl
         return certX509;
     }
     X509_free(certX509);
-    throw std::invalid_argument(fmt::format("failed to read certificate from buffer:\n#---start---\n{}\n#---end---\n", X509_ca_bundle));
+    throw std::invalid_argument(std::format("failed to read certificate from buffer:\n#---start---\n{}\n#---end---\n", X509_ca_bundle));
 }
 
 inline EVP_PKEY *readServerPrivateKeyFromFile(const std::string_view &X509_private_key) {
@@ -120,7 +120,7 @@ inline EVP_PKEY *readServerPrivateKeyFromFile(const std::string_view &X509_priva
         return privateKeyX509;
     }
     EVP_PKEY_free(privateKeyX509);
-    throw std::invalid_argument(fmt::format("failed to read private key from buffer"));
+    throw std::invalid_argument(std::format("failed to read private key from buffer"));
 }
 
 #endif
@@ -223,7 +223,7 @@ private:
             }
 
             const auto httpError = httplib::status_message(result->status);
-            return fmt::format("{} - {}:{}", result->status, httpError, errorMsgExt.empty() ? result->body : errorMsgExt);
+            return std::format("{} - {}:{}", result->status, httpError, errorMsgExt.empty() ? result->body : errorMsgExt);
         }();
 
         try {
@@ -238,9 +238,9 @@ private:
                     .error           = errorMsg.value_or(""),
                     .rbac            = IoBuffer() });
         } catch (const std::exception &e) {
-            std::cerr << fmt::format("caught exception '{}' in RestClient::returnMdpMessage(cmd={}, {}: {})", e.what(), cmd.topic, result->status, result.value().body) << std::endl;
+            std::cerr << std::format("caught exception '{}' in RestClient::returnMdpMessage(cmd={}, {}: {})", e.what(), cmd.topic, result->status, result.value().body) << std::endl;
         } catch (...) {
-            std::cerr << fmt::format("caught unknown exception in RestClient::returnMdpMessage(cmd={}, {}: {})", cmd.topic, result->status, result.value().body) << std::endl;
+            std::cerr << std::format("caught unknown exception in RestClient::returnMdpMessage(cmd={}, {}: {})", cmd.topic, result->status, result.value().body) << std::endl;
         }
     }
 
@@ -264,13 +264,13 @@ private:
             if (const httplib::Result &result = client.Get(endpoint.relativeRef()->data(), preferredHeader)) {
                 returnMdpMessage(cmd, result);
             } else {
-                std::stringstream errorStr(fmt::format("\"{}\"", static_cast<int>(result.error())));
+                std::stringstream errorStr(std::format("\"{}\"", static_cast<int>(result.error())));
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
                 if (auto sslResult = client.get_openssl_verify_result(); sslResult) {
-                    errorStr << fmt::format(" - SSL error: '{}'", X509_verify_cert_error_string(sslResult));
+                    errorStr << std::format(" - SSL error: '{}'", X509_verify_cert_error_string(sslResult));
                 }
 #endif
-                const std::string errorMsg = fmt::format("GET request failed for: '{}' - {} - CHECK_CERTIFICATES: {}", cmd.topic.str(), errorStr.str(), CHECK_CERTIFICATES);
+                const std::string errorMsg = std::format("GET request failed for: '{}' - {} - CHECK_CERTIFICATES: {}", cmd.topic.str(), errorStr.str(), CHECK_CERTIFICATES);
                 returnMdpMessage(cmd, result, errorMsg);
             }
         };
@@ -291,9 +291,9 @@ private:
             return;
         } else {
             if (cmd.topic.scheme()) {
-                throw std::invalid_argument(fmt::format("unsupported protocol '{}' for endpoint '{}'", cmd.topic.scheme(), cmd.topic.str()));
+                throw std::invalid_argument(std::format("unsupported protocol '{}' for endpoint '{}'", cmd.topic.scheme(), cmd.topic.str()));
             } else {
-                throw std::invalid_argument(fmt::format("no protocol provided for endpoint '{}'", cmd.topic.str()));
+                throw std::invalid_argument(std::format("no protocol provided for endpoint '{}'", cmd.topic.str()));
             }
         }
     }
@@ -321,7 +321,7 @@ private:
                             if (longPollingIdx == 0UZ) {
                                 return URI<STRICT>::factory(cmd.topic).addQueryParameter(LONG_POLLING_IDX_TAG, "Next").build().relativeRef().value();
                             } else {
-                                return URI<STRICT>::factory(cmd.topic).addQueryParameter(LONG_POLLING_IDX_TAG, fmt::format("{}", longPollingIdx)).build().relativeRef().value();
+                                return URI<STRICT>::factory(cmd.topic).addQueryParameter(LONG_POLLING_IDX_TAG, std::format("{}", longPollingIdx)).build().relativeRef().value();
                             }
                         }();
                         if (const httplib::Result &result = client.Get(endpoint, pollHeaders)) {
@@ -333,7 +333,7 @@ private:
                             longPollingIdx              = strtoull(updateIdxString.data(), &end, 10) + 1;
                         } else { // failed or server is down -> wait until retry
                             if (_run) {
-                                returnMdpMessage(cmd, result, fmt::format("Long-Polling-GET request failed for {}: {}", cmd.topic.str(), static_cast<int>(result.error())));
+                                returnMdpMessage(cmd, result, std::format("Long-Polling-GET request failed for {}: {}", cmd.topic.str(), static_cast<int>(result.error())));
                             }
                             std::this_thread::sleep_for(cmd.timeout); // time-out until potential retry
                         }
@@ -364,7 +364,7 @@ private:
             }
 
         } else {
-            throw std::invalid_argument(fmt::format("unsupported scheme '{}' for requested subscription '{}'", cmd.topic.scheme(), cmd.topic.str()));
+            throw std::invalid_argument(std::format("unsupported scheme '{}' for requested subscription '{}'", cmd.topic.scheme(), cmd.topic.str()));
         }
     }
 
@@ -390,7 +390,7 @@ private:
             throw std::runtime_error("https is not supported - enable CPPHTTPLIB_OPENSSL_SUPPORT");
 #endif
         } else {
-            throw std::invalid_argument(fmt::format("unsupported scheme '{}' for requested subscription '{}'", cmd.topic.scheme(), cmd.topic.str()));
+            throw std::invalid_argument(std::format("unsupported scheme '{}' for requested subscription '{}'", cmd.topic.scheme(), cmd.topic.str()));
         }
     }
 

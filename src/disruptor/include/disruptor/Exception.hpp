@@ -1,7 +1,7 @@
 #pragma once
 
 #include <exception>
-#include <fmt/format.h>
+#include <format>
 #include <ostream>
 #include <sstream>
 #include <type_traits>

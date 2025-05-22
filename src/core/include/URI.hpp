@@ -10,8 +10,7 @@
 #include <string_view>
 #include <unordered_map>
 
-#include <fmt/format.h>
-#include <fmt/std.h>
+#include <format>
 
 namespace opencmw {
 
@@ -165,7 +164,7 @@ public:
                 // percent-encode RFC 3986 section 2.2 Reserved Characters i.e. [!#$%&'()*+,/:;=?@[]]
                 if constexpr (check == STRICT) {
                     if (!std::isxdigit(s[i + 1])) {
-                        throw URISyntaxException(fmt::format("additional erroneous character '{}' found after '%' at {} of '{}'", s[i + 1], i + 1, s));
+                        throw URISyntaxException(std::format("additional erroneous character '{}' found after '%' at {} of '{}'", s[i + 1], i + 1, s));
                     }
                 }
                 int                d;
@@ -191,22 +190,18 @@ public:
     inline std::optional<std::string> queryParam() const noexcept { return returnOpt(_query); }
     inline std::optional<std::string> fragment() const noexcept { return returnOpt(_fragment); }
     inline std::optional<std::string> relativeRef() const noexcept { // path + query + fragment
-        using namespace fmt::literals;
         if (_path.empty() && _query.empty() && _fragment.empty()) return {};
-        return fmt::format("{opt_path_slash}{path}{qMark}{query}{hashMark}{fragment}",
-                           fmt::arg("opt_path_slash", _path.empty() || _path.starts_with('/') ? "" : "/"),
-                           fmt::arg("path", _path),                     // path
-                           fmt::arg("qMark", (_query.empty() || _query.starts_with('?')) ? "" : "?"),
-                           fmt::arg("query", _query),                         // query
-                           fmt::arg("hashMark", (_fragment.empty() || _fragment.starts_with('#')) ? "" : "#"),
-                           fmt::arg("fragment", encode(_fragment))); // fragment
+        const std::string optSlash   = (_path.empty() || _path.starts_with('/'))   ? "" : "/";
+        const std::string qMark      = (_query.empty() || _query.starts_with('?')) ? "" : "?";
+        const std::string hashMark   = (_fragment.empty() || _fragment.starts_with('#')) ? "" : "#";
+        return std::format("{}{}{}{}{}{}", optSlash, _path, qMark, _query, hashMark, encode(_fragment));
     }
     inline std::optional<std::string> relativeRefNoFragment() const noexcept { // path + query
-        using namespace fmt::literals;
         if (_path.empty() && _query.empty()) return {};
-        return fmt::format("{opt_path_slash}{path}{qMark}{query}",
-                           fmt::arg("opt_path_slash", (_path.empty() || _path.starts_with('/')) ? "" : "/"), fmt::arg("path", _path),                     // path
-                           fmt::arg("qMark", (_query.empty() || _query.starts_with('?')) ? "" : "?"), fmt::arg("query", _query));                        // query
+
+        const std::string optSlash = (_path.empty() || _path.starts_with('/'))   ? "" : "/";
+        const std::string qMark    = (_query.empty() || _query.starts_with('?')) ? "" : "?";
+        return std::format("{}{}{}{}", optSlash, _path, qMark, _query);
     }
     // clang-format on
 
@@ -217,7 +212,7 @@ public:
         }
         if constexpr (check == STRICT) {
             if (!std::all_of(_query.begin(), _query.end(), [](char c) { return isUnreserved(c) || c == '&' || c == ';' || c == '=' || c == '%' || c == ':' || c == '/'; })) {
-                throw URISyntaxException(fmt::format("URI query contains illegal characters: {}", _query));
+                throw URISyntaxException(std::format("URI query contains illegal characters: {}", _query));
             }
         }
         size_t readPos = 0;
@@ -309,27 +304,34 @@ public:
         // clang-format on
 
         std::string toString() const {
-            using namespace fmt::literals;
             if (_authority.empty()) {
-                _authority = fmt::format("{user}{opt_colon1}{pwd}{at}{host}{opt_colon2}{port}",                              //
-                        fmt::arg("user", _userName), fmt::arg("opt_colon1", (_pwd.empty() || _userName.empty()) ? "" : ":"), /* user:pwd colon separator */
-                        fmt::arg("pwd", _userName.empty() ? "" : _pwd), fmt::arg("at", _userName.empty() ? "" : "@"),        // 'user:pwd@' separator
-                        fmt::arg("host", _host), fmt::arg("opt_colon2", _port ? ":" : ""), fmt::arg("port", _port ? std::to_string(_port.value()) : ""));
+                const std::string optColon1 = (_pwd.empty() || _userName.empty()) ? "" : ":";
+                const std::string pwdPart   = _userName.empty() ? "" : _pwd;
+                const std::string atSign    = _userName.empty() ? "" : "@"; // after “user[:pwd]”
+                const std::string optColon2 = _port ? ":" : "";             // before port
+                const std::string portPart  = _port ? std::to_string(*_port) : "";
+
+                _authority                  = std::format("{}{}{}{}{}{}{}", _userName, optColon1, pwdPart, atSign, _host, optColon2, portPart);
             }
 
             // TODO: Calling toString multiple times appends parameters over and over again
             for (const auto &[key, value] : _queryMap) {
-                _query += fmt::format("{opt_ampersand}{key}{opt_equal}{value}",                             // N.B. 'key=value' percent-encoding according to RFC 3986
-                        fmt::arg("opt_ampersand", _query.empty() ? "" : "&"), fmt::arg("key", encode(key)), //
-                        fmt::arg("opt_equal", value ? "=" : ""), fmt::arg("value", value ? encode(value.value()) : ""));
+                // RFC-3986: “key[=value]” pairs joined by ‘&’
+                const std::string ampersand  = _query.empty() ? "" : "&";
+                const std::string encodedKey = encode(key);
+                const std::string equalSign  = value ? "=" : "";
+                const std::string encodedVal = value ? encode(value.value()) : "";
+
+                _query += std::format("{}{}{}{}", ampersand, encodedKey, equalSign, encodedVal);
             }
 
-            return fmt::format("{scheme}{colon}{opt_auth_slash}{authority}{opt_path_slash}{path}{qMark}{query}{hashMark}{fragment}",                 //
-                    fmt::arg("scheme", _scheme), fmt::arg("colon", _scheme.empty() ? "" : ":"),                                                      // scheme
-                    fmt::arg("opt_auth_slash", (_authority.empty() || _authority.starts_with("//")) ? "" : "//"), fmt::arg("authority", _authority), // authority
-                    fmt::arg("opt_path_slash", (_path.empty() || _path.starts_with('/') || _authority.empty()) ? "" : "/"), fmt::arg("path", _path), // path
-                    fmt::arg("qMark", (_query.empty() || _query.starts_with('?')) ? "" : "?"), fmt::arg("query", _query),                            // query
-                    fmt::arg("hashMark", (_fragment.empty() || _fragment.starts_with('#')) ? "" : "#"), fmt::arg("fragment", encode(_fragment)));    // fragment
+            const std::string colon     = _scheme.empty() ? "" : ":";
+            const std::string authSlash = (_authority.empty() || _authority.starts_with("//")) ? "" : "//";
+            const std::string pathSlash = (_path.empty() || _path.starts_with('/') || _authority.empty()) ? "" : "/";
+            const std::string qMark     = (_query.empty() || _query.starts_with('?')) ? "" : "?";
+            const std::string hashMark  = (_fragment.empty() || _fragment.starts_with('#')) ? "" : "#";
+
+            return std::format("{}{}{}{}{}{}{}{}{}{}", _scheme, colon, authSlash, _authority, pathSlash, _path, qMark, _query, hashMark, encode(_fragment));
         }
 
         URI build() {
@@ -354,7 +356,7 @@ private:
             constexpr auto validURICharacters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/?#[]@!$&'()*+,;=%";
             unsigned long  illegalChar        = source.find_first_not_of(validURICharacters);
             if (illegalChar != std::string::npos) {
-                throw URISyntaxException(fmt::format("URI contains illegal characters: {} at position {} of {}", source, illegalChar, source.length()));
+                throw URISyntaxException(std::format("URI contains illegal characters: {} at position {} of {}", source, illegalChar, source.length()));
             }
         }
 
@@ -373,7 +375,7 @@ private:
                 _scheme = source.substr(0, schemeSize);
                 if constexpr (check == STRICT) {
                     if (!std::all_of(_scheme.begin(), _scheme.end(), [](char c) { return std::isalnum(c); })) {
-                        throw URISyntaxException(fmt::format("URI scheme contains illegal characters: {}", _scheme));
+                        throw URISyntaxException(std::format("URI scheme contains illegal characters: {}", _scheme));
                     }
                 }
                 schemeSize++;
@@ -398,7 +400,7 @@ private:
                 _authority = source.substr(authOffset, authEnd - authOffset);
                 if constexpr (check == STRICT) {
                     if (!std::all_of(_authority.begin(), _authority.end(), [](char c) { return std::isalnum(c) || c == '@' || c == ':' || c == '.' || c == '-' || c == '_'; })) {
-                        throw URISyntaxException(fmt::format("URI authority contains illegal characters: {}", _authority));
+                        throw URISyntaxException(std::format("URI authority contains illegal characters: {}", _authority));
                     }
                 }
                 // lazy parsing of authority in parseAuthority()
@@ -412,7 +414,7 @@ private:
             _path = source.substr(authEnd, pathEnd - authEnd);
             if constexpr (check == STRICT) {
                 if (!std::all_of(_path.begin(), _path.end(), [](char c) { return std::isalnum(c) || c == '/' || c == '.' || c == '-' || c == '_'; })) {
-                    throw URISyntaxException(fmt::format("URI path contains illegal characters: {}", _path));
+                    throw URISyntaxException(std::format("URI path contains illegal characters: {}", _path));
                 }
             }
         } else {
@@ -475,10 +477,10 @@ struct std::hash<opencmw::URI<check>> {
     std::size_t operator()(const opencmw::URI<check> &uri) const noexcept { return std::hash<std::string>{}(uri.str()); }
 };
 
-// fmt::format and std::ostream helper output
+// std::format and std::ostream helper output
 
 template<opencmw::uri_check check>
-struct fmt::formatter<opencmw::URI<check>> {
+struct std::formatter<opencmw::URI<check>> {
     template<typename ParseContext>
     constexpr auto parse(ParseContext &ctx) {
         return ctx.begin(); // not (yet) implemented
@@ -486,14 +488,14 @@ struct fmt::formatter<opencmw::URI<check>> {
 
     template<typename FormatContext>
     auto format(opencmw::URI<check> const &v, FormatContext &ctx) const {
-        return fmt::format_to(ctx.out(), "{{scheme: {}, authority: {}, user: {}, pwd: {}, host: {}, port: {}, path: {}, query: {}, fragment: {}}}", //
+        return std::format_to(ctx.out(), "{{scheme: {}, authority: {}, user: {}, pwd: {}, host: {}, port: {}, path: {}, query: {}, fragment: {}}}", //
                 v.scheme(), v.authority(), v.user(), v.password(), v.hostName(), v.port(), v.path(), v.queryParam(), v.fragment());
     }
 };
 
 template<opencmw::uri_check check>
 inline std::ostream &operator<<(std::ostream &os, const opencmw::URI<check> &v) {
-    return os << fmt::format("{}", v);
+    return os << std::format("{}", v);
 }
 
 #endif // OPENCMW_CPP_URI_HPP

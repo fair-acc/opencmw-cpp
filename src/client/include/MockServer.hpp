@@ -32,7 +32,7 @@ class MockServer {
 
 public:
     explicit MockServer(const zmq::Context &context)
-        : id(INSTANCE_COUNT++), _context(context), _address{ fmt::format("inproc://MockServer{}", id) }, _subAddress{ fmt::format("inproc://MockServerSub{}", id) } {
+        : id(INSTANCE_COUNT++), _context(context), _address{ std::format("inproc://MockServer{}", id) }, _subAddress{ std::format("inproc://MockServerSub{}", id) } {
         bind();
     }
 
@@ -72,12 +72,12 @@ public:
             _pollerItems[0].socket = _socket->zmq_ptr;
             _pollerItems[0].events = ZMQ_POLLIN;
         } else {
-            fmt::print("error: {}\n", zmq_strerror(result.error()));
+            std::print("error: {}\n", zmq_strerror(result.error()));
             _socket.reset();
         }
         _pubSocket.emplace(_context, ZMQ_XPUB);
         if (auto result = zmq::invoke(zmq_bind, *_pubSocket, _subAddress.data()); !result.isValid()) {
-            fmt::print("error: {}\n", zmq_strerror(result.error()));
+            std::print("error: {}\n", zmq_strerror(result.error()));
             _pubSocket.reset();
         }
     }

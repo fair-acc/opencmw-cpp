@@ -63,7 +63,7 @@ public:
     std::shared_ptr<IEventProcessor> getEventProcessorFor(const std::shared_ptr<IEventHandler<T>> &eventHandler) {
         auto it = _eventProcessorInfoByEventHandler.find(eventHandler);
         if (it == _eventProcessorInfoByEventHandler.end() || it->second == nullptr) {
-            throw std::invalid_argument(fmt::format("The event handler {} is not processing events.", eventHandler));
+            throw std::invalid_argument(std::format("The event handler {} is not processing events.", eventHandler));
         }
 
         auto &&eventProcessorInfo = it->second;

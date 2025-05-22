@@ -1,9 +1,5 @@
 #include <atomic>
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wformat-nonliteral" // suppress warning caused by format not a string literal, format string not checked
-#include <fmt/chrono.h>
-#include <fmt/format.h>
-#pragma GCC diagnostic pop
+#include <format>
 
 #include <opencmw.hpp>
 #include <ThreadPool.hpp>
@@ -19,21 +15,21 @@ int main() {
     assert(poolIO.isInitialised());                                               // check if the pool is initialised
 
     // enqueue and add task to list -- w/o return type
-    poolWork.execute([] { fmt::print("Hello World from thread '{}'!\n", getThreadName()); });
-    // poolWork.execute([]<typename... T>(T&&...args) { fmt::print(fmt::format_string<T...>("Hello World from thread '{}'!\n"), std::forward<T>(args)...); }, getThreadName());
-    // poolWork.execute([](const auto &...args) { fmt::print(fmt::runtime("Hello World from thread '{}'!\n"), args...); }, getThreadName());
+    poolWork.execute([] { std::print("Hello World from thread '{}'!\n", getThreadName()); });
+    // poolWork.execute([]<typename... T>(T&&...args) { std::print(std::format_string<T...>("Hello World from thread '{}'!\n"), std::forward<T>(args)...); }, getThreadName());
+    // poolWork.execute([](const auto &...args) { std::print(std::runtime_format("Hello World from thread '{}'!\n"), args...); }, getThreadName());
 
-    // constexpr auto           func1  = []<typename... T>(T&&...args) { return fmt::format(fmt::format_string<std::string, T...>("thread '{1}' scheduled task '{0}'!\n"), getThreadName(), args...); };
-    constexpr auto           func1  = [](const auto &...args) { return fmt::format(fmt::runtime("thread '{1}' scheduled task '{0}'!\n"), getThreadName(), args...); };
+    // constexpr auto           func1  = []<typename... T>(T&&...args) { return std::format(std::format_string<std::string, T...>("thread '{1}' scheduled task '{0}'!\n"), getThreadName(), args...); };
+    constexpr auto           func1  = [](const auto &...args) { return std::format("thread '{1}' scheduled task '{0}'!\n", args..., getThreadName()); };
     std::future<std::string> result = poolIO.execute<"customTaskName">(func1, getThreadName());
     // do something else ... get result, wait if necessary
     std::cout << result.get() << std::endl;
     poolIO.setAffinityMask({ true, true, true, false });
-    poolIO.execute<"task name", 20U, 2>([]() { fmt::print("Hello World from custom thread '{}'!\n", getThreadName()); }); // execute a task with a name, a priority and single-core affinity
+    poolIO.execute<"task name", 20U, 2>([]() { std::print("Hello World from custom thread '{}'!\n", getThreadName()); }); // execute a task with a name, a priority and single-core affinity
     try {
         poolIO.execute<"customName", 20U, 3>([]() { /* this potentially long-running task is trackable via it's 'customName' thread name */ });
     } catch (const std::invalid_argument &e) {
-        fmt::print("caught exception: {}\n", e.what());
+        std::print("caught exception: {}\n", e.what());
     }
 
     constexpr int nTestRun = 5;
@@ -49,7 +45,7 @@ int main() {
         while (std::atomic_load(&counter) < nTasks)
             ; // wait until all tasks are finished
         auto const diff2 = steady_clock::now() - start;
-        fmt::print("run {}: {:12} -- dispatching took {:>7} -- execution took {:>7} - #threads: {}\n", testRun, "CPU-bound",
+        std::print("run {}: {:12} -- dispatching took {:>7} -- execution took {:>7} - #threads: {}\n", testRun, "CPU-bound",
                 duration_cast<microseconds>(diff1), duration_cast<milliseconds>(diff2), poolWork.numThreads());
     }
 
@@ -65,7 +61,7 @@ int main() {
             ; // wait until all tasks are finished
         auto const diff2 = steady_clock::now() - start;
         std::this_thread::sleep_for(milliseconds(10));
-        fmt::print("run {}: {:12} -- dispatching took {:>7} -- execution took {:>7} - #threads: {}\n", testRun, "IO-bound",
+        std::print("run {}: {:12} -- dispatching took {:>7} -- execution took {:>7} - #threads: {}\n", testRun, "IO-bound",
                 duration_cast<microseconds>(diff1), duration_cast<milliseconds>(diff2), poolIO.numThreads());
     }
 
@@ -82,7 +78,7 @@ int main() {
             ; // wait until all tasks are finished
         auto const diff2 = steady_clock::now() - start;
         std::this_thread::sleep_for(milliseconds(10));
-        fmt::print("run {}: {:12} -- dispatching took {:>7} -- execution took {:>7} - #threads: {}\n", testRun, "bare-thread",
+        std::print("run {}: {:12} -- dispatching took {:>7} -- execution took {:>7} - #threads: {}\n", testRun, "bare-thread",
                 duration_cast<microseconds>(diff1), duration_cast<milliseconds>(diff2), nTasks);
         std::for_each(threads.begin(), threads.end(), [](auto &thread) { thread.join(); });
     }

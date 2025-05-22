@@ -10,7 +10,7 @@
 #include <vector>
 #include <version>
 
-#include <fmt/format.h>
+#include <format>
 
 #include <opencmw.hpp>
 
@@ -229,46 +229,14 @@ static_assert(getTypeByFileName("TEST.TXT") == TEXT);
 template<>
 constexpr inline std::string_view typeName<opencmw::MIME::MimeType> = "MimeType";
 
-template<typename T>
-inline std::ostream &operator<<(std::ostream &os, const std::vector<T> &v) {
-    os << '[';
-    bool first = true;
-    for (auto t : v) {
-        if (first) {
-            os << t;
-            first = false;
-        } else {
-            os << ", ";
-            os << t;
-        }
-    }
-    return os << ']';
-}
-
-template<typename T>
-inline std::ostream &operator<<(std::ostream &os, const std::span<T> &v) {
-    os << '[';
-    bool first = true;
-    for (auto t : v) {
-        if (first) {
-            os << t;
-            first = false;
-        } else {
-            os << ", ";
-            os << t;
-        }
-    }
-    return os << ']';
-}
-
-inline std::ostream &operator<<(std::ostream &os, const opencmw::MIME::MimeType &v) {
+inline std::ostream              &operator<<(std::ostream &os, const opencmw::MIME::MimeType &v) {
     return os << v.typeName();
 }
 
 } // namespace opencmw
 
 template<>
-struct fmt::formatter<opencmw::MIME::MimeType> {
+struct std::formatter<opencmw::MIME::MimeType> {
     template<typename ParseContext>
     constexpr auto parse(ParseContext &ctx) {
         return ctx.begin(); // not (yet) implemented
@@ -276,7 +244,7 @@ struct fmt::formatter<opencmw::MIME::MimeType> {
 
     template<typename FormatContext>
     auto format(opencmw::MIME::MimeType const &v, FormatContext &ctx) const {
-        return fmt::format_to(ctx.out(), "{}", v.typeName());
+        return std::format_to(ctx.out(), "{}", v.typeName());
     }
 };
 

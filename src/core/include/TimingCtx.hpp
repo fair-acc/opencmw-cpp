@@ -10,7 +10,7 @@
 #include <ranges>
 #include <string_view>
 
-#include <fmt/format.h>
+#include <format>
 #include <units/chrono.h>
 #include <units/isq/dimensions/time.h>
 #include <units/isq/si/time.h>
@@ -89,12 +89,12 @@ public:
         std::vector<std::string> segments;
         segments.reserve(4);
         // clang-format off
-        if (!isWildcard(_cid)) { segments.emplace_back(fmt::format("C={}", _cid)); }
-        if (!isWildcard(_sid)) { segments.emplace_back(fmt::format("S={}", _sid)); }
-        if (!isWildcard(_pid)) { segments.emplace_back(fmt::format("P={}", _pid)); }
-        if (!isWildcard(_gid)) { segments.emplace_back(fmt::format("T={}", _gid)); }
+        if (!isWildcard(_cid)) { segments.emplace_back(std::format("C={}", _cid)); }
+        if (!isWildcard(_sid)) { segments.emplace_back(std::format("S={}", _sid)); }
+        if (!isWildcard(_pid)) { segments.emplace_back(std::format("P={}", _pid)); }
+        if (!isWildcard(_gid)) { segments.emplace_back(std::format("T={}", _gid)); }
         // clang-format on
-        return fmt::format("{}{}", SELECTOR_PREFIX, fmt::join(segments, ":"));
+        return std::format("{}{}", SELECTOR_PREFIX, opencmw::join(segments, ":"));
     }
 
     [[nodiscard]] std::size_t hash() const noexcept {
@@ -125,7 +125,7 @@ public:
         }
 
         if (!upperCaseSelector.starts_with(SELECTOR_PREFIX)) {
-            throw std::invalid_argument(fmt::format("Invalid tag '{}'", selector));
+            throw std::invalid_argument(std::format("Invalid tag '{}'", selector.value()));
         }
         auto upperCaseSelectorView = std::string_view{ upperCaseSelector.data() + SELECTOR_PREFIX.length(), upperCaseSelector.size() - SELECTOR_PREFIX.length() };
 
@@ -139,7 +139,7 @@ public:
 
             if (tag.length() < 3) {
                 _hash = 0;
-                throw std::invalid_argument(fmt::format("Invalid tag '{}'", tag));
+                throw std::invalid_argument(std::format("Invalid tag '{}'", tag));
             }
 
             const auto posEqual = tag.find('=');
@@ -147,7 +147,7 @@ public:
             // there must be one char left of the '=', at least one after, and there must be only one '='
             if (posEqual != 1 || tag.find('=', posEqual + 1) != std::string_view::npos) {
                 _hash = 0;
-                throw std::invalid_argument(fmt::format("Tag has invalid format: '{}'", tag));
+                throw std::invalid_argument(std::format("Tag has invalid format: '{}'", tag));
             }
 
             const auto key         = tag.substr(0, posEqual);
@@ -159,7 +159,7 @@ public:
                 int32_t intValue = 0;
                 if (const auto result = std::from_chars(valueString.begin(), valueString.end(), intValue); result.ec == std::errc::invalid_argument) {
                     _hash = 0;
-                    throw std::invalid_argument(fmt::format("Value: '{}' in '{}' is not a valid integer", valueString, tag));
+                    throw std::invalid_argument(std::format("Value: '{}' in '{}' is not a valid integer", valueString, tag));
                 }
 
                 value = intValue;
@@ -180,7 +180,7 @@ public:
                 break;
             default:
                 _hash = 0;
-                throw std::invalid_argument(fmt::format("Unknown key '{}' in '{}'.", key[0], tag));
+                throw std::invalid_argument(std::format("Unknown key '{}' in '{}'.", key[0], tag));
             }
 
             if (posColon == std::string_view::npos) {
@@ -221,7 +221,7 @@ struct hash<opencmw::TimingCtx> {
 } // namespace std
 
 template<>
-struct fmt::formatter<opencmw::TimingCtx> {
+struct std::formatter<opencmw::TimingCtx> {
     template<typename ParseContext>
     constexpr auto parse(ParseContext &ctx) {
         return ctx.begin(); // not (yet) implemented
@@ -229,13 +229,13 @@ struct fmt::formatter<opencmw::TimingCtx> {
 
     template<typename FormatContext>
     auto format(const opencmw::TimingCtx &v, FormatContext &ctx) const {
-        return fmt::format_to(ctx.out(), "{}", v.toString());
+        return std::format_to(ctx.out(), "{}", v.toString());
     }
 };
 
 namespace opencmw {
 inline std::ostream &operator<<(std::ostream &os, const opencmw::TimingCtx &v) {
-    return os << fmt::format("{}", v);
+    return os << std::format("{}", v);
 }
 } // namespace opencmw
 #endif

@@ -84,7 +84,7 @@ TEST_CASE("Basic Rest Client Get/Set Test - HTTP", "[Client]") {
 
     std::string     acceptHeader;
     server.Get("/endPoint", [&acceptHeader](const httplib::Request &req, httplib::Response &res) {
-        fmt::print("server received request on path '{}' body = '{}'\n", req.path, req.body);
+        std::print("server received request on path '{}' body = '{}'\n", req.path, req.body);
         if (req.headers.contains("accept")) {
             acceptHeader = req.headers.find("accept")->second;
         } else {
@@ -133,7 +133,7 @@ TEST_CASE("Multiple Rest Client Get/Set Test - HTTPS", "[Client]") {
     X509     *cert = opencmw::client::detail::readServerCertificateFromFile(testServerCertificates.serverCertificate);
     EVP_PKEY *pkey = opencmw::client::detail::readServerPrivateKeyFromFile(testServerCertificates.serverKey);
     if (const X509_STORE *ca_store = opencmw::client::detail::createCertificateStore(testServerCertificates.caCertificate); !cert || !pkey || !ca_store) {
-        FAIL(fmt::format("Failed to load certificate: {}", ERR_error_string(ERR_get_error(), nullptr)));
+        FAIL(std::format("Failed to load certificate: {}", ERR_error_string(ERR_get_error(), nullptr)));
     }
     httplib::SSLServer server(cert, pkey);
 
@@ -158,7 +158,7 @@ TEST_CASE("Multiple Rest Client Get/Set Test - HTTPS", "[Client]") {
     dones[2] = false;
     dones[3] = false;
     std::atomic<std::size_t> counter{ 0 };
-    auto             makeCommand = [&]() {
+    auto                     makeCommand = [&]() {
         IoBuffer data;
         data.put('A');
         data.put('B');
@@ -169,7 +169,7 @@ TEST_CASE("Multiple Rest Client Get/Set Test - HTTPS", "[Client]") {
         command.command  = mdp::Command::Get;
         command.topic    = URI<STRICT>("https://localhost:8080/endPoint");
         command.data     = std::move(data);
-        command.callback = [&dones, &counter](const mdp::Message         &/*rep*/) {
+        command.callback = [&dones, &counter](const mdp::Message                     &/*rep*/) {
             std::size_t currentCounter = counter.fetch_add(1, std::memory_order_relaxed);
             dones[currentCounter].store(true, std::memory_order_release);
             // Assuming you have access to 'done' variable, uncomment the following line
@@ -200,7 +200,7 @@ TEST_CASE("Basic Rest Client Get/Set Test - HTTPS", "[Client]") {
     X509     *cert = opencmw::client::detail::readServerCertificateFromFile(testServerCertificates.serverCertificate);
     EVP_PKEY *pkey = opencmw::client::detail::readServerPrivateKeyFromFile(testServerCertificates.serverKey);
     if (const X509_STORE *ca_store = opencmw::client::detail::createCertificateStore(testServerCertificates.caCertificate); !cert || !pkey || !ca_store) {
-        FAIL(fmt::format("Failed to load certificate: {}", ERR_error_string(ERR_get_error(), nullptr)));
+        FAIL(std::format("Failed to load certificate: {}", ERR_error_string(ERR_get_error(), nullptr)));
     }
     httplib::SSLServer server(cert, pkey);
 
@@ -279,13 +279,13 @@ TEST_CASE("Basic Rest Client Subscribe/Unsubscribe Test", "[Client]") {
         auto acceptType = req.headers.find("accept");
         if (acceptType == req.headers.end() || MIME::EVENT_STREAM.typeName() != acceptType->second) { // non-SSE request -> return default response
 #if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
-            res.set_content(fmt::format("update counter = {}", updateCounter.load()), MIME::TEXT);
+            res.set_content(std::format("update counter = {}", updateCounter.load()), MIME::TEXT);
 #else
-            res.set_content(fmt::format("update counter = {}", updateCounter.load()), std::string(MIME::TEXT.typeName()));
+            res.set_content(std::format("update counter = {}", updateCounter.load()), std::string(MIME::TEXT.typeName()));
 #endif
             return;
         } else {
-            fmt::print("server received SSE request on path '{}' body = '{}'\n", req.path, req.body);
+            std::print("server received SSE request on path '{}' body = '{}'\n", req.path, req.body);
 #if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
             res.set_chunked_content_provider(MIME::EVENT_STREAM, [&eventDispatcher](size_t /*offset*/, httplib::DataSink &sink) {
 #else
@@ -297,7 +297,7 @@ TEST_CASE("Basic Rest Client Subscribe/Unsubscribe Test", "[Client]") {
         }
     });
     server.Get("/endPoint", [](const httplib::Request &req, httplib::Response &res) {
-        fmt::print("server received request on path '{}' body = '{}'\n", req.path, req.body);
+        std::print("server received request on path '{}' body = '{}'\n", req.path, req.body);
         res.set_content("Hello World!", "text/plain");
     });
 
@@ -321,7 +321,7 @@ TEST_CASE("Basic Rest Client Subscribe/Unsubscribe Test", "[Client]") {
     command.topic    = URI<STRICT>("http://localhost:8080/event");
     command.data     = std::move(data);
     command.callback = [&receivedRegular, &receivedError](const mdp::Message &rep) {
-        fmt::print("SSE client received reply = '{}' - body size: '{}'\n", rep.data.asString(), rep.data.size());
+        std::print("SSE client received reply = '{}' - body size: '{}'\n", rep.data.asString(), rep.data.size());
         if (rep.error.size() == 0) {
             receivedRegular.fetch_add(1, std::memory_order_relaxed);
         } else {
@@ -339,7 +339,7 @@ TEST_CASE("Basic Rest Client Subscribe/Unsubscribe Test", "[Client]") {
     std::jthread dispatcher([&updateCounter, &eventDispatcher] {
         while (updateCounter < 5) {
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
-            eventDispatcher.send_event(fmt::format("test-event {}", updateCounter++));
+            eventDispatcher.send_event(std::format("test-event {}", updateCounter++));
         }
     });
     dispatcher.join();
@@ -357,7 +357,7 @@ TEST_CASE("Basic Rest Client Subscribe/Unsubscribe Test", "[Client]") {
 
     client.stop();
     server.stop();
-    eventDispatcher.send_event(fmt::format("test-event {}", updateCounter++));
+    eventDispatcher.send_event(std::format("test-event {}", updateCounter++));
     std::cout << "server stopped" << std::endl;
 }
 
@@ -366,7 +366,7 @@ TEST_CASE("Basic Rest Client Subscribe/Unsubscribe Test HTTPS", "[Client]") {
     X509     *cert = opencmw::client::detail::readServerCertificateFromFile(testServerCertificates.serverCertificate);
     EVP_PKEY *pkey = opencmw::client::detail::readServerPrivateKeyFromFile(testServerCertificates.serverKey);
     if (const X509_STORE *ca_store = opencmw::client::detail::createCertificateStore(testServerCertificates.caCertificate); !cert || !pkey || !ca_store) {
-        FAIL(fmt::format("Failed to load certificate: {}", ERR_error_string(ERR_get_error(), nullptr)));
+        FAIL(std::format("Failed to load certificate: {}", ERR_error_string(ERR_get_error(), nullptr)));
     }
     using namespace opencmw::client;
 
@@ -378,13 +378,13 @@ TEST_CASE("Basic Rest Client Subscribe/Unsubscribe Test HTTPS", "[Client]") {
         auto acceptType = req.headers.find("accept");
         if (acceptType == req.headers.end() || MIME::EVENT_STREAM.typeName() != acceptType->second) { // non-SSE request -> return default response
 #if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
-            res.set_content(fmt::format("update counter = {}", updateCounter.load()), MIME::TEXT);
+            res.set_content(std::format("update counter = {}", updateCounter.load()), MIME::TEXT);
 #else
-            res.set_content(fmt::format("update counter = {}", updateCounter.load()), std::string(MIME::TEXT.typeName()));
+            res.set_content(std::format("update counter = {}", updateCounter.load()), std::string(MIME::TEXT.typeName()));
 #endif
             return;
         } else {
-            fmt::print("server received SSE request on path '{}' body = '{}'\n", req.path, req.body);
+            std::print("server received SSE request on path '{}' body = '{}'\n", req.path, req.body);
 #if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
             res.set_chunked_content_provider(MIME::EVENT_STREAM, [&eventDispatcher](size_t /*offset*/, httplib::DataSink &sink) {
 #else
@@ -396,7 +396,7 @@ TEST_CASE("Basic Rest Client Subscribe/Unsubscribe Test HTTPS", "[Client]") {
         }
     });
     server.Get("/endPoint", [](const httplib::Request &req, httplib::Response &res) {
-        fmt::print("server received request on path '{}' body = '{}'\n", req.path, req.body);
+        std::print("server received request on path '{}' body = '{}'\n", req.path, req.body);
         res.set_content("Hello World!", "text/plain");
     });
 
@@ -425,7 +425,7 @@ TEST_CASE("Basic Rest Client Subscribe/Unsubscribe Test HTTPS", "[Client]") {
     command.topic    = URI<STRICT>("https://localhost:8080/event");
     command.data     = std::move(data);
     command.callback = [&receivedRegular, &receivedError](const mdp::Message &rep) {
-        fmt::print("SSE client received reply = '{}' - body size: '{}'\n", rep.data.asString(), rep.data.size());
+        std::print("SSE client received reply = '{}' - body size: '{}'\n", rep.data.asString(), rep.data.size());
         if (rep.error.size() == 0) {
             receivedRegular.fetch_add(1, std::memory_order_relaxed);
         } else {
@@ -443,7 +443,7 @@ TEST_CASE("Basic Rest Client Subscribe/Unsubscribe Test HTTPS", "[Client]") {
     std::jthread dispatcher([&updateCounter, &eventDispatcher] {
         while (updateCounter < 5) {
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
-            eventDispatcher.send_event(fmt::format("test-event {}", updateCounter++));
+            eventDispatcher.send_event(std::format("test-event {}", updateCounter++));
         }
     });
     dispatcher.join();
@@ -461,7 +461,7 @@ TEST_CASE("Basic Rest Client Subscribe/Unsubscribe Test HTTPS", "[Client]") {
 
     client.stop();
     server.stop();
-    eventDispatcher.send_event(fmt::format("test-event {}", updateCounter++));
+    eventDispatcher.send_event(std::format("test-event {}", updateCounter++));
     std::cout << "server stopped" << std::endl;
 }
 
