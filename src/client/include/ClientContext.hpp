@@ -117,7 +117,7 @@ private:
             ev.data     = std::move(d);
         });
         if (!published) {
-            fmt::print("failed to publish command\n");
+            std::print("failed to publish command\n");
         }
     }
 };

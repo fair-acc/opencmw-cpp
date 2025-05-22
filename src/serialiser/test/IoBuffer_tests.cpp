@@ -1,6 +1,6 @@
 #pragma clang diagnostic push
-#pragma ide diagnostic   ignored "LoopDoesntUseConditionVariableInspection"
-#pragma ide diagnostic   ignored "cppcoreguidelines-avoid-magic-numbers"
+#pragma ide diagnostic ignored "LoopDoesntUseConditionVariableInspection"
+#pragma ide diagnostic ignored "cppcoreguidelines-avoid-magic-numbers"
 #include <catch2/catch.hpp>
 
 #include <iostream>
@@ -8,6 +8,7 @@
 #include <version>
 
 #include <Debug.hpp>
+#include <Formatter.hpp>
 #include <IoBuffer.hpp>
 
 #define N_SAMPLES 500
@@ -280,7 +281,7 @@ TEST_CASE("IoBuffer syntax - arrays", "[IoBuffer]") {
             return sizeof(value) + sizeof(int32_t); // native array definition
         };
         const auto writeTest = [&buffer, &oldBufferSize, &expectedSize]<typename T, size_t size = 0>(const std::string field, T &&value) {
-            const auto &msg = fmt::format("writeTest(IoBuffer&, '{}', ({})[{}])", field, opencmw::typeName<T>, fmt::join(value, ", "));
+            const auto &msg = std::format("writeTest(IoBuffer&, '{}', ({})[{}])", field, opencmw::typeName<T>, opencmw::join(value, ", "));
             REQUIRE_MESSAGE(buffer.size() == oldBufferSize, msg);
             buffer.put(value);
             REQUIRE_MESSAGE((buffer.size() - oldBufferSize) == expectedSize(value), msg);

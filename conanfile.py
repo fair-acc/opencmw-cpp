@@ -26,7 +26,7 @@ class OpencmwConan(ConanFile):
     generators = "cmake"
     exports = "LICENSE"
     exports_sources = ["cmake/*", "concepts/*", "src/*", "CMakeLists.txt"]
-    requires = "catch2/2.13.3", "fmt/7.1.3", "mp-units/0.7.0", "zeromq/4.3.4"
+    requires = "catch2/2.13.3", "mp-units/0.7.0", "zeromq/4.3.4"
 
     def configure_cmake(self):
         """Create CMake instance and execute configure step

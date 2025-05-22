@@ -70,7 +70,7 @@ TEST_CASE("MockServer Subscription Test", "[mock-server][lambda_handler]") {
 
     {
         auto reply = client.tryReadOne();
-        fmt::print("{}\n", reply.has_value());
+        std::print("{}\n", reply.has_value());
         REQUIRE(reply);
         REQUIRE(reply->data.asString() == "100");
         REQUIRE(reply->command == mdp::Command::Final);
@@ -78,7 +78,7 @@ TEST_CASE("MockServer Subscription Test", "[mock-server][lambda_handler]") {
     }
     {
         auto reply = client.tryReadOne();
-        fmt::print("{}\n", reply.has_value());
+        std::print("{}\n", reply.has_value());
         REQUIRE(reply);
         REQUIRE(reply->data.asString() == "23");
         REQUIRE(reply->command == mdp::Command::Final);
@@ -88,7 +88,7 @@ TEST_CASE("MockServer Subscription Test", "[mock-server][lambda_handler]") {
     server.notify("/a.service", "10");
     {
         auto reply = client.tryReadOne();
-        fmt::print("{}\n", reply.has_value());
+        std::print("{}\n", reply.has_value());
         REQUIRE(reply);
         REQUIRE(reply->data.asString() == "10");
         REQUIRE(reply->command == mdp::Command::Final);

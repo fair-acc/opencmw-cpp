@@ -43,7 +43,7 @@ struct Int {
         const auto asInt = std::from_chars(s.begin(), s.end(), value);
 
         if (asInt.ec == std::errc::invalid_argument) {
-            throw std::invalid_argument(fmt::format("'{}' is not a valid integer", s));
+            throw std::invalid_argument(std::format("'{}' is not a valid integer", s));
         }
     }
 

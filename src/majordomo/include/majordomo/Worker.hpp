@@ -10,7 +10,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include <fmt/format.h>
+#include <format>
 
 #include <Debug.hpp>
 #include <IoSerialiserCmwLight.hpp>
@@ -191,7 +191,7 @@ protected:
 
 private:
     std::string makeNotifyAddress() const noexcept {
-        return fmt::format("inproc://workers{}-{}/notify", name, worker_detail::nextWorkerId());
+        return std::format("inproc://workers{}-{}/notify", name, worker_detail::nextWorkerId());
     }
 
     NotificationHandler &notificationHandlerForThisThread() {
@@ -354,11 +354,11 @@ private:
 
         if (request.command == mdp::Command::Get && !(permission == Permission::RW || permission == Permission::RO)) {
             auto errorReply  = replyFromRequest(request);
-            errorReply.error = fmt::format("GET access denied to role '{}'", clientRole);
+            errorReply.error = std::format("GET access denied to role '{}'", clientRole);
             return errorReply;
         } else if (request.command == mdp::Command::Set && !(permission == Permission::RW || permission == Permission::WO)) {
             auto errorReply  = replyFromRequest(request);
-            errorReply.error = fmt::format("SET access denied to role '{}'", clientRole);
+            errorReply.error = std::format("SET access denied to role '{}'", clientRole);
             return errorReply;
         }
 
@@ -369,11 +369,11 @@ private:
             return std::move(context.reply);
         } catch (const std::exception &e) {
             auto errorReply  = replyFromRequest(context.request);
-            errorReply.error = fmt::format("Caught exception for service '{}'\nrequest message: {}\nexception: {}", serviceName.data(), context.request.data, e.what());
+            errorReply.error = std::format("Caught exception for service '{}'\nrequest message: {}\nexception: {}", serviceName.data(), context.request.data, e.what());
             return errorReply;
         } catch (...) {
             auto errorReply  = replyFromRequest(context.request);
-            errorReply.error = fmt::format("Caught unexpected exception for service '{}'\nrequest message: {}", serviceName.data(), context.request.data);
+            errorReply.error = std::format("Caught unexpected exception for service '{}'\nrequest message: {}", serviceName.data(), context.request.data);
             return errorReply;
         }
     }
@@ -446,7 +446,7 @@ inline I deserialiseRequest(const RequestContext &rawCtx) {
         return deserialiseRequest<I, opencmw::CmwLight>(rawCtx.request);
     }
 
-    throw std::runtime_error(fmt::format("MIME type '{}' not supported", rawCtx.mimeType.typeName()));
+    throw std::runtime_error(std::format("MIME type '{}' not supported", rawCtx.mimeType.typeName()));
 }
 
 template<typename Protocol>
@@ -485,7 +485,7 @@ inline void writeResult(std::string_view workerName, RequestContext &rawCtx, con
         return;
     }
 
-    throw std::runtime_error(fmt::format("MIME type '{}' not supported", mimeType.typeName()));
+    throw std::runtime_error(std::format("MIME type '{}' not supported", mimeType.typeName()));
 }
 
 inline void writeResultFull(std::string_view workerName, RequestContext &rawCtx, const auto &requestContext, const auto &replyContext, const auto &input, const auto &output) {
@@ -529,7 +529,7 @@ inline void writeResultFull(std::string_view workerName, RequestContext &rawCtx,
         return;
     }
 
-    throw std::runtime_error(fmt::format("MIME type '{}' not supported", mimeType.typeName()));
+    throw std::runtime_error(std::format("MIME type '{}' not supported", mimeType.typeName()));
 }
 
 template<typename Worker, ReflectableClass ContextType, ReflectableClass InputType, ReflectableClass OutputType>

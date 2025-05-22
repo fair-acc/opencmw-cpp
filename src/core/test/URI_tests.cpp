@@ -2,6 +2,7 @@
 #include <array>
 #include <catch2/catch.hpp>
 #include <Debug.hpp>
+#include <Formatter.hpp>
 #include <iostream>
 #include <string_view>
 #include <URI.hpp>
@@ -205,7 +206,7 @@ TEST_CASE("helper methods", "[URI]") {
 
     for (auto c : validURICharacters) {
         // implicitly tests URI<>::isUnreserved(c) for whole URI
-        REQUIRE_NOTHROW_MESSAGE(URI<STRICT>(fmt::format("a{}", c)), fmt::format("test character in whole URI: '{}'", c));
+        REQUIRE_NOTHROW_MESSAGE(URI<STRICT>(std::format("a{}", c)), std::format("test character in whole URI: '{}'", c));
     }
     for (char c = 0; c < 127; c++) {
         if (validURICharacters.find(c, 0) != std::string_view::npos) {
@@ -214,33 +215,33 @@ TEST_CASE("helper methods", "[URI]") {
         std::string test("abc4");
         test[3] = c;
         // implicitly tests URI<>::isUnreserved(c)/invalid characters for whole URI
-        REQUIRE_THROWS_AS_MESSAGE(URI<STRICT>(test), std::ios_base::failure, fmt::format("test character in URL: '{:c}'", c));
+        REQUIRE_THROWS_AS_MESSAGE(URI<STRICT>(test), std::ios_base::failure, std::format("test character in URL: '{:c}'", c));
     }
 
     for (auto c : std::string("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")) {
         // implicitly tests URI<>::isUnreserved(c) for scheme
-        REQUIRE_NOTHROW_MESSAGE(URI<STRICT>(fmt::format("aa{}:", c)), fmt::format("test character in scheme: '{}'", c));
+        REQUIRE_NOTHROW_MESSAGE(URI<STRICT>(std::format("aa{}:", c)), std::format("test character in scheme: '{}'", c));
     }
     for (auto c : std::string("-._~/[]@!$&'()*+,;=")) { // N.B. special case for delimiter ':' -- "::" failure case not covered
         // implicitly tests URI<>::isUnreserved(c)/invalid characters  for scheme
-        REQUIRE_THROWS_AS_MESSAGE(URI<STRICT>(fmt::format("aa{}:", c)), std::ios_base::failure, fmt::format("test character in scheme: '{}'", c));
+        REQUIRE_THROWS_AS_MESSAGE(URI<STRICT>(std::format("aa{}:", c)), std::ios_base::failure, std::format("test character in scheme: '{}'", c));
     }
 
     for (auto c : std::string("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._:")) {
         // implicitly tests URI<>::isUnreserved(c) for authority
-        REQUIRE_NOTHROW_MESSAGE(URI<STRICT>(fmt::format("mdp://{}", c)), fmt::format("test character in authority: '{}'", c));
+        REQUIRE_NOTHROW_MESSAGE(URI<STRICT>(std::format("mdp://{}", c)), std::format("test character in authority: '{}'", c));
     }
     for (auto c : std::string("~[]!$&'()*+,;=")) { // N.B. special case for delimiter '/' -- "///" failure case not covered
         // implicitly tests URI<>::isUnreserved(c)/invalid characters for authority
-        REQUIRE_THROWS_AS_MESSAGE(URI<STRICT>(fmt::format("mdp://host{}", c)), std::ios_base::failure, fmt::format("test character in authority: '{}'", c));
+        REQUIRE_THROWS_AS_MESSAGE(URI<STRICT>(std::format("mdp://host{}", c)), std::ios_base::failure, std::format("test character in authority: '{}'", c));
     }
     for (auto c : std::string("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._/")) {
         // implicitly tests URI<>::isUnreserved(c) for authority
-        REQUIRE_NOTHROW_MESSAGE(URI<STRICT>(fmt::format("mdp://auth/a{}", c)), fmt::format("test character in path: '{}'", c));
+        REQUIRE_NOTHROW_MESSAGE(URI<STRICT>(std::format("mdp://auth/a{}", c)), std::format("test character in path: '{}'", c));
     }
     for (auto c : std::string("~[]!$&'()*+,;=")) {
         // implicitly tests URI<>::isUnreserved(c)/invalid characters for authority
-        REQUIRE_THROWS_AS_MESSAGE(URI<STRICT>(fmt::format("mdp://auth/a{}", c)), std::ios_base::failure, fmt::format("test character in path: '{}'", c));
+        REQUIRE_THROWS_AS_MESSAGE(URI<STRICT>(std::format("mdp://auth/a{}", c)), std::ios_base::failure, std::format("test character in path: '{}'", c));
     }
 
     REQUIRE(URI<>::encode("ASCIIString") == "ASCIIString");
@@ -256,7 +257,7 @@ TEST_CASE("helper methods", "[URI]") {
     // print handler
     std::ostringstream dummyStream;
     auto               resetStream = [&dummyStream]() { dummyStream.str(""); dummyStream.clear(); REQUIRE(dummyStream.str().size() == 0); };
-    dummyStream << fmt::format("URI fmt::print: '{}'\n", URI<>("mdp://auth/path"));
+    dummyStream << std::format("URI std::print: '{}'\n", URI<>("mdp://auth/path"));
     REQUIRE(dummyStream.str().size() != 0);
     resetStream();
     dummyStream << "std::cout URI print: " << URI<>("mdp://auth/path") << std::endl;
@@ -265,7 +266,7 @@ TEST_CASE("helper methods", "[URI]") {
 
     // optional handler
     std::optional<std::string> optional("test");
-    dummyStream << fmt::format("test std::optional fmt::print: '{}'\n", optional);
+    dummyStream << std::format("test std::optional std::print: '{}'\n", optional);
     REQUIRE(dummyStream.str().size() != 0);
     resetStream();
 }

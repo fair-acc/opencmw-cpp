@@ -157,7 +157,7 @@ TEST_CASE("SettingBase time-out and expiry", "[SettingBase]") {
     opencmw::SettingBase<int, int, std::string, 16, std::chrono::milliseconds, -1, 100> b;
     REQUIRE(b.getPendingTransactions().size() == 0);
     for (int i = 0; i < 5; ++i) {
-        auto [r1, t1] = b.stage(FWD(i), fmt::format("token#{}", i));
+        auto [r1, t1] = b.stage(FWD(i), std::format("token#{}", i));
         REQUIRE(!r1);
     }
     REQUIRE(b.getPendingTransactions().size() == 5);
@@ -307,7 +307,7 @@ TEST_CASE("CtxSetting time-out and expiry", "[SettingBase]") {
     opencmw::CtxSetting<int, std::string, 16, std::chrono::milliseconds, -1, 100> b;
     REQUIRE(b.getPendingTransactions().size() == 0);
     for (int i = 0; i < 6; ++i) {
-        REQUIRE(not b.stage(TimingCtx(1), FWD(i), fmt::format("token#{}", i)));
+        REQUIRE(not b.stage(TimingCtx(1), FWD(i), std::format("token#{}", i)));
     }
     REQUIRE(b.retireStaged("token#5"));
     REQUIRE(b.getPendingTransactions().size() == 5);

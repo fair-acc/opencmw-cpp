@@ -237,14 +237,14 @@ public:
 } // namespace opencmw::disruptor
 
 template<typename T, std::size_t SIZE, opencmw::disruptor::WaitStrategy WAIT_STRATEGY, template<std::size_t, opencmw::disruptor::WaitStrategy> typename CLAIM_STRATEGY>
-struct fmt::formatter<opencmw::disruptor::RingBuffer<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY>> {
+struct std::formatter<opencmw::disruptor::RingBuffer<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY>> {
     template<typename ParseContext>
     constexpr auto parse(ParseContext &ctx) { return ctx.begin(); }
 
     template<typename FormatContext>
-    auto format(const opencmw::disruptor::RingBuffer<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY> &ringBuffer, FormatContext &ctx) {
+    auto format(const opencmw::disruptor::RingBuffer<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY> &ringBuffer, FormatContext &ctx) const {
         std::stringstream stream;
-        stream << fmt::format("RingBuffer<{}, {}> - WaitStrategy: {{ {} }}, Cursor: {}, GatingSequences: [ ",
+        stream << std::format("RingBuffer<{}, {}> - WaitStrategy: {{ {} }}, Cursor: {}, GatingSequences: [ ",
                 opencmw::typeName<T>, ringBuffer.bufferSize(), opencmw::typeName<WAIT_STRATEGY>, ringBuffer.cursor());
 
         auto firstItem = true;
@@ -254,39 +254,39 @@ struct fmt::formatter<opencmw::disruptor::RingBuffer<T, SIZE, WAIT_STRATEGY, CLA
             } else {
                 stream << ", ";
             }
-            stream << fmt::format("{{ {} }}", sequence->value());
+            stream << std::format("{{ {} }}", sequence->value());
         }
 
         stream << " ]";
-        return fmt::format_to(ctx.out(), "{}", stream.str());
+        return std::format_to(ctx.out(), "{}", stream.str());
     }
 };
 
 template<>
-struct fmt::formatter<opencmw::disruptor::PollState> {
+struct std::formatter<opencmw::disruptor::PollState> {
     template<typename ParseContext>
     constexpr auto parse(ParseContext &ctx) { return ctx.begin(); }
 
     template<typename FormatContext>
-    auto format(opencmw::disruptor::PollState const &value, FormatContext &ctx) {
+    auto format(const opencmw::disruptor::PollState &value, FormatContext &ctx) const {
         switch (value) {
         case opencmw::disruptor::PollState::Processing:
-            return fmt::format_to(ctx.out(), "PollState::Processing");
+            return std::format_to(ctx.out(), "PollState::Processing");
         case opencmw::disruptor::PollState::Gating:
-            return fmt::format_to(ctx.out(), "PollState::Gating");
+            return std::format_to(ctx.out(), "PollState::Gating");
         case opencmw::disruptor::PollState::Idle:
-            return fmt::format_to(ctx.out(), "PollState::Idle");
+            return std::format_to(ctx.out(), "PollState::Idle");
         default:
-            return fmt::format_to(ctx.out(), "PollState::UNKNOWN");
+            return std::format_to(ctx.out(), "PollState::UNKNOWN");
         }
-        throw std::invalid_argument(fmt::format("unhandled PollState::{}", static_cast<int>(value)));
+        throw std::invalid_argument(std::format("unhandled PollState::{}", static_cast<int>(value)));
     }
 };
 
 namespace opencmw::disruptor {
 
 template<typename T, std::size_t SIZE, disruptor::WaitStrategy WAIT_STRATEGY, template<std::size_t, disruptor::WaitStrategy> typename CLAIM_STRATEGY>
-inline std::ostream &operator<<(std::ostream &stream, const opencmw::disruptor::RingBuffer<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY> &ringBuffer) { return stream << fmt::format("{}", ringBuffer); }
-inline std::ostream &operator<<(std::ostream &stream, opencmw::disruptor::PollState &pollState) { return stream << fmt::format("{}", pollState); }
+inline std::ostream &operator<<(std::ostream &stream, const opencmw::disruptor::RingBuffer<T, SIZE, WAIT_STRATEGY, CLAIM_STRATEGY> &ringBuffer) { return stream << std::format("{}", ringBuffer); }
+inline std::ostream &operator<<(std::ostream &stream, opencmw::disruptor::PollState &pollState) { return stream << std::format("{}", pollState); }
 
 } // namespace opencmw::disruptor

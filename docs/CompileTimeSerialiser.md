@@ -29,13 +29,13 @@ Beside common primitive and STL container types,
  * common opencmw container: `opencmw:MultiArray<T, N_DIM>`
 
 N.B. regarding support/extensions for `unsigned` arithmetic types see [here](###-unsigned-data-types). Based on this reflection pattern, there are some
-useful helper functions in the `opencmw::utils` namespace (requires `#include <Utils.hpp>`) that can be used for debugging, automatic 'fmt::format' and 'iostream' 
+useful helper functions in the `opencmw::utils` namespace (requires `#include <Utils.hpp>`) that can be used for debugging, automatic 'std::format' and 'iostream' 
 printouts, or introspection of classes or differences between classes of the same type. for example:
 ```cpp
 className a{ 1, 0.5F, "Hello World!"};
 className b{ 1, 0.501F, "Γειά σου Κόσμε!"};
 
-std::cout << fmt::format("class info a: {}\n", a);
+std::cout << std::format("class info a: {}\n", a);
 std::cout << ClassInfoVerbose << "class info b: " << b << '\n';
 diffView(std::cout, a, b);
 ```

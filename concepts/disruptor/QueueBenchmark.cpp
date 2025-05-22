@@ -37,7 +37,7 @@ double                         testBlockingQueue(const std::uint64_t nLoop, cons
     std::vector<std::jthread> producers;
     for (auto i = 0U; i < nProducer; i++) {
         producers.emplace_back([&i, &nEventsProducer, &nProduced, &blockingQueue, &startMark, &stopMark]() {
-            opencmw::thread::setThreadName(fmt::format("publisher{}", i));
+            opencmw::thread::setThreadName(std::format("publisher{}", i));
             std::array<bool, maxCores> affinity{};
             affinity[(2 * i) % maxThreads] = true;
             opencmw::thread::setThreadAffinity(affinity);
@@ -48,7 +48,7 @@ double                         testBlockingQueue(const std::uint64_t nLoop, cons
                 std::ranges::for_each(blockingQueue, [&event](auto &queue) { queue.push(event); });
             }
             stopMark.arrive_and_wait();
-                                });
+        });
     }
 
     // init consumers
@@ -56,7 +56,7 @@ double                         testBlockingQueue(const std::uint64_t nLoop, cons
     for (auto i = 0U; i < nConsumer; i++) {
         auto &queue = blockingQueue[i];
         consumers.emplace_back([&i, &nEventsConsumer, &nConsumed, &queue, &startMark, &stopMark]() {
-            opencmw::thread::setThreadName(fmt::format("consumer{}", i));
+            opencmw::thread::setThreadName(std::format("consumer{}", i));
             std::array<bool, maxCores> affinity{};
             affinity[(2 * i + 1) % maxThreads] = true;
             opencmw::thread::setThreadAffinity(affinity);
@@ -73,19 +73,19 @@ double                         testBlockingQueue(const std::uint64_t nLoop, cons
             stopMark.arrive_and_wait();
             auto calcSum = nEventsConsumer * (nEventsConsumer + 1) / 2;
             if (sum != calcSum) {
-                fmt::print("finished BlockingQueue consumer {} - nConsumed {} of {} sum-mismatch: {} vs {}\n", i, lCounter, nEventsConsumer, sum, calcSum);
+                std::print("finished BlockingQueue consumer {} - nConsumed {} of {} sum-mismatch: {} vs {}\n", i, lCounter, nEventsConsumer, sum, calcSum);
             }
-                                });
+        });
     }
     std::ranges::for_each(producers, [](auto &thread) { thread.join(); });
     std::ranges::for_each(consumers, [](auto &thread) { thread.join(); });
     if (nConsumer != 0 && nProduced != nConsumed / nConsumer) {
-        fmt::print("BlockingQueue producer {} vs. consumer {} mismatch\n", nProduced.load(), nConsumed.load() / nConsumer);
+        std::print("BlockingQueue producer {} vs. consumer {} mismatch\n", nProduced.load(), nConsumed.load() / nConsumer);
     }
 
     const auto opsPerSecond = static_cast<double>(nLoop) * (1e3 / time_elapsed.count());
     if (printCheck) {
-        fmt::print("{:25} - {}P-{}C: {} events in {:6.2f} ms -> {:.1E} ops/s\n", "BlockingQueue", nProducer, nConsumer, nLoop, time_elapsed.count(), opsPerSecond);
+        std::print("{:25} - {}P-{}C: {} events in {:6.2f} ms -> {:.1E} ops/s\n", "BlockingQueue", nProducer, nConsumer, nLoop, time_elapsed.count(), opsPerSecond);
     }
     return opsPerSecond;
 }
@@ -116,7 +116,7 @@ double testDisruptor(const std::uint64_t nLoop, const std::uint64_t nProducer, c
     std::vector<std::jthread> producers;
     for (auto i = 0U; i < nProducer; i++) {
         producers.emplace_back([&i, &nEventsProducer, &nProduced, &ringBuffer, &startMark, &stopMark]() {
-            opencmw::thread::setThreadName(fmt::format("publisher{}", i));
+            opencmw::thread::setThreadName(std::format("publisher{}", i));
             std::array<bool, maxCores> affinity{};
             affinity[(2 * i) % maxThreads] = true;
             opencmw::thread::setThreadAffinity(affinity);
@@ -139,7 +139,7 @@ double testDisruptor(const std::uint64_t nLoop, const std::uint64_t nProducer, c
         consumers.emplace_back([&i, &nEventsConsumer, &nConsumed, &ringBuffer, &startMark, &stopMark]() {
             const auto &poller = ringBuffer->newPoller();
             ringBuffer->addGatingSequences({ poller->sequence() });
-            opencmw::thread::setThreadName(fmt::format("consumer{}", i));
+            opencmw::thread::setThreadName(std::format("consumer{}", i));
             std::array<bool, maxCores> affinity{};
             affinity[(2 * i + 1) % maxThreads] = true;
             opencmw::thread::setThreadAffinity(affinity);
@@ -159,7 +159,7 @@ double testDisruptor(const std::uint64_t nLoop, const std::uint64_t nProducer, c
             stopMark.arrive_and_wait();
             auto calcSum = nEventsConsumer * (nEventsConsumer + 1) / 2;
             if (sum != calcSum) {
-                fmt::print("finished RingBuffer consumer {} - nConsumed {} of {} sum-mismatch: {} vs {}\n", i, lCounter, nEventsConsumer, sum, calcSum);
+                std::print("finished RingBuffer consumer {} - nConsumed {} of {} sum-mismatch: {} vs {}\n", i, lCounter, nEventsConsumer, sum, calcSum);
             }
         });
     }
@@ -167,37 +167,37 @@ double testDisruptor(const std::uint64_t nLoop, const std::uint64_t nProducer, c
     std::ranges::for_each(consumers, [](auto &thread) { thread.join(); });
 
     if (nConsumer != 0 && nProduced != nConsumed / nConsumer) {
-        fmt::print("RingBuffer producer {} vs. consumer {} mismatch\n", nProduced.load(), nConsumed.load() / nConsumer);
+        std::print("RingBuffer producer {} vs. consumer {} mismatch\n", nProduced.load(), nConsumed.load() / nConsumer);
     }
 
     const auto opsPerSecond = static_cast<double>(nLoop) * (1e3 / time_elapsed.count());
     if (printCheck) {
-        fmt::print("{:25} - {}P-{}C: {} events in {:6.2f} ms -> {:.1E} ops/s\n", "Disruptor", nProducer, nConsumer, nLoop, time_elapsed.count(), opsPerSecond);
+        std::print("{:25} - {}P-{}C: {} events in {:6.2f} ms -> {:.1E} ops/s\n", "Disruptor", nProducer, nConsumer, nLoop, time_elapsed.count(), opsPerSecond);
     }
     return opsPerSecond;
 }
 
 template<bool align = true, typename T, size_t mRow, size_t nCol>
-void print_matrix(const std::array<std::array<T, mRow>, nCol> &M, fmt::format_string<const T &> fmt = "{}") {
+void print_matrix(const std::array<std::array<T, mRow>, nCol> &M, std::format_string<const T &> str = "{}") {
     size_t columWidth = 0;
     for (size_t j = 0; j < nCol; ++j) {
         size_t max_len{};
         for (size_t i = 0; i < mRow; ++i) {
-            auto strSize = fmt::format(fmt, M[i][j]).size();
+            auto strSize = std::format(str, M[i][j]).size();
             max_len      = std::max(max_len, strSize);
         }
         columWidth = std::max(max_len, columWidth);
     }
 
-    fmt::print("┌{1:{0}}┐\n", nCol * (columWidth + 1) + 1, ' ');
+    std::print("┌{1:{0}}┐\n", nCol * (columWidth + 1) + 1, ' ');
     for (size_t i = 0; i < mRow; ++i) {
         for (size_t j = 0; j < nCol; ++j) {
-            constexpr auto cell_fmt = align ? "{1:}{2:>{0}} {3:}" : "{1:}{2:^{0}} {3:}";
-            fmt::print(cell_fmt, columWidth, j == 0 ? "│ " : "", fmt::format(fmt, M[i][j]), j == nCol - 1 ? "│" : "");
+            constexpr auto cellStr = align ? "{1:}{2:>{0}} {3:}" : "{1:}{2:^{0}} {3:}";
+            std::print(cellStr, columWidth, j == 0 ? "│ " : "", std::format(str, M[i][j]), j == nCol - 1 ? "│" : "");
         }
-        fmt::print("\n");
+        std::print("\n");
     }
-    fmt::print("└{1:{0}}┘\n", nCol * (columWidth + 1) + 1, ' ');
+    std::print("└{1:{0}}┘\n", nCol * (columWidth + 1) + 1, ' ');
 }
 
 int main() {
@@ -228,10 +228,10 @@ int main() {
         }
     }
 
-    fmt::print("finished test:\nBlockingQueue [ops/s]\n");
+    std::print("finished test:\nBlockingQueue [ops/s]\n");
     print_matrix(opsBlockingQueue, "{:.1E}");
-    fmt::print("RingBuffer [ops/s]\n");
+    std::print("RingBuffer [ops/s]\n");
     print_matrix(opsRingBuffer, "{:.1E}");
-    fmt::print("RingBuffer > BlockingQueue [%]\n");
+    std::print("RingBuffer > BlockingQueue [%]\n");
     print_matrix(opsSpeedUp, "{:.1f}");
 }

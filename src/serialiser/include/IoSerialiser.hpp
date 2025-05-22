@@ -8,8 +8,8 @@
 #include <queue>
 
 #pragma clang diagnostic push
-#pragma ide diagnostic   ignored "cppcoreguidelines-avoid-magic-numbers"
-#pragma ide diagnostic   ignored "cppcoreguidelines-avoid-c-arrays"
+#pragma ide diagnostic ignored "cppcoreguidelines-avoid-magic-numbers"
+#pragma ide diagnostic ignored "cppcoreguidelines-avoid-c-arrays"
 
 namespace opencmw {
 
@@ -36,10 +36,12 @@ public:
     explicit ProtocolException(const char *errorMessage) noexcept
         : errorMsg(errorMessage) {}
     template<typename... ErrorArgs>
-    explicit ProtocolException(fmt::format_string<ErrorArgs...> fmt, ErrorArgs &&...errorArgs) noexcept
-        : errorMsg(fmt::format(fmt, std::forward<ErrorArgs>(errorArgs)...)) {}
+    explicit ProtocolException(std::format_string<ErrorArgs...> str, ErrorArgs &&...errorArgs) noexcept
+        : errorMsg(std::format(str, std::forward<ErrorArgs>(errorArgs)...)) {}
 
-    [[nodiscard]] const char *what() const noexcept override { return errorMsg.data(); }
+    [[nodiscard]] const char *what() const noexcept override {
+        return errorMsg.data();
+    }
 };
 
 // clang-format off
@@ -237,8 +239,8 @@ forceinline void moveToFieldEndBufferPosition(IoBuffer &buffer, const FieldDescr
 }
 
 template<ProtocolCheck check, typename... ErrorArgs>
-neverinline constexpr void handleDeserialisationError(DeserialiserInfo &info, fmt::format_string<ErrorArgs...> errorFormat, ErrorArgs &&...errorArgs) noexcept(check != ProtocolCheck::ALWAYS) {
-    const auto text = fmt::format(errorFormat, std::forward<ErrorArgs>(errorArgs)...);
+neverinline constexpr void handleDeserialisationError(DeserialiserInfo &info, std::format_string<ErrorArgs...> errorFormat, ErrorArgs &&...errorArgs) noexcept(check != ProtocolCheck::ALWAYS) {
+    const auto text = std::format(errorFormat, std::forward<ErrorArgs>(errorArgs)...);
     if constexpr (check == ProtocolCheck::ALWAYS) {
         throw ProtocolException(text);
     }
@@ -246,7 +248,7 @@ neverinline constexpr void handleDeserialisationError(DeserialiserInfo &info, fm
 }
 
 template<ProtocolCheck check, typename... ErrorArgs>
-neverinline constexpr bool handleDeserialisationErrorAndSkipToNextField(IoBuffer &buffer, const FieldDescriptionLong &field, DeserialiserInfo &info, fmt::format_string<ErrorArgs...> errorFormat, ErrorArgs &&...errorArgs) noexcept(check != ProtocolCheck::ALWAYS) {
+neverinline constexpr bool handleDeserialisationErrorAndSkipToNextField(IoBuffer &buffer, const FieldDescriptionLong &field, DeserialiserInfo &info, std::format_string<ErrorArgs...> errorFormat, ErrorArgs &&...errorArgs) noexcept(check != ProtocolCheck::ALWAYS) {
     moveToFieldEndBufferPosition(buffer, field);
     if constexpr (check == ProtocolCheck::IGNORE) {
         return true; // should return into outer context
@@ -305,7 +307,7 @@ constexpr void deserialise(IoBuffer &buffer, ReflectableClass auto &value, Deser
         if (fieldIndex < 0) {
             if constexpr (check != ProtocolCheck::IGNORE) {
                 handleDeserialisationError<check>(info, "missing field (type:{}) {}::{} at buffer[{}, size:{}]", field.intDataType, parent.fieldName, field.fieldName, buffer.position(), buffer.size());
-                info.additionalFields.emplace_back(std::make_tuple(fmt::format("{}::{}", parent.fieldName, field.fieldName), field.intDataType));
+                info.additionalFields.emplace_back(std::make_tuple(std::format("{}::{}", parent.fieldName, field.fieldName), field.intDataType));
             }
             if (field.dataEndPosition != std::numeric_limits<size_t>::max()) {
                 moveToFieldEndBufferPosition(buffer, field);
@@ -444,7 +446,7 @@ inline std::ostream &operator<<(std::ostream &os, const DeserialiserInfo &info) 
 } // namespace opencmw
 
 template<>
-struct fmt::formatter<opencmw::ProtocolCheck> {
+struct std::formatter<opencmw::ProtocolCheck> {
     template<typename ParseContext>
     constexpr auto parse(ParseContext &ctx) {
         return ctx.begin(); // not (yet) implemented
@@ -455,11 +457,11 @@ struct fmt::formatter<opencmw::ProtocolCheck> {
         using enum opencmw::ProtocolCheck;
         switch (v) {
         case IGNORE:
-            return fmt::format_to(ctx.out(), "IGNORE");
+            return std::format_to(ctx.out(), "IGNORE");
         case LENIENT:
-            return fmt::format_to(ctx.out(), "LENIENT");
+            return std::format_to(ctx.out(), "LENIENT");
         case ALWAYS:
-            return fmt::format_to(ctx.out(), "ALWAYS");
+            return std::format_to(ctx.out(), "ALWAYS");
         default:
             return ctx.out();
         }

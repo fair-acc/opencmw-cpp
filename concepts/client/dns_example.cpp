@@ -41,7 +41,7 @@ void run_dns_server(std::string_view httpAddress, std::string_view mdpAddress) {
     RunInThread dnsThread(dnsWorker);
     RunInThread brokerThread(broker);
 
-    fmt::print("DNS service running, press ENTER to terminate\n");
+    std::print("DNS service running, press ENTER to terminate\n");
     getchar();
 
     // cleanup tmp file
@@ -70,14 +70,14 @@ int main(int argc, char *argv[]) {
     std::string_view                    command = args[0];
     if (command == "server" && args.size() == 3) {
 #if defined(EMSCRIPTEN)
-        fmt::print("unable to run server on emscripten\n");
+        std::print("unable to run server on emscripten\n");
 #else
-        fmt::print("running server on addresses: {}, {}\n", args[1], args[2]);
+        std::print("running server on addresses: {}, {}\n", args[1], args[2]);
         run_dns_server(args[1], args[2]);
 #endif
     } else if (args.size() >= 2) {
         // get client
-        fmt::print("getting client for server {}\n", args[1]);
+        std::print("getting client for server {}\n", args[1]);
         std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
 #ifndef EMSCRIPTEN
         zmq::Context context;
@@ -89,19 +89,19 @@ int main(int argc, char *argv[]) {
         DnsClient             dns_client{ clientContext, URI<>{ std::string{ args[1] } } };
 
         if (command == "register" && args.size() == 3) {
-            fmt::print("registering example device {}\n", args[2]);
+            std::print("registering example device {}\n", args[2]);
             register_device(dns_client, args[2]);
         } else if (command == "query" && args.size() == 3) {
-            fmt::print("querying devices: {}\n", args[2]);
+            std::print("querying devices: {}\n", args[2]);
             query_devices(dns_client, args[2]);
         } else {
-            fmt::print("unknown command: {}\n", command);
+            std::print("unknown command: {}\n", command);
         }
-        fmt::print("stopping client\n");
+        std::print("stopping client\n");
 
         clientContext.stop();
 
     } else {
-        fmt::print("not enough arguments: {}\n", args);
+        std::print("not enough arguments: {}\n", args);
     }
 }

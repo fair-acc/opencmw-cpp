@@ -7,7 +7,7 @@
 #include <TimingCtx.hpp>
 
 #include <catch2/catch.hpp>
-#include <fmt/format.h>
+#include <format>
 #include <refl.hpp>
 
 #include <exception>
@@ -89,7 +89,7 @@ struct TestHandler {
 
         const auto it = _entries.find(request.id);
         if (it == _entries.end()) {
-            throw std::invalid_argument(fmt::format("Address entry with ID '{}' not found", request.id));
+            throw std::invalid_argument(std::format("Address entry with ID '{}' not found", request.id));
         }
         output = it->second;
     }
@@ -213,7 +213,7 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
         request.clientRequestID = IoBuffer("1");
         request.topic           = mdp::Message::URI("/addressbook?ctx=FAIR.SELECTOR.ALL;contentType=application/json");
         request.data            = IoBuffer("{ \"id\": 42 }");
-        const auto body         = fmt::format("RBAC={},1234", role);
+        const auto body         = std::format("RBAC={},1234", role);
         request.rbac            = IoBuffer(body.data(), body.size());
         client.send(std::move(request));
 
@@ -222,7 +222,7 @@ TEST_CASE("MajordomoWorker test using raw messages", "[majordomo][majordomoworke
         REQUIRE(reply->command == mdp::Command::Final);
         REQUIRE(reply->serviceName == "/addressbook");
         REQUIRE(reply->clientRequestID.asString() == "1");
-        REQUIRE(reply->error == fmt::format("GET access denied to role '{}'", role));
+        REQUIRE(reply->error == std::format("GET access denied to role '{}'", role));
         REQUIRE(reply->data.asString() == "");
     }
 

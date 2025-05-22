@@ -3,9 +3,9 @@ add_library(disruptor INTERFACE)
 target_include_directories(disruptor INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
                                                $<INSTALL_INTERFACE:include/>)
 if(EMSCRIPTEN)
-  target_link_libraries(disruptor INTERFACE $<BUILD_INTERFACE:fmt::fmt-header-only> core pthread)
+  target_link_libraries(disruptor INTERFACE core pthread)
 else()
-  target_link_libraries(disruptor INTERFACE $<BUILD_INTERFACE:fmt::fmt-header-only> core pthread)
+  target_link_libraries(disruptor INTERFACE core pthread)
 endif()
 
 install(

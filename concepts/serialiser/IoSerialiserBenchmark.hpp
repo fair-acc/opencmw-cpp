@@ -1,5 +1,5 @@
 #pragma clang diagnostic push
-#pragma ide diagnostic   ignored "cppcoreguidelines-avoid-magic-numbers"
+#pragma ide diagnostic ignored "cppcoreguidelines-avoid-magic-numbers"
 #ifndef OPENCMW_CPP_IOCLASSSERIALISERBENCHMARK_H
 #define OPENCMW_CPP_IOCLASSSERIALISERBENCHMARK_H
 
@@ -198,7 +198,7 @@ struct TestDataClass {
             // allocate 1-dim arrays
             boolArray.resize(static_cast<std::size_t>(nSizePrimitives));
             std::generate(boolArray.begin(), boolArray.end(), []() { static int i=0; return (i++)%2==0; });
-            // std::cerr << fmt::format("bool array size {} - sizeof() = {} vs {}\n", boolArray.size(), sizeof(boolArray[0]), sizeof(bool));
+            // std::cerr << std::format("bool array size {} - sizeof() = {} vs {}\n", boolArray.size(), sizeof(boolArray[0]), sizeof(bool));
 
             byteArray.resize(static_cast<std::size_t>(nSizePrimitives));
             std::generate(byteArray.begin(), byteArray.end(), []() { static int i=1; return (i++)%127; });
@@ -221,7 +221,7 @@ struct TestDataClass {
             const int nMultiDim = nDimensions[0] * nDimensions[1] * nDimensions[2];
             boolNdimArray.resize(static_cast<std::size_t>(nMultiDim));
             std::generate(boolNdimArray.begin(), boolNdimArray.end(), []() { static int i=0; return (i++)%2==0; });
-            // std::cerr << fmt::format("bool array size {} - sizeof() = {} vs {}\n", boolNdimArray.size(), sizeof(boolNdimArray[0]), sizeof(bool));
+            // std::cerr << std::format("bool array size {} - sizeof() = {} vs {}\n", boolNdimArray.size(), sizeof(boolNdimArray[0]), sizeof(bool));
 
             byteNdimArray.resize(static_cast<std::size_t>(nMultiDim));
             std::generate(byteNdimArray.begin(), byteNdimArray.end(), []() { static int i=1; return (i++)%127; });
@@ -284,12 +284,12 @@ std::size_t checkSerialiserIdentity(IoBuffer &buffer, const T &inputObject, T &o
 std::string humanReadableByteCount(long bytes, const bool si = true) {
     const int unit = si ? 1000 : 1024;
     if (bytes < unit) {
-        return fmt::format("{} B", bytes);
+        return std::format("{} B", bytes);
     }
 
     const int  exp = static_cast<int>((log(static_cast<double>(bytes)) / log(unit)));
     const char pre = (si ? "kMGTPE" : "KMGTPE")[exp - 1];
-    return fmt::format("{:.1f} {}{}B", static_cast<double>(bytes) / pow(unit, exp), pre, (si ? "" : "i"));
+    return std::format("{:.1f} {}{}B", static_cast<double>(bytes) / pow(unit, exp), pre, (si ? "" : "i"));
 }
 
 template<SerialiserProtocol protocol, ProtocolCheck protocolCheck, ReflectableClass T>
@@ -336,7 +336,7 @@ template<SerialiserProtocol protocol, ProtocolCheck protocolCheck, ReflectableCl
         // JMH use-case
         return static_cast<long>(bytesPerSecond);
     }
-    std::cout << fmt::format("IO Serializer (POCO, {}, {}) throughput = {}/s for {} per test run (took {:0.1f} ms)\n",
+    std::cout << std::format("IO Serializer (POCO, {}, {}) throughput = {}/s for {} per test run (took {:0.1f} ms)\n",
             protocol::protocolName(), protocolCheck,
             humanReadableByteCount(static_cast<long>(bytesPerSecond), true),
             humanReadableByteCount(static_cast<long>(buffer.size()), true), 1e3 * diffSeconds);

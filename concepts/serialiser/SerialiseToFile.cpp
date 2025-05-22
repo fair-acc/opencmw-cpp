@@ -49,5 +49,5 @@ int main() {
     } catch (...) {
         std::cout << "caught unknown exception " << std::endl;
     }
-    std::cout << fmt::format("finished simple serialise-deserialise identity -- IoBbuffer required {} bytes\n", buffer.size());
+    std::cout << std::format("finished simple serialise-deserialise identity -- IoBbuffer required {} bytes\n", buffer.size());
 }

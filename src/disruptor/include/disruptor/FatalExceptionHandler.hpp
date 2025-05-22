@@ -24,7 +24,7 @@ public:
      * \param evt event being processed when the exception occurred.
      */
     void handleEventException(const std::exception &ex, std::int64_t sequence, T & /*evt*/) override {
-        auto message = fmt::format("Exception processing sequence {} for event {}: {}", sequence, typeName<T>, ex.what());
+        auto message = std::format("Exception processing sequence {} for event {}: {}", sequence, typeName<T>, ex.what());
         throw WrappedException(ex, message);
     }
 
@@ -34,7 +34,7 @@ public:
      * \param ex ex throw during the starting process.
      */
     void handleOnStartException(const std::exception &ex) override {
-        auto message = fmt::format("Exception during OnStart(): {}", ex.what());
+        auto message = std::format("Exception during OnStart(): {}", ex.what());
         throw WrappedException(ex, message);
     }
 
@@ -44,7 +44,7 @@ public:
      * \param ex ex throw during the shutdown process.
      */
     void handleOnShutdownException(const std::exception &ex) override {
-        auto message = fmt::format("Exception during OnShutdown(): {}", ex.what());
+        auto message = std::format("Exception during OnShutdown(): {}", ex.what());
         throw WrappedException(ex, message);
     }
 
@@ -55,7 +55,7 @@ public:
      * \param sequence sequence of the event which cause the exception.
      */
     void handleOnTimeoutException(const std::exception &ex, std::int64_t sequence) override {
-        auto message = fmt::format("Exception during OnTimeout() processing sequence {} for event {}: {}", sequence, typeName<T>, ex.what());
+        auto message = std::format("Exception during OnTimeout() processing sequence {} for event {}: {}", sequence, typeName<T>, ex.what());
         throw WrappedException(ex, message);
     }
 };

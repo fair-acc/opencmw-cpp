@@ -38,27 +38,27 @@ template<SerialiserProtocol protocol>
     TestDataClass data(10, 10, 0);
     TestDataClass data2;
     data2.byte1 = 30;
-    fmt::print("IoSerialiserBenchmark - {} - check identity - nBytes = {}\n", protocol::protocolName(), checkSerialiserIdentity<protocol>(buffer, data, data2));
+    std::print("IoSerialiserBenchmark - {} - check identity - nBytes = {}\n", protocol::protocolName(), checkSerialiserIdentity<protocol>(buffer, data, data2));
 
     constexpr auto mean = [](ArrayOrVector auto const &v) { return std::accumulate(v.begin(), v.end(), 0.0) / static_cast<double>(v.size()); };
     constexpr auto rms  = [](ArrayOrVector auto const &v, double m) { return std::sqrt(std::inner_product(v.begin(), v.end(), v.begin(), 0.0) / static_cast<double>(v.size()) - m * m); };
 
     TestDataClass  testData(1000, 0); // numeric heavy data <-> equivalent to Java benchmark
-    fmt::print("{} performance with strong checks (exceptions if necessary):\n", protocol::protocolName());
+    std::print("{} performance with strong checks (exceptions if necessary):\n", protocol::protocolName());
     std::vector<double> values;
     for (int i = 0; i < 10; i++) {
         values.emplace_back(testPerformancePoco<protocol, ProtocolCheck::ALWAYS>(buffer, testData, data2, nIterations));
     }
     results.emplace_back(std::tuple(protocol::protocolName(), mean(values), rms(values, mean(values))));
 
-    fmt::print("{} performance with lenient checks (collect exceptions);\n", protocol::protocolName());
+    std::print("{} performance with lenient checks (collect exceptions);\n", protocol::protocolName());
     values.clear();
     for (int i = 0; i < 10; i++) {
         values.emplace_back(testPerformancePoco<protocol, ProtocolCheck::LENIENT>(buffer, testData, data2, nIterations));
     }
     results.emplace_back(std::tuple(protocol::protocolName(), mean(values), rms(values, mean(values))));
 
-    fmt::print("{} performance without checks:\n", protocol::protocolName());
+    std::print("{} performance without checks:\n", protocol::protocolName());
     values.clear();
     for (int i = 0; i < 10; i++) {
         values.emplace_back(testPerformancePoco<protocol, ProtocolCheck::IGNORE>(buffer, testData, data2, nIterations));
@@ -77,12 +77,12 @@ int main() {
     results.emplace_back(runTests<CmwLight>(100'000));
 
     constexpr int columWidth = 10;
-    fmt::print("┌{2:─^{0}}┬{3:─^{1}}┬{4:─^{1}}┬{5:─^{1}}┐\n", columWidth, 2 * columWidth + 3, "protocol", "ALWAYS", "LENIENT", "IGNORE");
+    std::print("┌{2:─^{0}}┬{3:─^{1}}┬{4:─^{1}}┬{5:─^{1}}┐\n", columWidth, 2 * columWidth + 3, "protocol", "ALWAYS", "LENIENT", "IGNORE");
     for (const auto &result : results) {
-        fmt::print("│{1: ^{0}}│{2:>{0}} ± {3:>{0}}│{4:>{0}} ± {5:>{0}}│{6:>{0}} ± {7:>{0}}│\n", columWidth, std::get<0>(result[0]),
+        std::print("│{1: ^{0}}│{2:>{0}} ± {3:>{0}}│{4:>{0}} ± {5:>{0}}│{6:>{0}} ± {7:>{0}}│\n", columWidth, std::get<0>(result[0]),
                 humanReadableByteCount(std::get<1>(result[0])) + "/s", humanReadableByteCount(std::get<2>(result[0])) + "/s",
                 humanReadableByteCount(std::get<1>(result[1])) + "/s", humanReadableByteCount(std::get<2>(result[1])) + "/s",
                 humanReadableByteCount(std::get<1>(result[2])) + "/s", humanReadableByteCount(std::get<2>(result[2])) + "/s");
     }
-    fmt::print("└{2:─^{0}}┴{3:─^{1}}┴{4:─^{1}}┴{5:─^{1}}┘\n", columWidth, 2 * columWidth + 3, "", "", "", "");
+    std::print("└{2:─^{0}}┴{3:─^{1}}┴{4:─^{1}}┴{5:─^{1}}┘\n", columWidth, 2 * columWidth + 3, "", "", "", "");
 }

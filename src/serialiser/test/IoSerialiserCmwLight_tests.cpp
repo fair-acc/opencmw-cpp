@@ -1,13 +1,15 @@
 #pragma clang diagnostic push
-#pragma ide diagnostic   ignored "LoopDoesntUseConditionVariableInspection"
-#pragma ide diagnostic   ignored "cppcoreguidelines-avoid-magic-numbers"
+#pragma ide diagnostic ignored "LoopDoesntUseConditionVariableInspection"
+#pragma ide diagnostic ignored "cppcoreguidelines-avoid-magic-numbers"
 #include <catch2/catch.hpp>
 
 #include <iostream>
 #include <string_view>
 
 #include <Debug.hpp>
+#include <Formatter.hpp>
 #include <IoSerialiserCmwLight.hpp>
+#include <opencmw.hpp>
 
 using namespace std::literals;
 
@@ -46,7 +48,7 @@ TEST_CASE("IoClassSerialiserCmwLight simple test", "[IoClassSerialiser]") {
         debug::Timer timer("IoClassSerialiser basic syntax", 30);
 
         IoBuffer     buffer;
-        std::cout << fmt::format("buffer size (before): {} bytes\n", buffer.size());
+        std::cout << std::format("buffer size (before): {} bytes\n", buffer.size());
 
         SimpleTestData data{
             .a   = 30,
@@ -78,11 +80,11 @@ TEST_CASE("IoClassSerialiserCmwLight simple test", "[IoClassSerialiser]") {
         SimpleTestData data2;
         REQUIRE(data != data2);
         std::cout << "object (short): " << ClassInfoShort << data << '\n';
-        std::cout << fmt::format("object (fmt): {}\n", data);
+        std::cout << std::format("object (std::format): {}\n", data);
         std::cout << "object (long):  " << ClassInfoVerbose << data << '\n';
 
         opencmw::serialise<opencmw::CmwLight>(buffer, data);
-        std::cout << fmt::format("buffer size (after): {} bytes\n", buffer.size());
+        std::cout << std::format("buffer size (after): {} bytes\n", buffer.size());
 
         buffer.put("a\0df"sv); // add some garbage after the serialised object to check if it is handled correctly
 
@@ -131,7 +133,7 @@ TEST_CASE("IoClassSerialiserCmwLight missing field", "[IoClassSerialiser]") {
         debug::Timer timer("IoClassSerialiser basic syntax", 30);
 
         IoBuffer     buffer;
-        std::cout << fmt::format("buffer size (before): {} bytes\n", buffer.size());
+        std::cout << std::format("buffer size (before): {} bytes\n", buffer.size());
 
         SimpleTestData data{
             .a   = 30,
@@ -145,11 +147,11 @@ TEST_CASE("IoClassSerialiserCmwLight missing field", "[IoClassSerialiser]") {
             .f   = { "four", "six" }
         };
         SimpleTestDataMoreFields data2;
-        std::cout << fmt::format("object (fmt): {}\n", data);
+        std::cout << std::format("object (std::format): {}\n", data);
         opencmw::serialise<opencmw::CmwLight>(buffer, data);
         buffer.reset();
         auto result = opencmw::deserialise<opencmw::CmwLight, ProtocolCheck::LENIENT>(buffer, data2);
-        std::cout << fmt::format("deserialised object (fmt): {}\n", data2);
+        std::cout << std::format("deserialised object (std::format): {}\n", data2);
         std::cout << "deserialisation messages: " << result << std::endl;
         REQUIRE(result.setFields["root"] == std::vector<bool>{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1 });
         REQUIRE(result.additionalFields.empty());
@@ -160,7 +162,7 @@ TEST_CASE("IoClassSerialiserCmwLight missing field", "[IoClassSerialiser]") {
         opencmw::serialise<opencmw::CmwLight>(buffer, data2);
         buffer.reset();
         auto result_back = opencmw::deserialise<opencmw::CmwLight, ProtocolCheck::LENIENT>(buffer, data);
-        std::cout << fmt::format("deserialised object (fmt): {}\n", data);
+        std::cout << std::format("deserialised object (std::format): {}\n", data);
         std::cout << "deserialisation messages: " << result_back << std::endl;
         REQUIRE(result_back.setFields["root"] == std::vector<bool>{ 1, 1, 1, 1, 1, 1, 1, 1, 0, 1 });
         REQUIRE(result_back.additionalFields.size() == 8);

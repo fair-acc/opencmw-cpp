@@ -1,6 +1,7 @@
 #include <cassert>
 #include <chrono>
-#include <fmt/format.h>
+#include <format>
+#include <print>
 
 #include <collection.hpp>
 
@@ -44,5 +45,5 @@ int main() {
     }
 
     std::chrono::duration<double, std::milli> time_elapsed = std::chrono::system_clock::now() - time_start;
-    fmt::print("push_back and visit (fixed types): {} milliseconds or {} ops/s\n", time_elapsed.count(), (1000 * nRepetitions / time_elapsed.count()));
+    std::print("push_back and visit (fixed types): {} milliseconds or {} ops/s\n", time_elapsed.count(), (1000 * nRepetitions / time_elapsed.count()));
 }

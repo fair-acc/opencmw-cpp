@@ -13,12 +13,13 @@
 #include <unordered_map>
 #include <utility>
 
-#include <fmt/core.h>
+#include <format>
 
 #include "Rbac.hpp"
 #include "Topic.hpp"
 #include "URI.hpp"
 
+#include <Formatter.hpp>
 #include <MdpMessage.hpp>
 #include <opencmw.hpp>
 
@@ -56,7 +57,7 @@ inline std::string uriAsString(const URI<RELAXED> &uri) {
 } // namespace opencmw::majordomo::detail
 
 template<>
-struct fmt::formatter<opencmw::majordomo::detail::DnsServiceItem> {
+struct std::formatter<opencmw::majordomo::detail::DnsServiceItem> {
     template<typename ParseContext>
     constexpr auto parse(ParseContext &ctx) {
         return ctx.begin();
@@ -65,14 +66,14 @@ struct fmt::formatter<opencmw::majordomo::detail::DnsServiceItem> {
     template<typename FormatContext>
     auto format(const opencmw::majordomo::detail::DnsServiceItem &v, FormatContext &ctx) const {
 #if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
-        return fmt::format_to(ctx.out(), "[{}: {}]", v.serviceName, fmt::join(v.uris | std::views::transform(opencmw::majordomo::detail::uriAsString), ","));
+        return std::format_to(ctx.out(), "[{}: {}]", v.serviceName, opencmw::join(v.uris | std::views::transform(opencmw::majordomo::detail::uriAsString), ","));
 #else
         std::vector<std::string> uris{};
         uris.reserve(v.uris.size());
         for (auto &uri : v.uris) {
             uris.emplace_back(opencmw::majordomo::detail::uriAsString(uri));
         }
-        return fmt::format_to(ctx.out(), "[{}: {}]", v.serviceName, fmt::join(uris, ","));
+        return std::format_to(ctx.out(), "[{}: {}]", v.serviceName, opencmw::join(uris, ","));
 #endif
     }
 };
@@ -139,7 +140,7 @@ inline std::string findDnsEntry(std::string_view brokerName, std::unordered_map<
     const auto queryScheme              = query.scheme();
     const auto queryPath                = query.path().value_or("");
     const auto strippedQueryPath        = stripStart(queryPath, "/");
-    const auto stripStartFromSearchPath = strippedQueryPath.starts_with("/mmi.") ? fmt::format("/{}", brokerName) : "/"; // crop initial broker name for broker-specific MMI services
+    const auto stripStartFromSearchPath = strippedQueryPath.starts_with("/mmi.") ? std::format("/{}", brokerName) : "/"; // crop initial broker name for broker-specific MMI services
 
     const auto entryMatches             = [&queryScheme, &strippedQueryPath, &stripStartFromSearchPath](const auto &dnsEntry) {
         if (queryScheme && !iequal(dnsEntry.scheme().value_or(""), *queryScheme)) {
@@ -168,7 +169,7 @@ inline std::string findDnsEntry(std::string_view brokerName, std::unordered_map<
     std::sort(results.begin(), results.end());
 
     using namespace std::literals;
-    return fmt::format("[{}: {}]", s, fmt::join(results.empty() ? std::vector{ "null"s } : results, ","));
+    return std::format("[{}: {}]", s, opencmw::join(results.empty() ? std::vector{ "null"s } : results, ","));
 }
 
 } // namespace detail
@@ -311,7 +312,7 @@ public:
                 }
                 std::sort(entries.begin(), entries.end(), [](auto &a, auto &b) {return a.serviceName < b.serviceName;});
 #endif
-                reply = fmt::format("{}", fmt::join(entries, ","));
+                reply = std::format("{}", opencmw::join(entries, ","));
             } else {
                 // TODO std::views::split seems to have issues in GCC 11, maybe switch to views::split/transform
                 // once it works with our then supported compilers
@@ -322,7 +323,7 @@ public:
                     return detail::findDnsEntry(brokerName, _dnsCache, detail::trimmed(v));
                 });
 
-                reply = fmt::format("{}", fmt::join(results, ","));
+                reply = std::format("{}", opencmw::join(results, ","));
             }
 
             message.data = IoBuffer(reply.data(), reply.size());
@@ -347,7 +348,7 @@ public:
                 std::sort(keys.begin(), keys.end());
 #endif
 
-                auto body    = fmt::format("{}", fmt::join(keys, ","));
+                auto body    = std::format("{}", opencmw::join(keys, ","));
                 message.data = IoBuffer(body.data(), body.size());
                 return message;
             }
@@ -366,7 +367,7 @@ public:
                 message.error.clear();
             } else {
                 message.data  = IoBuffer();
-                message.error = fmt::format("Requested invalid service '{}'", serviceName);
+                message.error = std::format("Requested invalid service '{}'", serviceName);
             }
             return message;
         });
@@ -769,7 +770,7 @@ private:
             reply.command = mdp::Command::Final;
             reply.topic   = INTERNAL_SERVICE_NAMES_URI;
             reply.data.clear();
-            reply.error = fmt::format("unknown service (error 501): '{}'", reply.serviceName);
+            reply.error = std::format("unknown service (error 501): '{}'", reply.serviceName);
             reply.rbac  = _rbac;
 
             zmq::send(std::move(reply), client.socket).assertSuccess();
@@ -950,7 +951,7 @@ private:
     void registerNewService(std::string_view serviceName) {
         for (const auto &dnsAddress : _dnsAddresses) {
             auto       ready   = createDnsReadyMessage();
-            const auto address = fmt::format("{}/{}", dnsAddress, detail::stripStart(serviceName, "/"));
+            const auto address = std::format("{}/{}", dnsAddress, detail::stripStart(serviceName, "/"));
             // TODO use URI factory?
             ready.topic = mdp::Message::URI(address);
             registerWithDnsServices(std::move(ready));

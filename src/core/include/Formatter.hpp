@@ -1,0 +1,80 @@
+#ifndef OPENCMW_CPP_FORMATTER_HPP
+#define OPENCMW_CPP_FORMATTER_HPP
+
+#include <format>
+
+namespace opencmw {
+
+template<typename R>
+concept FormattableRange = std::ranges::range<R> && !std::same_as<std::remove_cvref_t<R>, std::string> && !std::same_as<std::remove_cvref_t<R>, std::string_view> && !std::is_array_v<std::remove_cvref_t<R>> && std::formattable<std::ranges::range_value_t<R>, char>;
+
+template<std::ranges::input_range R>
+    requires std::formattable<std::ranges::range_value_t<R>, char>
+std::string join(const R &range, std::string_view sep = ", ") {
+    std::string out;
+    auto        it  = std::ranges::begin(range);
+    const auto  end = std::ranges::end(range);
+    if (it != end) {
+        out += std::format("{}", *it);
+        while (++it != end) {
+            out += std::format("{}{}", sep, *it);
+        }
+    }
+    return out;
+}
+
+} // namespace opencmw
+
+template<opencmw::FormattableRange R>
+struct std::formatter<R, char> {
+    char           separator = ',';
+
+    constexpr auto parse(std::format_parse_context &ctx) { return ctx.begin(); }
+
+    template<typename FormatContext>
+    auto format(const R &range, FormatContext &ctx) const {
+        auto out = ctx.out();
+        std::format_to(out, "[");
+        bool first = true;
+
+        for (const auto &val : range) {
+            if (!first) {
+                std::format_to(out, "{} ", separator);
+            } else {
+                first = false;
+            }
+            std::format_to(out, "{}", val);
+        }
+
+        return std::format_to(out, "]");
+    }
+};
+
+template<class T>
+struct std::formatter<std::optional<T>> {
+    std::formatter<T> value_formatter;
+
+    constexpr auto    parse(format_parse_context &ctx) {
+        return value_formatter.parse(ctx);
+    }
+
+    template<class FormatContext>
+    auto format(std::optional<T> const &opt, FormatContext &ctx) const {
+        if (opt.has_value()) {
+            return value_formatter.format(opt.value(), ctx);
+        }
+        return std::format_to(ctx.out(), "nullopt");
+    }
+};
+
+template<typename T1, typename T2>
+struct std::formatter<std::pair<T1, T2>, char> {
+    constexpr auto parse(std::format_parse_context &ctx) { return ctx.begin(); }
+
+    template<typename FormatContext>
+    auto format(const std::pair<T1, T2> &p, FormatContext &ctx) const {
+        return std::format_to(ctx.out(), "({}, {})", p.first, p.second);
+    }
+};
+
+#endif // OPENCMW_CPP_FORMATTER_HPP

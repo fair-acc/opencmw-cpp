@@ -1,16 +1,17 @@
 #ifndef OPENCMW_IOBUFFER_H
 #define OPENCMW_IOBUFFER_H
 #pragma clang diagnostic push
-#pragma ide diagnostic   ignored "cppcoreguidelines-owning-memory"
-#pragma ide diagnostic   ignored "UnreachableCode" // -- allow for alternate non-c-style memory management
+#pragma ide diagnostic ignored "cppcoreguidelines-owning-memory"
+#pragma ide diagnostic ignored "UnreachableCode" // -- allow for alternate non-c-style memory management
 
 #include "MultiArray.hpp"
 #include "opencmw.hpp"
 
-#include <fmt/format.h>
+#include <format>
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cassert>
 #include <cstdint>
 #if defined(_LIBCPP_VERSION) and _LIBCPP_VERSION < 16000
@@ -246,13 +247,13 @@ public:
 
     [[nodiscard]] explicit IoBuffer(std::span<uint8_t> data, bool owning)
         : IoBuffer(data, Allocator(owning ? ThrowingAllocator::defaultOwning()
-                                          : ThrowingAllocator::defaultNonOwning())){};
+                                          : ThrowingAllocator::defaultNonOwning())) {};
 
     [[nodiscard]] explicit IoBuffer(uint8_t *data, std::size_t size, Allocator allocator = ThrowingAllocator::defaultNonOwning())
-        : IoBuffer({ data, size }, allocator){};
+        : IoBuffer({ data, size }, allocator) {};
 
     [[nodiscard]] explicit IoBuffer(uint8_t *data, std::size_t size, bool owning)
-        : IoBuffer({ data, size }, Allocator(owning ? ThrowingAllocator::defaultOwning() : ThrowingAllocator::defaultNonOwning())){};
+        : IoBuffer({ data, size }, Allocator(owning ? ThrowingAllocator::defaultOwning() : ThrowingAllocator::defaultNonOwning())) {};
 
     [[nodiscard]] IoBuffer(const IoBuffer &other) noexcept
         : IoBuffer(other._capacity, other._allocator.select_on_container_copy_construction()) {
@@ -310,7 +311,7 @@ public:
     forceinline constexpr void skip(int bytes) noexcept(!checkRange) {
         if constexpr (checkRange) {
             if (_position + static_cast<std::size_t>(bytes) > size()) { // catches both over and underflow
-                throw std::out_of_range(fmt::format("requested index {} is out-of-range [0,{}]", static_cast<std::ptrdiff_t>(_position) + bytes, _size));
+                throw std::out_of_range(std::format("requested index {} is out-of-range [0,{}]", static_cast<std::ptrdiff_t>(_position) + bytes, _size));
             }
         }
         _position += static_cast<std::size_t>(bytes);
@@ -320,7 +321,7 @@ public:
     forceinline constexpr R &at(const size_t index) noexcept(!checkRange) {
         if constexpr (checkRange) {
             if (index >= _size) {
-                throw std::out_of_range(fmt::format("requested index {} is out-of-range [0,{}]", index, _size));
+                throw std::out_of_range(std::format("requested index {} is out-of-range [0,{}]", index, _size));
             }
         }
         return *(reinterpret_cast<R *>(_buffer + index));
@@ -396,10 +397,10 @@ public:
         const auto unsigned_size = static_cast<std::size_t>(requestedSize);
         if constexpr (checkRange) {
             if (index > _size) {
-                throw std::out_of_range(fmt::format("requested index {} is out-of-range [0,{}]", index, _size));
+                throw std::out_of_range(std::format("requested index {} is out-of-range [0,{}]", index, _size));
             }
             if (requestedSize >= 0 && (index + unsigned_size) > _size) {
-                throw std::out_of_range(fmt::format("requestedSize {} is out-of-range {} -> [0,{}]", requestedSize, index, index + unsigned_size, _size));
+                throw std::out_of_range(std::format("requestedSize {} is out-of-range {} -> [0,{}]", requestedSize, index, index + unsigned_size, _size));
             }
         }
         if (requestedSize < 0) {
@@ -436,7 +437,7 @@ public:
         } else if constexpr (opencmw::is_array<Container>) {
             if constexpr (checkRange) {
                 if (std::tuple_size_v<Container> < minArraySize) {
-                    throw std::out_of_range(fmt::format("std::array<SupportedType, size = {}> wire-format size does not match design {}", std::tuple_size_v<Container>, minArraySize));
+                    throw std::out_of_range(std::format("std::array<SupportedType, size = {}> wire-format size does not match design {}", std::tuple_size_v<Container>, minArraySize));
                 }
             }
             assert(std::tuple_size_v<Container> >= minArraySize && "std::array<SupportedType, size> wire-format size does not match design");
@@ -468,7 +469,7 @@ public:
 } // namespace opencmw
 
 template<>
-struct fmt::formatter<opencmw::IoBuffer> {
+struct std::formatter<opencmw::IoBuffer> {
     template<typename ParseContext>
     constexpr auto parse(ParseContext &ctx) {
         return ctx.begin(); // not (yet) implemented
@@ -476,7 +477,7 @@ struct fmt::formatter<opencmw::IoBuffer> {
 
     template<typename FormatContext>
     auto format(const opencmw::IoBuffer &v, FormatContext &ctx) const {
-        return fmt::format_to(ctx.out(), "{}", v.asString());
+        return std::format_to(ctx.out(), "{}", v.asString());
     }
 };
 

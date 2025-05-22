@@ -166,7 +166,7 @@ TEST_CASE("TimingCtx benchmark", "[TimingCtx][benchmark]") {
         }
     }
 
-    std::cout << fmt::format("Total iterations: {}; Parsed: {}, matches() calls: {}; matched: {}\n", totalIterations, totalIterations * 2, totalIterations, matchCount);
+    std::cout << std::format("Total iterations: {}; Parsed: {}, matches() calls: {}; matched: {}\n", totalIterations, totalIterations * 2, totalIterations, matchCount);
 }
 
 TEST_CASE("TimingCtx operators", "[TimingCtx][operators]") {

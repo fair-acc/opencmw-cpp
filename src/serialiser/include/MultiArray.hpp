@@ -5,8 +5,9 @@
 #include <iostream>
 #include <vector>
 
-#include <fmt/color.h>
-#include <fmt/format.h>
+#include <format>
+#include <Formatter.hpp>
+#include <print>
 
 #include <opencmw.hpp>
 
@@ -296,15 +297,15 @@ public:
 };
 
 template<typename T, uint32_t N>
-inline const std::string &typeName<MultiArray<T, N>> = fmt::format("MultiArray<{},{}>", opencmw::typeName<T>, N);
+inline const std::string &typeName<MultiArray<T, N>> = std::format("MultiArray<{},{}>", opencmw::typeName<T>, N);
 template<typename T, uint32_t N>
-inline const std::string &typeName<MultiArray<T, N> const> = fmt::format("MultiArray<{},{}> const", opencmw::typeName<T>, N);
+inline const std::string &typeName<MultiArray<T, N> const> = std::format("MultiArray<{},{}> const", opencmw::typeName<T>, N);
 
 template<typename T, uint32_t n_dims>
 constexpr std::ostream &operator<<(std::ostream &output, const MultiArray<T, n_dims> &array) {
     using namespace opencmw;
-    // return output << fmt::format("{{dim[{}]:{}, data[{}]:{}}}", n_dims, array.dimensions(), array.element_count(), array.elements()); // does not work
-    return output << fmt::format("{{dim[{}]:{}, data[{}]:data display not implemented}}", n_dims, array.dimensions(), array.element_count()); // does not work
+    // return output << std::format("{{dim[{}]:{}, data[{}]:{}}}", n_dims, array.dimensions(), array.element_count(), array.elements()); // does not work
+    return output << std::format("{{dim[{}]:{}, data[{}]:data display not implemented}}", n_dims, opencmw::join(array.dimensions()), array.element_count()); // does not work
 }
 
 // MultiArrayView -> uses data from Multi Array, but with different layout/number of dimensions -> can represent slices and sampled down views of the data
@@ -331,7 +332,7 @@ concept MultiArrayType = is_multi_array<T>;
 } // namespace opencmw
 
 template<opencmw::MultiArrayType multiArrayType>
-struct fmt::formatter<multiArrayType> {
+struct std::formatter<multiArrayType> {
     template<typename ParseContext>
     constexpr auto parse(ParseContext &ctx) {
         return ctx.begin();
@@ -339,7 +340,7 @@ struct fmt::formatter<multiArrayType> {
 
     template<typename FormatContext>
     auto format(multiArrayType const &value, FormatContext &ctx) const {
-        return fmt::format_to(ctx.out(), "MultiArray[{}]: [{}]", value.dimensions(), value.elements());
+        return std::format_to(ctx.out(), "MultiArray[{}]: [{}]", opencmw::join(value.dimensions()), opencmw::join(value.elements()));
     }
 };
 

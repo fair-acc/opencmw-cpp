@@ -7,7 +7,7 @@
 
 #include <Filters.hpp>
 
-#include <fmt/format.h>
+#include <format>
 
 #include <refl.hpp>
 
@@ -65,7 +65,7 @@ struct QuerySerialiser<bool> {
 
     inline static void deserialise(const std::optional<std::string> &maybeStr, bool &v) {
         if (maybeStr && *maybeStr != "true" && *maybeStr != "false") {
-            throw std::invalid_argument(fmt::format("Invalid boolean value '{}'", *maybeStr));
+            throw std::invalid_argument(std::format("Invalid boolean value '{}'", *maybeStr));
         }
 
         v = !maybeStr || *maybeStr == "true";
@@ -86,7 +86,7 @@ struct QuerySerialiser<T> {
         }
 
         if (const auto rc = parseNumber(maybeStr.value(), v); rc == std::errc::invalid_argument) {
-            throw std::invalid_argument(fmt::format("Cannot parse as number '{}'", *maybeStr));
+            throw std::invalid_argument(std::format("Cannot parse as number '{}'", *maybeStr));
         }
     }
 };

@@ -64,7 +64,7 @@ public:
             std::vector<zmq_pollitem_t> &pollItems,
             const timeUnit               timeout  = 1s,
             std::string                  clientId = "")
-        : _clientTimeout(timeout), _context(context), _clientId(std::move(clientId)), _sourceName(fmt::format("OpenCmwClient(clientId: {})", _clientId)), _pollItems(pollItems) {}
+        : _clientTimeout(timeout), _context(context), _clientId(std::move(clientId)), _sourceName(std::format("OpenCmwClient(clientId: {})", _clientId)), _pollItems(pollItems) {}
 
     void connect(const URI<STRICT> &uri) {
         auto con = detail::Connection(_context, uri.authority().value(), ZMQ_DEALER);
@@ -208,7 +208,7 @@ class SubscriptionClient : public MDClientBase {
 
 public:
     explicit SubscriptionClient(const zmq::Context &context, std::vector<zmq_pollitem_t> &pollItems, const timeUnit timeout = 1s, std::string clientId = "")
-        : _clientTimeout(timeout), _context(context), _clientId(std::move(clientId)), _sourceName(fmt::format("OpenCmwClient(clientId: {})", _clientId)), _pollItems(pollItems) {}
+        : _clientTimeout(timeout), _context(context), _clientId(std::move(clientId)), _sourceName(std::format("OpenCmwClient(clientId: {})", _clientId)), _pollItems(pollItems) {}
 
     void connect(const URI<STRICT> &uri) {
         auto con = detail::Connection(_context, uri.authority().value(), ZMQ_SUB);

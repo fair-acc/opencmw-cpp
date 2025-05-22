@@ -1,6 +1,8 @@
 #include <array>
+#include <Formatter.hpp>
 #include <iostream>
 #include <memory>
+#include <opencmw.hpp>
 
 #include <IoSerialiserJson.hpp>
 
@@ -42,7 +44,7 @@ int main() {
     auto result = opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buffer, bar);
     opencmw::diffView(std::cout, foo, bar); // foo and bar should be the same here
 
-    fmt::print(std::cout, "deserialisation finished: {}\n", result);
+    std::print(std::cout, "deserialisation finished: {}\n", result);
     opencmw::IoBuffer buffer2;
     opencmw::serialise<opencmw::Json>(buffer2, foo);
     std::cout << "serialised (again): " << buffer2.asString() << std::endl;

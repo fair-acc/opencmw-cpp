@@ -6,7 +6,8 @@
 #include <majordomo/MockClient.hpp>
 #include <majordomo/Worker.hpp>
 
-#include <fmt/format.h>
+#include <format>
+#include <print>
 
 using opencmw::IoBuffer;
 using opencmw::majordomo::RequestContext;
@@ -30,7 +31,7 @@ public:
             if (it != _properties.end()) {
                 context.reply.data = IoBuffer(it->second.data(), it->second.size());
             } else {
-                context.reply.error = fmt::format("Unknown property '{}'", property);
+                context.reply.error = std::format("Unknown property '{}'", property);
             }
             return;
         }
@@ -46,7 +47,7 @@ public:
 
             _properties[std::string(property)] = value;
 
-            const auto body                    = fmt::format("Property '{}' set to value '{}'", property, value);
+            const auto body                    = std::format("Property '{}' set to value '{}'", property, value);
 
             std::cout << body << std::endl;
 
@@ -63,7 +64,7 @@ static URI parseUriOrExit(std::string str) {
     try {
         return URI(str);
     } catch (const opencmw::URISyntaxException &e) {
-        std::cerr << fmt::format("'{}' is not a valid URI: {}\n", str, e.what());
+        std::cerr << std::format("'{}' is not a valid URI: {}\n", str, e.what());
         std::terminate();
     }
 }
@@ -105,20 +106,20 @@ int main(int argc, char **argv) {
         auto       broker        = Broker("/test_broker", testSettings());
         const auto routerAddress = broker.bind(routerEndpoint);
         if (!routerAddress) {
-            std::cerr << fmt::format("Could not bind to '{}'\n", routerEndpoint);
+            std::cerr << std::format("Could not bind to '{}'\n", routerEndpoint);
             return 1;
         }
 
         if (!pubEndpoint) {
-            std::cout << fmt::format("Listening to '{}' (ROUTER)\n", *routerAddress);
+            std::cout << std::format("Listening to '{}' (ROUTER)\n", *routerAddress);
         } else {
             const auto pubAddress = broker.bind(*pubEndpoint);
             if (!pubAddress) {
-                std::cerr << fmt::format("Could not bind to '{}'\n", routerEndpoint);
+                std::cerr << std::format("Could not bind to '{}'\n", routerEndpoint);
                 return 1;
             }
 
-            std::cout << fmt::format("Listening to '{}' (ROUTER) and '{}' (PUB)\n", *routerAddress, *pubAddress);
+            std::cout << std::format("Listening to '{}' (ROUTER) and '{}' (PUB)\n", *routerAddress, *pubAddress);
         }
 
         if (mode == "broker") {
@@ -180,14 +181,14 @@ int main(int argc, char **argv) {
         Context                        context;
         opencmw::majordomo::MockClient client(context);
         if (!client.connect(brokerAddress)) {
-            std::cerr << fmt::format("Could not connect to broker at '{}'\n", brokerAddress);
+            std::cerr << std::format("Could not connect to broker at '{}'\n", brokerAddress);
             return 1;
         }
 
         bool replyReceived = false;
 
         if (command == "set") {
-            const auto req = fmt::format("{}={}", property, value);
+            const auto req = std::format("{}={}", property, value);
             client.set(propertyStoreService.data(), IoBuffer(req.data(), req.size()), [&replyReceived](auto &&reply) {
                 replyReceived = true;
                 if (!reply.error.empty()) {
@@ -205,7 +206,7 @@ int main(int argc, char **argv) {
                     return;
                 }
 
-                std::cout << fmt::format("The value of '{}' is '{}'\n", property, reply.data);
+                std::cout << std::format("The value of '{}' is '{}'\n", property, reply.data);
             });
         }
 
@@ -215,6 +216,6 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-    std::cerr << fmt::format("Unknown mode '{}'\n", mode);
+    std::cerr << std::format("Unknown mode '{}'\n", mode);
     return 1;
 }

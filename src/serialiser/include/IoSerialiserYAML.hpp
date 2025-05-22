@@ -80,7 +80,7 @@ constexpr void addSpace(IoBuffer &buffer, const uint8_t hierarchyDepth, const ui
 }
 
 template<ProtocolCheck protocolCheckVariant, typename... ErrorArgs>
-neverinline constexpr void handleDeserialisationError(DeserialiserInfo &info, fmt::format_string<ErrorArgs...> errorFormat, ErrorArgs &&...errorArgs) noexcept(protocolCheckVariant != ProtocolCheck::ALWAYS) {
+neverinline constexpr void handleDeserialisationError(DeserialiserInfo &info, std::format_string<ErrorArgs...> errorFormat, ErrorArgs &&...errorArgs) noexcept(protocolCheckVariant != ProtocolCheck::ALWAYS) {
     if constexpr (protocolCheckVariant == ProtocolCheck::ALWAYS) {
         throw ProtocolException(errorFormat, errorArgs...);
     }
@@ -133,7 +133,7 @@ constexpr std::string_view stringTokenizer(std::string_view &input, const char d
 
 template<typename T>
 inline std::string fieldFormatter(const T &value, const int nIndentation) noexcept {
-    return nIndentation == 0 ? fmt::format("\"{}\"", value) : fmt::format("{:<{}}\"{}\"\n", ' ', nIndentation, value);
+    return nIndentation == 0 ? std::format("\"{}\"", value) : std::format("{:<{}}\"{}\"\n", ' ', nIndentation, value);
 }
 
 template<bool SingleLineParameter>
@@ -148,7 +148,7 @@ inline std::string fieldFormatter(ArithmeticType auto const &value, const int nI
     if constexpr (std::is_same_v<decltype(value), bool>) {
         return value ? "true" : "false";
     }
-    return nIndentation == 0 ? fmt::format("{}", value) : fmt::format("{:<{}}{}\n", ' ', nIndentation, value);
+    return nIndentation == 0 ? std::format("{}", value) : std::format("{:<{}}{}\n", ' ', nIndentation, value);
 }
 
 template<bool SingleLineParameter>
@@ -200,7 +200,7 @@ constexpr void fieldParser(const std::string_view &data, DestDataType &value) {
 }
 
 inline std::string fieldFormatter(StringLike auto const &value, const int nIndentation = 0) noexcept {
-    return nIndentation == 0 ? fmt::format("\"{}\"", value) : fmt::format("{:<{}}\"{}\"\n", ' ', nIndentation, value);
+    return nIndentation == 0 ? std::format("\"{}\"", value) : std::format("{:<{}}\"{}\"\n", ' ', nIndentation, value);
 }
 
 template<bool SingleLineParameter>
@@ -218,10 +218,10 @@ inline void fieldParser(const std::string_view &data, StringLike auto &value) {
 
 inline std::string fieldFormatter(ArrayOrVector auto const &value, const int nIndentation = 0) noexcept {
     if (nIndentation == 0) {
-        return fmt::format("[{}]", fmt::join(std::cbegin(value), std::cend(value), ", "));
+        return std::format("[{}]", opencmw::join(value, ", "));
     }
-    const auto joinDelimiter = fmt::format("\n{:<{}}- ", ' ', nIndentation);
-    return fmt::format("{:<{}}- {}\n", ' ', nIndentation, fmt::join(std::cbegin(value), std::cend(value), joinDelimiter));
+    const auto joinDelimiter = std::format("\n{:<{}}- ", ' ', nIndentation);
+    return std::format("{:<{}}- {}\n", ' ', nIndentation, opencmw::join(value, joinDelimiter));
 }
 
 template<bool SingleLineParameter, ArrayOrVector ContainerType>
@@ -269,27 +269,27 @@ inline std::string fieldFormatter(std::set<V> const &value, const int nIndentati
     if (nIndentation == 0) {
         if constexpr (is_stringlike<V>) {
 #if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
-            return fmt::format("[{}]", fmt::join(std::ranges::views::transform(value, [](const auto &v) { return "\"" + v + "\""; }), ", "));
+            return std::format("[{}]", opencmw::join(std::ranges::views::transform(value, [](const auto &v) { return "\"" + v + "\""; }), ", "));
 #else
             std::vector<V> quoted{ value.size() };
             std::transform(value.begin(), value.end(), quoted.begin(), [](const auto &v) { return "\"" + v + "\""; });
-            return fmt::format("[{}]", fmt::join(quoted.begin(), quoted.end(), ", "));
+            return std::format("[{}]", opencmw::join(quoted, ", "));
 #endif
         } else {
-            return fmt::format("[{}]", fmt::join(value, ", "));
+            return std::format("[{}]", opencmw::join(value, ", "));
         }
     }
-    const auto joinDelimiter = fmt::format("\n{:<{}}- ", ' ', nIndentation);
+    const auto joinDelimiter = std::format("\n{:<{}}- ", ' ', nIndentation);
     if constexpr (is_stringlike<V>) {
 #if not defined(__EMSCRIPTEN__) and (not defined(__clang__) or (__clang_major__ >= 16))
-        return fmt::format("{:<{}}- {}\n", ' ', nIndentation, fmt::join(std::ranges::views::transform(value, [](const auto &v) { return "\"" + v + "\""; }), joinDelimiter));
+        return std::format("{:<{}}- {}\n", ' ', nIndentation, opencmw::join(std::ranges::views::transform(value, [](const auto &v) { return "\"" + v + "\""; }), joinDelimiter));
 #else
         std::vector<V> quoted{ value.size() };
         std::transform(value.begin(), value.end(), quoted.begin(), [](const auto &v) { return "\"" + v + "\""; });
-        return fmt::format("{:<{}}- {}\n", ' ', nIndentation, fmt::join(quoted.begin(), quoted.end(), joinDelimiter));
+        return std::format("{:<{}}- {}\n", ' ', nIndentation, opencmw::join(quoted, joinDelimiter));
 #endif
     } else {
-        return fmt::format("{:<{}}- {}\n", ' ', nIndentation, fmt::join(value, joinDelimiter));
+        return std::format("{:<{}}- {}\n", ' ', nIndentation, opencmw::join(value, joinDelimiter));
     }
 }
 
@@ -339,17 +339,17 @@ inline std::string fieldFormatter(MapLike auto const &value, const int nSpaces =
         bool first = true;
         for (auto &[k, v] : value) {
             if (first) {
-                ss << fmt::format("{}: {}", k, fieldFormatter(FWD(v), 0));
+                ss << std::format("{}: {}", k, fieldFormatter(FWD(v), 0));
                 first = false;
             } else {
-                ss << fmt::format(", {}: {}", k, fieldFormatter(FWD(v), 0));
+                ss << std::format(", {}: {}", k, fieldFormatter(FWD(v), 0));
             }
         }
         ss << '}';
         return ss.str();
     }
     for (auto &[k, v] : value) {
-        ss << fmt::format("{:<{}}{}: {}\n", ' ', nSpaces, k, fieldFormatter(FWD(v), 0));
+        ss << std::format("{:<{}}{}: {}\n", ' ', nSpaces, k, fieldFormatter(FWD(v), 0));
     }
     return ss.str();
 }
@@ -412,7 +412,7 @@ inline DeserialiserInfo checkHeaderInfo<YAML>(IoBuffer &buffer, DeserialiserInfo
     const auto line     = yaml::detail::peekLine(buffer);
     if ((line.size() < 3) || buffer.at<char>(position) != '-' || buffer.at<char>(position + 1) != '-' || buffer.at<char>(position + 2) != '-') {
         if (check == ProtocolCheck::LENIENT) {
-            // info.exceptions.emplace_back(fmt::format_string<std::size_t, std::size_t, std::size_t>("YAML: buffer too small or missing (`---') line: '{}' pos: {}  size: {}"), line, position, buffer.size());
+            // info.exceptions.emplace_back(std::format_string<std::size_t, std::size_t, std::size_t>("YAML: buffer too small or missing (`---') line: '{}' pos: {}  size: {}"), line, position, buffer.size());
             info.exceptions.push_back(ProtocolException{ "YAML: buffer too small or missing (`---') line: '{}' pos: {}  size: {}", line, position, buffer.size() });
         }
         if (check == ProtocolCheck::ALWAYS) {
@@ -452,7 +452,7 @@ struct FieldHeaderWriter<YAML> {
         }
         if constexpr (std::is_same_v<DataType, END_MARKER>) {
             addSpace(buffer, field.hierarchyDepth);
-            buffer.put<WITHOUT>(fmt::format("# end - {}\n", field.fieldName));
+            buffer.put<WITHOUT>(std::format("# end - {}\n", field.fieldName));
             if (field.hierarchyDepth == 0) {
                 buffer.put<WITHOUT>("...\n"sv);
             }
@@ -481,24 +481,24 @@ struct IoSerialiser<YAML, DataType> { // catch all template -> dispatched to fie
         const auto     startPosition = yaml::detail::getIndentation(field.hierarchyDepth, static_cast<int32_t>(field.fieldName.size() + sizeof(": ")));
         if (const int spaceUntilMeta = getMetaPosition() - (startPosition + static_cast<int32_t>(rawFormat.size())); spaceUntilMeta > 0) {
             if constexpr (is_annotated<DataType>) {
-                const auto unit        = rawValue.getUnit().empty() ? "" : fmt::format(" - [{}]", rawValue.getUnit());
-                const auto description = rawValue.getDescription().empty() ? "" : fmt::format(" - {}", rawValue.getDescription());
-                buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>(fmt::format("{}{:<{}}# {}\t{}{}\n", rawFormat, ' ', spaceUntilMeta, typeName<StrippedDataType>, unit, description));
+                const auto unit        = rawValue.getUnit().empty() ? "" : std::format(" - [{}]", rawValue.getUnit());
+                const auto description = rawValue.getDescription().empty() ? "" : std::format(" - {}", rawValue.getDescription());
+                buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>(std::format("{}{:<{}}# {}\t{}{}\n", rawFormat, ' ', spaceUntilMeta, typeName<StrippedDataType>, unit, description));
                 return;
             }
-            buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>(fmt::format("{}{:<{}}# {}\n", rawFormat, ' ', spaceUntilMeta, typeName<StrippedDataType>));
+            buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>(std::format("{}{:<{}}# {}\n", rawFormat, ' ', spaceUntilMeta, typeName<StrippedDataType>));
             return;
         }
         // need line-break to not collide with the meta information
         const auto minMetaSpacing   = std::max(getMetaPosition() - startPosition, 5);
         const auto lineBrokenFormat = yaml::detail::fieldFormatter(unwrap(rawValue), yaml::detail::getIndentation(field.hierarchyDepth + 1));
         if constexpr (is_annotated<DataType>) {
-            const auto unit        = rawValue.getUnit().empty() ? "" : fmt::format(" - [{}]", rawValue.getUnit());
-            const auto description = rawValue.getDescription().empty() ? "" : fmt::format(" - {}", rawValue.getDescription());
-            buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>(fmt::format("{:<{}}# {}\t{}{}\n{}", ' ', minMetaSpacing, typeName<StrippedDataType>, unit, description, lineBrokenFormat));
+            const auto unit        = rawValue.getUnit().empty() ? "" : std::format(" - [{}]", rawValue.getUnit());
+            const auto description = rawValue.getDescription().empty() ? "" : std::format(" - {}", rawValue.getDescription());
+            buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>(std::format("{:<{}}# {}\t{}{}\n{}", ' ', minMetaSpacing, typeName<StrippedDataType>, unit, description, lineBrokenFormat));
             return;
         }
-        buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>(fmt::format("{:<{}}# {}\n{}", ' ', minMetaSpacing, typeName<StrippedDataType>, lineBrokenFormat));
+        buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>(std::format("{:<{}}# {}\n{}", ' ', minMetaSpacing, typeName<StrippedDataType>, lineBrokenFormat));
     }
     constexpr static void deserialise(IoBuffer &buffer, FieldDescription auto const &field, DataType &value) {
         if (const auto shortData = yaml::detail::parseNonWhiteSpaceData(buffer); !shortData.empty()) {

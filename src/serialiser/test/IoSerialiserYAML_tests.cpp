@@ -135,7 +135,7 @@ TEST_CASE("basic YAML serialisation", "[IoClassSerialiserYAML]") {
         std::cout << ClassInfoVerbose << "before: ";
         diffView(std::cout, data, data2);
         checkSerialiserIdentity<opencmw::YAML>(buffer, data, data2);
-        std::cout << fmt::format("buffer size (after): {} bytes\n", buffer.size());
+        std::cout << std::format("buffer size (after): {} bytes\n", buffer.size());
         std::cout << "after: " << std::flush;
         diffView(std::cout, data, data2);
         REQUIRE(data == data2);

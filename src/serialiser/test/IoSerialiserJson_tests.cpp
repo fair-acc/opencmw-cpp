@@ -88,7 +88,7 @@ TEST_CASE("JsonDeserialisation", "[JsonSerialiser]") {
         std::cout << "Prepared json data: " << buffer.asString() << std::endl;
         Simple foo;
         auto   result = opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buffer, foo);
-        fmt::print(std::cout, "deserialisation finished: {}\n", result);
+        std::print(std::cout, "deserialisation finished: {}\n", result);
         REQUIRE(foo.test.get()->val1 == 1337.0);
         REQUIRE(foo.test.get()->val2 == "bar");
         REQUIRE(foo.test.get()->intArray == std::vector{ 1, 2, 3 });
@@ -132,7 +132,7 @@ TEST_CASE("JsonDeserialisationMissingField", "[JsonSerialiser]") {
         std::cout << "Prepared json data: " << buffer.asString() << std::endl;
         Simple foo;
         auto   result = opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buffer, foo);
-        fmt::print(std::cout, "deserialisation finished: {}\n", result);
+        std::print(std::cout, "deserialisation finished: {}\n", result);
         REQUIRE(foo.test.get()->val1 == 1337.0);
         REQUIRE(foo.test.get()->val2 == "bar");
         REQUIRE(foo.test.get()->intArray == std::vector{ 1, 2, 3 });
@@ -193,7 +193,7 @@ TEST_CASE("JsonSerialisation", "[JsonSerialiser]") {
         DataX bar;
         auto  result = opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buffer, bar);
         opencmw::diffView(std::cout, foo, bar);
-        fmt::print(std::cout, "deserialisation finished: {}\n", result);
+        std::print(std::cout, "deserialisation finished: {}\n", result);
         REQUIRE(foo == bar);
     }
     REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred

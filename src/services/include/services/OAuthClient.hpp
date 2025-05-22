@@ -125,12 +125,12 @@ public:
 
     // convenience API function for clients who just want to open the URI in a web browser
     static bool openWebBrowser(const StrictUri &uri) {
-        fmt::println("Opening {} in a web browser...", uri.str());
+        std::println("Opening {} in a web browser...", uri.str());
 #ifdef __unix__
         // An alternative would be to use the org.freedesktop.portal.OpenURI method, but that would require dbus
         // and it is more likely that xdg-open is present, than the portal running
         // flawfinder: ignore
-        return !std::system(fmt::format("xdg-open '{}'", uri.str()).c_str());
+        return !std::system(std::format("xdg-open '{}'", uri.str()).c_str());
 #else
         std::cout << "Your platform is unsupported, please open the link manually." << std::endl;
         return false;

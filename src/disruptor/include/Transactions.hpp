@@ -10,10 +10,7 @@
 #include <unordered_map>
 #include <utility>
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wformat-nonliteral"
-#include <fmt/chrono.h>
-#pragma GCC diagnostic pop
+#include <format>
 
 #include <disruptor/RingBuffer.hpp>
 #include <opencmw.hpp>
@@ -231,7 +228,7 @@ public:
             lHead--;
         }
         if ((*_ringBuffer)[lHead].validSince > timeStamp) {
-            throw std::out_of_range(fmt::format("no settings found for the given time stamp {}", timeStamp));
+            throw std::out_of_range(std::format("no settings found for the given time stamp {}", timeStamp));
         }
         (*_ringBuffer)[lHead].touch();
         return (*_ringBuffer)[lHead]; // performs thread-safe copy of immutable object
@@ -239,12 +236,12 @@ public:
 
     [[nodiscard]] Node get(const std::int64_t idx = 0) const {
         if (idx > 0) {
-            throw std::out_of_range(fmt::format("index {} must be negative or zero", idx));
+            throw std::out_of_range(std::format("index {} must be negative or zero", idx));
         }
         auto       guard   = _historyLock.scopedGuard<ReaderWriterLockType::READ>(); // to prevent the writer/clean-up task to potentially expire a node at the tail
         const auto readIdx = _sequenceHead->value() + idx;
         if (readIdx < _sequenceTail->value()) {
-            throw std::out_of_range(fmt::format("no settings found for the given index {}", idx));
+            throw std::out_of_range(std::format("no settings found for the given index {}", idx));
         }
         (*_ringBuffer)[readIdx].touch();
         return (*_ringBuffer)[readIdx]; // performs thread-safe copy of immutable object

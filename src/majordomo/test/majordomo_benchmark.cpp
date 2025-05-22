@@ -6,7 +6,7 @@
 // Concepts and tests use common types
 #include <concepts/majordomo/helpers.hpp>
 
-#include <fmt/format.h>
+#include <format>
 
 using opencmw::majordomo::BasicWorker;
 using opencmw::majordomo::BindOption;
@@ -20,7 +20,7 @@ using namespace opencmw;
 #define REQUIRE(expression) \
     { \
         if (!expression) { \
-            std::cerr << fmt::format("'{}' failed\n", #expression); \
+            std::cerr << std::format("'{}' failed\n", #expression); \
             std::terminate(); \
         } \
     }
@@ -165,7 +165,7 @@ void simpleTwoWorkerBenchmark(const URI<> &routerAddress, Get mode, int iteratio
     const auto                          after = std::chrono::system_clock::now();
     const std::chrono::duration<double> diff  = after - before;
 
-    std::cout << fmt::format("{}: {}. Alternating Payloads {}/{} bytes: {} iterations took {}s ({} messages/s)\n",
+    std::cout << std::format("{}: {}. Alternating Payloads {}/{} bytes: {} iterations took {}s ({} messages/s)\n",
             routerAddress,
             mode == Get::Async ? "ASYNC" : "SYNC",
             payload1_size,
@@ -191,7 +191,7 @@ int main(int argc, char **argv) {
     // simpleTwoWorkerBenchmark(inproc, Get::Async, 10000, 10, 10);
 
     for (const auto &result : results) {
-        std::cout << fmt::format("{}: {}. Payload {} bytes: {} iterations took {}s ({} messages/s)\n",
+        std::cout << std::format("{}: {}. Payload {} bytes: {} iterations took {}s ({} messages/s)\n",
                 result.routerAddress,
                 result.mode == Get::Async ? "ASYNC" : "SYNC",
                 result.payloadSize,

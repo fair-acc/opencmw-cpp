@@ -1,6 +1,6 @@
 #include <catch2/catch.hpp>
 #include <Debug.hpp>
-#include <fmt/format.h>
+#include <format>
 #include <ThreadAffinity.hpp>
 
 #define REQUIRE_MESSAGE(cond, msg) \
@@ -46,7 +46,7 @@ TEST_CASE("basic thread affinity", "[ThreadAffinity]") {
             equal = false;
         }
     }
-    REQUIRE_MESSAGE(equal, fmt::format("set {{{}}} affinity map does not match get {{{}}} map", fmt::join(threadMap.begin(), threadMap.end(), ", "), fmt::join(affinity.begin(), affinity.end(), ", ")));
+    REQUIRE_MESSAGE(equal, std::format("set {{{}}} affinity map does not match get {{{}}} map", opencmw::join(threadMap, ", "), opencmw::join(affinity, ", ")));
 
     // tests w/o thread argument
     constexpr std::array threadMapOn = { true, true };
@@ -57,7 +57,7 @@ TEST_CASE("basic thread affinity", "[ThreadAffinity]") {
             equal = false;
         }
     }
-    REQUIRE_MESSAGE(equal, fmt::format("set {{{}}} affinity map does not match get {{{}}} map", fmt::join(threadMap.begin(), threadMap.end(), ", "), fmt::join(affinity.begin(), affinity.end(), ", ")));
+    REQUIRE_MESSAGE(equal, std::format("set {{{}}} affinity map does not match get {{{}}} map", opencmw::join(threadMap, ", "), opencmw::join(affinity, ", ")));
 
     std::thread bogusThread;
     REQUIRE_THROWS_AS(thread::getThreadAffinity(bogusThread), std::system_error);
@@ -81,7 +81,7 @@ TEST_CASE("basic process affinity", "[ThreadAffinity]") {
             equal = false;
         }
     }
-    REQUIRE_MESSAGE(equal, fmt::format("set {{{}}} affinity map does not match get {{{}}} map", fmt::join(threadMap.begin(), threadMap.end(), ", "), fmt::join(affinity.begin(), affinity.end(), ", ")));
+    REQUIRE_MESSAGE(equal, std::format("set {{{}}} affinity map does not match get {{{}}} map", opencmw::join(threadMap, ", "), opencmw::join(affinity, ", ")));
     constexpr std::array threadMapOn = { true, true, true, true };
     thread::setProcessAffinity(threadMapOn);
     REQUIRE_THROWS_AS(thread::getProcessAffinity(-1), std::system_error);
