@@ -1782,7 +1782,7 @@ TEST_CASE("SET/GET example using a lambda as the worker's request handler", "[wo
 
         const auto request     = requestContext.request.data.asString();
         int        parsedValue = 0;
-        const auto result      = std::from_chars(request.begin(), request.end(), parsedValue);
+        const auto result      = std::from_chars(request.data(), request.data() + request.size(), parsedValue);
 
         if (result.ec == std::errc::invalid_argument) {
             requestContext.reply.error = "Not a valid int";

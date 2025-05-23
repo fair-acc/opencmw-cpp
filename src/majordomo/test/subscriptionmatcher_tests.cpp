@@ -40,7 +40,7 @@ struct Int {
         if (s.empty()) {
             return;
         }
-        const auto asInt = std::from_chars(s.begin(), s.end(), value);
+        const auto asInt = std::from_chars(s.data(), s.data() + s.size(), value);
 
         if (asInt.ec == std::errc::invalid_argument) {
             throw std::invalid_argument(std::format("'{}' is not a valid integer", s));

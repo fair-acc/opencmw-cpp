@@ -394,7 +394,7 @@ public:
 
         const auto request = context.request.data.asString();
         int        value   = 0;
-        const auto result  = std::from_chars(request.begin(), request.end(), value);
+        const auto result  = std::from_chars(request.data(), request.data() + request.size(), value);
 
         if (result.ec == std::errc::invalid_argument) {
             context.reply.error = "Not a valid int";

@@ -157,7 +157,7 @@ public:
 
             if (WILDCARD != valueString) {
                 int32_t intValue = 0;
-                if (const auto result = std::from_chars(valueString.begin(), valueString.end(), intValue); result.ec == std::errc::invalid_argument) {
+                if (const auto result = std::from_chars(valueString.data(), valueString.data() + valueString.size(), intValue); result.ec == std::errc::invalid_argument) {
                     _hash = 0;
                     throw std::invalid_argument(std::format("Value: '{}' in '{}' is not a valid integer", valueString, tag));
                 }
