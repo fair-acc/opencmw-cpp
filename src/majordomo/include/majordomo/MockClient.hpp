@@ -88,7 +88,7 @@ public:
 
         const auto idStr = message.clientRequestID.asString();
         int        id;
-        auto       asInt   = std::from_chars(idStr.begin(), idStr.end(), id);
+        auto       asInt   = std::from_chars(idStr.data(), idStr.data() + idStr.size(), id);
 
         bool       handled = false;
         if (asInt.ec != std::errc::invalid_argument) {
