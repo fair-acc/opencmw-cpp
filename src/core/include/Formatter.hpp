@@ -25,6 +25,8 @@ std::string join(const R &range, std::string_view sep = ", ") {
 
 } // namespace opencmw
 
+#ifndef STD_FORMATTER_RANGE
+#define STD_FORMATTER_RANGE
 template<opencmw::FormattableRange R>
 struct std::formatter<R, char> {
     char           separator = ',';
@@ -49,7 +51,10 @@ struct std::formatter<R, char> {
         return std::format_to(out, "]");
     }
 };
+#endif // STD_FORMATTER_RANGE
 
+#ifndef STD_FORMATTER_OPTIONAL
+#define STD_FORMATTER_OPTIONAL
 template<class T>
 struct std::formatter<std::optional<T>> {
     std::formatter<T> value_formatter;
@@ -66,7 +71,10 @@ struct std::formatter<std::optional<T>> {
         return std::format_to(ctx.out(), "nullopt");
     }
 };
+#endif // STD_FORMATTER_OPTIONAL
 
+#ifndef STD_FORMATTER_PAIR
+#define STD_FORMATTER_PAIR
 template<typename T1, typename T2>
 struct std::formatter<std::pair<T1, T2>, char> {
     constexpr auto parse(std::format_parse_context &ctx) { return ctx.begin(); }
@@ -76,5 +84,6 @@ struct std::formatter<std::pair<T1, T2>, char> {
         return std::format_to(ctx.out(), "({}, {})", p.first, p.second);
     }
 };
+#endif // STD_FORMATTER_PAIR
 
 #endif // OPENCMW_CPP_FORMATTER_HPP
