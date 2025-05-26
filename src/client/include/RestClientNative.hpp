@@ -12,6 +12,7 @@
 #include <poll.h>
 #include <stop_token>
 #include <string>
+#include <string_view>
 #include <sys/poll.h>
 #include <thread>
 #include <unistd.h>
@@ -122,145 +123,48 @@ struct Endpoint {
     auto        operator<=>(const Endpoint &) const = default;
 };
 
-struct ClientSession {
+template<typename Derived, typename TStreamId>
+struct ClientSessionBase {
     struct PendingRequest {
         client::Command              command;
         SubscriptionMode             mode;
         std::string                  preferredMimeType;
         std::optional<std::uint64_t> longPollIdx;
     };
+    std::map<std::string, Subscription>  _subscriptions;
+    std::map<TStreamId, RequestResponse> _requestsByStreamId;
 
-    TcpSocket                           _socket;
-    nghttp2_session                    *_session = nullptr;
-    WriteBuffer<1024>                   _writeBuffer;
-    std::map<std::string, Subscription> _subscriptions;
-    std::map<int32_t, RequestResponse>  _requestsByStreamId;
+    [[nodiscard]] constexpr auto        &self() noexcept { return *static_cast<Derived *>(this); }
+    [[nodiscard]] constexpr const auto  &self() const noexcept { return *static_cast<const Derived *>(this); }
 
-    explicit ClientSession(TcpSocket socket_)
-        : _socket(std::move(socket_)) {
-        nghttp2_session_callbacks *callbacks;
-        nghttp2_session_callbacks_new(&callbacks);
-
-        nghttp2_session_callbacks_set_send_callback2(callbacks, [](nghttp2_session *, const uint8_t *data, size_t length, int flags, void *user_data) {
-            auto client = static_cast<ClientSession *>(user_data);
-            HTTP_DBG("Client::send {}", length);
-            const auto r = client->_socket.write(data, length, flags);
-            if (r < 0) {
-                HTTP_DBG("Client::send failed: {}", client->_socket.lastError());
+    bool                                 addHeader(TStreamId streamId, std::string_view nameView, std::string_view valueView) {
+        HTTP_DBG("Client::Header: id={} {} = {}", streamId, nameView, valueView);
+        if (nameView == ":status") {
+            _requestsByStreamId[streamId].responseStatus = std::string(valueView);
+        } else if (nameView == "location") {
+            _requestsByStreamId[streamId].location = std::string(valueView);
+        } else if (nameView == "x-opencmw-topic") {
+            try {
+                _requestsByStreamId[streamId].response.topic = URI<>(std::string(valueView));
+            } catch (const std::exception &e) {
+                HTTP_DBG("Client::Header: Could not parse URI '{}': {}", valueView, e.what());
+                return false;
             }
-            return r;
-        });
-
-        nghttp2_session_callbacks_set_on_data_chunk_recv_callback(callbacks, [](nghttp2_session *, uint8_t /*flags*/, int32_t stream_id, const uint8_t *data, size_t len, void *user_data) {
-            auto client = static_cast<ClientSession *>(user_data);
-            client->_requestsByStreamId[stream_id].payload.append(reinterpret_cast<const char *>(data), len);
-            return 0;
-        });
-
-        nghttp2_session_callbacks_set_on_header_callback(callbacks, [](nghttp2_session *, const nghttp2_frame *frame, const uint8_t *name, size_t namelen, const uint8_t *value, size_t valuelen, uint8_t /*flags*/, void *user_data) {
-            auto       client    = static_cast<ClientSession *>(user_data);
-            const auto nameView  = std::string_view(reinterpret_cast<const char *>(name), namelen);
-            const auto valueView = std::string_view(reinterpret_cast<const char *>(value), valuelen);
-            HTTP_DBG("Client::Header: id={} {} = {}", frame->hd.stream_id, nameView, valueView);
-            if (nameView == ":status") {
-                client->_requestsByStreamId[frame->hd.stream_id].responseStatus = std::string(valueView);
-            } else if (nameView == "location") {
-                client->_requestsByStreamId[frame->hd.stream_id].location = std::string(valueView);
-            } else if (nameView == "x-opencmw-topic") {
-                try {
-                    client->_requestsByStreamId[frame->hd.stream_id].response.topic = URI<>(std::string(valueView));
-                } catch (const std::exception &e) {
-                    HTTP_DBG("Client::Header: Could not parse URI '{}': {}", valueView, e.what());
-                    return static_cast<int>(NGHTTP2_ERR_TEMPORAL_CALLBACK_FAILURE);
-                }
-            } else if (nameView == "x-opencmw-service-name") {
-                client->_requestsByStreamId[frame->hd.stream_id].response.serviceName = std::string(valueView);
-            } else if (nameView == "x-opencmw-long-polling-idx") {
-                std::uint64_t longPollingIdx;
-                if (auto ec = std::from_chars(valueView.data(), valueView.data() + valueView.size(), longPollingIdx); ec.ec != std::errc{}) {
-                    HTTP_DBG("Client::Header: Could not parse x-opencmw-long-polling-idx '{}'", valueView);
-                    return static_cast<int>(NGHTTP2_ERR_TEMPORAL_CALLBACK_FAILURE);
-                }
-                client->_requestsByStreamId[frame->hd.stream_id].longPollingIdx = longPollingIdx;
+        } else if (nameView == "x-opencmw-service-name") {
+            _requestsByStreamId[streamId].response.serviceName = std::string(valueView);
+        } else if (nameView == "x-opencmw-long-polling-idx") {
+            std::uint64_t longPollingIdx;
+            if (auto ec = std::from_chars(valueView.data(), valueView.data() + valueView.size(), longPollingIdx); ec.ec != std::errc{}) {
+                HTTP_DBG("Client::Header: Could not parse x-opencmw-long-polling-idx '{}'", valueView);
+                return false;
+            }
+            _requestsByStreamId[streamId].longPollingIdx = longPollingIdx;
 #ifdef OPENCMW_PROFILE_HTTP
-            } else if (nameView == "x-timestamp") {
-                std::println(std::cerr, "Client::Header: x-timestamp: {} (latency {} ns)", valueView, latency(valueView).count());
+        } else if (nameView == "x-timestamp") {
+            std::println(std::cerr, "Client::Header: x-timestamp: {} (latency {} ns)", valueView, latency(valueView).count());
 #endif
-            }
-
-            return 0;
-        });
-        nghttp2_session_callbacks_set_on_frame_recv_callback(callbacks, [](nghttp2_session *, const nghttp2_frame *frame, void *user_data) {
-            HTTP_DBG("Client::Frame: id={} {} {}", frame->hd.stream_id, frame->hd.type, (frame->hd.flags & NGHTTP2_FLAG_END_STREAM) ? "END_STREAM" : "");
-            switch (frame->hd.type) {
-            case NGHTTP2_HEADERS:
-            case NGHTTP2_DATA:
-                if (frame->hd.flags & NGHTTP2_FLAG_END_STREAM) {
-                    auto client = static_cast<ClientSession *>(user_data);
-                    return client->processResponse(frame->hd.stream_id);
-                }
-                break;
-            }
-            return 0;
-        });
-        nghttp2_session_callbacks_set_on_stream_close_callback(callbacks, [](nghttp2_session *, int32_t stream_id, uint32_t /*error_code*/, void *user_data) {
-            auto client = static_cast<ClientSession *>(user_data);
-            client->_requestsByStreamId.erase(stream_id);
-            HTTP_DBG("Client::Stream closed: {}", stream_id);
-            return 0;
-        });
-
-        nghttp2_session_client_new(&_session, callbacks, this);
-        nghttp2_session_callbacks_del(callbacks);
-
-        nghttp2_settings_entry iv[1] = {
-            { NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, 1000 }
-        };
-
-        if (nghttp2_submit_settings(_session, NGHTTP2_FLAG_NONE, iv, 1) != 0) {
-            HTTP_DBG("Client::ClientSession: nghttp2_submit_settings failed");
         }
-    }
-
-    ClientSession(const ClientSession &)                     = delete;
-    ClientSession &operator=(const ClientSession &)          = delete;
-    ClientSession(ClientSession &&other) noexcept            = delete;
-    ClientSession &operator=(ClientSession &&other) noexcept = delete;
-
-    ~ClientSession() {
-        nghttp2_session_del(_session);
-    }
-
-    bool isReady() const {
-        return _socket._state == TcpSocket::Connected;
-    }
-
-    std::expected<void, std::string> continueToMakeReady() {
-        auto makeError = [](std::string_view msg) {
-            return std::unexpected(std::format("Could not connect to endpoint: {}", msg));
-        };
-        assert(!isReady());
-        if (_socket._state == detail::TcpSocket::Connecting) {
-            if (auto rc = _socket.connect(); !rc) {
-                return makeError(rc.error());
-            }
-        }
-
-        if (_socket._state == detail::TcpSocket::SSLConnectWantsRead || _socket._state == detail::TcpSocket::SSLConnectWantsWrite) {
-            if (auto rc = _socket.continueHandshake(); !rc) {
-                return makeError(rc.error());
-            }
-        }
-
-        return {};
-    }
-
-    bool wantsToRead() const {
-        return _socket._state == TcpSocket::Connected ? nghttp2_session_want_read(_session) : (_socket._state == TcpSocket::Connecting || _socket._state == TcpSocket::SSLConnectWantsRead);
-    }
-
-    bool wantsToWrite() const {
-        return _socket._state == TcpSocket::Connected ? _writeBuffer.wantsToWrite(_session) : (_socket._state == TcpSocket::Connecting || _socket._state == TcpSocket::SSLConnectWantsWrite);
+        return true;
     }
 
     void submitRequest(client::Command &&cmd, SubscriptionMode mode, std::string preferredMimeType, std::optional<std::uint64_t> longPollIdx) {
@@ -288,9 +192,9 @@ struct ClientSession {
             topic = URI<>::UriFactory(topic).addQueryParameter("LongPollingIdx", longPollIdxParam).build();
         }
 
-        const auto host = cmd.topic.hostName().value_or("");
+        const auto host   = cmd.topic.hostName().value_or("");
         const auto scheme = cmd.topic.scheme().value_or("");
-        const auto path = topic.relativeRefNoFragment().value_or("/");
+        const auto path   = topic.relativeRefNoFragment().value_or("/");
 #ifdef OPENCMW_PROFILE_HTTP
         const auto ts = std::to_string(opencmw::load_test::timestamp().count());
 #endif
@@ -320,7 +224,7 @@ struct ClientSession {
             rr.normalizedTopic = rr.request.topic.str();
         }
 
-        const std::int32_t streamId = nghttp2_submit_request2(_session, nullptr, headers.data(), headers.size(), nullptr, nullptr);
+        const TStreamId streamId = self().submitRequestImpl(headers);
         if (streamId < 0) {
             rr.reportError(std::format("Could not submit request: {}", nghttp2_strerror(streamId)));
             return;
@@ -329,7 +233,7 @@ struct ClientSession {
         _requestsByStreamId.emplace(streamId, std::move(rr));
     }
 
-    int processResponse(std::int32_t streamId) {
+    int processResponse(TStreamId streamId) {
         auto it = _requestsByStreamId.find(streamId);
         assert(it != _requestsByStreamId.end());
         if (it != _requestsByStreamId.end()) {
@@ -405,7 +309,7 @@ struct ClientSession {
         }
         auto &sub                      = subIt->second;
         sub.lastReceivedLongPollingIdx = longPollingIdx;
-        auto request = sub.request;
+        auto request                   = sub.request;
 
         submitRequest(std::move(request), sub.mode, {}, longPollingIdx + kParallelLongPollingRequests);
 
@@ -464,12 +368,136 @@ struct ClientSession {
             auto reqIt = _requestsByStreamId.begin();
             while (reqIt != _requestsByStreamId.end()) {
                 if (reqIt->second.request.topic == command.topic) {
-                    nghttp2_submit_rst_stream(_session, NGHTTP2_FLAG_NONE, reqIt->first, NGHTTP2_CANCEL);
+                    self().cancelStream(reqIt->first);
                     reqIt = _requestsByStreamId.erase(reqIt);
                 } else {
                     ++reqIt;
                 }
             }
+        }
+    }
+};
+
+struct Http2ClientSession : public ClientSessionBase<Http2ClientSession, int32_t> {
+    TcpSocket         _socket;
+    nghttp2_session  *_session = nullptr;
+    WriteBuffer<1024> _writeBuffer;
+
+    explicit Http2ClientSession(TcpSocket socket_)
+        : _socket(std::move(socket_)) {
+        nghttp2_session_callbacks *callbacks;
+        nghttp2_session_callbacks_new(&callbacks);
+
+        nghttp2_session_callbacks_set_send_callback2(callbacks, [](nghttp2_session *, const uint8_t *data, size_t length, int flags, void *user_data) {
+            auto client = static_cast<Http2ClientSession *>(user_data);
+            HTTP_DBG("Client::send {}", length);
+            const auto r = client->_socket.write(data, length, flags);
+            if (r < 0) {
+                HTTP_DBG("Client::send failed: {}", client->_socket.lastError());
+            }
+            return r;
+        });
+
+        nghttp2_session_callbacks_set_on_data_chunk_recv_callback(callbacks, [](nghttp2_session *, uint8_t /*flags*/, int32_t stream_id, const uint8_t *data, size_t len, void *user_data) {
+            auto client = static_cast<Http2ClientSession *>(user_data);
+            client->_requestsByStreamId[stream_id].payload.append(reinterpret_cast<const char *>(data), len);
+            return 0;
+        });
+
+        nghttp2_session_callbacks_set_on_header_callback(callbacks, [](nghttp2_session *, const nghttp2_frame *frame, const uint8_t *name, size_t namelen, const uint8_t *value, size_t valuelen, uint8_t /*flags*/, void *user_data) {
+            auto       client    = static_cast<Http2ClientSession *>(user_data);
+            const auto nameView  = std::string_view(reinterpret_cast<const char *>(name), namelen);
+            const auto valueView = std::string_view(reinterpret_cast<const char *>(value), valuelen);
+            if (!client->addHeader(frame->hd.stream_id, nameView, valueView)) {
+                return static_cast<int>(NGHTTP2_ERR_TEMPORAL_CALLBACK_FAILURE);
+            }
+            return 0;
+        });
+        nghttp2_session_callbacks_set_on_frame_recv_callback(callbacks, [](nghttp2_session *, const nghttp2_frame *frame, void *user_data) {
+            HTTP_DBG("Client::Frame: id={} {} {}", frame->hd.stream_id, frame->hd.type, (frame->hd.flags & NGHTTP2_FLAG_END_STREAM) ? "END_STREAM" : "");
+            switch (frame->hd.type) {
+            case NGHTTP2_HEADERS:
+            case NGHTTP2_DATA:
+                if (frame->hd.flags & NGHTTP2_FLAG_END_STREAM) {
+                    auto client = static_cast<Http2ClientSession *>(user_data);
+                    return client->processResponse(frame->hd.stream_id);
+                }
+                break;
+            }
+            return 0;
+        });
+        nghttp2_session_callbacks_set_on_stream_close_callback(callbacks, [](nghttp2_session *, int32_t stream_id, uint32_t /*error_code*/, void *user_data) {
+            auto client = static_cast<Http2ClientSession *>(user_data);
+            client->_requestsByStreamId.erase(stream_id);
+            HTTP_DBG("Client::Stream closed: {}", stream_id);
+            return 0;
+        });
+
+        nghttp2_session_client_new(&_session, callbacks, this);
+        nghttp2_session_callbacks_del(callbacks);
+
+        nghttp2_settings_entry iv[1] = {
+            { NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, 1000 }
+        };
+
+        if (nghttp2_submit_settings(_session, NGHTTP2_FLAG_NONE, iv, 1) != 0) {
+            HTTP_DBG("Client::ClientSession: nghttp2_submit_settings failed");
+        }
+    }
+
+    Http2ClientSession(const Http2ClientSession &)                     = delete;
+    Http2ClientSession &operator=(const Http2ClientSession &)          = delete;
+    Http2ClientSession(Http2ClientSession &&other) noexcept            = delete;
+    Http2ClientSession &operator=(Http2ClientSession &&other) noexcept = delete;
+
+    ~Http2ClientSession() {
+        nghttp2_session_del(_session);
+    }
+
+    bool isReady() const {
+        return _socket._state == TcpSocket::Connected;
+    }
+
+    std::expected<void, std::string> continueToMakeReady() {
+        auto makeError = [](std::string_view msg) {
+            return std::unexpected(std::format("Could not connect to endpoint: {}", msg));
+        };
+        assert(!isReady());
+        if (_socket._state == detail::TcpSocket::Connecting) {
+            if (auto rc = _socket.connect(); !rc) {
+                return makeError(rc.error());
+            }
+        }
+
+        if (_socket._state == detail::TcpSocket::SSLConnectWantsRead || _socket._state == detail::TcpSocket::SSLConnectWantsWrite) {
+            if (auto rc = _socket.continueHandshake(); !rc) {
+                return makeError(rc.error());
+            }
+        }
+
+        return {};
+    }
+
+    bool wantsToRead() const {
+        return _socket._state == TcpSocket::Connected ? nghttp2_session_want_read(_session) : (_socket._state == TcpSocket::Connecting || _socket._state == TcpSocket::SSLConnectWantsRead);
+    }
+
+    bool wantsToWrite() const {
+        return _socket._state == TcpSocket::Connected ? _writeBuffer.wantsToWrite(_session) : (_socket._state == TcpSocket::Connecting || _socket._state == TcpSocket::SSLConnectWantsWrite);
+    }
+
+    int32_t submitRequestImpl(const std::vector<nghttp2_nv> &headers) {
+        auto streamId = nghttp2_submit_request(_session, nullptr, headers.data(), headers.size(), nullptr, nullptr);
+        if (streamId < 0) {
+            HTTP_DBG("Client::submitRequest: nghttp2_submit_request failed: {}", nghttp2_strerror(streamId));
+        }
+        return streamId;
+    }
+
+    void cancelStream(int32_t streamId) {
+        HTTP_DBG("Client::cancelStream: id={}", streamId);
+        if (nghttp2_submit_rst_stream(_session, NGHTTP2_FLAG_NONE, streamId, NGHTTP2_CANCEL) != 0) {
+            HTTP_DBG("Client::cancelStream: nghttp2_submit_rst_stream failed");
         }
     }
 };
@@ -490,22 +518,22 @@ struct RestClient : public ClientBase {
         std::string caCertificate;
         bool        verifyPeers = true;
     };
-
+    bool                                                                       _forceHttp2 = false; // Force HTTP/2
     std::jthread                                                               _worker;
     MIME::MimeType                                                             _mimeType = opencmw::MIME::JSON;
     SslSettings                                                                _sslSettings;
     std::shared_ptr<detail::SharedQueue<std::pair<Command, SubscriptionMode>>> _requestQueue = std::make_shared<detail::SharedQueue<std::pair<Command, SubscriptionMode>>>();
 
-    static std::expected<detail::ClientSession *, std::string>
-    ensureSession(detail::SSL_CTX_Ptr &ssl_ctx, std::map<detail::Endpoint, std::unique_ptr<detail::ClientSession>> &sessions, const SslSettings &sslSettings, URI<> topic) {
+    static std::expected<detail::Http2ClientSession *, std::string>
+    ensureSession(detail::SSL_CTX_Ptr &ssl_ctx, std::map<detail::Endpoint, std::unique_ptr<detail::Http2ClientSession>> &sessions, const SslSettings &sslSettings, URI<> topic) {
         if (topic.scheme() != "http" && topic.scheme() != "https") {
             return std::unexpected(std::format("Unsupported protocol '{}' for endpoint '{}'", topic.scheme().value_or(""), topic.str()));
         }
         if (topic.hostName().value_or("").empty()) {
             return std::unexpected(std::format("No host provided for endpoint '{}'", topic.str()));
         }
-        const auto port     = topic.port().value_or(topic.scheme() == "https" ? 443 : 80);
-        const auto endpoint = detail::Endpoint{ topic.scheme().value(), topic.hostName().value(), port };
+        const auto port      = topic.port().value_or(topic.scheme() == "https" ? 443 : 80);
+        const auto endpoint  = detail::Endpoint{ topic.scheme().value(), topic.hostName().value(), port };
 
         auto       sessionIt = sessions.find(endpoint);
         if (sessionIt != sessions.end()) {
@@ -548,7 +576,7 @@ struct RestClient : public ClientBase {
             if (!maybeSocket) {
                 return std::unexpected(std::format("Failed to create socket: {}", maybeSocket.error()));
             }
-            auto session = std::make_unique<detail::ClientSession>(std::move(maybeSocket.value()));
+            auto session = std::make_unique<detail::Http2ClientSession>(std::move(maybeSocket.value()));
             if (auto rc = session->_socket.prepareConnect(endpoint.host, endpoint.port); !rc) {
                 return std::unexpected(rc.error());
             }
@@ -561,7 +589,7 @@ struct RestClient : public ClientBase {
         if (!maybeSocket) {
             return std::unexpected(std::format("Failed to create socket: {}", maybeSocket.error()));
         }
-        auto session = std::make_unique<detail::ClientSession>(std::move(maybeSocket.value()));
+        auto session = std::make_unique<detail::Http2ClientSession>(std::move(maybeSocket.value()));
         if (auto rc = session->_socket.prepareConnect(endpoint.host, endpoint.port); !rc) {
             return std::unexpected(rc.error());
         }
@@ -585,11 +613,11 @@ public:
                 return std::string{ mimeType.typeName() };
             };
 
-            detail::SSL_CTX_Ptr                                                ssl_ctx{ nullptr, SSL_CTX_free };
+            detail::SSL_CTX_Ptr                                                     ssl_ctx{ nullptr, SSL_CTX_free };
 
-            std::map<detail::Endpoint, std::unique_ptr<detail::ClientSession>> sessions;
+            std::map<detail::Endpoint, std::unique_ptr<detail::Http2ClientSession>> sessions;
 
-            auto                                                               reportError = [](Command &cmd, std::string error) {
+            auto                                                                    reportError = [](Command &cmd, std::string error) {
                 if (!cmd.callback) {
                     return;
                 }
