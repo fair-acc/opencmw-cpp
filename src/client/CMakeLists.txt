@@ -16,7 +16,7 @@ if(NOT EMSCRIPTEN)
     disruptor
     serialiser
     majordomo
-    nghttp2
+    rest
     zmq)
 else()
   target_link_libraries(
