@@ -1,4 +1,4 @@
-#include <majordomo/Http2Server.hpp>
+#include <majordomo/RestServer.hpp>
 #include <RestClient.hpp>
 
 #include "zmq.h"
@@ -58,12 +58,12 @@ public:
 inline static const TestServerCertificates testServerCertificates;
 
 using namespace opencmw;
-using namespace opencmw::majordomo::detail::nghttp2;
+using namespace opencmw::majordomo::detail::rest;
 using opencmw::URI;
 
 constexpr uint16_t kServerPort = 33339;
 
-void               ensureMessageReceived(Http2Server &server, std::stop_token stopToken, std::deque<Message> &messages, std::chrono::milliseconds timeout = std::chrono::seconds(5)) {
+void               ensureMessageReceived(RestServer &server, std::stop_token stopToken, std::deque<Message> &messages, std::chrono::milliseconds timeout = std::chrono::seconds(5)) {
     const auto start = std::chrono::system_clock::now();
     while (!stopToken.stop_requested() && std::chrono::system_clock::now() - start < timeout) {
         if (!messages.empty()) {
@@ -129,9 +129,9 @@ TEST_CASE("Basic Client Constructor and API Tests", "[http2]") {
 TEST_CASE("GET HTTP", "[http2]") {
     using namespace opencmw::client;
 
-    auto        serverThread = std::jthread([](std::stop_token stopToken) {
-        Http2Server server;
-        REQUIRE(server.bind(kServerPort));
+    auto serverThread = std::jthread([](std::stop_token stopToken) {
+        RestServer server;
+        REQUIRE(server.bind(kServerPort, majordomo::rest::Http2));
 
         std::deque<Message> messages;
         ensureMessageReceived(server, stopToken, messages);
@@ -198,13 +198,13 @@ TEST_CASE("HTTPS", "[http2]") {
     using namespace opencmw::client;
 
     auto        serverThread = std::jthread([&](std::stop_token stopToken) {
-        auto server = Http2Server::sslWithBuffers(testServerCertificates.serverCertificate, testServerCertificates.serverKey);
+        auto server = RestServer::sslWithBuffers(testServerCertificates.serverCertificate, testServerCertificates.serverKey);
         if (!server) {
             FAIL(std::format("Failed to create server: {}", server.error()));
             return;
         }
 
-        REQUIRE(server->bind(kServerPort));
+        REQUIRE(server->bind(kServerPort, majordomo::rest::Http2 | majordomo::rest::Http3));
 
         std::deque<Message> messages;
         for (int i = 0; i < 2; i++) {
@@ -291,8 +291,8 @@ TEST_CASE("HTTPS", "[http2]") {
 
 TEST_CASE("GET/SET", "[http2]") {
     auto    serverThread = std::jthread([](std::stop_token stopToken) {
-        Http2Server server;
-        REQUIRE(server.bind(kServerPort));
+        RestServer server;
+        REQUIRE(server.bind(kServerPort, majordomo::rest::Http2));
 
         std::deque<Message> messages;
         ensureMessageReceived(server, stopToken, messages);
@@ -405,8 +405,8 @@ TEST_CASE("Long polling example", "[http2]") {
     constexpr int kFooMessages = 50;
 
     auto          brokerThread = std::jthread([](std::stop_token stopToken) {
-        Http2Server server;
-        REQUIRE(server.bind(kServerPort));
+        RestServer server;
+        REQUIRE(server.bind(kServerPort, majordomo::rest::Http2));
 
         const auto                  topic = URI<>("/foo?param1=1&param2=foo%2Fbar");
 

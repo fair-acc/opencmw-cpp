@@ -42,8 +42,6 @@
 
 #include <zmq.h>
 
-#include <fmt/format.h>
-
 #include <nghttp2/nghttp2.h>
 #include <nghttp3/nghttp3.h>
 #include <ngtcp2/ngtcp2.h>
@@ -1130,7 +1128,7 @@ struct Http3Session : public SessionBase<Http3Session<TServer>, std::int64_t>, p
         auto formattedHeaders = headers | std::views::transform([](const auto &header) {
             return std::format("'{}'='{}'", std::string_view(reinterpret_cast<const char *>(header.name), header.namelen), std::string_view(reinterpret_cast<const char *>(header.value), header.valuelen));
         });
-        HTTP_DBG("Server::H3: Sending response {} to streamId {}. Headers:\n{}\n Body: {}", msg.restResponse.code, streamId, std::join(formattedHeaders, "\n"), msg.restResponse.bodyReader ? "reader" : std::format("{} bytes", msg.restResponse.body.size()));
+        HTTP_DBG("Server::H3: Sending response {} to streamId {}. Headers:\n{}\n Body: {}", msg.restResponse.code, streamId, opencmw::join(formattedHeaders, "\n"), msg.restResponse.bodyReader ? "reader" : std::format("{} bytes", msg.restResponse.body.size()));
 #endif
         auto prd = data_prd.read_data ? &data_prd : nullptr;
         if (auto rc = nghttp3_conn_submit_response(_httpconn, streamId, headers.data(), headers.size(), prd); rc != 0) {
@@ -1174,7 +1172,7 @@ struct Http3Session : public SessionBase<Http3Session<TServer>, std::int64_t>, p
         auto formattedHeaders = headers | std::views::transform([](const auto &header) {
             return std::format("'{}'='{}'", std::string_view(reinterpret_cast<const char *>(header.name), header.namelen), std::string_view(reinterpret_cast<const char *>(header.value), header.valuelen));
         });
-        HTTP_DBG("Server::H3: Sending response {} to streamId {}. Headers:\n{}", responseCode, streamId, std::join(formattedHeaders, "\n"));
+        HTTP_DBG("Server::H3: Sending response {} to streamId {}. Headers:\n{}", responseCode, streamId, opencmw::join(formattedHeaders, "\n"));
 #endif
         if (auto rc = nghttp3_conn_submit_response(_httpconn, streamId, headers.data(), headers.size(), &data_prd); rc != 0) {
             HTTP_DBG("Server::H3: nghttp3_conn_submit_response for stream ID {} failed: {}", streamId, nghttp2_strerror(rc));
@@ -1520,7 +1518,7 @@ struct Http3Session : public SessionBase<Http3Session<TServer>, std::int64_t>, p
             return 0;
         };
         callbacks.recv_data = [](nghttp3_conn *, std::int64_t stream_id, const uint8_t *data, std::size_t datalen, void *conn_user_data, void * /*stream_user_data*/) {
-            HTTP_DBG("Server::H3::recv_data: stream_id={} datalen={}", stream_id, datalen());
+            HTTP_DBG("Server::H3::recv_data: stream_id={} datalen={}", stream_id, datalen);
             auto dataView = std::string_view(reinterpret_cast<const char *>(data), datalen);
             auto session  = static_cast<Http3Session *>(conn_user_data);
             session->addData(stream_id, dataView);
@@ -1537,10 +1535,11 @@ struct Http3Session : public SessionBase<Http3Session<TServer>, std::int64_t>, p
             HTTP_DBG("Server::H3::begin_headers: stream_id={}", stream_id);
             return 0;
         };
-        callbacks.recv_header = [](nghttp3_conn *, std::int64_t stream_id, std::int32_t /*token*/, nghttp3_rcbuf *name, nghttp3_rcbuf *value, uint8_t /*flags*/, void *conn_user_data, void *) {
+        callbacks.recv_header = [](nghttp3_conn *, std::int64_t stream_id, std::int32_t token, nghttp3_rcbuf *name, nghttp3_rcbuf *value, uint8_t /*flags*/, void *conn_user_data, void *) {
+            std::ignore    = token;
             auto nameView  = as_view(name);
             auto valueView = as_view(value);
-            HTTP_DBG("Server::H3::recv_header: stream_id={} token={} name={} value={} flags={}", stream_id, token, nameView, valueView, flags);
+            HTTP_DBG("Server::H3::recv_header: stream_id={} token={} name={} value={}", stream_id, token, nameView, valueView);
             auto session = static_cast<Http3Session *>(conn_user_data);
             session->addHeader(stream_id, nameView, valueView);
             return 0;
