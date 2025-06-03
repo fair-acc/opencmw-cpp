@@ -1,3 +1,4 @@
+#include "majordomo/Rest.hpp"
 #include <majordomo/Broker.hpp>
 #include <majordomo/Settings.hpp>
 #include <majordomo/Worker.hpp>
@@ -168,6 +169,7 @@ TEST_CASE("Simple REST example", "[majordomo][majordomoworker][simple_example][h
     majordomo::Broker             broker("/TestBroker", testSettings());
     majordomo::rest::Settings     rest;
     rest.port     = kServerPort;
+    rest.protocols = majordomo::rest::Protocol::Http2;
     rest.handlers = { majordomo::rest::cmrcHandler("/assets/*", "", std::make_shared<cmrc::embedded_filesystem>(cmrc::assets::get_filesystem()), "") };
 
     if (auto bound = broker.bindRest(rest); !bound) {
@@ -320,8 +322,9 @@ TEST_CASE("Simple REST example", "[majordomo][majordomoworker][simple_example][h
 TEST_CASE("Invalid paths", "[majordomo][majordomoworker][rest]") {
     majordomo::Broker                                          broker("/TestBroker", testSettings());
     majordomo::rest::Settings                                  rest;
-    rest.port  = kServerPort;
-    auto bound = broker.bindRest(rest);
+    rest.port      = kServerPort;
+    rest.protocols = majordomo::rest::Protocol::Http2;
+    auto bound     = broker.bindRest(rest);
     REQUIRE(bound);
 
     opencmw::query::registerTypes(PathContext(), broker);
@@ -369,6 +372,7 @@ TEST_CASE("Get/Set with subpaths", "[majordomo][majordomoworker][rest]") {
     majordomo::Broker             broker("/TestBroker", testSettings());
     majordomo::rest::Settings     rest;
     rest.port  = kServerPort;
+    rest.protocols = majordomo::rest::Protocol::Http2;
     auto bound = broker.bindRest(rest);
     if (!bound) {
         FAIL(std::format("Failed to bind REST server: {}", bound.error()));
@@ -431,6 +435,7 @@ TEST_CASE("Subscriptions", "[majordomo][majordomoworker][subscription]") {
     majordomo::Broker             broker("/TestBroker", testSettings());
     majordomo::rest::Settings     rest;
     rest.port        = kServerPort;
+    rest.protocols   = majordomo::rest::Protocol::Http2;
     const auto bound = broker.bindRest(rest);
     if (!bound) {
         FAIL(std::format("Failed to bind REST server: {}", bound.error()));
@@ -553,19 +558,21 @@ TEST_CASE("Handler matching", "[majordomo][rest]") {
     majordomo::Broker         broker("/TestBroker", testSettings());
     majordomo::rest::Settings rest;
     rest.port        = kServerPort;
+    rest.protocols   = majordomo::rest::Protocol::Http2;
 
-    auto echoHandler = [](std::string method, std::string path) {
-        return majordomo::rest::Handler{
-            .method  = method,
-            .path    = path,
-            .handler = [path, method](const auto &) {
-                majordomo::rest::Response response;
-                response.code = 200;
-                response.body.put<opencmw::IoBuffer::WITHOUT>(std::format("{}|{}", method, path));
-                return response;
-            }
-        };
-    };
+    auto echoHandler
+            = [](std::string method, std::string path) {
+                  return majordomo::rest::Handler{
+                      .method  = method,
+                      .path    = path,
+                      .handler = [path, method](const auto &) {
+                          majordomo::rest::Response response;
+                          response.code = 200;
+                          response.body.put<opencmw::IoBuffer::WITHOUT>(std::format("{}|{}", method, path));
+                          return response;
+                      }
+                  };
+              };
 
     // Cannot test POST because Command::Set is also using "GET"
     rest.handlers = {
@@ -632,18 +639,7 @@ TEST_CASE("Handler matching", "[majordomo][rest]") {
     waitFor(responseCount, 4);
 }
 
-TEST_CASE("File system handler", "[majordomo][majordomoworker][rest]") {
-    majordomo::Broker         broker("/TestBroker", testSettings());
-    majordomo::rest::Settings rest;
-    rest.port     = kServerPort;
-    rest.handlers = { majordomo::rest::fileSystemHandler("/files/*", "/files/", std::filesystem::current_path()) };
-    auto bound    = broker.bindRest(rest);
-    if (!bound) {
-        FAIL(std::format("Failed to bind REST server: {}", bound.error()));
-        return;
-    }
-
-    constexpr auto              kExpectedFileContent = R"(-----BEGIN CERTIFICATE-----
+constexpr auto kExpectedFileContent = R"(-----BEGIN CERTIFICATE-----
 MIIFiTCCA3GgAwIBAgIUDBxaxLvthSz4Knvh6R0/zDrxe3QwDQYJKoZIhvcNAQEL
 BQAwVDELMAkGA1UEBhMCREUxEDAOBgNVBAgMB1Vua25vd24xEDAOBgNVBAcMB1Vu
 a25vd24xITAfBgNVBAoMGEludGVybmV0IFdpZGdpdHMgUHR5IEx0ZDAeFw0yMTEy
@@ -677,6 +673,19 @@ I0uPpRG4pT+BvLUZo8rKVpFLHj2nnflS5dXqKPo=
 -----END CERTIFICATE-----
 )";
 
+template<std::size_t MMapThreshold>
+void runFilesystemTest() {
+    majordomo::Broker         broker("/TestBroker", testSettings());
+    majordomo::rest::Settings rest;
+    rest.port      = kServerPort;
+    rest.protocols = majordomo::rest::Protocol::Http2;
+    rest.handlers  = { majordomo::rest::fileSystemHandler("/files/*", "/files/", std::filesystem::current_path(), {}, MMapThreshold) };
+    auto bound     = broker.bindRest(rest);
+    if (!bound) {
+        FAIL(std::format("Failed to bind REST server: {}", bound.error()));
+        return;
+    }
+
     RunInThread                 brokerRun(broker);
 
     std::atomic<int>            responseCount = 0;
@@ -685,7 +694,7 @@ I0uPpRG4pT+BvLUZo8rKVpFLHj2nnflS5dXqKPo=
     opencmw::client::Command    fileExists;
     fileExists.command  = mdp::Command::Get;
     fileExists.topic    = opencmw::URI<>(std::format("http://localhost:{}/files/demo_public.crt", kServerPort));
-    fileExists.callback = [&responseCount, &kExpectedFileContent](const auto &msg) {
+    fileExists.callback = [&responseCount](const auto &msg) {
         REQUIRE(msg.command == mdp::Command::Final);
         REQUIRE(msg.error == "");
         REQUIRE(msg.data.asString() == kExpectedFileContent);
@@ -705,6 +714,14 @@ I0uPpRG4pT+BvLUZo8rKVpFLHj2nnflS5dXqKPo=
     client.request(std::move(fileDoesNotExist));
 
     waitFor(responseCount, 2);
+};
+
+TEST_CASE("File system handler (stream)", "[majordomo][majordomoworker][rest]") {
+    runFilesystemTest<1024 * 1024 * 100>();
+}
+
+TEST_CASE("File system handler (mmap)", "[majordomo][majordomoworker][rest]") {
+    runFilesystemTest<1>();
 }
 
 TEST_CASE("Subscription latencies", "[majordomo][majordomoworker][rest]") {
@@ -714,6 +731,7 @@ TEST_CASE("Subscription latencies", "[majordomo][majordomoworker][rest]") {
         majordomo::Broker                                           broker("/TestBroker", testSettings());
         majordomo::rest::Settings                                   rest;
         rest.port             = kServerPort;
+        rest.protocols        = majordomo::rest::Protocol::Http2;
         auto bound            = broker.bindRest(rest);
         if (!bound) {
             FAIL(std::format("Failed to bind REST server: {}", bound.error()));

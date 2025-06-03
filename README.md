@@ -29,7 +29,7 @@ where the frame-work takes care of most of the communication, [data-serialisatio
 and buffering, settings management, Role-Based-Access-Control (RBAC), and other boring but necessary control system integrations
 while still being open to expert-level modifications, extensions or improvements.
 
-### General Schematic
+## General Schematic
 
 OpenCMW combines [ZeroMQ](https://zeromq.org/)'s [Majordomo](https://rfc.zeromq.org/spec/7/) with LMAX's [disruptor](https://lmax-exchange.github.io/disruptor/)
 ([C++ port](https://github.com/Abc-Arbitrage/Disruptor-cpp)) design pattern that both provide a very efficient lock-free mechanisms
@@ -38,7 +38,7 @@ for distributing, streaming and processing of data objects. A schematic outline 
 
 ![OpenCMW architectural schematic](./assets/FAIR_microservice_schematic.svg)
 
-### Glossary
+## Glossary
 
 _Majordomo Broker_ or _'Broker':_ is the central authority where multiple workers can register their services, allowing clients to perform get, set or subscriptions requests.
 There can be multiple brokers for subset of services.
@@ -67,11 +67,11 @@ _Publisher:_ the [DataSourcePublisher](DataSourceExample.cpp) provides an interf
 ring-buffer with events from OpenCMW, REST services or other sources.
 While using disruptor ring-buffers is the preferred and most performing options, the client also supports classic patterns of registering call-back functions or returning `Future<reyly objects>` objects.
 
-### OpenCMW Majordomo Protocol
+## OpenCMW Majordomo Protocol
 
 The OpenCMW Majordomo [protocol](docs/MajordomoProtocol.md) is based on the [ZeroMQ Majordomo protocol](https://rfc.zeromq.org/spec/7/), both extending and slightly modifying it (see [the comparison](docs/Majordomo_protocol_comparison.pdf)).
 
-#### Service Names
+### Service Names
 
 Service names must always start with `/`. For consistency, this also applies to the built-in MDP broker services like `/mmi.service` (instead of `mmi.service` without leading slash as in ZeroMQ Majordomo). A service name is a non-empty alphanumerical string (also allowing `.`, `_`), that must start with `/` but not end with `/`. It contain additional `/` to denote a hierarchical structure.
 
@@ -84,7 +84,7 @@ Examples:
 - `/DeviceName/Acquisition/` - invalid (trailing slash)
 - `/a-service/` - invalid (`-` not allowed)
 
-#### Topics
+### Topics
 
 The "topic" field (frame 5 in the [OpenCMW MDP protocol](docs/Majordomo_protocol_comparison.pdf)) specifies the topic for subscriptions and GET/SET requests. It contains a URI with the service name as path and optional query parameters to specify further requests parameters and filter criteria.
 
@@ -99,7 +99,7 @@ Note that the whole path is considered the service name, and that there's no add
 
 See also the documentation for [mdp::Topic](src/core/include/Topic.hpp).
 
-#### URL to Service/Topic Mapping (mds/mdp and REST)
+### URL to Service/Topic Mapping (mds/mdp and REST)
 
 With both the MDS/MDP-based ZeroMQ clients as well as the REST interface, a common scheme is used to map from mdp/hds/http(s) URLs used for subscriptions and requests to the OpenCMW service name and topic fields.
 
@@ -120,7 +120,7 @@ Other examples are:
 - `mds://example.com:8080/DeviceName/Acquisition?signal=test` => service name `/DeviceName/Acquisition`, topic `/DeviceName/Acquisition?signal=test` (subscription via mds).
 - `mdp://example.com:8080/dashboards/dashboard1?what=header` => service name `/dashboards/dashboard1`, topic `/dashboards/dashboard1?what=header` (Request via mdp).
 
-### Compile-Time-Reflection
+## Compile-Time-Reflection
 
 The serialisers are based on a [compile-time-reflection](docs/CompileTimeSerialiser.md) that efficiently transform domain-objects to and from the given wire-format (binary, JSON, ...).
 Compile-time reflection will become part of [C++23](http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p0592r4.html) as described by [David Sankel et al. , “C++ Extensions for Reflection”, ISO/IEC CD TS 23619, N4856](http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2020/n4856.pdf).
@@ -142,7 +142,7 @@ provides also an optional light-weight `constexpr` annotation template wrapper `
 that in turn can be used to (re-)generate and document the class definition (e.g. for other programming languages or projects that do not have the primary domain-object definition at hand)
 or to generate a generic [OpenAPI](https://swagger.io/specification/) definition. More details can be found [here](docs/CompileTimeSerialiser.md).
 
-### Building from source
+## Building from source
 
 Note that building from source is only required if you want to modify opencmw-cpp itself.
 
@@ -151,7 +151,7 @@ In that case, rather take a look at the project [opencmw-cpp-example](https://gi
 
 For concrete build instructions, please check the [build instructions page](docs/BuildInstructions.md).
 
-### Example
+## Example
 
 For an example on how to implement a simple, first service using opencmw-cpp, please take a look at the project [opencmw-cpp-example](https://github.com/alexxcons/opencmw-cpp-example).
 
@@ -217,7 +217,7 @@ or RESTful (HTTP)-based high-level protocols, or through a simple RESTful web-in
 [comment]: <> (The basic HTML rendering is based on XXX template engine and can be customised. For more efficient, complex and cross-platform)
 [comment]: <> (UI designs it is planned to allow embedding of WebAssembly-based &#40;[WASM]&#40;https://en.wikipedia.org/wiki/WebAssembly&#41;&#41; applications.)
 
-### Performance
+## Performance
 
 The end-to-end transmission achieving roughly 10k messages per second for synchronous communications and
 about 140k messages per second for asynchronous and or publish-subscribe style data acquisition (TCP link via locahost).
@@ -241,17 +241,74 @@ Your mileage may vary depending on the specific domain-object, processing logic,
 but you can check and compare the results for your platform using the [RoundTripAndNotifyEvaluation](RoundTripAndNotifyEvaluation.cpp)
 and/or [MdpImplementationBenchmark](MdpImplementationBenchmark.cpp) benchmarks.
 
-### Documentation
+## Testing HTTP/3
+
+The openCMW REST interface supports both HTTP/2 and HTTP/3. When connecting from a browser, the browser typically first connects
+via HTTP/2. HTTP/2 responses contain a "alt-svc" header that informs the browser about the availability of HTTP/3. The browser
+then should switch to HTTP/3. Note that if HTTP/3 fails for any reason (certificates, server error etc.), the browser might remember
+that and not try HTTP/3 again. How to reset this depends on the browser. What I did in Google Chrome
+
+ 1. open an private tab, open the developer console, go to "Network", enable the "Protocol" column
+ 2. connect to the service; verify in the developer console that HTTP/3 is used (Protocol should switch to`H3` after the first `H2` request)
+ 3. To reset browser status, close *all* private tabs and open a new one.
+
+### SSL Certificates
+
+QUIC/HTTP/3 requires the use of TLS, unencrypted servers are not possible.
+
+At least in Google Chrome, the TLS stack used for QUIC seems quite separate from the normal settings, and its much stricter than for HTTP/1/2. *If
+anything goes wrong here, Google Chrome will silently stick with HTTP/2, or show you an error, if you're lucky*.
+
+Caveats:
+
+ 1. The certificate must be trusted inside the Chrome Certificate store (e.g. on Mac, trusting it in Keychain might silence the warning for HTTP1/2,
+but HTTP/3 will still fail. Add the server's public key under chrome://certificate-manager/.
+ 2. The hostname in the certificate must match what you connect via in the browser. "Works-everywhere self-signed certificates" I couldn't get to work.
+What I did: Create a certificate for hostname `foobar`, edit `/etc/hosts` to resolve `foobar` to the test host's IP address. Enter e.g. `https://foobar:8080`
+in the browser, instead of the IP address.
+ 3. For HTTP/2, you can ignore Chrome's warning with "Proceed anyway" or similar. This does not make the QUIC stack trust the certificate, HTTP/3 will
+not be used.
+ 4. To get the certificate's fingerprint in base64:
+```
+openssl x509 -in /path/to/demo_public.crt -noout -pubkey \
+  | openssl pkey -pubin -outform DER \
+  | openssl dgst -sha256 -binary \
+  | openssl enc -base64
+```
+ 3. Start Chrome with these parameters to make Chrome trust the certificate
+```
+.../Google\ Chrome --enable-quic \
+  --origin-to-force-quic-on=<yourhost>:8080 \
+  --ignore-certificate-errors-spki-list=<base64fingerprint> \
+  --user-data-dir=/tmp/quic-test-profile \
+  --no-sandbox
+```
+
+ For verbose logging (netlog can be viewed in the [https://netlog-viewer.appspot.com/#import](netlog viewer)), add
+```
+  --enable-logging=stderr --v=3 \
+  --log-net-log=netlog.json --quic-version=h3
+```
+
+### curl
+
+curl needs to be built with QUIC/HTTP/3 enabled, which is not the case at least on Ubuntu 24.04. I used the docker image `badouralix/curl-http3`:
+
+```
+docker run --rm badouralix/curl-http3 curl -k -vvvv --http3 https://<yourhost>:8080/loadTest?topic=1&intervalMs=40&payloadSize=4096&nUpdates=100&LongPollingIdx=Next"
+```
+
+## Documentation
 
 .... more to follow.
 
-### Don't like Cpp?
+## Don't like Cpp?
 
 For prototyping applications or services that do not interact with hardware-based systems, a Java-based
 [OpenCMW](https://github.com/fair-acc/opencmw-java) twin-project is being developed which follows the same functional style
 but takes advantage of more concise implementation and C++-based type safety.
 
-### Acknowledgements
+## Acknowledgements
 
 The implementation heavily relies upon and re-uses time-tried and well-established concepts from [ZeroMQ](https://zeromq.org/)
 (notably the [Majordomo](https://rfc.zeromq.org/spec/7/) communication pattern, see [Z-Guide](https://zguide.zeromq.org/docs/chapter4/#Service-Oriented-Reliable-Queuing-Majordomo-Pattern)

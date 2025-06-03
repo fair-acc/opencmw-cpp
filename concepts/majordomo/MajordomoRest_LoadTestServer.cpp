@@ -36,10 +36,13 @@ int main(int argc, char **argv) {
     if (https) {
         rest.certificateFilePath = "./demo_public.crt";
         rest.keyFilePath         = "./demo_private.key";
+    } else {
+        rest.protocols = majordomo::rest::Protocol::Http2;
+        std::println(std::cerr, "HTTP/3 disabled, requires TLS");
     }
 
     majordomo::Broker broker("/Broker", testSettings());
-    opencmw::query::registerTypes(majordomo::load_test::Context(), broker);
+    opencmw::query::registerTypes(opencmw::load_test::Context(), broker);
 
     if (const auto bound = broker.bindRest(rest); !bound) {
         std::println("Could not bind HTTP/2 REST bridge to port {}: {}", rest.port, bound.error());
