@@ -22,7 +22,7 @@
 #include "ClientContext.hpp"
 #include "MdpMessage.hpp"
 #include "MIME.hpp"
-#include "nghttp2/NgHttp2Utils.hpp"
+#include "rest/RestUtils.hpp"
 #include "Topic.hpp"
 #ifdef OPENCMW_PROFILE_HTTP
 #include "LoadTest.hpp"
@@ -36,8 +36,7 @@ enum class SubscriptionMode {
 
 namespace detail {
 
-using namespace opencmw::nghttp2;
-using namespace opencmw::nghttp2::detail;
+using namespace opencmw::rest::detail;
 
 template<typename T>
 struct SharedQueue {

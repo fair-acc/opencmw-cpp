@@ -19,6 +19,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <vector>
 
 #include <openssl/bio.h>
 #include <openssl/crypto.h>
@@ -26,6 +27,7 @@
 #include <openssl/ssl.h>
 
 #include <nghttp2/nghttp2.h>
+#include <nghttp3/nghttp3.h>
 
 #ifdef OPENCMW_DEBUG_HTTP
 #include <iostream>
@@ -34,7 +36,7 @@
 #define HTTP_DBG(...)
 #endif
 
-namespace opencmw::nghttp2 {
+namespace opencmw::rest::detail {
 using SSL_CTX_Ptr    = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>;
 using SSL_Ptr        = std::unique_ptr<SSL, decltype(&SSL_free)>;
 using X509_STORE_Ptr = std::unique_ptr<X509_STORE, decltype(&X509_STORE_free)>;
@@ -129,12 +131,20 @@ inline std::expected<EVP_PKEY_Ptr, std::string> readServerPrivateKeyFromFile(std
     }
     return privateKeyX509;
 }
-namespace detail {
+
+#ifdef OPENCMW_PROFILE_HTTP
+inline std::chrono::nanoseconds latency(const std::string_view &value) {
+    const auto     now    = std::chrono::high_resolution_clock::now();
+    const uint64_t ts     = std::stoull(std::string(value));
+    const auto     parsed = std::chrono::time_point<std::chrono::high_resolution_clock>(std::chrono::nanoseconds(ts));
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(now - parsed);
+}
+#endif
 
 inline std::expected<SSL_Ptr, std::string> create_ssl(SSL_CTX *ssl_ctx) {
     auto ssl = SSL_Ptr(SSL_new(ssl_ctx), SSL_free);
     if (!ssl) {
-        return std::unexpected(std::format("Could not create SSL/TLS session object: {}", ERR_error_string(ERR_get_error(), nullptr)));
+        return std::unexpected(std::format("Could not create TLS session object: {}", ERR_error_string(ERR_get_error(), nullptr)));
     }
     return ssl;
 }
@@ -147,17 +157,17 @@ inline nghttp2_nv nv(const std::span<uint8_t> &name, const std::span<uint8_t> &v
     return { name.data(), value.data(), name.size(), value.size(), flags };
 }
 
-#ifdef OPENCMW_PROFILE_HTTP
-inline std::chrono::nanoseconds latency(const std::string_view &value) {
-    const auto     now    = std::chrono::high_resolution_clock::now();
-    const uint64_t ts     = std::stoull(std::string(value));
-    const auto     parsed = std::chrono::time_point<std::chrono::high_resolution_clock>(std::chrono::nanoseconds(ts));
-    return std::chrono::duration_cast<std::chrono::nanoseconds>(now - parsed);
+inline nghttp3_nv nv3(const std::span<uint8_t> &name, const std::span<uint8_t> &value, uint8_t flags = NGHTTP3_NV_FLAG_NO_COPY_NAME) {
+    return { name.data(), value.data(), name.size(), value.size(), flags };
 }
-#endif
 
 inline std::string_view as_view(nghttp2_rcbuf *rcbuf) {
     auto vec = nghttp2_rcbuf_get_buf(rcbuf);
+    return { reinterpret_cast<char *>(vec.base), vec.len };
+}
+
+inline std::string_view as_view(const nghttp3_rcbuf *rcbuf) {
+    auto vec = nghttp3_rcbuf_get_buf(rcbuf);
     return { reinterpret_cast<char *>(vec.base), vec.len };
 }
 
@@ -458,7 +468,6 @@ struct WriteBuffer {
     }
 };
 
-} // namespace detail
+} // namespace opencmw::rest::detail
 
-} // namespace opencmw::nghttp2
 #endif

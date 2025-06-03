@@ -36,14 +36,15 @@ void waitFor(std::atomic<T> &responseCount, T expected, std::chrono::millisecond
 TEST_CASE("Load test", "[majordomo][majordomoworker][load_test][http2]") {
     majordomo::Broker             broker("/TestBroker", testSettings());
     majordomo::rest::Settings     rest;
-    rest.port     = kServerPort;
-    auto bound    = broker.bindRest(rest);
+    rest.port      = kServerPort;
+    rest.protocols = majordomo::rest::Protocol::Http2;
+    auto bound     = broker.bindRest(rest);
     if (!bound) {
         FAIL(std::format("Failed to bind REST server: {}", bound.error()));
         return;
     }
 
-    query::registerTypes(opencmw::majordomo::load_test::Context(), broker);
+    query::registerTypes(opencmw::load_test::Context(), broker);
 
     majordomo::load_test::Worker worker(broker);
 
@@ -85,7 +86,7 @@ TEST_CASE("Load test", "[majordomo][majordomoworker][load_test][http2]") {
                 REQUIRE(msg.data.size() > 0);
                 const auto                    index = responseCount.fetch_add(1);
 
-                majordomo::load_test::Payload payload;
+                load_test::Payload            payload;
                 try {
                     IoBuffer buffer{ msg.data };
                     opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::IGNORE>(buffer, payload);

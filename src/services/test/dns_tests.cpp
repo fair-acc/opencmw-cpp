@@ -215,6 +215,7 @@ TEST_CASE("run services", "[DNS]") {
     FileDeleter                                                 fd;
     majordomo::Broker<>                                         broker{ "/Broker", {} };
     majordomo::rest::Settings                                   rest;
+    rest.protocols   = majordomo::rest::Protocol::Http2;
     const auto bound = broker.bindRest(rest);
     if (!bound) {
         FAIL(std::format("Failed to bind REST: {}", bound.error()));
@@ -230,6 +231,7 @@ TEST_CASE("client", "[DNS]") {
     FileDeleter                                                 fd;
     majordomo::Broker<>                                         broker{ "/Broker", {} };
     majordomo::rest::Settings                                   rest;
+    rest.protocols   = majordomo::rest::Protocol::Http2;
     const auto bound = broker.bindRest(rest);
     REQUIRE(bound);
     DnsWorkerType                                               dnsWorker{ broker, DnsHandler{} };
@@ -273,6 +275,7 @@ TEST_CASE("query", "[DNS]") {
     FileDeleter                                                 fd;
     majordomo::Broker<>                                         broker{ "/Broker", {} };
     majordomo::rest::Settings                                   rest;
+    rest.protocols   = majordomo::rest::Protocol::Http2;
     const auto bound = broker.bindRest(rest);
     REQUIRE(bound);
 
@@ -313,6 +316,7 @@ TEST_CASE("client unregister entries", "[DNS]") {
     FileDeleter                                                 fd;
     majordomo::Broker<>                                         broker{ "/Broker", {} };
     majordomo::rest::Settings                                   rest;
+    rest.protocols   = majordomo::rest::Protocol::Http2;
     const auto bound = broker.bindRest(rest);
     REQUIRE(bound);
     DnsWorkerType                                               dnsWorker{ broker, DnsHandler{} };
