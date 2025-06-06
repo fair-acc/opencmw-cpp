@@ -12,11 +12,12 @@ if(NOT EMSCRIPTEN)
   target_link_libraries(
     client
     INTERFACE pthread
-              core
-              disruptor
-              serialiser
-              majordomo
-              zmq)
+    core
+    disruptor
+    serialiser
+    majordomo
+    rest
+    zmq)
 else()
   target_link_libraries(
     client
