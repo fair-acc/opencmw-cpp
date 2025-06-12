@@ -260,8 +260,7 @@ enum class RestMethod {
 
 inline RestMethod parseMethod(std::string_view methodString) {
     using enum RestMethod;
-    return methodString == "POLL" ? LongPoll
-         : methodString == "PUT"  ? Post
+    return methodString == "PUT"  ? Post
          : methodString == "POST" ? Post
          : methodString == "GET"  ? Get
                                   : Invalid;
@@ -585,7 +584,6 @@ struct SessionBase {
 
         std::string      path;
         std::string_view method;
-        std::string_view xOpencmwMethod;
 
         for (const auto &[name, value] : request.rawHeaders) {
             if (name == ":path") {
@@ -596,8 +594,6 @@ struct SessionBase {
                 request.contentType = value;
             } else if (name == "accept") {
                 request.accept = value;
-            } else if (name == "x-opencmw-method") {
-                xOpencmwMethod = value;
             }
         }
 
@@ -630,8 +626,6 @@ struct SessionBase {
                 } else if (qkey == "SubscriptionContext") {
                     request.topic           = mdp::Topic::fromMdpTopic(URI<>(qvalue.value_or("")));
                     haveSubscriptionContext = true;
-                } else if (qkey == "_bodyOverride") {
-                    request.payload = qvalue.value_or("");
                 } else {
                     if (qvalue) {
                         factory = std::move(factory).addQueryParameter(qkey, qvalue.value());
@@ -652,9 +646,6 @@ struct SessionBase {
             return;
         }
 
-        if (request.method == RestMethod::Invalid && !xOpencmwMethod.empty()) {
-            request.method = parseMethod(xOpencmwMethod);
-        }
         if (request.method == RestMethod::Invalid) {
             request.method = parseMethod(method);
         }

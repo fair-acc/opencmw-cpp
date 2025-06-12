@@ -174,14 +174,13 @@
     }
 
     function pollingHandler() {
-        let get = { method: 'GET', headers: { 'x-opencmw-method' : 'POLL' } };
-
         let queryParams = window.opencmwActiveSubscriptionQueryParams;
 
         if (!window.opencmwActiveSubscriptionQueryParams) {
             let formMeta = window.opencmwWebForms.replyContextForm;
 
             queryParams = new URLSearchParams();
+            queryParams.append("LongPollingIdx", "Next");
 
             for (const [key, fieldMeta] of Object.entries(formMeta)) {
                 const field = document.getElementById(fieldMeta.formId + "_" + fieldMeta.name);
@@ -205,14 +204,14 @@
         }
 
         let url = getPageBaseUrl();
-        url.searchParams.append("LongPollingIdx", "Next");
+        url.searchParams.set("LongPollingIdx", "Next");
         let currentObject = (new URL(document.URL)).pathname;
-        url.searchParams.append("SubscriptionContext", currentObject + "?" + queryParams.toString());
+        url.searchParams.set("SubscriptionContext", currentObject + "?" + queryParams.toString());
         let address = url.href;
 
         console.log(address);
 
-        fetch(address, get)
+        fetch(address)
             .then(response => response.text())
             .then(data => {
                 var checkbox = document.getElementById("subscriptionPollingCheckbox");
@@ -308,12 +307,10 @@
                     request.send(formData);
 
                 } else {
-                    address += '&_bodyOverride=' + JSON.stringify(json);
                     let post = {
-                            method:  'POST',
-                            headers: { 'Accept' : 'application/json',
-                                       'Content-Type': 'application/json',
-                                       'X-OPENCMW-METHOD-DIS' : 'SET' },
+                            method: 'POST',
+                            headers: { 'Accept' : 'application/json', 'Content-Type': 'application/json' },
+                            body: JSON.stringify(json),
                         };
 
                     fetch(address, post)
