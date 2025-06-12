@@ -63,8 +63,9 @@ struct SharedQueue {
 
 struct RequestResponse {
     // request data
-    client::Command request;
-    std::string     normalizedTopic;
+    client::Command           request;
+    std::unique_ptr<IoBuffer> body;
+    std::string               normalizedTopic;
 
     // response data
     std::string                  responseStatus;
@@ -168,11 +169,6 @@ struct ClientSessionBase {
     }
 
     void submitRequest(client::Command &&cmd, SubscriptionMode mode, std::string preferredMimeType, std::optional<std::uint64_t> longPollIdx) {
-        auto topic = cmd.topic;
-        if (cmd.command == mdp::Command::Set) {
-            topic = URI<>::UriFactory(topic).addQueryParameter("_bodyOverride", std::string{ cmd.data.asString() }).build();
-        }
-
         std::string longPollIdxParam;
         if (longPollIdx) {
             longPollIdxParam = std::to_string(*longPollIdx);
@@ -188,6 +184,8 @@ struct ClientSessionBase {
                 break;
             }
         }
+
+        auto topic = cmd.topic;
         if (!longPollIdxParam.empty()) {
             topic = URI<>::UriFactory(topic).addQueryParameter("LongPollingIdx", longPollIdxParam).build();
         }
@@ -199,10 +197,13 @@ struct ClientSessionBase {
         const auto ts = std::to_string(opencmw::load_test::timestamp().count());
 #endif
         constexpr uint8_t noCopy  = NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE;
+
+        const auto        method  = (cmd.command == mdp::Command::Set) ? u8span("POST") : u8span("GET");
+
         auto              headers = std::vector{
-            nv(u8span(":method"), u8span("GET"), noCopy), //
-            nv(u8span(":path"), u8span(path)),            //
-            nv(u8span(":scheme"), u8span(scheme)),        //
+            nv(u8span(":method"), method, noCopy), //
+            nv(u8span(":path"), u8span(path)),     //
+            nv(u8span(":scheme"), u8span(scheme)), //
             nv(u8span(":authority"), u8span(host)),
 #ifdef OPENCMW_PROFILE_HTTP
             nv(u8span("x-timestamp"), u8span(ts))
@@ -211,9 +212,6 @@ struct ClientSessionBase {
         if (!preferredMimeType.empty()) {
             headers.push_back(nv(u8span("accept"), u8span(preferredMimeType)));
             headers.push_back(nv(u8span("content-type"), u8span(preferredMimeType)));
-        }
-        if (cmd.command == mdp::Command::Set) {
-            headers.push_back(nv(u8span("x-opencmw-method"), u8span("PUT"), noCopy));
         }
 
         RequestResponse rr;
@@ -224,7 +222,12 @@ struct ClientSessionBase {
             rr.normalizedTopic = rr.request.topic.str();
         }
 
-        const TStreamId streamId = self().submitRequestImpl(headers);
+        if (!rr.request.data.empty()) {
+            // we need a pointer that survives rr being moved
+            rr.body = std::make_unique<IoBuffer>(std::move(rr.request.data));
+        }
+
+        const TStreamId streamId = self().submitRequestImpl(headers, rr.body.get());
         if (streamId < 0) {
             rr.reportError(std::format("Could not submit request: {}", nghttp2_strerror(streamId)));
             return;
@@ -486,8 +489,25 @@ struct Http2ClientSession : public ClientSessionBase<Http2ClientSession, int32_t
         return _socket._state == TcpSocket::Connected ? _writeBuffer.wantsToWrite(_session) : (_socket._state == TcpSocket::Connecting || _socket._state == TcpSocket::SSLConnectWantsWrite);
     }
 
-    int32_t submitRequestImpl(const std::vector<nghttp2_nv> &headers) {
-        auto streamId = nghttp2_submit_request(_session, nullptr, headers.data(), headers.size(), nullptr, nullptr);
+    int32_t submitRequestImpl(const std::vector<nghttp2_nv> &headers, IoBuffer *body) {
+        nghttp2_data_provider2 data_prd;
+        data_prd.read_callback = nullptr;
+
+        if (body && !body->empty()) {
+            data_prd.source.ptr    = body;
+            data_prd.read_callback = [](nghttp2_session *, int32_t /*stream_id*/, uint8_t *buf, size_t length, uint32_t *data_flags, nghttp2_data_source *source, void * /*user_data*/) {
+                auto              ioBuffer = static_cast<IoBuffer *>(source->ptr);
+                const std::size_t copy_len = std::min(length, ioBuffer->size() - ioBuffer->position());
+                std::copy(ioBuffer->data() + ioBuffer->position(), ioBuffer->data() + ioBuffer->position() + copy_len, buf);
+                ioBuffer->skip(static_cast<int>(copy_len));
+                if (ioBuffer->position() == ioBuffer->size()) {
+                    *data_flags |= NGHTTP2_DATA_FLAG_EOF;
+                }
+                return static_cast<ssize_t>(copy_len);
+            };
+        }
+
+        auto streamId = nghttp2_submit_request2(_session, nullptr, headers.data(), headers.size(), &data_prd, nullptr);
         if (streamId < 0) {
             HTTP_DBG("Client::submitRequest: nghttp2_submit_request failed: {}", nghttp2_strerror(streamId));
         }

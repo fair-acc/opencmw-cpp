@@ -303,19 +303,18 @@ private:
         emscripten_fetch_attr_t attr;
         emscripten_fetch_attr_init(&attr);
 
-        std::string body(cmd.data.asString());
+        auto payload  = std::make_unique<detail::FetchPayload>(std::move(cmd));
+        attr.userData = payload.get();
 
-        if (cmd.command == opencmw::mdp::Command::Set) {
+        if (payload->command.command == opencmw::mdp::Command::Set) {
             strcpy(attr.requestMethod, "POST");
-            attr.requestData     = reinterpret_cast<const char *>(body.data());
+            auto body            = payload->command.data.asString();
+            attr.requestData     = body.data();
             attr.requestDataSize = body.size();
         } else {
             strcpy(attr.requestMethod, "GET");
         }
 
-        auto payload  = std::make_unique<detail::FetchPayload>(std::move(cmd));
-        attr.userData = payload.get();
-        detail::fetchPayloads.insert(std::move(payload));
         static auto getPayload = [](emscripten_fetch_t *fetch) {
             auto *rawPayload = fetch->userData;
             auto  it         = detail::fetchPayloads.find(rawPayload);
@@ -339,8 +338,8 @@ private:
 
         // TODO: Pass the payload as POST body: emscripten_fetch(&attr, uri.relativeRef()->data());
 
-        const auto uri = URI<>::factory(cmd.topic).addQueryParameter("_bodyOverride", body).build();
-        emscripten_fetch(&attr, uri.str().data());
+        emscripten_fetch(&attr, payload->command.topic.str().data());
+        detail::fetchPayloads.insert(std::move(payload));
     }
 
     void startSubscription(Command &&cmd) {
