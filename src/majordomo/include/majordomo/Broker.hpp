@@ -16,6 +16,8 @@
 #include <format>
 
 #include "Rbac.hpp"
+#include "Rest.hpp"
+#include "RestServer.hpp"
 #include "Topic.hpp"
 #include "URI.hpp"
 
@@ -181,13 +183,16 @@ private:
     using Timestamp = std::chrono::time_point<Clock>;
 
     struct Client {
-        const zmq::Socket        &socket;
-        const std::string         id;
-        std::deque<BrokerMessage> requests;
-        Timestamp                 expiry;
+        std::optional<std::reference_wrapper<const zmq::Socket>> socket;
+        const std::string                                        id;
+        std::deque<BrokerMessage>                                requests;
+        Timestamp                                                expiry;
 
         explicit Client(const zmq::Socket &s, const std::string &id_, Timestamp expiry_)
             : socket(s), id(std::move(id_)), expiry{ std::move(expiry_) } {}
+
+        explicit Client(const std::string &id_)
+            : id(std::move(id_)), expiry{} {}
     };
 
     struct Worker {
@@ -261,6 +266,7 @@ public:
     const std::string  brokerName;
 
 private:
+    std::unique_ptr<detail::rest::RestServer>               _restServer;
     Timestamp                                               _heartbeatAt = Clock::now() + settings.heartbeatInterval;
     SubscriptionMatcher                                     _subscriptionMatcher;
     std::unordered_map<mdp::Topic, std::set<std::string>>   _subscribedClientsByTopic; // topic -> client IDs
@@ -278,11 +284,13 @@ private:
     std::atomic<bool>                                       _shutdownRequested = false;
 
     // Sockets collection. The Broker class will be used as the handler
-    const zmq::Socket             _routerSocket;
-    const zmq::Socket             _pubSocket;
-    const zmq::Socket             _subSocket;
-    const zmq::Socket             _dnsSocket;
-    std::array<zmq_pollitem_t, 4> pollerItems;
+    const zmq::Socket                 _routerSocket;
+    const zmq::Socket                 _pubSocket;
+    const zmq::Socket                 _subSocket;
+    const zmq::Socket                 _dnsSocket;
+    static constexpr std::size_t      kNumberOfZmqSockets = 4;
+    static constexpr std::string_view kRestSourceId       = "rest"; // assuming that ZMQ never assigns this ID. Alternatively connect an idle client and use its ID.
+    std::vector<zmq_pollitem_t>       _pollerItems        = std::vector<zmq_pollitem_t>(kNumberOfZmqSockets);
 
 public:
     Broker(std::string brokerName_, Settings settings_ = {})
@@ -394,14 +402,14 @@ public:
             zmq::invoke(zmq_connect, _dnsSocket, INTERNAL_ADDRESS_BROKER.str().data()).assertSuccess();
         }
 
-        pollerItems[0].socket = _routerSocket.zmq_ptr;
-        pollerItems[0].events = ZMQ_POLLIN;
-        pollerItems[1].socket = _pubSocket.zmq_ptr;
-        pollerItems[1].events = ZMQ_POLLIN;
-        pollerItems[2].socket = _subSocket.zmq_ptr;
-        pollerItems[2].events = ZMQ_POLLIN;
-        pollerItems[3].socket = _dnsSocket.zmq_ptr;
-        pollerItems[3].events = ZMQ_POLLIN;
+        _pollerItems[0].socket = _routerSocket.zmq_ptr;
+        _pollerItems[0].events = ZMQ_POLLIN;
+        _pollerItems[1].socket = _pubSocket.zmq_ptr;
+        _pollerItems[1].events = ZMQ_POLLIN;
+        _pollerItems[2].socket = _subSocket.zmq_ptr;
+        _pollerItems[2].events = ZMQ_POLLIN;
+        _pollerItems[3].socket = _dnsSocket.zmq_ptr;
+        _pollerItems[3].events = ZMQ_POLLIN;
     }
 
     Broker(const Broker &)            = delete;
@@ -427,6 +435,7 @@ public:
      */
     std::optional<URI<STRICT>> bind(const URI<STRICT> &endpoint, BindOption option = BindOption::DetectFromURI) {
         assert(!(option == BindOption::DetectFromURI && (endpoint.scheme() == SCHEME_INPROC || endpoint.scheme() == SCHEME_TCP)));
+
         const auto isRouterSocket = option != BindOption::Pub && (option == BindOption::Router || endpoint.scheme() == SCHEME_MDP || endpoint.scheme() == SCHEME_TCP);
 
         const auto zmqEndpoint    = mdp::toZeroMQEndpoint(endpoint);
@@ -446,6 +455,30 @@ public:
         return adjustedAddressPublic;
     }
 
+    std::expected<void, std::string> bindRest(rest::Settings restSettings) {
+        if (restSettings.certificateFilePath.empty() != restSettings.keyFilePath.empty()) {
+            return std::unexpected("Provide both certificate and key file paths (for HTTPS) or none (for HTTP)");
+        }
+        if (restSettings.certificateFileBuffer.empty() != restSettings.keyFileBuffer.empty()) {
+            return std::unexpected("Provide both certificate and key file paths (for HTTPS) or none (for HTTP)");
+        }
+
+        std::expected<detail::rest::RestServer, std::string> maybeServer;
+        if (!restSettings.certificateFilePath.empty()) {
+            maybeServer = detail::rest::RestServer::sslWithPaths(std::move(restSettings.certificateFilePath), std::move(restSettings.keyFilePath));
+        } else if (!restSettings.certificateFileBuffer.empty()) {
+            maybeServer = detail::rest::RestServer::sslWithBuffers(std::move(restSettings.certificateFileBuffer), std::move(restSettings.keyFileBuffer));
+        } else {
+            maybeServer = detail::rest::RestServer::unencrypted();
+        }
+        if (!maybeServer) {
+            return std::unexpected(maybeServer.error());
+        }
+        _restServer = std::make_unique<detail::rest::RestServer>(std::move(maybeServer.value()));
+        _restServer->setHandlers(std::move(restSettings.handlers));
+        return _restServer->bind(restSettings.port, restSettings.protocols);
+    }
+
     void run() {
         sendDnsHeartbeats(true); // initial register of default routes
 
@@ -462,6 +495,17 @@ public:
     // test interface
 
     bool processMessages() {
+        for (std::size_t i = kNumberOfZmqSockets; i < _pollerItems.size(); ++i) {
+            const auto read  = _pollerItems[i].revents & ZMQ_POLLIN;
+            const auto write = _pollerItems[i].revents & ZMQ_POLLOUT;
+            if (read || write) {
+                auto messages = _restServer->processReadWrite(_pollerItems[i].fd, read, write);
+                for (auto &message : messages) {
+                    handleRestMessage(std::move(message));
+                }
+            }
+        }
+
         bool anythingReceived;
         int  loopCount = 0;
         do {
@@ -481,9 +525,13 @@ public:
             loopCount++;
         } while (anythingReceived);
 
+        _pollerItems.resize(kNumberOfZmqSockets);
+        if (_restServer) {
+            _restServer->populatePollerItems(_pollerItems);
+        }
+
         // N.B. block until data arrived or for at most one heart-beat interval
-        const auto result = zmq::invoke(zmq_poll, pollerItems.data(), static_cast<int>(pollerItems.size()), settings.heartbeatInterval.count());
-        return result.isValid();
+        return zmq::invoke(zmq_poll, _pollerItems.data(), static_cast<int>(_pollerItems.size()), settings.heartbeatInterval.count()).isValid();
     }
 
     void cleanup() {
@@ -564,7 +612,53 @@ private:
         return true;
     }
 
-    bool receiveMessage(const zmq::Socket &socket) {
+    void handleRestMessage(BrokerMessage &&message) {
+        message.sourceId     = std::string(kRestSourceId);
+        message.protocolName = mdp::clientProtocol;
+        switch (message.command) {
+        case mdp::Command::Get:
+        case mdp::Command::Set: {
+            auto [client, inserted] = _clients.try_emplace(message.sourceId, message.sourceId);
+            client->second.requests.emplace_back(std::move(message));
+        } break;
+        case mdp::Command::Subscribe: {
+            mdp::Topic subscription;
+            try {
+                subscription = mdp::Topic::fromMdpTopic(message.topic);
+            } catch (...) {
+                // malformed topic, ignore
+                return;
+            }
+
+            subscribe(subscription);
+            auto [it, inserted] = _subscribedClientsByTopic.try_emplace(subscription);
+            it->second.emplace(message.sourceId);
+        } break;
+        case mdp::Command::Unsubscribe: {
+            mdp::Topic subscription;
+            try {
+                subscription = mdp::Topic::fromMdpTopic(message.topic);
+            } catch (...) {
+                // malformed topic, ignore
+                return;
+            }
+
+            unsubscribe(subscription);
+            auto it = _subscribedClientsByTopic.find(subscription);
+            if (it != _subscribedClientsByTopic.end()) {
+                it->second.erase(message.sourceId);
+                if (it->second.empty()) {
+                    _subscribedClientsByTopic.erase(it);
+                }
+            }
+        } break;
+        default:
+            break;
+        }
+    }
+
+    bool
+    receiveMessage(const zmq::Socket &socket) {
         auto maybeMessage = zmq::receive<mdp::MessageFormat::WithSourceId>(socket);
 
         if (!maybeMessage) {
@@ -709,9 +803,15 @@ private:
                 const auto it = _subscribedClientsByTopic.find(topic);
                 if (it != _subscribedClientsByTopic.end()) {
                     for (const auto &clientId : it->second) {
-                        auto clientCopy     = message;
-                        clientCopy.sourceId = clientId;
-                        zmq::send(std::move(clientCopy), _routerSocket).assertSuccess();
+                        auto clientCopy = message;
+                        if (clientId == kRestSourceId) {
+                            if (_restServer) {
+                                _restServer->handleNotification(it->first, std::move(clientCopy));
+                            }
+                        } else {
+                            clientCopy.sourceId = clientId;
+                            zmq::send(std::move(clientCopy), _routerSocket).assertSuccess();
+                        }
                     }
                 }
             }
@@ -750,13 +850,19 @@ private:
             if (client.requests.empty())
                 continue;
 
-            auto clientMessage = std::move(client.requests.back());
-            client.requests.pop_back();
+            auto clientMessage = std::move(client.requests.front());
+            client.requests.pop_front();
 
             if (auto service = bestMatchingService(clientMessage.serviceName)) {
                 if (service->internalHandler) {
                     auto reply = service->internalHandler(std::move(clientMessage));
-                    zmq::send(std::move(reply), client.socket).assertSuccess();
+                    if (client.id == kRestSourceId) {
+                        if (_restServer) {
+                            _restServer->handleResponse(std::move(reply));
+                        }
+                    } else {
+                        zmq::send(std::move(reply), client.socket.value()).assertSuccess();
+                    }
                 } else {
                     service->putMessage(std::move(clientMessage));
                     dispatch(*service);
@@ -773,7 +879,13 @@ private:
             reply.error = std::format("unknown service (error 501): '{}'", reply.serviceName);
             reply.rbac  = _rbac;
 
-            zmq::send(std::move(reply), client.socket).assertSuccess();
+            if (client.id == kRestSourceId) {
+                if (_restServer) {
+                    _restServer->handleResponse(std::move(reply));
+                }
+            } else {
+                zmq::send(std::move(reply), client.socket.value()).assertSuccess();
+            }
         }
     }
 
@@ -786,7 +898,7 @@ private:
 
         const auto isExpired = [&now](const auto &c) {
             auto &[senderId, client] = c;
-            return client.expiry < now;
+            return senderId != kRestSourceId && client.expiry < now;
         };
 
         std::erase_if(_clients, isExpired);
@@ -876,7 +988,14 @@ private:
                 message.sourceId     = message.serviceName; // serviceName=clientSourceID
                 message.serviceName  = worker.serviceName;
                 message.protocolName = mdp::clientProtocol;
-                zmq::send(std::move(message), client->second.socket).assertSuccess();
+                if (message.sourceId == kRestSourceId) {
+                    if (_restServer) {
+                        _restServer->handleResponse(std::move(message));
+                    }
+                } else {
+                    zmq::send(std::move(message), client->second.socket.value()).assertSuccess();
+                }
+
                 workerWaiting(worker);
             } else {
                 disconnectWorker(worker);
