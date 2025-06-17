@@ -855,7 +855,7 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
             if (cache.connection && requestedLongPollingIdx < cache.nextPollingIndex) {
                 auto connectionCacheLock = cache.connection->readLock();
                 // The result is already ready
-                response.set_content(cache.connection->cachedReply(connectionCacheLock, requestedLongPollingIdx), MIME::JSON.typeName().data());
+                response.set_content(cache.connection->cachedReply(connectionCacheLock, requestedLongPollingIdx), MIME::BINARY.typeName().data());
                 return true;
             }
         }
@@ -879,7 +879,7 @@ struct RestBackend<Mode, VirtualFS, Roles...>::RestWorker {
 
         if (requestedLongPollingIdx >= newCache.firstCachedIndex && requestedLongPollingIdx < newCache.nextPollingIndex) {
             auto connectionCacheLock = newCache.connection->readLock();
-            response.set_content(newCache.connection->cachedReply(connectionCacheLock, requestedLongPollingIdx), MIME::JSON.typeName().data());
+            response.set_content(newCache.connection->cachedReply(connectionCacheLock, requestedLongPollingIdx), MIME::BINARY.typeName().data());
             return true;
         } else {
             return detail::respondWithError(response, "Error: We waited for the new value, but it was not found");
