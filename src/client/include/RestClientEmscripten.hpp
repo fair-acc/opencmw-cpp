@@ -70,7 +70,7 @@ auto checkedStringViewSize = [](auto numBytes) {
 
 std::array<std::string, 4> getPreferredContentTypeHeader(const URI<STRICT> &uri, auto _mimeType) {
     auto mimeType = std::string(_mimeType.typeName());
-    if (const auto acceptHeader = uri.queryParamMap().find(ACCEPT_HEADER); acceptHeader != uri.queryParamMap().end() && acceptHeader->second) {
+    if (const auto acceptHeader = uri.queryParamMap().find("contentType"); acceptHeader != uri.queryParamMap().end() && acceptHeader->second) {
         mimeType = acceptHeader->second->c_str();
     }
     return { ACCEPT_HEADER, mimeType, CONTENT_TYPE_HEADER, mimeType };
@@ -222,7 +222,7 @@ struct SubscriptionPayload : FetchPayload {
 
 class RestClient : public ClientBase {
     std::string       _name;
-    MIME::MimeType    _mimeType;
+    MIME::MimeType    _mimeType = MIME::BINARY;
     std::atomic<bool> _run = true;
     std::string       _caCertificate;
 
@@ -241,7 +241,7 @@ public:
     template<typename... Args>
     explicit(false) RestClient(Args... initArgs)
         : _name(detail::find_argument_value<false, std::string>([] { return "RestClient"; }, initArgs...))
-        , _mimeType(detail::find_argument_value<true, DefaultContentTypeHeader>([] { return MIME::JSON; }, initArgs...)) {
+        , _mimeType(detail::find_argument_value<true, DefaultContentTypeHeader>([] { return MIME::BINARY; }, initArgs...)) {
     }
     ~RestClient() { RestClient::stop(); };
 
