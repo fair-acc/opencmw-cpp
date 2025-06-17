@@ -23,6 +23,8 @@ namespace detail {
  * Get the final URL of a possibly redirected HTTP fetch call.
  * Uses Javascript to return the the url as a string.
  */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdollar-in-identifier-extension"
 static std::string getFinalURL(std::uint32_t id) {
     auto        finalURLChar = static_cast<char *>(EM_ASM_PTR({
                                                                    var fetch = Fetch.xhrs.get($0);
@@ -38,6 +40,7 @@ static std::string getFinalURL(std::uint32_t id) {
     EM_ASM({ _free($0) }, finalURLChar);
     return finalURL;
 }
+#pragma GCC diagnostic pop
 
 struct pointer_equals {
     using is_transparent = void;
