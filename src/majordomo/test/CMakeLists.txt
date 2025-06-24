@@ -29,7 +29,6 @@ function(opencmw_add_test_catch2 name sources)
     catch_discover_tests(${name})
 endfunction()
 
-
 opencmw_add_test_app(majordomo_testapp testapp.cpp)
 opencmw_add_test_app(majordomo_benchmark majordomo_benchmark.cpp)
 
@@ -40,3 +39,7 @@ opencmw_add_test_catch2(SubscriptionMatch_tests subscriptionmatcher_tests.cpp)
 opencmw_add_test_catch2(majordomo_tests majordomo_tests.cpp;subscriptionmatcher_tests.cpp)
 opencmw_add_test_catch2(majordomo_worker_tests majordomoworker_tests.cpp;subscriptionmatcher_tests.cpp)
 opencmw_add_test_catch2(majordomo_worker_rest_tests majordomoworker_rest_tests.cpp;subscriptionmatcher_tests.cpp)
+
+if(NOT ENSCRIPTEN)
+    opencmw_add_test_catch2(majordomo_worker_load_tests majordomo_load_tests.cpp)
+endif()

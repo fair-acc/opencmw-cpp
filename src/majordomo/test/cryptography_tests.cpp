@@ -1,4 +1,4 @@
-#include <majordomo/Cryptography.hpp>.hpp>
+#include <majordomo/Cryptography.hpp>
 
 #include <catch2/catch.hpp>
 

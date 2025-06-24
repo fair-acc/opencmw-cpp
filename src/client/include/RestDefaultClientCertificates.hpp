@@ -2,6 +2,7 @@
 #define OPENCMW_CPP_RESTDEFAULTCLIENTCERTIFICATE_HPP
 
 #include <array>
+#include <fstream>
 #include <string>
 
 namespace opencmw::client::rest {
