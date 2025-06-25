@@ -206,10 +206,11 @@ struct SubscriptionPayload : FetchPayload {
                     return;
                 }
 
-                if (payload->_update != 0 && longPollingIdx != payload->_update) {
-                    std::print("received unexpected update: {}, expected {}\n", longPollingIdx, payload->_update);
+                const long indexDiff = static_cast<long>(longPollingIdx) - static_cast<long>(payload->_update + 1);
+                if (payload->_update != 0 && indexDiff != 0) {
+                    std::print("received unexpected update: {}, expected {}\n", longPollingIdx, payload->_update + 1);
                 }
-                payload->onsuccess(fetch->status, std::string_view(fetch->data, detail::checkedStringViewSize(fetch->numBytes)), static_cast<long>(longPollingIdx) - static_cast<long>(payload->_update));
+                payload->onsuccess(fetch->status, std::string_view(fetch->data, detail::checkedStringViewSize(fetch->numBytes)), indexDiff);
                 emscripten_fetch_close(fetch);
 
                 payload->_update = longPollingIdx;
@@ -244,7 +245,7 @@ struct SubscriptionPayload : FetchPayload {
 class RestClient : public ClientBase {
     std::string       _name;
     MIME::MimeType    _mimeType = MIME::BINARY;
-    std::atomic<bool> _run = true;
+    std::atomic<bool> _run      = true;
     std::string       _caCertificate;
 
 public:
