@@ -26,7 +26,7 @@ namespace detail {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdollar-in-identifier-extension"
 static std::string getFinalURL(std::uint32_t id) {
-    auto        finalURLChar = static_cast<char *>(EM_ASM_PTR({
+    auto finalURLChar = static_cast<char *>(EM_ASM_PTR({
                                                                    var fetch = Fetch.xhrs.get($0);
                                                                    if (fetch) {
                                                                        var finalURL = fetch.responseURL;
@@ -36,6 +36,9 @@ static std::string getFinalURL(std::uint32_t id) {
                                                                        return stringOnWasmHeap;
                                                                    }
                                                                    return 0; }, id));
+    if (finalURLChar == nullptr) {
+        return {};
+    }
     std::string finalURL{ finalURLChar, strlen(finalURLChar) };
     EM_ASM({ _free($0) }, finalURLChar);
     return finalURL;
@@ -63,7 +66,7 @@ struct pointer_hash {
 
 auto checkedStringViewSize = [](auto numBytes) {
     if (numBytes > std::numeric_limits<std::string_view::size_type>::max()) {
-        throw std::format("We received more data than we can handle {}", numBytes);
+        throw std::out_of_range(std::format("We received more data than we can handle {}", numBytes));
     }
     return static_cast<std::string_view::size_type>(numBytes);
 };
