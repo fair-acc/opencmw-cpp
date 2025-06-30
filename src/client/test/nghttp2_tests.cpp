@@ -131,7 +131,8 @@ TEST_CASE("GET HTTP", "[http2]") {
 
     auto serverThread = std::jthread([](std::stop_token stopToken) {
         RestServer server;
-        REQUIRE(server.bind(kServerPort, majordomo::rest::Http2));
+        majordomo::rest::Settings settings{ .port = kServerPort, .protocols = majordomo::rest::Http2 };
+        REQUIRE(server.bind(settings));
 
         std::deque<Message> messages;
         ensureMessageReceived(server, stopToken, messages);
@@ -204,7 +205,8 @@ TEST_CASE("HTTPS", "[http2]") {
             return;
         }
 
-        auto bound = server->bind(kServerPort, majordomo::rest::Http2);
+        majordomo::rest::Settings settings{ .port = kServerPort, .protocols = majordomo::rest::Http2 };
+        auto                      bound = server->bind(settings);
         if (!bound) {
             FAIL(std::format("Failed to bind server: {}", bound.error()));
             return;
@@ -296,7 +298,8 @@ TEST_CASE("HTTPS", "[http2]") {
 TEST_CASE("GET/SET", "[http2]") {
     auto    serverThread = std::jthread([](std::stop_token stopToken) {
         RestServer server;
-        REQUIRE(server.bind(kServerPort, majordomo::rest::Http2));
+        majordomo::rest::Settings settings{ .port = kServerPort, .protocols = majordomo::rest::Http2 };
+        REQUIRE(server.bind(settings));
 
         std::deque<Message> messages;
         ensureMessageReceived(server, stopToken, messages);
@@ -410,7 +413,8 @@ TEST_CASE("Long polling example", "[http2]") {
 
     auto          brokerThread = std::jthread([](std::stop_token stopToken) {
         RestServer server;
-        REQUIRE(server.bind(kServerPort, majordomo::rest::Http2));
+        majordomo::rest::Settings settings{ .port = kServerPort, .protocols = majordomo::rest::Http2 };
+        REQUIRE(server.bind(settings));
 
         const auto                  topic = URI<>("/foo?param1=1&param2=foo%2Fbar");
 

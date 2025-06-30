@@ -2425,9 +2425,10 @@ struct RestServer {
     }
 
     std::expected<void, std::string>
-    bind(std::uint16_t port, int protocols) {
+    bind(const majordomo::rest::Settings &settings) {
         using enum majordomo::rest::Protocol;
-        if ((protocols & Http2) == 0 && (protocols & Http3) == 0) {
+        std::uint16_t port = settings.port;
+        if ((settings.protocols & Http2) == 0 && (settings.protocols & Http3) == 0) {
             return std::unexpected("At least one protocol must be enabled (HTTP/2 or HTTP/3)");
         }
 
@@ -2435,7 +2436,7 @@ struct RestServer {
             return std::unexpected("Server already bound");
         }
 
-        if ((protocols & Http2) != 0) {
+        if ((settings.protocols & Http2) != 0) {
             auto tcpSocket = createTcpServerSocket(_sslCtxTcp.get(), port);
             if (!tcpSocket) {
                 return std::unexpected(tcpSocket.error());
@@ -2443,7 +2444,7 @@ struct RestServer {
             _tcpServerSocket = std::move(tcpSocket.value());
         }
 
-        if ((protocols & Http3) == 0) {
+        if ((settings.protocols & Http3) == 0) {
             return {};
         }
 
@@ -2458,8 +2459,10 @@ struct RestServer {
         if (_tls_ctx.init(_key, _cert, AppProtocol::H3) != 0) {
             return std::unexpected("Failed to initialize TLS context for HTTP/3");
         }
-        _sharedData->_altSvcHeaderValue = std::format("h3=\":{}\"; ma=86400", port);
-        _sharedData->_altSvcHeader      = nv(u8span("alt-svc"), u8span(_sharedData->_altSvcHeaderValue), NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE);
+        if (settings.upgradeHttp3) {
+            _sharedData->_altSvcHeaderValue = std::format("h3=\":{}\"; ma=86400", port);
+            _sharedData->_altSvcHeader      = nv(u8span("alt-svc"), u8span(_sharedData->_altSvcHeaderValue), NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE);
+        }
         _quicServerSocket               = std::move(quicSocket.value());
         _endpoint.fd                    = _quicServerSocket.fd;
         return {};

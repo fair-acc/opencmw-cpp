@@ -56,6 +56,7 @@ int main(int argc, char **argv) {
     opencmw::majordomo::rest::Settings rest;
     rest.port     = port;
     rest.handlers = { majordomo::rest::cmrcHandler("/assets/*", "", std::make_shared<cmrc::embedded_filesystem>(cmrc::assets::get_filesystem()), "") };
+    rest.upgradeHttp3 = true;
     if (https) {
         rest.certificateFilePath = "./demo_public.crt";
         rest.keyFilePath         = "./demo_private.key";

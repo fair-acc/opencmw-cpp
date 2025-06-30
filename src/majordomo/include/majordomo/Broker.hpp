@@ -476,7 +476,7 @@ public:
         }
         _restServer = std::make_unique<detail::rest::RestServer>(std::move(maybeServer.value()));
         _restServer->setHandlers(std::move(restSettings.handlers));
-        return _restServer->bind(restSettings.port, restSettings.protocols);
+        return _restServer->bind(restSettings);
     }
 
     void run() {
