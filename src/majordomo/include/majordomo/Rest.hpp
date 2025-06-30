@@ -265,6 +265,7 @@ struct Settings {
     std::string                dnsAddress;
     std::vector<rest::Handler> handlers;
     int                        protocols = Protocol::Http2 | Protocol::Http3;
+    bool                       upgradeHttp3 = false;
 };
 
 } // namespace opencmw::majordomo::rest
