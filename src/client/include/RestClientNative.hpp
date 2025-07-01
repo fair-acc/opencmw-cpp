@@ -107,7 +107,7 @@ struct RequestResponse {
     }
 };
 
-constexpr std::size_t kParallelLongPollingRequests = 3;
+constexpr std::size_t kParallelLongPollingRequests = 1; // increasing this value could reduce latency but needs some more robust error handling for unexpected updates
 
 struct Subscription {
     client::Command                                   request;

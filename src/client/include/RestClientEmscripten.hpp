@@ -140,7 +140,7 @@ struct SubscriptionPayload : FetchPayload {
     MIME::MimeType               _mimeType;
     std::size_t                  _update                      = 0;
 
-    static constexpr std::size_t kParallelLongPollingRequests = 3;
+    static constexpr std::size_t kParallelLongPollingRequests = 1; // increasing this value could reduce latency but needs some more robust error handling for unexpected updates
     std::vector<std::uint64_t>   _requestedIndexes;
 
     SubscriptionPayload(Command &&_command, MIME::MimeType mimeType)
