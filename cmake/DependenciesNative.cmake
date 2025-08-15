@@ -47,11 +47,14 @@ ExternalProject_Add(Nghttp2Project
         -DENABLE_HTTP3:BOOL=OFF
         -DENABLE_DEBUG:BOOL=${ENABLE_NGHTTP_DEBUG}
         -DBUILD_STATIC_LIBS:BOOL=ON
-	-DBUILD_SHARED_LIBS:BOOL=OFF
+        -DBUILD_SHARED_LIBS:BOOL=OFF
+        -DENABLE_STATIC_LIB:BOOL=ON
+        -DENABLE_SHARED_LIB:BOOL=OFF
         -DENABLE_DOC:BOOL=OFF
 )
 
 add_library(nghttp2-static STATIC IMPORTED GLOBAL)
+target_link_libraries(nghttp2-static INTERFACE ngtcp2-static ngtcp2-crypto-ossl-static)
 set_target_properties(nghttp2-static PROPERTIES
         IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/_deps/nghttp2-install/${CMAKE_INSTALL_LIBDIR}/libnghttp2.a"
         INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/_deps/nghttp2-install/include"
@@ -71,8 +74,17 @@ ExternalProject_Add(Nghttp3Project
         -DENABLE_DEBUG:BOOL=${ENABLE_NGHTTP_DEBUG}
         -DBUILD_STATIC_LIBS:BOOL=ON
         -DBUILD_SHARED_LIBS:BOOL=OFF
+        -DENABLE_STATIC_LIB:BOOL=ON
+        -DENABLE_SHARED_LIB:BOOL=OFF
         -DENABLE_DOC:BOOL=OFF
 )
+add_library(nghttp3-static STATIC IMPORTED GLOBAL)
+target_link_libraries(nghttp3-static INTERFACE ngtcp2-static ngtcp2-crypto-ossl-static)
+set_target_properties(nghttp3-static PROPERTIES
+        IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/_deps/nghttp3-install/${CMAKE_INSTALL_LIBDIR}/libnghttp3.a"
+        INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/_deps/nghttp3-install/include"
+)
+add_dependencies(nghttp3-static Nghttp3Project)
 
 ExternalProject_Add(NgTcp2Project
         GIT_REPOSITORY https://github.com/ngtcp2/ngtcp2.git
@@ -90,10 +102,13 @@ ExternalProject_Add(NgTcp2Project
         -DENABLE_DEBUG:BOOL=${ENABLE_NGHTTP_DEBUG}
         -DBUILD_STATIC_LIBS:BOOL=ON
         -DBUILD_SHARED_LIBS:BOOL=OFF
+        -DENABLE_STATIC_LIB:BOOL=ON
+        -DENABLE_SHARED_LIB:BOOL=OFF
         DEPENDS openssl-crypto-static openssl-ssl-static
 )
 
 add_library(ngtcp2-static STATIC IMPORTED GLOBAL)
+target_link_libraries(ngtcp2-static INTERFACE openssl-ssl-static openssl-crypto-static)
 set_target_properties(ngtcp2-static PROPERTIES
         IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/_deps/ngtcp2-install/${CMAKE_INSTALL_LIBDIR}/libngtcp2.a"
         INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/_deps/ngtcp2-install/include"
@@ -101,18 +116,12 @@ set_target_properties(ngtcp2-static PROPERTIES
 add_dependencies(ngtcp2-static NgTcp2Project)
 
 add_library(ngtcp2-crypto-ossl-static STATIC IMPORTED GLOBAL)
+target_link_libraries(ngtcp2-crypto-ossl-static INTERFACE openssl-ssl-static openssl-crypto-static)
 set_target_properties(ngtcp2-crypto-ossl-static PROPERTIES
         IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/_deps/ngtcp2-install/${CMAKE_INSTALL_LIBDIR}/libngtcp2_crypto_ossl.a"
         INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/_deps/ngtcp2-install/include"
 )
 add_dependencies(ngtcp2-crypto-ossl-static NgTcp2Project)
-
-add_library(nghttp3-static STATIC IMPORTED GLOBAL)
-set_target_properties(nghttp3-static PROPERTIES
-        IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/_deps/nghttp3-install/${CMAKE_INSTALL_LIBDIR}/libnghttp3.a"
-        INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/_deps/nghttp3-install/include"
-)
-add_dependencies(nghttp3-static Nghttp3Project)
 
 add_library(mustache INTERFACE)
 target_include_directories(mustache INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/3rd_party/kainjow)
