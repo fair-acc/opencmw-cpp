@@ -17,14 +17,16 @@
 #include <print>
 #include <refl.hpp>
 
+#include <opencmw.hpp>
+
 #include <Formatter.hpp>
 #include <units/concepts.h>
 #include <units/quantity.h>
 #include <units/quantity_io.h>
 
-#define FWD(x) std::forward<decltype(x)>(x)               // short-hand notation
-#define forceinline inline __attribute__((always_inline)) // use this for hot-spots only <-> may bloat code size, not fit into cache and consequently slow down execution
-#define neverinline __attribute__((noinline))             // primarily used to avoid inlining (rare) exception handling code
+#define FWD(x) std::forward<decltype(x)>(x)                       // short-hand notation
+#define OPENCMW_FORCEINLINE inline __attribute__((always_inline)) // use this for hot-spots only <-> may bloat code size, not fit into cache and consequently slow down execution
+#define neverinline __attribute__((noinline))                     // primarily used to avoid inlining (rare) exception handling code
 
 #define ENABLE_REFLECTION_FOR(TypeName, ...) \
     REFL_TYPE(TypeName __VA_OPT__(, )) \

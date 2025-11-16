@@ -4,9 +4,10 @@
 #include <algorithm>
 #include <atomic>
 #include <format>
-#include <opencmw.hpp>
 #include <ostream>
 #include <span>
+
+#include <opencmw.hpp>
 
 namespace opencmw::disruptor {
 
@@ -27,24 +28,24 @@ public:
     explicit Sequence(std::int64_t initialValue = kInitialCursorValue) noexcept
         : _fieldsValue(initialValue) {}
 
-    [[nodiscard]] forceinline std::int64_t value() const noexcept {
+    [[nodiscard]] OPENCMW_FORCEINLINE std::int64_t value() const noexcept {
         return std::atomic_load_explicit(&_fieldsValue, std::memory_order_acquire);
     }
 
-    forceinline void setValue(std::int64_t value) noexcept {
+    OPENCMW_FORCEINLINE void setValue(std::int64_t value) noexcept {
         std::atomic_store_explicit(&_fieldsValue, value, std::memory_order_release);
     }
 
-    [[nodiscard]] forceinline bool compareAndSet(std::int64_t expectedSequence, std::int64_t nextSequence) noexcept {
+    [[nodiscard]] OPENCMW_FORCEINLINE bool compareAndSet(std::int64_t expectedSequence, std::int64_t nextSequence) noexcept {
         // atomically set the value to the given updated value if the current value == the expected value (true, otherwise folse).
         return std::atomic_compare_exchange_strong(&_fieldsValue, &expectedSequence, nextSequence);
     }
 
-    [[nodiscard]] forceinline std::int64_t incrementAndGet() noexcept {
+    [[nodiscard]] OPENCMW_FORCEINLINE std::int64_t incrementAndGet() noexcept {
         return std::atomic_fetch_add(&_fieldsValue, 1L) + 1L;
     }
 
-    [[nodiscard]] forceinline std::int64_t addAndGet(std::int64_t value) noexcept {
+    [[nodiscard]] OPENCMW_FORCEINLINE std::int64_t addAndGet(std::int64_t value) noexcept {
         return std::atomic_fetch_add(&_fieldsValue, value) + value;
     }
 };

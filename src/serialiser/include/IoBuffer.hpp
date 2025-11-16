@@ -4,9 +4,6 @@
 #pragma ide diagnostic ignored "cppcoreguidelines-owning-memory"
 #pragma ide diagnostic ignored "UnreachableCode" // -- allow for alternate non-c-style memory management
 
-#include "MultiArray.hpp"
-#include "opencmw.hpp"
-
 #include <format>
 
 #include <algorithm>
@@ -33,6 +30,10 @@ using polymorphic_allocator = std::experimental::pmr::polymorphic_allocator<T>;
 #include <string_view>
 #include <utility>
 #include <vector>
+
+#include <opencmw.hpp>
+
+#include "MultiArray.hpp"
 
 namespace opencmw {
 
@@ -210,7 +211,7 @@ private:
     }
 
     template<MetaInfo meta = WITH, typename Container>
-    forceinline constexpr void putBoolContainer(const Container &values) noexcept {
+    OPENCMW_FORCEINLINE constexpr void putBoolContainer(const Container &values) noexcept {
         const std::size_t size       = values.size();
         const std::size_t byteToCopy = size * sizeof(bool);
         if constexpr (meta == WITH) {
@@ -308,7 +309,7 @@ public:
     constexpr void                             clear() noexcept { _position = _size = 0; }
 
     template<bool checkRange = true>
-    forceinline constexpr void skip(int bytes) noexcept(!checkRange) {
+    OPENCMW_FORCEINLINE constexpr void skip(int bytes) noexcept(!checkRange) {
         if constexpr (checkRange) {
             if (_position + static_cast<std::size_t>(bytes) > size()) { // catches both over and underflow
                 throw std::out_of_range(std::format("requested index {} is out-of-range [0,{}]", static_cast<std::ptrdiff_t>(_position) + bytes, _size));
@@ -318,7 +319,7 @@ public:
     }
 
     template<typename R, bool checkRange = true>
-    forceinline constexpr R &at(const size_t index) noexcept(!checkRange) {
+    OPENCMW_FORCEINLINE constexpr R &at(const size_t index) noexcept(!checkRange) {
         if constexpr (checkRange) {
             if (index >= _size) {
                 throw std::out_of_range(std::format("requested index {} is out-of-range [0,{}]", index, _size));
@@ -351,7 +352,7 @@ public:
     }
 
     template<MetaInfo meta = WITH, Number I>
-    forceinline constexpr void put(const I &value) noexcept {
+    OPENCMW_FORCEINLINE constexpr void put(const I &value) noexcept {
         constexpr std::size_t byteToCopy = sizeof(I);
         reserve_spare(byteToCopy);
 
@@ -360,7 +361,7 @@ public:
     }
 
     template<MetaInfo meta = WITH, StringLike I>
-    forceinline constexpr void put(const I &value) noexcept {
+    OPENCMW_FORCEINLINE constexpr void put(const I &value) noexcept {
         const std::size_t bytesToCopy = value.size() * sizeof(char);
         reserve_spare(bytesToCopy + sizeof(int32_t) + sizeof(char)); // educated guess
         if constexpr (meta == WITH) {
@@ -376,24 +377,24 @@ public:
     }
 
     template<SupportedType I, size_t size>
-    forceinline constexpr void put(I const (&values)[size]) noexcept { put(std::span<const I>(values, size)); } // NOLINT int a[30]; OK <-> std::array<int, 30>
+    OPENCMW_FORCEINLINE constexpr void put(I const (&values)[size]) noexcept { put(std::span<const I>(values, size)); } // NOLINT int a[30]; OK <-> std::array<int, 30>
     template<SupportedType I>
-    forceinline constexpr void put(std::vector<I> const &values) noexcept { put(std::span<const I>(values.data(), values.size())); }
+    OPENCMW_FORCEINLINE constexpr void put(std::vector<I> const &values) noexcept { put(std::span<const I>(values.data(), values.size())); }
     template<SupportedType I, size_t size>
-    forceinline constexpr void put(std::array<I, size> const &values) noexcept { put(std::span<const I>(values.data(), values.size())); }
+    OPENCMW_FORCEINLINE constexpr void put(std::array<I, size> const &values) noexcept { put(std::span<const I>(values.data(), values.size())); }
 
     template<MetaInfo meta = WITH>
-    forceinline constexpr void put(std::vector<bool> const &values) noexcept {
+    OPENCMW_FORCEINLINE constexpr void put(std::vector<bool> const &values) noexcept {
         putBoolContainer<meta>(values);
     }
 
     template<MetaInfo meta = WITH, size_t size>
-    forceinline constexpr void put(std::array<bool, size> const &values) noexcept {
+    OPENCMW_FORCEINLINE constexpr void put(std::array<bool, size> const &values) noexcept {
         putBoolContainer<meta>(values);
     }
 
     template<bool checkRange = true>
-    [[nodiscard]] forceinline constexpr std::string_view asString(const size_t index = 0U, const int requestedSize = -1) const noexcept(!checkRange) {
+    [[nodiscard]] OPENCMW_FORCEINLINE constexpr std::string_view asString(const size_t index = 0U, const int requestedSize = -1) const noexcept(!checkRange) {
         const auto unsigned_size = static_cast<std::size_t>(requestedSize);
         if constexpr (checkRange) {
             if (index > _size) {
@@ -410,7 +411,7 @@ public:
     }
 
     template<typename R, typename RawType = std::remove_cvref_t<R>>
-    [[nodiscard]] forceinline constexpr R get() const noexcept {
+    [[nodiscard]] OPENCMW_FORCEINLINE constexpr R get() const noexcept {
         if constexpr (Number<R>) {
             const std::size_t localPosition = _position;
             _position += sizeof(R);
@@ -427,7 +428,7 @@ public:
     }
 
     template<ArrayOrVector Container, bool checkRange = false>
-    forceinline constexpr Container &getArray(Container &input, const std::size_t requestedSize = SIZE_MAX) const noexcept(!checkRange) {
+    OPENCMW_FORCEINLINE constexpr Container &getArray(Container &input, const std::size_t requestedSize = SIZE_MAX) const noexcept(!checkRange) {
         using R                        = Container::value_type;
         const auto        arraySize    = std::min(static_cast<std::size_t>(get<int32_t>()), _size - _position);
         const std::size_t minArraySize = std::min(arraySize, requestedSize);
@@ -456,14 +457,14 @@ public:
     }
 
     template<SupportedType R>
-    forceinline constexpr std::vector<R> getArray(std::vector<R> &&input = std::vector<R>(), const std::size_t requestedSize = SIZE_MAX) noexcept { return getArray(input, requestedSize); }
+    OPENCMW_FORCEINLINE constexpr std::vector<R> getArray(std::vector<R> &&input = std::vector<R>(), const std::size_t requestedSize = SIZE_MAX) noexcept { return getArray(input, requestedSize); }
     template<SupportedType R, std::size_t size>
-    [[maybe_unused]] forceinline constexpr std::array<R, size> getArray(std::array<R, size> &&input = std::array<R, size>(), const std::size_t requestedSize = size) noexcept { return getArray(input, requestedSize); }
+    [[maybe_unused]] OPENCMW_FORCEINLINE constexpr std::array<R, size> getArray(std::array<R, size> &&input = std::array<R, size>(), const std::size_t requestedSize = size) noexcept { return getArray(input, requestedSize); }
 
     template<StringArray R, typename T = typename R::value_type>
-    [[nodiscard]] forceinline constexpr R &get(R &input, const std::size_t requestedSize = SIZE_MAX) noexcept { return getArray(input, requestedSize); }
+    [[nodiscard]] OPENCMW_FORCEINLINE constexpr R &get(R &input, const std::size_t requestedSize = SIZE_MAX) noexcept { return getArray(input, requestedSize); }
     template<StringArray R, typename T = typename R::value_type>
-    [[nodiscard]] forceinline constexpr R get(R &&input = R(), const std::size_t requestedSize = SIZE_MAX) noexcept { return getArray(std::forward<R>(input), requestedSize); }
+    [[nodiscard]] OPENCMW_FORCEINLINE constexpr R get(R &&input = R(), const std::size_t requestedSize = SIZE_MAX) noexcept { return getArray(std::forward<R>(input), requestedSize); }
 };
 
 } // namespace opencmw

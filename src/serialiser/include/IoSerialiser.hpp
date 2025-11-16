@@ -1,11 +1,14 @@
 #ifndef OPENCMW_IOSERIALISER_H
 #define OPENCMW_IOSERIALISER_H
 
-#include "IoBuffer.hpp"
-#include "MultiArray.hpp"
 #include <list>
 #include <map>
 #include <queue>
+
+#include "IoBuffer.hpp"
+#include "MultiArray.hpp"
+
+#include <opencmw.hpp>
 
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "cppcoreguidelines-avoid-magic-numbers"
@@ -144,7 +147,7 @@ struct IoSerialiser {
 };
 
 template<ReflectableClass T>
-forceinline int32_t findMemberIndex(const std::string_view &fieldName) noexcept {
+OPENCMW_FORCEINLINE int32_t findMemberIndex(const std::string_view &fieldName) noexcept {
     static constexpr ConstExprMap<std::string_view, int32_t, refl::reflect<T>().members.size> m{ refl::util::map_to_array<std::pair<std::string_view, int32_t>>(refl::reflect<T>().members, [](auto field, auto index) {
         return std::pair<std::string_view, int32_t>(field.name.c_str(), index);
     }) };
@@ -232,7 +235,7 @@ struct FieldHeaderReader {
 
 namespace detail {
 
-forceinline void moveToFieldEndBufferPosition(IoBuffer &buffer, const FieldDescriptionLong &field) {
+OPENCMW_FORCEINLINE void moveToFieldEndBufferPosition(IoBuffer &buffer, const FieldDescriptionLong &field) {
     if (field.dataEndPosition != std::numeric_limits<size_t>::max()) {
         buffer.set_position(field.dataEndPosition);
     }
