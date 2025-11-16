@@ -1,6 +1,8 @@
 #ifndef OPENCMW_CPP_CLAIMSTRATEGY_HPP
 #define OPENCMW_CPP_CLAIMSTRATEGY_HPP
 
+#include <opencmw.hpp>
+
 #include <SpinWait.hpp>
 
 #include <disruptor/Sequence.hpp>
@@ -32,10 +34,10 @@ class alignas(kCacheLine) SingleThreadedStrategy {
 
 public:
     SingleThreadedStrategy(Sequence &cursor, WAIT_STRATEGY &waitStrategy)
-        : _cursor(cursor), _waitStrategy(waitStrategy){};
+        : _cursor(cursor), _waitStrategy(waitStrategy) {};
     SingleThreadedStrategy(const SingleThreadedStrategy &)  = delete;
     SingleThreadedStrategy(const SingleThreadedStrategy &&) = delete;
-    void operator=(const SingleThreadedStrategy &) = delete;
+    void operator=(const SingleThreadedStrategy &)          = delete;
 
     bool hasAvailableCapacity(const std::vector<std::shared_ptr<Sequence>> &dependents, const int requiredCapacity, const std::int64_t /*cursorValue*/) const noexcept {
         if (const std::int64_t wrapPoint = (_nextValue + requiredCapacity) - static_cast<std::int64_t>(SIZE); wrapPoint > _cachedValue || _cachedValue > _nextValue) {
@@ -99,8 +101,8 @@ public:
         }
     }
 
-    [[nodiscard]] forceinline bool isAvailable(std::int64_t sequence) const noexcept { return sequence <= _cursor.value(); }
-    [[nodiscard]] std::int64_t     getHighestPublishedSequence(std::int64_t /*nextSequence*/, std::int64_t availableSequence) const noexcept { return availableSequence; }
+    [[nodiscard]] OPENCMW_FORCEINLINE bool isAvailable(std::int64_t sequence) const noexcept { return sequence <= _cursor.value(); }
+    [[nodiscard]] std::int64_t             getHighestPublishedSequence(std::int64_t /*nextSequence*/, std::int64_t availableSequence) const noexcept { return availableSequence; }
 };
 static_assert(ClaimStrategy<SingleThreadedStrategy<1024, NoWaitStrategy>>);
 
@@ -128,8 +130,8 @@ public:
         }
         setAvailableBufferValue(0, -1);
     }
-    MultiThreadedStrategy(const MultiThreadedStrategy &)  = delete;
-    MultiThreadedStrategy(const MultiThreadedStrategy &&) = delete;
+    MultiThreadedStrategy(const MultiThreadedStrategy &)        = delete;
+    MultiThreadedStrategy(const MultiThreadedStrategy &&)       = delete;
     void               operator=(const MultiThreadedStrategy &) = delete;
 
     [[nodiscard]] bool hasAvailableCapacity(const std::vector<std::shared_ptr<Sequence>> &dependents, const std::int64_t requiredCapacity, const std::int64_t cursorValue) const noexcept {
@@ -212,14 +214,14 @@ public:
         }
     }
 
-    [[nodiscard]] forceinline bool isAvailable(std::int64_t sequence) const noexcept {
+    [[nodiscard]] OPENCMW_FORCEINLINE bool isAvailable(std::int64_t sequence) const noexcept {
         const auto index = calculateIndex(sequence);
         const auto flag  = calculateAvailabilityFlag(sequence);
 
         return _availableBuffer[static_cast<std::size_t>(index)] == flag;
     }
 
-    [[nodiscard]] forceinline std::int64_t getHighestPublishedSequence(const std::int64_t lowerBound, const std::int64_t availableSequence) const noexcept {
+    [[nodiscard]] OPENCMW_FORCEINLINE std::int64_t getHighestPublishedSequence(const std::int64_t lowerBound, const std::int64_t availableSequence) const noexcept {
         for (std::int64_t sequence = lowerBound; sequence <= availableSequence; sequence++) {
             if (!isAvailable(sequence)) {
                 return sequence - 1;
@@ -230,10 +232,10 @@ public:
     }
 
 private:
-    void                      setAvailable(std::int64_t sequence) noexcept { setAvailableBufferValue(calculateIndex(sequence), calculateAvailabilityFlag(sequence)); }
-    forceinline void          setAvailableBufferValue(std::size_t index, std::int32_t flag) noexcept { _availableBuffer[index] = flag; }
-    [[nodiscard]] forceinline std::int32_t calculateAvailabilityFlag(const std::int64_t sequence) const noexcept { return static_cast<std::int32_t>(static_cast<std::uint64_t>(sequence) >> _indexShift); }
-    [[nodiscard]] forceinline std::size_t calculateIndex(const std::int64_t sequence) const noexcept { return static_cast<std::size_t>(static_cast<std::int32_t>(sequence) & _indexMask); }
+    void                              setAvailable(std::int64_t sequence) noexcept { setAvailableBufferValue(calculateIndex(sequence), calculateAvailabilityFlag(sequence)); }
+    OPENCMW_FORCEINLINE void          setAvailableBufferValue(std::size_t index, std::int32_t flag) noexcept { _availableBuffer[index] = flag; }
+    [[nodiscard]] OPENCMW_FORCEINLINE std::int32_t calculateAvailabilityFlag(const std::int64_t sequence) const noexcept { return static_cast<std::int32_t>(static_cast<std::uint64_t>(sequence) >> _indexShift); }
+    [[nodiscard]] OPENCMW_FORCEINLINE std::size_t calculateIndex(const std::int64_t sequence) const noexcept { return static_cast<std::size_t>(static_cast<std::int32_t>(sequence) & _indexMask); }
 };
 static_assert(ClaimStrategy<MultiThreadedStrategy<1024, NoWaitStrategy>>);
 

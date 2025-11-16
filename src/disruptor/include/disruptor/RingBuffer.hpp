@@ -49,7 +49,7 @@ public:
     [[nodiscard]] std::int64_t                              tryNext(std::int32_t n_slots_to_claim = 1) override { return _claimStrategy->tryNext(*_gatingSequences, n_slots_to_claim); }
     [[nodiscard]] std::int64_t                              getRemainingCapacity() const noexcept override { return _claimStrategy->getRemainingCapacity(*_gatingSequences); }
     void                                                    publish(std::int64_t sequence) override { _claimStrategy->publish(sequence); }
-    [[nodiscard]] forceinline bool                          isAvailable(std::int64_t sequence) const noexcept override { return _claimStrategy->isAvailable(sequence); }
+    [[nodiscard]] OPENCMW_FORCEINLINE bool                  isAvailable(std::int64_t sequence) const noexcept override { return _claimStrategy->isAvailable(sequence); }
     [[nodiscard]] std::int64_t                              getHighestPublishedSequence(std::int64_t nextSequence, std::int64_t availableSequence) const noexcept override { return _claimStrategy->getHighestPublishedSequence(nextSequence, availableSequence); }
     [[nodiscard]] std::int64_t                              cursor() const noexcept override { return _cursor->value(); }
     [[nodiscard]] bool                                      isPublished(std::int64_t sequence) const noexcept override { return isAvailable(sequence); }
