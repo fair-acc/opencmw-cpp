@@ -81,6 +81,8 @@ public:
 private:
     void poll(const std::atomic_bool &stop_requested) {
         while (!stop_requested) { // switch to event processor instead of busy spinning
+            // TODO this sleep reduces CPU load on one core
+            std::this_thread::sleep_for(16ms);
             _cmdPoller->poll([this](Command &cmd, std::int64_t /*sequenceID*/, bool /*endOfBatch*/) -> bool {
                 if (cmd.command == mdp::Command::Invalid) {
                     return false;
