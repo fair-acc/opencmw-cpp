@@ -48,6 +48,10 @@ target_link_libraries(
   assets::rest
   assets::testImages)
 
+add_executable(CompatibilityTest CompatibilityTest.cpp)
+target_include_directories(CompatibilityTest PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(CompatibilityTest PRIVATE majordomo opencmw_project_options opencmw_project_warnings)
+
 if(NOT
    CMAKE_CXX_COMPILER_ID
    MATCHES
