@@ -55,7 +55,9 @@ template<> OPENCMW_FORCEINLINE constexpr uint8_t getDataTypeId<char[]>() { retur
 template<> OPENCMW_FORCEINLINE constexpr uint8_t getDataTypeId<std::vector<char>>() { return 108; }
 
 template<> OPENCMW_FORCEINLINE constexpr uint8_t getDataTypeId<std::string[]>() { return 109; }
+template<> OPENCMW_FORCEINLINE constexpr uint8_t getDataTypeId<std::vector<std::string>>() { return 109; }
 template<> OPENCMW_FORCEINLINE constexpr uint8_t getDataTypeId<std::string_view[]>() { return 109; }
+template<> OPENCMW_FORCEINLINE constexpr uint8_t getDataTypeId<std::vector<std::string_view>>() { return 109; }
 
 // template<> OPENCMW_FORCEINLINE constexpr uint8_t getDataTypeId<START_MARKER>() { return 200; }
 // template<> OPENCMW_FORCEINLINE constexpr uint8_t getDataTypeId<enum>()          { return 201; }
