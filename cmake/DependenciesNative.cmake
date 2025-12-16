@@ -1,14 +1,14 @@
 include(ExternalProject)
 include(GNUInstallDirs)
 
-set(OPENSSL_C_FLAGS "-O3 -march=x86-64-v3" CACHE STRING "OpenSSL custom CFLAGS" FORCE)
-set(OPENSSL_CXX_FLAGS "-O3 -march=x86-64-v3" CACHE STRING "OpenSSL custom CXXFLAGS" FORCE)
+set(OPENSSL_C_FLAGS "-O3 -march=x86-64-v3 -fPIC" CACHE STRING "OpenSSL custom CFLAGS" FORCE)
+set(OPENSSL_CXX_FLAGS "-O3 -march=x86-64-v3 -fPIC" CACHE STRING "OpenSSL custom CXXFLAGS" FORCE)
 set(OPENSSL_INSTALL_DIR "${CMAKE_BINARY_DIR}/_deps/openssl-install")
 
 # Build custom OpenSSL with QUIC support
 ExternalProject_Add(OpenSslProject
         GIT_REPOSITORY https://github.com/openssl/openssl.git
-        GIT_TAG openssl-3.5.0 # 3.5.0 required for server-side QUIC support
+        GIT_TAG openssl-3.6.0 # 3.6.0 required for server-side QUIC support
         GIT_SHALLOW ON
         BUILD_BYPRODUCTS ${OPENSSL_INSTALL_DIR}/lib64/libcrypto.a ${OPENSSL_INSTALL_DIR}/lib64/libssl.a
         CONFIGURE_COMMAND COMMAND ./Configure CFLAGS=${OPENSSL_C_FLAGS} CXXFLAGS=${OPENSSL_CXX_FLAGS} no-shared no-tests --prefix=${OPENSSL_INSTALL_DIR} --openssldir=${OPENSSL_INSTALL_DIR} linux-x86_64
@@ -51,6 +51,9 @@ ExternalProject_Add(Nghttp2Project
         -DENABLE_STATIC_LIB:BOOL=ON
         -DENABLE_SHARED_LIB:BOOL=OFF
         -DENABLE_DOC:BOOL=OFF
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+        -DCMAKE_C_FLAGS=-fPIC
+        -DCMAKE_CXX_FLAGS=-fPIC
 )
 
 add_library(nghttp2-static STATIC IMPORTED GLOBAL)
@@ -77,6 +80,9 @@ ExternalProject_Add(Nghttp3Project
         -DENABLE_STATIC_LIB:BOOL=ON
         -DENABLE_SHARED_LIB:BOOL=OFF
         -DENABLE_DOC:BOOL=OFF
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+        -DCMAKE_C_FLAGS=-fPIC
+        -DCMAKE_CXX_FLAGS=-fPIC
 )
 add_library(nghttp3-static STATIC IMPORTED GLOBAL)
 target_link_libraries(nghttp3-static INTERFACE ngtcp2-static ngtcp2-crypto-ossl-static)
@@ -88,7 +94,7 @@ add_dependencies(nghttp3-static Nghttp3Project)
 
 ExternalProject_Add(NgTcp2Project
         GIT_REPOSITORY https://github.com/ngtcp2/ngtcp2.git
-        GIT_TAG v1.13.0
+        GIT_TAG v1.18.0
         GIT_SHALLOW ON
         PREFIX ${CMAKE_BINARY_DIR}/_deps/ngtcp2-install
         BUILD_BYPRODUCTS ${CMAKE_BINARY_DIR}/_deps/ngtcp2-install/${CMAKE_INSTALL_LIBDIR}/libngtcp2.a ${CMAKE_BINARY_DIR}/_deps/ngtcp2-install/${CMAKE_INSTALL_LIBDIR}/libngtcp2_crypto_ossl.a
@@ -104,6 +110,9 @@ ExternalProject_Add(NgTcp2Project
         -DBUILD_SHARED_LIBS:BOOL=OFF
         -DENABLE_STATIC_LIB:BOOL=ON
         -DENABLE_SHARED_LIB:BOOL=OFF
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+        -DCMAKE_C_FLAGS=-fPIC
+        -DCMAKE_CXX_FLAGS=-fPIC
         DEPENDS openssl-crypto-static openssl-ssl-static
 )
 
@@ -130,7 +139,7 @@ add_library(mustache::mustache ALIAS mustache)
 FetchContent_Declare(
         zeromq
         GIT_REPOSITORY https://github.com/zeromq/libzmq.git
-        GIT_TAG v4.3.5 # latest as of 2025-03-27
+        GIT_TAG 7a7bfa10e6b0e99210ed9397369b59f9e69cef8e # latest as of 2025-09-10 (fixes CMake < 3.5 deprecation)
 )
 set(ZMQ_BUILD_TESTS OFF CACHE BOOL "Build the tests for ZeroMQ")
 
@@ -142,14 +151,15 @@ option(WITH_PERF_TOOL "Build with perf-tools" OFF)
 FetchContent_Declare(
         cpp-httplib
         GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
-        GIT_TAG v0.19.0
+        GIT_TAG v0.28.0
 )
+set(HTTPLIB_USE_ZSTD_IF_AVAILABLE OFF CACHE BOOL "Disable zstd for httplib")
 
 # zlib: optional httplib dependency
 FetchContent_Declare(
         zlib
         GIT_REPOSITORY https://github.com/madler/zlib.git
-        GIT_TAG v1.2.12 # latest v1.2.12
+        GIT_TAG v1.3.12
 )
 
 FetchContent_MakeAvailable(cpp-httplib zeromq)
