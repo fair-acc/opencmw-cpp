@@ -98,6 +98,7 @@ struct FieldDescriptionLong {
     int16_t          subfields = 0;
     std::string_view fieldName;
     std::string_view unit;
+    std::string_view quantity;
     std::string_view description;
     ExternalModifier modifier;
     uint8_t          intDataType;
@@ -177,9 +178,9 @@ constexpr auto newFieldHeader(const IoBuffer &buffer, const char *fieldName, con
     constexpr int typeID = IoSerialiser<protocol, std::remove_reference_t<decltype(getAnnotatedMember(unwrapPointer(value)))>>::getDataTypeId();
     const auto    pos    = buffer.size();
     if constexpr (writeMetaInfo && is_annotated<DataType>) {
-        return FieldDescriptionLong{ .headerStart = pos, .dataStartPosition = pos, .dataEndPosition = pos, .subfields = subfields, .fieldName = fieldName, .unit = value.getUnit(), .description = value.getDescription(), .modifier = value.getModifier(), .intDataType = typeID, .hierarchyDepth = static_cast<uint8_t>(hierarchyDepth) };
+        return FieldDescriptionLong{ .headerStart = pos, .dataStartPosition = pos, .dataEndPosition = pos, .subfields = subfields, .fieldName = fieldName, .unit = value.getUnit(), .quantity = value.getQuantity(), .description = value.getDescription(), .modifier = value.getModifier(), .intDataType = typeID, .hierarchyDepth = static_cast<uint8_t>(hierarchyDepth) };
     } else if constexpr (writeMetaInfo) {
-        return FieldDescriptionLong{ .headerStart = pos, .dataStartPosition = pos, .dataEndPosition = pos, .subfields = subfields, .fieldName = fieldName, .unit = "", .description = "", .modifier = RW, .intDataType = typeID, .hierarchyDepth = static_cast<uint8_t>(hierarchyDepth) };
+        return FieldDescriptionLong{ .headerStart = pos, .dataStartPosition = pos, .dataEndPosition = pos, .subfields = subfields, .fieldName = fieldName, .unit = "", .quantity = "", .description = "", .modifier = RW, .intDataType = typeID, .hierarchyDepth = static_cast<uint8_t>(hierarchyDepth) };
     } else {
         return FieldDescriptionShort{ .headerStart = pos, .dataStartPosition = pos, .dataEndPosition = pos, .subfields = subfields, .fieldName = fieldName, .intDataType = typeID, .hierarchyDepth = static_cast<uint8_t>(hierarchyDepth) };
     }
@@ -355,6 +356,11 @@ constexpr void deserialise(IoBuffer &buffer, ReflectableClass auto &value, Deser
                     }
                     if (std::string_view(unwrapPointer(member(value)).getUnit()).compare(field.unit)) { // error on unit mismatch
                         handleDeserialisationError<check>(info, "mismatched field unit for {}::{} - requested unit '{}' received '{}'", member.declarator.name, member.name, unwrapPointer(member(value)).getUnit(), field.unit);
+                        moveToFieldEndBufferPosition(buffer, field);
+                        return;
+                    }
+                    if (std::string_view(unwrapPointer(member(value)).getQuantity()).compare(field.quantity)) { // error on unit mismatch
+                        handleDeserialisationError<check>(info, "mismatched field quantity for {}::{} - requested quantity '{}' received '{}'", member.declarator.name, member.name, unwrapPointer(member(value)).getQuantity(), field.quantity);
                         moveToFieldEndBufferPosition(buffer, field);
                         return;
                     }

@@ -307,6 +307,7 @@ struct FieldHeaderWriter<YaS> {
 
         if constexpr (writeMetaInfo && is_annotated<DataType>) {
             buffer.put(field.unit);
+            buffer.put(field.quantity);
             buffer.put(field.description);
             buffer.put(static_cast<uint8_t>(field.modifier));
             // TODO: write group meta data
@@ -395,10 +396,12 @@ struct FieldHeaderReader<YaS> {
         using namespace std::string_view_literals;
         if constexpr (check == ProtocolCheck::IGNORE) { // safe defaults (will be ignored later on)
             result.unit        = ""sv;
+            result.quantity    = ""sv;
             result.description = ""sv;
             result.modifier    = ExternalModifier::RW;
         } else { // need to read the meta information
             result.unit        = (buffer.position() == result.dataStartPosition) ? ""sv : buffer.get<std::string_view>();
+            result.quantity    = (buffer.position() == result.dataStartPosition) ? ""sv : buffer.get<std::string_view>();
             result.description = (buffer.position() == result.dataStartPosition) ? ""sv : buffer.get<std::string_view>();
             result.modifier    = (buffer.position() == result.dataStartPosition) ? ExternalModifier::RW : get_ext_modifier(buffer.get<uint8_t>());
         }
