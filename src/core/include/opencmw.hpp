@@ -11,7 +11,6 @@
 #include <span>
 #include <unordered_map>
 #include <vector>
-#include <version>
 
 #include <format>
 #include <print>
@@ -20,7 +19,6 @@
 #include <opencmw.hpp>
 
 #include <Formatter.hpp>
-#include <units/concepts.h>
 #include <units/quantity.h>
 #include <units/quantity_io.h>
 
@@ -343,6 +341,7 @@ struct Annotated<Rep, Q, description, modifier, groups...> : public units::quant
     using rep = Rep;
     using R = units::quantity<dimension, unit, rep>;
     static constexpr basic_fixed_string unitStr = units::detail::unit_text<dimension, unit>().ascii();
+    static constexpr basic_fixed_string quantityStr = ""; // TODO: set to actual quantity once mp-units is factored out
 
     constexpr Annotated() : R() {};
     constexpr explicit (!std::is_trivial_v<Rep>) Annotated(const rep &initValue) noexcept : R(initValue) {}
@@ -353,6 +352,7 @@ struct Annotated<Rep, Q, description, modifier, groups...> : public units::quant
     constexpr Annotated &operator=(R&& t) { R::operator= (std::move(t)); return *this; }
 
     [[nodiscard]] constexpr std::string_view getUnit() const noexcept { return unitStr.c_str(); }
+    [[nodiscard]] constexpr std::string_view getQuantity() const noexcept { return quantityStr.c_str(); }
     [[nodiscard]] constexpr std::string_view getDescription() const noexcept { return description.c_str(); }
     [[nodiscard]] constexpr ExternalModifier getModifier() const noexcept { return modifier; }
    // constexpr                      operator rep &() { return this->number(); } // TODO: check if this is safe and/or whether we want this (by-passes type safety)
@@ -376,6 +376,7 @@ struct Annotated<T, Q, description, modifier, groups...> : public T { // inherit
     using unit = typename Q::unit;
     using rep = T;
     static constexpr basic_fixed_string unitStr = units::detail::unit_text<dimension, unit>().ascii();
+    static constexpr basic_fixed_string quantityStr = ""; // TODO: set to actual quantity once mp-units is factored out
     constexpr Annotated(): T() {}
     explicit (!std::is_trivial_v<T>) constexpr Annotated(const T& t) : T(t) {}
     explicit (!std::is_trivial_v<T>) constexpr Annotated(T&& t) : T(std::move(t)) {}
@@ -395,6 +396,7 @@ struct Annotated<T, Q, description, modifier, groups...> : public T { // inherit
     Annotated(U&& u) : T(std::move(u)) {}
 
     [[nodiscard]] constexpr std::string_view getUnit() const noexcept { return unitStr.c_str(); }
+    [[nodiscard]] constexpr std::string_view getQuantity() const noexcept { return quantityStr.c_str(); }
     [[nodiscard]] constexpr std::string_view getDescription() const noexcept { return description.c_str(); }
     [[nodiscard]] constexpr ExternalModifier getModifier() const noexcept { return modifier; }
 
