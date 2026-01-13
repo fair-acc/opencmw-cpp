@@ -156,6 +156,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release delete compatiblity-test-util --repo ${{ github.repository }} -y
+          gh release delete compatiblity-test-util --repo ${{ github.repository }} -y || true
           gh release create compatiblity-test-util --notes "A small test binary that can be used in the java implementation's unit tests to test against" --repo ${{ github.repository }} -y
           gh release upload ../build/concepts/CompatibilityTest --repo ${{ github.repository }} -y
