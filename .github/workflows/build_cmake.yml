@@ -153,6 +153,8 @@ jobs:
       - name: Upload test utility for opencmw-java CI
         if: github.ref_name == 'main' && github.event_name == 'push' && matrix.configurations.name == env.REFERENCE_CONFIG && matrix.cmake-build-type == 'Release'
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release delete compatiblity-test-util --repo ${{ github.repository }} -y
           gh release create compatiblity-test-util --notes "A small test binary that can be used in the java implementation's unit tests to test against" --repo ${{ github.repository }} -y
