@@ -151,11 +151,11 @@ jobs:
             --define "sonar.cfamily.compile-commands=${{ env.BUILD_WRAPPER_OUT_DIR }}/compile_commands.json"
 
       - name: Upload test utility for opencmw-java CI
-        if: github.ref_name == 'main' && github.event_name == 'push' && matrix.configurations.name == env.REFERENCE_CONFIG && matrix.cmake-build-type == 'Release'
+        if: ((github.ref_name == 'main' && github.event_name == 'push') || (github.head_ref == 'testCI' && github.event_name == 'pull_request')) && matrix.configurations.name == env.REFERENCE_CONFIG && matrix.cmake-build-type == 'Release'
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release delete compatiblity-test-util --repo ${{ github.repository }} -y || true
-          gh release create compatiblity-test-util --notes "A small test binary that can be used in the java implementation's unit tests to test against" --repo ${{ github.repository }} -y
-          gh release upload ../build/concepts/CompatibilityTest --repo ${{ github.repository }} -y
+          gh release create compatiblity-test-util --notes "A small test binary that can be used in the java implementation's unit tests to test against" --repo ${{ github.repository }}
+          gh release upload compatiblity-test-util ../build/concepts/majordomo/CompatibilityTest --repo ${{ github.repository }}
