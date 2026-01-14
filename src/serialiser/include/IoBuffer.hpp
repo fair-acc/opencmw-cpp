@@ -120,6 +120,7 @@ private:
             _capacity = capacity;
             return _buffer;
         }
+        const auto oldCapacity = _capacity;
         _capacity = capacity;
         if (dynamic_cast<Reallocator *>(_allocator.resource())) {
             // N.B. 'realloc' is safe as long as the de-allocation is done via 'free'
@@ -129,7 +130,7 @@ private:
             auto *tBuffer = _allocator.allocate(_capacity);
             // std::memmove(tBuffer, _buffer, std::min(_size, size) * sizeof(uint8_t));
             std::copy(_buffer, _buffer + std::min(_size, _capacity) * sizeof(uint8_t), tBuffer);
-            _allocator.deallocate(_buffer, _capacity);
+            _allocator.deallocate(_buffer, oldCapacity);
             _buffer = tBuffer;
         }
         return _buffer;
@@ -256,15 +257,17 @@ public:
     [[nodiscard]] explicit IoBuffer(uint8_t *data, std::size_t size, bool owning)
         : IoBuffer({ data, size }, Allocator(owning ? ThrowingAllocator::defaultOwning() : ThrowingAllocator::defaultNonOwning())) {};
 
-    [[nodiscard]] IoBuffer(const IoBuffer &other) noexcept
-        : IoBuffer(other._capacity, other._allocator.select_on_container_copy_construction()) {
+    [[nodiscard]] IoBuffer(const IoBuffer& other) noexcept
+      : IoBuffer(other._capacity, (dynamic_cast<ThrowingAllocator*>(other._allocator.resource()) != nullptr)
+                ? other._allocator.select_on_container_copy_construction(): Allocator(other._allocator.resource()))
+    {
         _buffer   = resize(other._size);
         _position = other._position;
         std::memmove(_buffer, other._buffer, _size * sizeof(uint8_t));
     }
 
     [[nodiscard]] IoBuffer(IoBuffer &&other) noexcept
-        : _allocator(other._allocator.select_on_container_copy_construction())
+        : _allocator(other._allocator.resource())
         , _buffer(std::exchange(other._buffer, nullptr))
         , _position(other._position)
         , _size(other._size)
@@ -343,12 +346,12 @@ public:
         }
     }
 
-    constexpr ByteBufferPointer resize(const std::size_t size) noexcept {
-        _size = size;
-        if (size <= _capacity) {
-            return _buffer;
+    constexpr ByteBufferPointer resize(const std::size_t newSize) noexcept {
+        if (newSize > _capacity) {
+            reserve(newSize);
         }
-        return reserve(size);
+        _size = newSize;
+        return _buffer;
     }
 
     template<MetaInfo meta = WITH, Number I>
