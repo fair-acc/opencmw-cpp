@@ -399,7 +399,7 @@ private:
                 authEnd    = std::min(source.find_first_of("/?#", authOffset), source.length());
                 _authority = source.substr(authOffset, authEnd - authOffset);
                 if constexpr (check == STRICT) {
-                    if (!std::all_of(_authority.begin(), _authority.end(), [](char c) { return std::isalnum(c) || c == '@' || c == ':' || c == '.' || c == '-' || c == '_'; })) {
+                    if (!std::all_of(_authority.begin(), _authority.end(), [](char c) { return std::isalnum(c) || c == '@' || c == ':' || c == '.' || c == '-' || c == '_' || c == '*' || c == '[' || c == ']'; })) {
                         throw URISyntaxException(std::format("URI authority contains illegal characters: {}", _authority));
                     }
                 }

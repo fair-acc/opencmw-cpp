@@ -119,6 +119,8 @@ static const std::array validURIs{
     "mdp://www.fair-acc.io",
     "?queryOnly",
     "#fagmentOnly",
+    "mds://*:1234", // asterisk used e.g. for binding zmq sockets to all interfaces
+    "http://[::1]:12", // IPv6
 };
 
 TEST_CASE("Test for some previous issues", "[URI]") {
@@ -231,7 +233,7 @@ TEST_CASE("helper methods", "[URI]") {
         // implicitly tests URI<>::isUnreserved(c) for authority
         REQUIRE_NOTHROW_MESSAGE(URI<STRICT>(std::format("mdp://{}", c)), std::format("test character in authority: '{}'", c));
     }
-    for (auto c : std::string("~[]!$&'()*+,;=")) { // N.B. special case for delimiter '/' -- "///" failure case not covered
+    for (auto c : std::string("~!$&'()+,;=")) { // N.B. special case for delimiter '/' -- "///" failure case not covered
         // implicitly tests URI<>::isUnreserved(c)/invalid characters for authority
         REQUIRE_THROWS_AS_MESSAGE(URI<STRICT>(std::format("mdp://host{}", c)), std::ios_base::failure, std::format("test character in authority: '{}'", c));
     }
