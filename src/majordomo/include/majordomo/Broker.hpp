@@ -301,6 +301,8 @@ public:
         , _subSocket(context, ZMQ_SUB)
         , _dnsSocket(context, ZMQ_DEALER) {
         assert(mdp::isValidServiceName(brokerName));
+        
+        opencmw::rest::detail::setupIgnoreSigpipe();
 
         addInternalService("/mmi.dns", [this](BrokerMessage &&message) {
             using namespace std::literals;

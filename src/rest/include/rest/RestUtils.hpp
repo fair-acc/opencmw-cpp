@@ -29,6 +29,8 @@
 #include <nghttp2/nghttp2.h>
 #include <nghttp3/nghttp3.h>
 
+#include <signal.h>
+
 #ifdef OPENCMW_DEBUG_HTTP
 #include <iostream>
 #define HTTP_DBG(...) std::println(std::cerr, __VA_ARGS__);
@@ -467,6 +469,23 @@ struct WriteBuffer {
         return true;
     }
 };
+
+
+// Temporary SIGPIPE mitigation. We currently intercept SIGPIPE to prevent the process from terminating on broken sockets
+// (e.g. client aborts during TLS/HTTP write). Revisit this later and decide on the final production behavior.
+inline void sigpipeHandler(int) {
+    const char msg[] = "opencmw: SIGPIPE. Usually caused by client disconnect/reset during TLS/HTTP write.\n";
+    ::write(STDERR_FILENO, msg, sizeof(msg) - 1);
+}
+
+inline void setupIgnoreSigpipe() {
+    struct sigaction sa {};
+    sa.sa_handler = sigpipeHandler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    ::sigaction(SIGPIPE, &sa, nullptr);
+}
+
 
 } // namespace opencmw::rest::detail
 
