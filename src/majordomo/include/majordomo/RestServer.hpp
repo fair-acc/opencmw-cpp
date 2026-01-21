@@ -252,6 +252,7 @@ inline std::expected<SSL_CTX_Ptr, std::string> create_ssl_ctx(EVP_PKEY *key, X50
 using Message = mdp::BasicMessage<mdp::MessageFormat::WithSourceId>;
 
 enum class RestMethod {
+    Options,
     Get,
     LongPoll,
     Post,
@@ -260,7 +261,8 @@ enum class RestMethod {
 
 inline RestMethod parseMethod(std::string_view methodString) {
     using enum RestMethod;
-    return methodString == "PUT"  ? Post
+    return methodString == "OPTIONS" ? Options
+         : methodString == "PUT"  ? Post
          : methodString == "POST" ? Post
          : methodString == "GET"  ? Get
                                   : Invalid;
@@ -508,6 +510,17 @@ struct SessionBase {
 #endif
     }
 
+    void respondToCorsPreflight(TStreamId streamId) {
+        majordomo::rest::Response r;
+        r.code = 204;
+        r.headers.emplace_back("access-control-allow-methods", "GET, POST, OPTIONS");
+        r.headers.emplace_back("access-control-allow-headers", "content-type, accept");
+        r.headers.emplace_back("access-control-max-age", "86400");
+        r.headers.emplace_back("content-length", "0");
+
+        self().sendResponse(streamId, std::move(r));
+    }
+
     void respondToLongPoll(TStreamId streamId, std::uint64_t index, Message &&msg) {
         auto timestamp = std::to_string(opencmw::load_test::timestamp().count());
         self().sendResponse(streamId, kHttpOk, std::move(msg), { nv(u8span("x-opencmw-long-polling-idx"), u8span(std::to_string(index))), nv(u8span("x-timestamp"), u8span(timestamp)) });
@@ -621,7 +634,6 @@ struct SessionBase {
             bool haveSubscriptionContext = false;
             for (const auto &[qkey, qvalue] : pathUri.queryParamMap()) {
                 if (qkey == "LongPollingIdx") {
-                    request.method        = RestMethod::LongPoll;
                     request.longPollIndex = qvalue.value_or("");
                 } else if (qkey == "SubscriptionContext") {
                     request.topic           = mdp::Topic::fromMdpTopic(URI<>(qvalue.value_or("")));
@@ -646,8 +658,10 @@ struct SessionBase {
             return;
         }
 
-        if (request.method == RestMethod::Invalid) {
-            request.method = parseMethod(method);
+        request.method = parseMethod(method);
+        // Only GET + longPollIndex => LongPoll
+        if (request.method == RestMethod::Get && !request.longPollIndex.empty()) {
+            request.method = RestMethod::LongPoll;
         }
 
         // Set completed for getMessages() to collect
@@ -664,6 +678,9 @@ struct SessionBase {
             auto &[streamId, request] = *it;
 
             switch (request.method) {
+            case RestMethod::Options:
+               respondToCorsPreflight(streamId);
+               break;
             case RestMethod::Get:
             case RestMethod::Post:
                 if (auto m = processGetSetRequest(streamId, request, idGenerator); m.has_value()) {
@@ -885,7 +902,11 @@ struct Http2Session : public SessionBase<Http2Session, std::int32_t> {
         HTTP_DBG("Server::respondWithRedirect: streamId={} location={}", streamId, location);
         // :status must go first
         constexpr auto noCopy  = NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE;
-        auto           headers = std::vector{ nv(u8span(":status"), u8span("302"), noCopy), nv(u8span("location"), u8span(location)) };
+         auto           headers = std::vector{
+             nv(u8span(":status"), u8span("302"), noCopy),
+             nv(u8span("location"), u8span(location)),
+             nv(u8span("access-control-allow-origin"), u8span("*"), noCopy)};
+
         if (!_sharedData->_altSvcHeaderValue.empty()) {
             headers.push_back(_sharedData->_altSvcHeader);
         }
@@ -1172,7 +1193,11 @@ struct Http3Session : public SessionBase<Http3Session<TServer>, std::int64_t>, p
         HTTP_DBG("Server::H3::respondWithRedirect: streamId={} location={}", streamId, location);
         // :status must go first
         constexpr auto noCopy  = NGHTTP3_NV_FLAG_NO_COPY_NAME | NGHTTP3_NV_FLAG_NO_COPY_VALUE;
-        const auto     headers = std::array{ nv3(u8span(":status"), u8span("302"), noCopy), nv3(u8span("location"), u8span(location)) };
+        const auto     headers = std::array{
+            nv3(u8span(":status"), u8span("302"), noCopy),
+            nv3(u8span("location"), u8span(location)),
+            nv3(u8span("access-control-allow-origin"), u8span("*"), noCopy) };
+
         nghttp3_conn_submit_response(_httpconn, streamId, headers.data(), headers.size(), nullptr);
     }
 
