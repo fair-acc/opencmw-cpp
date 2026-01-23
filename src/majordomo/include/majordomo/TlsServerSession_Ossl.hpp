@@ -191,7 +191,7 @@ public:
         return *this;
     }
 
-    int init(const opencmw::rest::detail::EVP_PKEY_Ptr &key, const opencmw::rest::detail::X509_Ptr &cert, AppProtocol app_proto) {
+    int init(const opencmw::rest::detail::EVP_PKEY_Ptr &key, const std::vector<opencmw::rest::detail::X509_Ptr> &cert, AppProtocol app_proto) {
         constexpr static unsigned char sid_ctx[] = "ngtcp2 server";
 
         ssl_ctx_                                 = SSL_CTX_new(TLS_server_method());
@@ -226,9 +226,18 @@ public:
             return -1;
         }
 
-        if (SSL_CTX_use_certificate(ssl_ctx_, cert.get()) != 1) {
-            std::cerr << "SSL_CTX_use_certificate_chain_file: " << ERR_error_string(ERR_get_error(), nullptr) << std::endl;
-            return -1;
+        if (!cert.empty()) {
+            if (SSL_CTX_use_certificate(ssl_ctx_, cert[0].get()) != 1) {
+                std::cerr << "SSL_CTX_use_certificate_chain_file: " << ERR_error_string(ERR_get_error(), nullptr) << std::endl;
+                return -1;
+            }
+
+            for (std::size_t i = 1; i < cert.size(); ++i) {
+                if (SSL_CTX_add_extra_chain_cert(ssl_ctx_, X509_up_ref(cert[i].get()) ? cert[i].get() : nullptr) != 1) {
+                    std::cerr << "Could not add certificate chain file " << i << ": " << ERR_error_string(ERR_get_error(), nullptr) << std::endl;
+                    return -1;
+                }
+            }
         }
 
         if (SSL_CTX_check_private_key(ssl_ctx_) != 1) {
