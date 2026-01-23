@@ -223,7 +223,7 @@ inline int alpn_select_proto_cb(SSL * /*ssl*/, const unsigned char **out, unsign
     return SSL_TLSEXT_ERR_OK;
 }
 
-inline std::expected<SSL_CTX_Ptr, std::string> create_ssl_ctx(EVP_PKEY *key, X509 *cert) {
+inline std::expected<SSL_CTX_Ptr, std::string> create_ssl_ctx(EVP_PKEY *key, std::span<X509_Ptr> cert) {
     auto ssl_ctx = SSL_CTX_Ptr(SSL_CTX_new(TLS_server_method()), SSL_CTX_free);
     if (!ssl_ctx) {
         return std::unexpected(std::format("Could not create SSL/TLS context: {}", ERR_error_string(ERR_get_error(), nullptr)));
@@ -236,8 +236,15 @@ inline std::expected<SSL_CTX_Ptr, std::string> create_ssl_ctx(EVP_PKEY *key, X50
     if (SSL_CTX_use_PrivateKey(ssl_ctx.get(), key) <= 0) {
         return std::unexpected(std::format("Could not configure private key"));
     }
-    if (SSL_CTX_use_certificate(ssl_ctx.get(), cert) != 1) {
+    if (SSL_CTX_use_certificate(ssl_ctx.get(), cert[0].get()) != 1) {
         return std::unexpected(std::format("Could not configure certificate file"));
+    }
+    if (cert.size() > 1) {
+        for (std::size_t i = 1; i < cert.size(); ++i) {
+            if (SSL_CTX_add_extra_chain_cert(ssl_ctx.get(), cert[i].get()) != 1) {
+                return std::unexpected(std::format("Could not add certificate chain file {}", i));
+            }
+        }
     }
 
     if (!SSL_CTX_check_private_key(ssl_ctx.get())) {
@@ -2211,7 +2218,7 @@ struct RestServer {
     Http3ServerSocket                                                         _quicServerSocket;
     SSL_CTX_Ptr                                                               _sslCtxTcp  = SSL_CTX_Ptr(nullptr, SSL_CTX_free);
     EVP_PKEY_Ptr                                                              _key        = EVP_PKEY_Ptr(nullptr, EVP_PKEY_free);
-    X509_Ptr                                                                  _cert       = X509_Ptr(nullptr, X509_free);
+    std::vector<X509_Ptr>                                                     _cert;
     std::shared_ptr<SharedData>                                               _sharedData = std::make_shared<SharedData>();
     std::map<int, std::unique_ptr<Http2Session>>                              _h2Sessions;
     std::unordered_map<ngtcp2_cid, std::shared_ptr<Http3Session<RestServer>>> _h3Sessions;
@@ -2231,7 +2238,7 @@ struct RestServer {
     RestServer(RestServer &&)                                                                         = default;
     RestServer &operator=(RestServer &&)                                                              = default;
 
-    RestServer(SSL_CTX_Ptr sslCtxTcp, EVP_PKEY_Ptr key, X509_Ptr cert)
+    RestServer(SSL_CTX_Ptr sslCtxTcp, EVP_PKEY_Ptr key, std::vector<X509_Ptr> cert)
         : _sslCtxTcp(std::move(sslCtxTcp)), _key(std::move(key)), _cert(std::move(cert)) {
         if (_sslCtxTcp) {
             SSL_library_init();
@@ -2241,7 +2248,7 @@ struct RestServer {
     }
 
     static std::expected<RestServer, std::string> unencrypted() {
-        return RestServer(SSL_CTX_Ptr(nullptr, SSL_CTX_free), EVP_PKEY_Ptr(nullptr, EVP_PKEY_free), X509_Ptr(nullptr, X509_free));
+        return RestServer(SSL_CTX_Ptr(nullptr, SSL_CTX_free), EVP_PKEY_Ptr(nullptr, EVP_PKEY_free), {});
     }
 
     static std::expected<RestServer, std::string> sslWithBuffers(std::string_view certBuffer, std::string_view keyBuffer) {
@@ -2253,7 +2260,7 @@ struct RestServer {
         if (!maybeKey) {
             return std::unexpected(maybeKey.error());
         }
-        auto maybeSslCtxTcp = create_ssl_ctx(maybeKey->get(), maybeCert->get());
+        auto maybeSslCtxTcp = create_ssl_ctx(maybeKey->get(), maybeCert.value());
         if (!maybeSslCtxTcp) {
             return std::unexpected(maybeSslCtxTcp.error());
         }
@@ -2269,7 +2276,7 @@ struct RestServer {
         if (!maybeKey) {
             return std::unexpected(maybeKey.error());
         }
-        auto maybeSslCtxTcp = create_ssl_ctx(maybeKey->get(), maybeCert->get());
+        auto maybeSslCtxTcp = create_ssl_ctx(maybeKey->get(), maybeCert.value());
         if (!maybeSslCtxTcp) {
             return std::unexpected(maybeSslCtxTcp.error());
         }

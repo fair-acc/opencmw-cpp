@@ -83,30 +83,43 @@ inline std::expected<X509_STORE_Ptr, std::string> createCertificateStore(std::st
     return cert_store;
 }
 
-inline std::expected<X509_Ptr, std::string> readServerCertificateFromBuffer(std::string_view X509_ca_bundle) {
+inline std::expected<std::vector<X509_Ptr>, std::string> readServerCertificateFromBuffer(std::string_view X509_ca_bundle) {
     BIO *certBio = BIO_new(BIO_s_mem());
     BIO_write(certBio, X509_ca_bundle.data(), static_cast<int>(X509_ca_bundle.size()));
-    auto certX509 = X509_Ptr(PEM_read_bio_X509(certBio, nullptr, nullptr, nullptr), X509_free);
+    std::vector<X509_Ptr> certs;
+    while (true) {
+        auto certX509 = X509_Ptr(PEM_read_bio_X509(certBio, nullptr, nullptr, nullptr), X509_free);
+        if (!certX509) {
+            break;
+        }
+        certs.push_back(std::move(certX509));
+    }
     BIO_free(certBio);
-    if (!certX509) {
+    if (certs.empty()) {
         return std::unexpected(std::format("failed to read certificate from buffer:\n#---start---\n{}\n#---end---\n", X509_ca_bundle));
     }
-    return certX509;
+    return certs;
 }
 
-inline std::expected<X509_Ptr, std::string> readServerCertificateFromFile(std::filesystem::path fpath) {
+inline std::expected<std::vector<X509_Ptr>, std::string> readServerCertificateFromFile(std::filesystem::path fpath) {
     auto path = fpath.string();
-    BIO *certBio
-            = BIO_new_file(path.data(), "r");
+    BIO *certBio = BIO_new_file(path.data(), "r");
     if (!certBio) {
         return std::unexpected(std::format("failed to read certificate from file {}: {}", path, ERR_error_string(ERR_get_error(), nullptr)));
     }
-    auto certX509 = X509_Ptr(PEM_read_bio_X509(certBio, nullptr, nullptr, nullptr), X509_free);
+    std::vector<X509_Ptr> certs;
+    while (true) {
+        auto certX509 = X509_Ptr(PEM_read_bio_X509(certBio, nullptr, nullptr, nullptr), X509_free);
+        if (!certX509) {
+            break;
+        }
+        certs.push_back(std::move(certX509));
+    }
     BIO_free(certBio);
-    if (!certX509) {
+    if (certs.empty()) {
         return std::unexpected(std::format("failed to read certificate key from file: {}", path));
     }
-    return certX509;
+    return certs;
 }
 
 inline std::expected<EVP_PKEY_Ptr, std::string> readServerPrivateKeyFromBuffer(std::string_view x509_private_key) {
