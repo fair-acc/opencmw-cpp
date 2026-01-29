@@ -8,30 +8,44 @@ on:
     types: [ created ]
 
 env:
-  REFERENCE_CONFIG: 'Ubuntu gcc14' # configuration used for coverage etc
+  REFERENCE_CONFIG: 'gcc14' # configuration used for coverage etc
 
 jobs:
+  buildKeycloakDockerImage:
+    uses: ./.github/workflows/build_keycloak_docker.yml
+    permissions:
+      contents: read
+      packages: write
+
   build:
+    needs: buildKeycloakDockerImage
     name: "${{ matrix.configurations.name }} | ${{ matrix.cmake-build-type }}"
     environment: configure coverage
-    runs-on: ${{ matrix.configurations.os }}
+    runs-on: "ubuntu-latest"
+    container: "ghcr.io/fair-acc/gr4-build-container:latest"
     strategy:
       fail-fast: false
       matrix:
         configurations:
-          - name: Ubuntu gcc14
-            os: ubuntu-24.04
+          - name: gcc14
             compiler: gcc14
-          - name: Ubuntu clang18
-            os: ubuntu-24.04
-            compiler: clang18
-          - name: ubuntu-22.04 emscripten
-            os: ubuntu-24.04
+            cc: gcc-14
+            cxx: g++-14
+          - name: clang20
+            compiler: clang20
+            cc: clang-20
+            cxx: clang++-20
+          - name: emscripten
             compiler: emscripten
-        # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
         cmake-build-type: [ Release, Debug ]
     env:
       BUILD_WRAPPER_OUT_DIR: build_wrapper_output_directory
+    services:
+      keycloak:
+        image: ${{ needs.buildKeycloakDockerImage.outputs.image }}
+        env:
+          KEYCLOAK_ADMIN: admin
+          KEYCLOAK_ADMIN_PASSWORD: admin
 
     steps:
       - uses: actions/checkout@v6
@@ -46,56 +60,26 @@ jobs:
           path: ${{runner.workspace}}/build/_deps
           key: ${{ runner.os }}-${{ matrix.configurations.compiler }}-${{ matrix.cmake-build-type }}-${{ hashFiles('CMakeLists.txt') }}-${{ hashFiles('cmake/Dependencies.cmake') }}
 
-      - name: Install gcovr
-        shell: bash
-        if: matrix.configurations.name == env.REFERENCE_CONFIG && matrix.cmake-build-type == 'Debug'
-        run: sudo apt-get install -y gcovr
-
-      - name: Install gcc-14
-        if: matrix.configurations.compiler == 'gcc14'
-        run: |
-          sudo apt-get install -y gcc-14 g++-14
-          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 110 --slave /usr/bin/g++ g++ /usr/bin/g++-14 --slave /usr/bin/gcov gcov /usr/bin/gcov-14
-
-      - name: Install clang-18
-        if: matrix.configurations.compiler == 'clang18'
-        run: |
-          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
-          sudo apt update
-          sudo apt upgrade -y
-          sudo apt install -y clang-18 libc++-18-dev libc++abi-18-dev
-          sudo update-alternatives --install /usr/bin/cc cc /usr/bin/clang-18 110
-          sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++-18 110
-
-      - name: Install emscripten
-        if: matrix.configurations.compiler == 'emscripten'
-        run: |
-          cd
-          git clone https://github.com/emscripten-core/emsdk.git
-          cd emsdk
-          # Download and install emscripten.
-          ./emsdk install 3.1.59
-          # Make "active" for the current user. (writes .emscripten file)
-          ./emsdk activate 3.1.59
-
       - name: Install sonar-scanner and build-wrapper
         if: matrix.configurations.name == env.REFERENCE_CONFIG && matrix.cmake-build-type == 'Debug'
         uses: SonarSource/sonarqube-scan-action/install-build-wrapper@v7
 
       - name: Configure CMake
         if: matrix.configurations.compiler != 'emscripten'
-        # Use a bash shell, so we can use the same syntax for environment variable access regardless of the host operating system
         shell: bash
+        env:
+          CC: "${{ matrix.configurations.cc }}"
+          CXX: "${{ matrix.configurations.cxx }}"
+          CMAKE_EXPORT_COMPILE_COMMANDS: "ON"
         run: cmake -S . -B ../build -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DOPENCMW_ENABLE_COVERAGE=${{ matrix.configurations.name == env.REFERENCE_CONFIG && matrix.cmake-build-type == 'Debug' }}
 
       - name: Configure CMake Emscripten
         if: matrix.configurations.compiler == 'emscripten'
-        # Use a bash shell, so we can use the same syntax for environment variable access regardless of the host operating system
         shell: bash
         run: |
           export SYSTEM_NODE=`which node` # use system node instead of old version distributed with emsdk for threading support
-          source ~/emsdk/emsdk_env.sh
-          emcmake cmake -S . -B ../build -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DENABLE_TESTING=ON -DCMAKE_CROSSCOMPILING_EMULATOR=${SYSTEM_NODE}
+          source $EMSDK_HOME/emsdk_env.sh
+          emcmake cmake -S . -B ../build -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DCMAKE_CROSSCOMPILING_EMULATOR=${SYSTEM_NODE}
 
       - name: Build
         if: matrix.configurations.name != env.REFERENCE_CONFIG || matrix.cmake-build-type != 'Debug'
@@ -107,14 +91,27 @@ jobs:
         shell: bash
         run: build-wrapper-linux-x86-64 --out-dir ${{ env.BUILD_WRAPPER_OUT_DIR }} cmake --build ../build --config ${{ matrix.cmake-build-type }}
 
-      - name: Run Keycloak Docker
+      - name: Setup Keycloak
+        if: matrix.configurations.compiler != 'emscripten'
         shell: bash
-        run: docker run -p 8090:8080 -d -e KEYCLOAK_ADMIN=admin -e KEYCLOAK_ADMIN_PASSWORD=admin quay.io/keycloak/keycloak:26.0.5 start-dev && src/client/test/setup-keycloak.sh
+        env:
+          KEYCLOAK_URL: http://keycloak:8080
+          KEYCLOAK_REDIRECT_URI: http://localhost:8091
+          KEYCLOAK_ADMIN_PASSWORD: admin
+        run: |
+          if ! command -v jq >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends jq
+          fi
+          src/client/test/setup-keycloak.sh
 
       - name: Run tests
         if: matrix.configurations.name != env.REFERENCE_CONFIG || matrix.cmake-build-type != 'Debug'
         working-directory: ${{runner.workspace}}/build
         shell: bash
+        env:
+          KEYCLOAK_URL: http://keycloak:8080
+          KEYCLOAK_REDIRECT_URI: http://localhost:8091
         # Execute tests defined by the CMake configuration. The coverage target runs the autodiscovered catch2 tests using
         # ctest and records the coverage using gcov
         # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
@@ -124,6 +121,9 @@ jobs:
         if: matrix.configurations.name == env.REFERENCE_CONFIG && matrix.cmake-build-type == 'Debug'
         working-directory: ${{runner.workspace}}/build
         shell: bash
+        env:
+          KEYCLOAK_URL: http://keycloak:8080
+          KEYCLOAK_REDIRECT_URI: http://localhost:8091
         # Execute tests defined by the CMake configuration. The coverage target runs the autodiscovered catch2 tests using
         # ctest and records the coverage using gcov
         # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail

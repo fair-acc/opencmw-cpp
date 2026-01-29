@@ -6,11 +6,11 @@
 #
 # For more information see: https://www.keycloak.org/getting-started/getting-started-docker
 
-URL="http://localhost:8090"
-REDIRECT_URI="http://localhost:8091"
-ADMIN_PASSWORD="admin"
+URL="${KEYCLOAK_URL:-http://localhost:8090}"
+REDIRECT_URI="${KEYCLOAK_REDIRECT_URI:-http://localhost:8091}"
+ADMIN_PASSWORD="${KEYCLOAK_ADMIN_PASSWORD:-admin}"
 
-while ! curl -s "$URL"; do
+while ! curl -s "$URL" >/dev/null; do
     echo "Waiting for $URL to be reachable..."
     sleep 1
 done
