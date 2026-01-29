@@ -35,7 +35,7 @@ elseif(EMSCRIPTEN)
      OR CMAKE_CXX_COMPILER_VERSION VERSION_LESS 14.0.0)
     message(FATAL_ERROR "Clang>=14.0.0 required for emscripten, but clang ${CMAKE_CXX_COMPILER_VERSION} detected.")
   endif()
-  message("You are building with Emscripten Clang. Be advised that support is limited to working in conjunction with"
+  message(STATUS "You are building with Emscripten Clang. Be advised that support is limited to working in conjunction with"
           " libc++ and certain modules. libc++ has been enabled.")
   set(CMAKE_EXECUTABLE_SUFFIX ".js")
   add_compile_options(
@@ -134,7 +134,7 @@ endif()
 
 if(OPENCMW_ENABLE_TESTING)
   enable_testing()
-  message("Building Tests.")
+  message(STATUS "Building Tests.")
   if(OPENCMW_ENABLE_COVERAGE)
     if(UNIX
        AND NOT APPLE
@@ -143,7 +143,7 @@ if(OPENCMW_ENABLE_TESTING)
            MATCHES
            ".*Clang"
        AND NOT EMSCRIPTEN) # Linux
-      message("Coverage reporting enabled")
+      message(STATUS "Coverage reporting enabled")
       include(cmake/CodeCoverage.cmake) # https://github.com/bilke/cmake-modules/blob/master/CodeCoverage.cmake #
                                         # (License: BSL-1.0)
       target_compile_options(
@@ -190,6 +190,6 @@ endif()
 add_subdirectory(src)
 
 if(OPENCMW_ENABLE_CONCEPTS)
-  message("Building Concepts")
+  message(STATUS "Building Concepts")
   add_subdirectory(concepts)
 endif()
