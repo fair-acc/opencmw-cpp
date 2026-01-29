@@ -90,7 +90,24 @@ bool loginAtUri(const opencmw::URI<opencmw::STRICT> &uri) {
 
 TEST_CASE("Worker test", "[OAuth]") {
     opencmw::majordomo::Broker<> broker{ "/Broker", {} };
-    opencmw::OAuthWorker         oauthWorker{ opencmw::URI("http://localhost:8091"), opencmw::URI("http://localhost:8090/realms/testrealm/protocol/openid-connect/auth"), opencmw::URI("http://localhost:8090/realms/testrealm/protocol/openid-connect/token"), broker };
+
+    auto envOr = [](std::string_view name, std::string_view fallback) -> std::string {
+        std::string key{name}; // ensures null-terminated
+        if (const char* v = std::getenv(key.c_str()); v && *v) {
+            return std::string(v);
+        }
+        return std::string(fallback);
+    };
+
+    const std::string kcBase = envOr("KEYCLOAK_URL", "http://localhost:8090");
+    const std::string redirectBase = envOr("KEYCLOAK_REDIRECT_URI", "http://localhost:8091");
+
+    opencmw::OAuthWorker oauthWorker{
+        opencmw::URI(redirectBase),
+        opencmw::URI(kcBase + "/realms/testrealm/protocol/openid-connect/auth"),
+        opencmw::URI(kcBase + "/realms/testrealm/protocol/openid-connect/token"),
+     broker
+    };
 
     REQUIRE(broker.bind(opencmw::URI<>("mds://127.0.0.1:12345")));
     REQUIRE(broker.bind(opencmw::URI<>("mdp://127.0.0.1:12346")));
