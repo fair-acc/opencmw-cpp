@@ -5,7 +5,7 @@ add_library(rest INTERFACE
 target_include_directories(rest INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include/>)
 target_link_libraries(rest
         INTERFACE
-        nghttp2-static
+        PkgConfig::NGHTTP2
         nghttp3-static
 )
 
