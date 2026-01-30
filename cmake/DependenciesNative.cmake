@@ -6,6 +6,10 @@ message(STATUS "Using system OpenSSL: ${OPENSSL_VERSION}")
 
 option(ENABLE_NGHTTP_DEBUG "Enable verbose nghttp2 debug output" OFF)
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(NGHTTP2 REQUIRED IMPORTED_TARGET libnghttp2)
+
+# We can’t use the system ngtcp2/nghttp3 packages because Ubuntu doesn’t ship the ngtcp2_crypto_ossl backend library and headers.
 ExternalProject_Add(NgTcp2Project
         GIT_REPOSITORY https://github.com/ngtcp2/ngtcp2.git
         GIT_TAG v1.18.0
@@ -49,36 +53,6 @@ set_target_properties(ngtcp2-crypto-ossl-static PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/_deps/ngtcp2-install/include"
 )
 add_dependencies(ngtcp2-crypto-ossl-static NgTcp2Project)
-
-ExternalProject_Add(Nghttp2Project
-        GIT_REPOSITORY https://github.com/nghttp2/nghttp2
-        GIT_TAG v1.65.0
-        GIT_SHALLOW ON
-        BUILD_BYPRODUCTS ${CMAKE_BINARY_DIR}/_deps/nghttp2-install/${CMAKE_INSTALL_LIBDIR}/libnghttp2.a
-        UPDATE_COMMAND ""
-        CMAKE_ARGS
-        -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_BINARY_DIR}/_deps/nghttp2-install
-        -DCMAKE_INSTALL_LIBDIR:PATH=${CMAKE_INSTALL_LIBDIR}
-        -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
-        -DENABLE_LIB_ONLY:BOOL=ON
-        -DENABLE_HTTP3:BOOL=OFF
-        -DENABLE_DEBUG:BOOL=${ENABLE_NGHTTP_DEBUG}
-        -DBUILD_STATIC_LIBS:BOOL=ON
-        -DBUILD_SHARED_LIBS:BOOL=OFF
-        -DENABLE_STATIC_LIB:BOOL=ON
-        -DENABLE_SHARED_LIB:BOOL=OFF
-        -DENABLE_DOC:BOOL=OFF
-        -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
-        -DCMAKE_C_FLAGS:STRING=-fPIC
-        -DCMAKE_CXX_FLAGS:STRING=-fPIC
-)
-
-add_library(nghttp2-static STATIC IMPORTED GLOBAL)
-set_target_properties(nghttp2-static PROPERTIES
-        IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/_deps/nghttp2-install/${CMAKE_INSTALL_LIBDIR}/libnghttp2.a"
-        INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/_deps/nghttp2-install/include"
-)
-add_dependencies(nghttp2-static Nghttp2Project)
 
 ExternalProject_Add(Nghttp3Project
         GIT_REPOSITORY https://github.com/ngtcp2/nghttp3.git
