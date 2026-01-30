@@ -273,6 +273,7 @@ TEST_CASE("Simple REST example", "[majordomo][majordomoworker][simple_example][h
         responseCount++;
     };
     client.request(std::move(getJson));
+    waitFor(responseCount, 1);
 
     // Get worker data as HTML
     opencmw::client::Command getHtml;
@@ -287,6 +288,7 @@ TEST_CASE("Simple REST example", "[majordomo][majordomoworker][simple_example][h
         responseCount++;
     };
     client.request(std::move(getHtml));
+    waitFor(responseCount, 2);
 
     // Set worker data
     opencmw::client::Command postJson;
@@ -301,6 +303,7 @@ TEST_CASE("Simple REST example", "[majordomo][majordomoworker][simple_example][h
         responseCount++;
     };
     client.request(std::move(postJson));
+    waitFor(responseCount, 3);
 
     // Test that the Set call is correctly applied
     opencmw::client::Command getJsonAfterSet;
