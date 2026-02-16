@@ -5,8 +5,11 @@
 
 namespace opencmw {
 
+template<typename T>
+concept string_like = std::is_same_v<T, std::string> || std::is_same_v<T, std::string_view> || std::is_convertible_v<T, std::string_view>;
+
 template<typename R>
-concept FormattableRange = std::ranges::range<R> && !std::same_as<std::remove_cvref_t<R>, std::string> && !std::same_as<std::remove_cvref_t<R>, std::string_view> && !std::is_array_v<std::remove_cvref_t<R>> && std::formattable<std::ranges::range_value_t<R>, char>;
+concept FormattableRange = std::ranges::range<R> && !string_like<std::remove_cvref_t<R>> && !std::is_array_v<std::remove_cvref_t<R>> && std::formattable<std::ranges::range_value_t<R>, char>;
 
 template<std::ranges::input_range R>
     requires std::formattable<std::ranges::range_value_t<R>, char>
