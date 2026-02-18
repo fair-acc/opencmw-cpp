@@ -128,11 +128,12 @@ TEST_CASE("JsonDeserialisationMissingField", "[JsonSerialiser]") {
     opencmw::debug::resetStats();
     {
         opencmw::IoBuffer buffer;
-        buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>(R"({ "float1": 2.3, "superfluousField": { "p":12 , "a":null,"x" : false, "q": [ "a", "s"], "z": [true , false ] },  "test": { "intArray" : [ 1,2, 3], "val1":13.37e2, "val2":"bar"}, "int1": 42})"sv);
+        buffer.put<opencmw::IoBuffer::MetaInfo::WITHOUT>(R"({ "float1": 2.3, "superfluousField": { "p":12 , "a":null,"x" : false, "q": [ "a", "s"], "z": [true , false ] },  "test": { "intArray" : [ 1,2, 3], "val1":13.37e2, "val2":"bar"}, "int1": 42}          )"sv);
         std::cout << "Prepared json data: " << buffer.asString() << std::endl;
         Simple foo;
         auto   result = opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buffer, foo);
         std::print(std::cout, "deserialisation finished: {}\n", result);
+        REQUIRE(buffer.position() == 189UZ);
         REQUIRE(foo.test.get()->val1 == 1337.0);
         REQUIRE(foo.test.get()->val2 == "bar");
         REQUIRE(foo.test.get()->intArray == std::vector{ 1, 2, 3 });
