@@ -8,7 +8,6 @@
 #include <string_view>
 
 #include <Debug.hpp>
-#include <Formatter.hpp>
 #include <IoSerialiserCmwLight.hpp>
 #include <opencmw.hpp>
 
@@ -35,7 +34,7 @@ struct SimpleTestData {
     std::unique_ptr<SimpleTestData> e = nullptr;
     std::set<std::string>           f{ "one", "two", "three" };
     std::map<std::string, int>      g{ { "g1", 1 }, { "g2", 2 }, { "g3", 3 } };
-    bool                            operator==(const ioserialiser_cmwlight_test::SimpleTestData &o) const { // deep comparison function
+    bool                            operator==(const SimpleTestData &o) const { // deep comparison function
         return a == o.a && ab == o.ab && abc == o.abc && b == o.b && c == o.c && cd == o.cd && d == o.d && ((!e && !o.e) || *e == *(o.e)) && f == o.f && g == o.g;
     }
 };
@@ -61,10 +60,10 @@ struct SimpleTestDataMapAsNested {
     std::unique_ptr<SimpleTestDataMapAsNested> e = nullptr;
     std::set<std::string>                      f{ "one", "two", "three" };
     SimpleTestDataMapNested                    g{ 1, 2, 3 };
-    bool                                       operator==(const ioserialiser_cmwlight_test::SimpleTestDataMapAsNested &o) const { // deep comparison function
+    bool                                       operator==(const SimpleTestDataMapAsNested &o) const { // deep comparison function
         return a == o.a && ab == o.ab && abc == o.abc && b == o.b && c == o.c && cd == o.cd && d == o.d && ((!e && !o.e) || *e == *(o.e)) && f == o.f && g == o.g;
     }
-    bool operator==(const ioserialiser_cmwlight_test::SimpleTestData &o) const { // deep comparison function
+    bool operator==(const SimpleTestData &o) const { // deep comparison function
         return a == o.a && ab == o.ab && abc == o.abc && b == o.b && c == o.c && cd == o.cd && d == o.d && ((!e && !o.e) || *e == *(o.e)) && f == o.f && g == o.g;
     }
 };
@@ -74,7 +73,7 @@ ENABLE_REFLECTION_FOR(ioserialiser_cmwlight_test::SimpleTestDataMapAsNested, a, 
 ENABLE_REFLECTION_FOR(ioserialiser_cmwlight_test::SimpleTestDataMapNested, g1, g2, g3)
 
 // small utility function that prints the content of a string in the classic hexedit way with address, hexadecimal and ascii representations
-static std::string hexview(const std::string_view value, std::size_t bytesPerLine = 4) {
+static std::string hexview(const std::string_view value, const std::size_t bytesPerLine = 4) {
     std::string result;
     result.reserve(value.size() * 4);
     std::string alpha; // temporarily store the ascii representation
@@ -172,8 +171,8 @@ TEST_CASE("IoClassSerialiserCmwLight simple test", "[IoClassSerialiser]") {
         std::cout << std::format("object (std::format): {}\n", data);
         std::cout << "object (long):  " << ClassInfoVerbose << data << '\n';
 
-        opencmw::serialise<opencmw::CmwLight>(buffer, data);
-        opencmw::serialise<opencmw::CmwLight>(bufferMap, dataMap);
+        opencmw::serialise<CmwLight>(buffer, data);
+        opencmw::serialise<CmwLight>(bufferMap, dataMap);
         std::cout << std::format("buffer size (after): {} bytes\n", buffer.size());
 
         buffer.put("a\0df"sv);    // add some garbage after the serialised object to check if it is handled correctly
@@ -256,9 +255,9 @@ TEST_CASE("IoClassSerialiserCmwLight missing field", "[IoClassSerialiser]") {
         };
         SimpleTestDataMoreFields data2;
         std::cout << std::format("object (std::format): {}\n", data);
-        opencmw::serialise<opencmw::CmwLight>(buffer, data);
+        opencmw::serialise<CmwLight>(buffer, data);
         buffer.reset();
-        auto result = opencmw::deserialise<opencmw::CmwLight, ProtocolCheck::LENIENT>(buffer, data2);
+        auto result = opencmw::deserialise<CmwLight, ProtocolCheck::LENIENT>(buffer, data2);
         std::cout << std::format("deserialised object (std::format): {}\n", data2);
         std::cout << "deserialisation messages: " << result << std::endl;
         REQUIRE(result.setFields["root"] == std::vector<bool>{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1 });
@@ -267,9 +266,9 @@ TEST_CASE("IoClassSerialiserCmwLight missing field", "[IoClassSerialiser]") {
 
         std::cout << "\nand now the other way round!\n\n";
         buffer.clear();
-        opencmw::serialise<opencmw::CmwLight>(buffer, data2);
+        opencmw::serialise<CmwLight>(buffer, data2);
         buffer.reset();
-        auto result_back = opencmw::deserialise<opencmw::CmwLight, ProtocolCheck::LENIENT>(buffer, data);
+        auto result_back = opencmw::deserialise<CmwLight, ProtocolCheck::LENIENT>(buffer, data);
         std::cout << std::format("deserialised object (std::format): {}\n", data);
         std::cout << "deserialisation messages: " << result_back << std::endl;
         REQUIRE(result_back.setFields["root"] == std::vector<bool>{ 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1 });
@@ -297,7 +296,7 @@ TEST_CASE("IoClassSerialiserCmwLight deserialise into map", "[IoClassSerialiser]
         // serialise
         IoBuffer   buffer;
         IntegerMap input{ 23, 13, 37 };
-        opencmw::serialise<opencmw::CmwLight>(buffer, input);
+        opencmw::serialise<CmwLight>(buffer, input);
         buffer.reset();
         REQUIRE(buffer.size() == sizeof(int32_t) /* map size */ + refl::reflect(input).members.size /* map entries */ * (sizeof(int32_t) /* string lengths */ + sizeof(uint8_t) /* type */ + sizeof(int32_t) /* int */) + 2 + 4 + 4 /* strings + \0 */);
         // std::cout << hexview(buffer.asString());
@@ -306,9 +305,9 @@ TEST_CASE("IoClassSerialiserCmwLight deserialise into map", "[IoClassSerialiser]
         std::map<std::string, int> deserialised{};
         DeserialiserInfo           info;
         auto                       field = opencmw::detail::newFieldHeader<CmwLight, true>(buffer, "map", 0, deserialised, -1);
-        opencmw::FieldHeaderReader<CmwLight>::template get<ProtocolCheck::IGNORE>(buffer, info, field);
+        FieldHeaderReader<CmwLight>::get<ProtocolCheck::IGNORE>(buffer, info, field);
         IoSerialiser<CmwLight, START_MARKER>::deserialise(buffer, field, START_MARKER_INST);
-        opencmw::IoSerialiser<CmwLight, std::map<std::string, int>>::deserialise(buffer, field, deserialised);
+        IoSerialiser<CmwLight, std::map<std::string, int>>::deserialise(buffer, field, deserialised);
 
         // check for correctness
         REQUIRE(deserialised.size() == 3);
@@ -345,7 +344,7 @@ TEST_CASE("IoClassSerialiserCmwLight deserialise variant map", "[IoClassSerialis
 
         IoBuffer                                                      buffer;
         auto                                                          field = opencmw::detail::newFieldHeader<CmwLight, true>(buffer, "map", 0, map, -1);
-        opencmw::IoSerialiser<opencmw::CmwLight, std::map<std::string, std::variant<int, double, std::string>>>::serialise(buffer, field, map);
+        IoSerialiser<CmwLight, std::map<std::string, std::variant<int, double, std::string>>>::serialise(buffer, field, map);
         buffer.reset();
 
         // std::print("expected:\n{}\ngot:\n{}\n", hexview(expected), hexview(buffer.asString()));
@@ -389,10 +388,29 @@ struct DigitizerVersion {
     std::string gr_digitizer_version;
     std::string daqAPIVersion;
 };
+struct Empty {};
+struct StatusProperty {
+    int control;
+    std::vector<bool> detailedStatus;
+    std::vector<std::string> detailedStatus_labels;
+    std::vector<int> detailedStatus_severity;
+    std::vector<int> error_codes;
+    std::vector<std::string> error_cycle_names;
+    std::vector<std::string> error_messages;
+    std::vector<long> error_timestamps;
+    bool interlock;
+    bool modulesReady;
+    bool opReady;
+    int powerState;
+    int status;
+};
 } // namespace opencmw::serialiser::cmwlighttests
 ENABLE_REFLECTION_FOR(opencmw::serialiser::cmwlighttests::CmwLightHeaderOptions, b, e)
 ENABLE_REFLECTION_FOR(opencmw::serialiser::cmwlighttests::CmwLightHeader, x_2, x_0, x_1, f, x_7, d, x_3)
 ENABLE_REFLECTION_FOR(opencmw::serialiser::cmwlighttests::DigitizerVersion, classVersion, deployUnitVersion, fesaVersion, gr_flowgraph_version, gr_digitizer_version, daqAPIVersion)
+ENABLE_REFLECTION_FOR(opencmw::serialiser::cmwlighttests::StatusProperty, control, detailedStatus, detailedStatus_labels, detailedStatus_severity, error_codes, error_cycle_names, error_messages, error_timestamps, interlock, modulesReady, opReady, powerState, status)
+REFL_TYPE(opencmw::serialiser::cmwlighttests::Empty)
+REFL_END
 
 TEST_CASE("IoClassSerialiserCmwLight Deserialise rda3 data", "[IoClassSerialiser]") {
     // ensure that important rda3 messages can be properly deserialized
@@ -400,18 +418,20 @@ TEST_CASE("IoClassSerialiserCmwLight Deserialise rda3 data", "[IoClassSerialiser
     debug::resetStats();
     using namespace opencmw::serialiser::cmwlighttests;
     {
-        std::string_view rda3ConnectReply = "\x07\x00\x00\x00\x02\x00\x00\x00\x30\x00\x04\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x31\x00\x07\x01\x00\x00\x00\x00\x02\x00\x00\x00\x32\x00\x01\x03\x02\x00\x00\x00\x33\x00\x08\x02\x00\x00\x00\x02\x00\x00\x00\x62\x00\x04\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x65\x00\x08\x00\x00\x00\x00\x02\x00\x00\x00\x37\x00\x01\x70\x02\x00\x00\x00\x64\x00\x07\x01\x00\x00\x00\x00\x02\x00\x00\x00\x66\x00\x07\x01\x00\x00\x00\x00"sv;
-        //        0   1   2   3   4   5   6   7      8   9   a   b   c   d   e   f
-        // 000 "\x07\x00\x00\x00\x02\x00\x00\x00" "\x30\x00\x04\x00\x00\x00\x00\x00"
-        // 010 "\x00\x00\x00\x02\x00\x00\x00\x31" "\x00\x07\x01\x00\x00\x00\x00\x02"
-        // 020 "\x00\x00\x00\x32\x00\x01\x03\x02" "\x00\x00\x00\x33\x00\x08\x02\x00"
-        // 030 "\x00\x00\x02\x00\x00\x00\x62\x00" "\x04\x00\x00\x00\x00\x00\x00\x00"
-        // 040 "\x00\x02\x00\x00\x00\x65\x00\x08" "\x00\x00\x00\x00\x02\x00\x00\x00"
-        // 050 "\x37\x00\x01\x70\x02\x00\x00\x00" "\x64\x00\x07\x01\x00\x00\x00\x00"
-        // 060 "\x02\x00\x00\x00\x66\x00\x07\x01" "\x00\x00\x00\x00"sv
+        std::vector<uint8_t> rda3ConnectReply = { //
+            0x07, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, /**/ 0x30, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, //
+            0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x31, /**/ 0x00, 0x07, 0x01, 0x00, 0x00, 0x00, 0x00, 0x02, //
+            0x00, 0x00, 0x00, 0x32, 0x00, 0x01, 0x03, 0x02, /**/ 0x00, 0x00, 0x00, 0x33, 0x00, 0x08, 0x02, 0x00, //
+            0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x62, 0x00, /**/ 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, //
+            0x00, 0x02, 0x00, 0x00, 0x00, 0x65, 0x00, 0x08, /**/ 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, //
+            0x37, 0x00, 0x01, 0x70, 0x02, 0x00, 0x00, 0x00, /**/ 0x64, 0x00, 0x07, 0x01, 0x00, 0x00, 0x00, 0x00, //
+            0x02, 0x00, 0x00, 0x00, 0x66, 0x00, 0x07, 0x01, /**/ 0x00, 0x00, 0x00, 0x00 };                       //
         IoBuffer       buffer{ rda3ConnectReply.data(), rda3ConnectReply.size() };
         CmwLightHeader deserialised;
-        auto           result = opencmw::deserialise<CmwLight, opencmw::ProtocolCheck::LENIENT>(buffer, deserialised);
+        auto           result = opencmw::deserialise<CmwLight, ProtocolCheck::LENIENT>(buffer, deserialised);
+        REQUIRE(result.additionalFields.empty());
+        REQUIRE(result.exceptions.empty());
+        REQUIRE(result.setFields["root"sv].size() == 7);
 
         REQUIRE(deserialised.requestType() == 3);
         REQUIRE(deserialised.id() == 0);
@@ -423,68 +443,123 @@ TEST_CASE("IoClassSerialiserCmwLight Deserialise rda3 data", "[IoClassSerialiser
         REQUIRE(deserialised.options()->sessionBody.empty());
     }
     {
-        std::string_view data = "\x07\x00\x00\x00\x02\x00\x00\x00\x30\x00\x04\x09\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x31\x00\x07\x08\x00\x00\x00\x47\x53\x43\x44\x30\x30\x32\x00\x02\x00\x00\x00\x32\x00\x01\x0b\x02\x00\x00\x00\x33\x00\x08\x01\x00\x00\x00\x02\x00\x00\x00\x65\x00\x08\x00\x00\x00\x00\x02\x00\x00\x00\x37\x00\x01\x00\x02\x00\x00\x00\x64\x00\x07\x25\x01\x00\x00\x52\x65\x6d\x6f\x74\x65\x48\x6f\x73\x74\x49\x6e\x66\x6f\x49\x6d\x70\x6c\x5b\x6e\x61\x6d\x65\x3d\x66\x65\x73\x61\x2d\x65\x78\x70\x6c\x6f\x72\x65\x72\x2d\x61\x70\x70\x3b\x20\x75\x73\x65\x72\x4e\x61\x6d\x65\x3d\x61\x6b\x72\x69\x6d\x6d\x3b\x20\x61\x70\x70\x49\x64\x3d\x5b\x61\x70\x70\x3d\x66\x65\x73\x61\x2d\x65\x78\x70\x6c\x6f\x72\x65\x72\x2d\x61\x70\x70\x3b\x76\x65\x72\x3d\x31\x39\x2e\x30\x2e\x30\x3b\x75\x69\x64\x3d\x61\x6b\x72\x69\x6d\x6d\x3b\x68\x6f\x73\x74\x3d\x53\x59\x53\x50\x43\x30\x30\x38\x3b\x70\x69\x64\x3d\x31\x39\x31\x36\x31\x36\x3b\x5d\x3b\x20\x70\x72\x6f\x63\x65\x73\x73\x3d\x66\x65\x73\x61\x2d\x65\x78\x70\x6c\x6f\x72\x65\x72\x2d\x61\x70\x70\x3b\x20\x70\x69\x64\x3d\x31\x39\x31\x36\x31\x36\x3b\x20\x61\x64\x64\x72\x65\x73\x73\x3d\x74\x63\x70\x3a\x2f\x2f\x53\x59\x53\x50\x43\x30\x30\x38\x3a\x30\x3b\x20\x73\x74\x61\x72\x74\x54\x69\x6d\x65\x3d\x32\x30\x32\x34\x2d\x30\x37\x2d\x30\x34\x20\x31\x31\x3a\x31\x31\x3a\x31\x32\x3b\x20\x63\x6f\x6e\x6e\x65\x63\x74\x69\x6f\x6e\x54\x69\x6d\x65\x3d\x41\x62\x6f\x75\x74\x20\x61\x67\x6f\x3b\x20\x76\x65\x72\x73\x69\x6f\x6e\x3d\x31\x30\x2e\x33\x2e\x30\x3b\x20\x6c\x61\x6e\x67\x75\x61\x67\x65\x3d\x4a\x61\x76\x61\x5d\x31\x00\x02\x00\x00\x00\x66\x00\x07\x08\x00\x00\x00\x56\x65\x72\x73\x69\x6f\x6e\x00"sv;
         //  reply req type: session confirm
-        //                                                              \x07 \x00 \x00 \x00                ....
-        // \x02 \x00 \x00 \x00 \x30 \x00 \x04 \x09  \x00 \x00 \x00 \x00 \x00 \x00 \x00 \x02   ....0... ........
-        // \x00 \x00 \x00 \x31 \x00 \x07 \x08 \x00  \x00 \x00 \x47 \x53 \x43 \x44 \x30 \x30   ...1.... ..GSCD00
-        // \x32 \x00 \x02 \x00 \x00 \x00 \x32 \x00  \x01 \x0b \x02 \x00 \x00 \x00 \x33 \x00   2.....2. ......3.
-        // \x08 \x01 \x00 \x00 \x00 \x02 \x00 \x00  \x00 \x65 \x00 \x08 \x00 \x00 \x00 \x00   ........ .e......
-        // \x02 \x00 \x00 \x00 \x37 \x00 \x01 \x00  \x02 \x00 \x00 \x00 \x64 \x00 \x07 \x25   ....7... ....d..%
-        // \x01 \x00 \x00 \x52 \x65 \x6d \x6f \x74  \x65 \x48 \x6f \x73 \x74 \x49 \x6e \x66   ...Remot eHostInf
-        // \x6f \x49 \x6d \x70 \x6c \x5b \x6e \x61  \x6d \x65 \x3d \x66 \x65 \x73 \x61 \x2d   oImpl[na me=fesa-
-        // \x65 \x78 \x70 \x6c \x6f \x72 \x65 \x72  \x2d \x61 \x70 \x70 \x3b \x20 \x75 \x73   explorer -app; us
-        // \x65 \x72 \x4e \x61 \x6d \x65 \x3d \x61  \x6b \x72 \x69 \x6d \x6d \x3b \x20 \x61   erName=a krimm; a
-        // \x70 \x70 \x49 \x64 \x3d \x5b \x61 \x70  \x70 \x3d \x66 \x65 \x73 \x61 \x2d \x65   ppId=[ap p=fesa-e
-        // \x78 \x70 \x6c \x6f \x72 \x65 \x72 \x2d  \x61 \x70 \x70 \x3b \x76 \x65 \x72 \x3d   xplorer- app;ver=
-        // \x31 \x39 \x2e \x30 \x2e \x30 \x3b \x75  \x69 \x64 \x3d \x61 \x6b \x72 \x69 \x6d   19.0.0;u id=akrim
-        // \x6d \x3b \x68 \x6f \x73 \x74 \x3d \x53  \x59 \x53 \x50 \x43 \x30 \x30 \x38 \x3b   m;host=S YSPC008;
-        // \x70 \x69 \x64 \x3d \x31 \x39 \x31 \x36  \x31 \x36 \x3b \x5d \x3b \x20 \x70 \x72   pid=1916 16;]; pr
-        // \x6f \x63 \x65 \x73 \x73 \x3d \x66 \x65  \x73 \x61 \x2d \x65 \x78 \x70 \x6c \x6f   ocess=fe sa-explo
-        // \x72 \x65 \x72 \x2d \x61 \x70 \x70 \x3b  \x20 \x70 \x69 \x64 \x3d \x31 \x39 \x31   rer-app;  pid=191
-        // \x36 \x31 \x36 \x3b \x20 \x61 \x64 \x64  \x72 \x65 \x73 \x73 \x3d \x74 \x63 \x70   616; add ress=tcp
-        // \x3a \x2f \x2f \x53 \x59 \x53 \x50 \x43  \x30 \x30 \x38 \x3a \x30 \x3b \x20 \x73   ://SYSPC 008:0; s
-        // \x74 \x61 \x72 \x74 \x54 \x69 \x6d \x65  \x3d \x32 \x30 \x32 \x34 \x2d \x30 \x37   tartTime =2024-07
-        // \x2d \x30 \x34 \x20 \x31 \x31 \x3a \x31  \x31 \x3a \x31 \x32 \x3b \x20 \x63 \x6f   -04 11:1 1:12; co
-        // \x6e \x6e \x65 \x63 \x74 \x69 \x6f \x6e  \x54 \x69 \x6d \x65 \x3d \x41 \x62 \x6f   nnection Time=Abo
-        // \x75 \x74 \x20 \x61 \x67 \x6f \x3b \x20  \x76 \x65 \x72 \x73 \x69 \x6f \x6e \x3d   ut ago;  version=
-        // \x31 \x30 \x2e \x33 \x2e \x30 \x3b \x20  \x6c \x61 \x6e \x67 \x75 \x61 \x67 \x65   10.3.0;  language
-        // \x3d \x4a \x61 \x76 \x61 \x5d \x31 \x00  \x02 \x00 \x00 \x00 \x66 \x00 \x07 \x08   =Java]1. ....f...
-        // \x00 \x00 \x00 \x56 \x65 \x72 \x73 \x69  \x6f \x6e \x00                           ...Versi on.
+        std::vector<uint8_t> data = {                                                    0x07, 0x00, 0x00, 0x00, //              ....
+            0x02, 0x00, 0x00, 0x00, 0x30, 0x00, 0x04, 0x09, /**/ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, // ....0... ........
+            0x00, 0x00, 0x00, 0x31, 0x00, 0x07, 0x08, 0x00, /**/ 0x00, 0x00, 0x47, 0x53, 0x43, 0x44, 0x30, 0x30, // ...1.... ..GSCD00
+            0x32, 0x00, 0x02, 0x00, 0x00, 0x00, 0x32, 0x00, /**/ 0x01, 0x0b, 0x02, 0x00, 0x00, 0x00, 0x33, 0x00, // 2.....2. ......3.
+            0x08, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, /**/ 0x00, 0x65, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, // ........ .e......
+            0x02, 0x00, 0x00, 0x00, 0x37, 0x00, 0x01, 0x00, /**/ 0x02, 0x00, 0x00, 0x00, 0x64, 0x00, 0x07, 0x25, // ....7... ....d..%
+            0x01, 0x00, 0x00, 0x52, 0x65, 0x6d, 0x6f, 0x74, /**/ 0x65, 0x48, 0x6f, 0x73, 0x74, 0x49, 0x6e, 0x66, // ...Remot eHostInf
+            0x6f, 0x49, 0x6d, 0x70, 0x6c, 0x5b, 0x6e, 0x61, /**/ 0x6d, 0x65, 0x3d, 0x66, 0x65, 0x73, 0x61, 0x2d, // oImpl[na me=fesa-
+            0x65, 0x78, 0x70, 0x6c, 0x6f, 0x72, 0x65, 0x72, /**/ 0x2d, 0x61, 0x70, 0x70, 0x3b, 0x20, 0x75, 0x73, // explorer -app; us
+            0x65, 0x72, 0x4e, 0x61, 0x6d, 0x65, 0x3d, 0x61, /**/ 0x6b, 0x72, 0x69, 0x6d, 0x6d, 0x3b, 0x20, 0x61, // erName=a krimm; a
+            0x70, 0x70, 0x49, 0x64, 0x3d, 0x5b, 0x61, 0x70, /**/ 0x70, 0x3d, 0x66, 0x65, 0x73, 0x61, 0x2d, 0x65, // ppId=[ap p=fesa-e
+            0x78, 0x70, 0x6c, 0x6f, 0x72, 0x65, 0x72, 0x2d, /**/ 0x61, 0x70, 0x70, 0x3b, 0x76, 0x65, 0x72, 0x3d, // xplorer- app;ver=
+            0x31, 0x39, 0x2e, 0x30, 0x2e, 0x30, 0x3b, 0x75, /**/ 0x69, 0x64, 0x3d, 0x61, 0x6b, 0x72, 0x69, 0x6d, // 19.0.0;u id=akrim
+            0x6d, 0x3b, 0x68, 0x6f, 0x73, 0x74, 0x3d, 0x53, /**/ 0x59, 0x53, 0x50, 0x43, 0x30, 0x30, 0x38, 0x3b, // m;host=S YSPC008;
+            0x70, 0x69, 0x64, 0x3d, 0x31, 0x39, 0x31, 0x36, /**/ 0x31, 0x36, 0x3b, 0x5d, 0x3b, 0x20, 0x70, 0x72, // pid=1916 16;]; pr
+            0x6f, 0x63, 0x65, 0x73, 0x73, 0x3d, 0x66, 0x65, /**/ 0x73, 0x61, 0x2d, 0x65, 0x78, 0x70, 0x6c, 0x6f, // ocess=fe sa-explo
+            0x72, 0x65, 0x72, 0x2d, 0x61, 0x70, 0x70, 0x3b, /**/ 0x20, 0x70, 0x69, 0x64, 0x3d, 0x31, 0x39, 0x31, // rer-app;  pid=191
+            0x36, 0x31, 0x36, 0x3b, 0x20, 0x61, 0x64, 0x64, /**/ 0x72, 0x65, 0x73, 0x73, 0x3d, 0x74, 0x63, 0x70, // 616; add ress=tcp
+            0x3a, 0x2f, 0x2f, 0x53, 0x59, 0x53, 0x50, 0x43, /**/ 0x30, 0x30, 0x38, 0x3a, 0x30, 0x3b, 0x20, 0x73, // ://SYSPC 008:0; s
+            0x74, 0x61, 0x72, 0x74, 0x54, 0x69, 0x6d, 0x65, /**/ 0x3d, 0x32, 0x30, 0x32, 0x34, 0x2d, 0x30, 0x37, // tartTime =2024-07
+            0x2d, 0x30, 0x34, 0x20, 0x31, 0x31, 0x3a, 0x31, /**/ 0x31, 0x3a, 0x31, 0x32, 0x3b, 0x20, 0x63, 0x6f, // -04 11:1 1:12; co
+            0x6e, 0x6e, 0x65, 0x63, 0x74, 0x69, 0x6f, 0x6e, /**/ 0x54, 0x69, 0x6d, 0x65, 0x3d, 0x41, 0x62, 0x6f, // nnection Time=Abo
+            0x75, 0x74, 0x20, 0x61, 0x67, 0x6f, 0x3b, 0x20, /**/ 0x76, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, 0x3d, // ut ago;  version=
+            0x31, 0x30, 0x2e, 0x33, 0x2e, 0x30, 0x3b, 0x20, /**/ 0x6c, 0x61, 0x6e, 0x67, 0x75, 0x61, 0x67, 0x65, // 10.3.0;  language
+            0x3d, 0x4a, 0x61, 0x76, 0x61, 0x5d, 0x31, 0x00, /**/ 0x02, 0x00, 0x00, 0x00, 0x66, 0x00, 0x07, 0x08, // =Java]1. ....f...
+            0x00, 0x00, 0x00, 0x56, 0x65, 0x72, 0x73, 0x69, /**/ 0x6f, 0x6e, 0x00 };                             //...Versi on.
         IoBuffer       buffer{ data.data(), data.size() };
         CmwLightHeader deserialised;
-        auto           result = opencmw::deserialise<CmwLight, opencmw::ProtocolCheck::LENIENT>(buffer, deserialised);
+        auto           result = opencmw::deserialise<CmwLight, ProtocolCheck::LENIENT>(buffer, deserialised);
+        REQUIRE(result.additionalFields.empty());
+        REQUIRE(result.exceptions.empty());
+        REQUIRE(result.setFields["root"sv].size() == 7);
     }
     {
-        std::string_view data = "\x06\x00\x00\x00\x02\x00\x00\x00\x30\x00\x04\x09\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x31\x00\x07\x01\x00\x00\x00\x00\x02\x00\x00\x00\x32\x00\x01\x03\x02\x00\x00\x00\x37\x00\x01\x00\x02\x00\x00\x00\x64\x00\x07\x01\x00\x00\x00\x00\x02\x00\x00\x00\x66\x00\x07\x01\x00\x00\x00\x00\x01\xc3\x06\x00\x00\x00\x0d\x00\x00\x00\x63\x6c\x61\x73\x73\x56\x65\x72\x73\x69\x6f\x6e\x00\x07\x06\x00\x00\x00\x36\x2e\x30\x2e\x30\x00\x0e\x00\x00\x00\x64\x61\x71\x41\x50\x49\x56\x65\x72\x73\x69\x6f\x6e\x00\x07\x04\x00\x00\x00\x32\x2e\x30\x00\x12\x00\x00\x00\x64\x65\x70\x6c\x6f\x79\x55\x6e\x69\x74\x56\x65\x72\x73\x69\x6f\x6e\x00\x07\x06\x00\x00\x00\x36\x2e\x30\x2e\x30\x00\x0c\x00\x00\x00\x66\x65\x73\x61\x56\x65\x72\x73\x69\x6f\x6e\x00\x07\x06\x00\x00\x00\x37\x2e\x33\x2e\x30\x00\x15\x00\x00\x00\x67\x72\x5f\x64\x69\x67\x69\x74\x69\x7a\x65\x72\x5f\x76\x65\x72\x73\x69\x6f\x6e\x00\x07\x08\x00\x00\x00\x35\x2e\x31\x2e\x34\x2e\x30\x00\x15\x00\x00\x00\x67\x72\x5f\x66\x6c\x6f\x77\x67\x72\x61\x70\x68\x5f\x76\x65\x72\x73\x69\x6f\x6e\x00\x07\x08\x00\x00\x00\x35\x2e\x30\x2e\x32\x2e\x30\x00\x01\x62\x03\x00\x00\x00\x02\x00\x00\x00\x35\x00\x04\x88\x39\xfe\x41\x88\xf7\xde\x17\x02\x00\x00\x00\x36\x00\x04\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x78\x00\x08\x03\x00\x00\x00\x09\x00\x00\x00\x61\x63\x71\x53\x74\x61\x6d\x70\x00\x04\x88\x39\xfe\x41\x88\xf7\xde\x17\x05\x00\x00\x00\x74\x79\x70\x65\x00\x03\x02\x00\x00\x00\x08\x00\x00\x00\x76\x65\x72\x73\x69\x6f\x6e\x00\x03\x01\x00\x00\x00\x00\x03";
         // Reply with Req Type = Reply, gets sent after get request
-        //                          \x06 \x00 \x00  \x00 \x02 \x00 \x00 \x00 \x30 \x00 \x04        ... .....0..
-        // \x09 \x00 \x00 \x00 \x00 \x00 \x00 \x00  \x02 \x00 \x00 \x00 \x31 \x00 \x07 \x01   ........ ....1...
-        // \x00 \x00 \x00 \x00 \x02 \x00 \x00 \x00  \x32 \x00 \x01 \x03 \x02 \x00 \x00 \x00   ........ 2.......
-        // \x37 \x00 \x01 \x00 \x02 \x00 \x00 \x00  \x64 \x00 \x07 \x01 \x00 \x00 \x00 \x00   7....... d.......
-        // \x02 \x00 \x00 \x00 \x66 \x00 \x07 \x01  \x00 \x00 \x00 \x00 \x01 \xc3 \x06 \x00   ....f... ........
-        // \x00 \x00 \x0d \x00 \x00 \x00 \x63 \x6c  \x61 \x73 \x73 \x56 \x65 \x72 \x73 \x69   ......cl assVersi
-        // \x6f \x6e \x00 \x07 \x06 \x00 \x00 \x00  \x36 \x2e \x30 \x2e \x30 \x00 \x0e \x00   on...... 6.0.0...
-        // \x00 \x00 \x64 \x61 \x71 \x41 \x50 \x49  \x56 \x65 \x72 \x73 \x69 \x6f \x6e \x00   ..daqAPI Version.
-        // \x07 \x04 \x00 \x00 \x00 \x32 \x2e \x30  \x00 \x12 \x00 \x00 \x00 \x64 \x65 \x70   .....2.0 .....dep
-        // \x6c \x6f \x79 \x55 \x6e \x69 \x74 \x56  \x65 \x72 \x73 \x69 \x6f \x6e \x00 \x07   loyUnitV ersion..
-        // \x06 \x00 \x00 \x00 \x36 \x2e \x30 \x2e  \x30 \x00 \x0c \x00 \x00 \x00 \x66 \x65   ....6.0. 0.....fe
-        // \x73 \x61 \x56 \x65 \x72 \x73 \x69 \x6f  \x6e \x00 \x07 \x06 \x00 \x00 \x00 \x37   saVersio n......7
-        // \x2e \x33 \x2e \x30 \x00 \x15 \x00 \x00  \x00 \x67 \x72 \x5f \x64 \x69 \x67 \x69   .3.0.... .gr_digi
-        // \x74 \x69 \x7a \x65 \x72 \x5f \x76 \x65  \x72 \x73 \x69 \x6f \x6e \x00 \x07 \x08   tizer_ve rsion...
-        // \x00 \x00 \x00 \x35 \x2e \x31 \x2e \x34  \x2e \x30 \x00 \x15 \x00 \x00 \x00 \x67   ...5.1.4 .0.....g
-        // \x72 \x5f \x66 \x6c \x6f \x77 \x67 \x72  \x61 \x70 \x68 \x5f \x76 \x65 \x72 \x73   r_flowgr aph_vers
-        // \x69 \x6f \x6e \x00 \x07 \x08 \x00 \x00  \x00 \x35 \x2e \x30 \x2e \x32 \x2e \x30   ion..... .5.0.2.0
-        // \x00 \x01 \x62 \x03 \x00 \x00 \x00 \x02  \x00 \x00 \x00 \x35 \x00 \x04 \x88 \x39   ..b..... ...5...9
-        // \xfe \x41 \x88 \xf7 \xde \x17 \x02 \x00  \x00 \x00 \x36 \x00 \x04 \x00 \x00 \x00   .A...... ..6.....
-        // \x00 \x00 \x00 \x00 \x00 \x02 \x00 \x00  \x00 \x78 \x00 \x08 \x03 \x00 \x00 \x00   ........ .x......
-        // \x09 \x00 \x00 \x00 \x61 \x63 \x71 \x53  \x74 \x61 \x6d \x70 \x00 \x04 \x88 \x39   ....acqS tamp...9
-        // \xfe \x41 \x88 \xf7 \xde \x17 \x05 \x00  \x00 \x00 \x74 \x79 \x70 \x65 \x00 \x03   .A...... ..type..
-        // \x02 \x00 \x00 \x00 \x08 \x00 \x00 \x00  \x76 \x65 \x72 \x73 \x69 \x6f \x6e \x00   ........ version.
-        // \x03 \x01 \x00 \x00 \x00 \x00 \x03                                                 .......
+        std::vector<uint8_t> data =  {                                                               0x06, 0x00, //                ..
+            0x00, 0x00, 0x0d, 0x00, 0x00, 0x00, 0x63, 0x6c, /**/ 0x61, 0x73, 0x73, 0x56, 0x65, 0x72, 0x73, 0x69, // ......cl assVersi
+            0x6f, 0x6e, 0x00, 0x07, 0x06, 0x00, 0x00, 0x00, /**/ 0x36, 0x2e, 0x30, 0x2e, 0x30, 0x00, 0x0e, 0x00, // on...... 6.0.0...
+            0x00, 0x00, 0x64, 0x61, 0x71, 0x41, 0x50, 0x49, /**/ 0x56, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, 0x00, // ..daqAPI Version.
+            0x07, 0x04, 0x00, 0x00, 0x00, 0x32, 0x2e, 0x30, /**/ 0x00, 0x12, 0x00, 0x00, 0x00, 0x64, 0x65, 0x70, // .....2.0 .....dep
+            0x6c, 0x6f, 0x79, 0x55, 0x6e, 0x69, 0x74, 0x56, /**/ 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, 0x00, 0x07, // loyUnitV ersion..
+            0x06, 0x00, 0x00, 0x00, 0x36, 0x2e, 0x30, 0x2e, /**/ 0x30, 0x00, 0x0c, 0x00, 0x00, 0x00, 0x66, 0x65, // ....6.0. 0.....fe
+            0x73, 0x61, 0x56, 0x65, 0x72, 0x73, 0x69, 0x6f, /**/ 0x6e, 0x00, 0x07, 0x06, 0x00, 0x00, 0x00, 0x37, // saVersio n......7
+            0x2e, 0x33, 0x2e, 0x30, 0x00, 0x15, 0x00, 0x00, /**/ 0x00, 0x67, 0x72, 0x5f, 0x64, 0x69, 0x67, 0x69, // .3.0.... .gr_digi
+            0x74, 0x69, 0x7a, 0x65, 0x72, 0x5f, 0x76, 0x65, /**/ 0x72, 0x73, 0x69, 0x6f, 0x6e, 0x00, 0x07, 0x08, // tizer_ve rsion...
+            0x00, 0x00, 0x00, 0x35, 0x2e, 0x31, 0x2e, 0x34, /**/ 0x2e, 0x30, 0x00, 0x15, 0x00, 0x00, 0x00, 0x67, // ...5.1.4 .0.....g
+            0x72, 0x5f, 0x66, 0x6c, 0x6f, 0x77, 0x67, 0x72, /**/ 0x61, 0x70, 0x68, 0x5f, 0x76, 0x65, 0x72, 0x73, // r_flowgr aph_vers
+            0x69, 0x6f, 0x6e, 0x00, 0x07, 0x08, 0x00, 0x00, /**/ 0x00, 0x35, 0x2e, 0x30, 0x2e, 0x32, 0x2e, 0x30, // ion..... .5.0.2.0
+            0x00, 0x01, 0x62, 0x03, 0x00, 0x00, 0x00, 0x02, /**/ 0x00, 0x00, 0x00, 0x35, 0x00, 0x04, 0x88, 0x39, // ..b..... ...5...9
+            0xfe, 0x41, 0x88, 0xf7, 0xde, 0x17, 0x02, 0x00, /**/ 0x00, 0x00, 0x36, 0x00, 0x04, 0x00, 0x00, 0x00, // .A...... ..6.....
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, /**/ 0x00, 0x78, 0x00, 0x08, 0x03, 0x00, 0x00, 0x00, // ........ .x......
+            0x09, 0x00, 0x00, 0x00, 0x61, 0x63, 0x71, 0x53, /**/ 0x74, 0x61, 0x6d, 0x70, 0x00, 0x04, 0x88, 0x39, // ....acqS tamp...9
+            0xfe, 0x41, 0x88, 0xf7, 0xde, 0x17, 0x05, 0x00, /**/ 0x00, 0x00, 0x74, 0x79, 0x70, 0x65, 0x00, 0x03, // .A...... ..type..
+            0x02, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, /**/ 0x76, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, 0x00, // ........ version.
+            0x03, 0x01, 0x00, 0x00, 0x00, 0x00, 0x03} ;                                                     // .......
         IoBuffer         buffer{ data.data(), data.size() };
         DigitizerVersion deserialised;
-        auto             result = opencmw::deserialise<CmwLight, opencmw::ProtocolCheck::LENIENT>(buffer, deserialised);
+        auto             result = opencmw::deserialise<CmwLight, ProtocolCheck::LENIENT>(buffer, deserialised);
+        REQUIRE(result.additionalFields.empty());
+        REQUIRE(result.exceptions.empty());
+        REQUIRE(result.setFields["root"sv].size() == 6);
+    }
+    {
+        std::vector<uint8_t> data{ //
+            0x0d, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, /**/ 0x63, 0x6f, 0x6e, 0x74, 0x72, 0x6f, 0x6c, 0x00, /**/ 0x03, 0x00, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, /**/ 0x00, 0x64, 0x65, 0x74, 0x61, 0x69, 0x6c, 0x65, //  ........ control. ........ .detaile
+            0x64, 0x53, 0x74, 0x61, 0x74, 0x75, 0x73, 0x00, /**/ 0x09, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, /**/ 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x01, 0x16, /**/ 0x00, 0x00, 0x00, 0x64, 0x65, 0x74, 0x61, 0x69, //  dStatus. ........ ........ ...detai
+            0x6c, 0x65, 0x64, 0x53, 0x74, 0x61, 0x74, 0x75, /**/ 0x73, 0x5f, 0x6c, 0x61, 0x62, 0x65, 0x6c, 0x73, /**/ 0x00, 0x10, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, /**/ 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x0f, 0x00, //  ledStatu s_labels ........ ........
+            0x00, 0x00, 0x6d, 0x79, 0x53, 0x74, 0x61, 0x74, /**/ 0x75, 0x73, 0x4c, 0x61, 0x62, 0x65, 0x6c, 0x31, /**/ 0x00, 0x0f, 0x00, 0x00, 0x00, 0x6d, 0x79, 0x53, /**/ 0x74, 0x61, 0x74, 0x75, 0x73, 0x4c, 0x61, 0x62, //  ..myStat usLabel1 .....myS tatusLab
+            0x65, 0x6c, 0x32, 0x00, 0x18, 0x00, 0x00, 0x00, /**/ 0x64, 0x65, 0x74, 0x61, 0x69, 0x6c, 0x65, 0x64, /**/ 0x53, 0x74, 0x61, 0x74, 0x75, 0x73, 0x5f, 0x73, /**/ 0x65, 0x76, 0x65, 0x72, 0x69, 0x74, 0x79, 0x00, //  el2..... detailed Status_s everity.
+            0x0c, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, /**/ 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /**/ 0x00, 0x00, 0x00, 0x00, 0x00, 0x0c, 0x00, 0x00, /**/ 0x00, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x5f, 0x63, //  ........ ........ ........ .error_c
+            0x6f, 0x64, 0x65, 0x73, 0x00, 0x0c, 0x01, 0x00, /**/ 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x10, 0x00, /**/ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /**/ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, //  odes.... ........ ........ ........
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /**/ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /**/ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /**/ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, //  ........ ........ ........ ........
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /**/ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /**/ 0x00, 0x00, 0x12, 0x00, 0x00, 0x00, 0x65, 0x72, /**/ 0x72, 0x6f, 0x72, 0x5f, 0x63, 0x79, 0x63, 0x6c, //  ........ ........ ......er ror_cycl
+            0x65, 0x5f, 0x6e, 0x61, 0x6d, 0x65, 0x73, 0x00, /**/ 0x10, 0x01, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, /**/ 0x00, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, /**/ 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x01, //  e_names. ........ ........ ........
+            0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, /**/ 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, /**/ 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, /**/ 0x01, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, //  ........ ........ ........ ........
+            0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x01, /**/ 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, /**/ 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, /**/ 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, //  ........ ........ ........ ........
+            0x01, 0x00, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, /**/ 0x00, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x5f, 0x6d, /**/ 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x73, 0x00, /**/ 0x10, 0x01, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, //  ........ .error_m essages. ........
+            0x00, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, /**/ 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x01, /**/ 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, /**/ 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, //  ........ ........ ........ ........
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, /**/ 0x01, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, /**/ 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x01, /**/ 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, //  ........ ........ ........ ........
+            0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, /**/ 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, /**/ 0x01, 0x00, 0x00, 0x00, 0x00, 0x11, 0x00, 0x00, /**/ 0x00, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x5f, 0x74, //  ........ ........ ........ .error_t
+            0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70, /**/ 0x73, 0x00, 0x0d, 0x01, 0x00, 0x00, 0x00, 0x10, /**/ 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, /**/ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, //  imestamp s....... ........ ........
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /**/ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /**/ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /**/ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, //  ........ ........ ........ ........
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /**/ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /**/ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /**/ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, //  ........ ........ ........ ........
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /**/ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /**/ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /**/ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, //  ........ ........ ........ ........
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /**/ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /**/ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, /**/ 0x00, 0x00, 0x00, 0x69, 0x6e, 0x74, 0x65, 0x72, //  ........ ........ ........ ...inter
+            0x6c, 0x6f, 0x63, 0x6b, 0x00, 0x00, 0x00, 0x0d, /**/ 0x00, 0x00, 0x00, 0x6d, 0x6f, 0x64, 0x75, 0x6c, /**/ 0x65, 0x73, 0x52, 0x65, 0x61, 0x64, 0x79, 0x00, /**/ 0x00, 0x01, 0x08, 0x00, 0x00, 0x00, 0x6f, 0x70, //  lock.... ...modul esReady. ......op
+            0x52, 0x65, 0x61, 0x64, 0x79, 0x00, 0x00, 0x01, /**/ 0x0b, 0x00, 0x00, 0x00, 0x70, 0x6f, 0x77, 0x65, /**/ 0x72, 0x53, 0x74, 0x61, 0x74, 0x65, 0x00, 0x03, /**/ 0x01, 0x00, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00, //  Ready... ....powe rState.. ........
+            0x73, 0x74, 0x61, 0x74, 0x75, 0x73, 0x00, 0x03, /**/ 0x01, 0x00, 0x00, 0x00};                                                                                                                                  //  status.. ....
+        IoBuffer         buffer{ data.data(), data.size() };
+        REQUIRE(buffer.size() == 748);
+        // deserialise once into an empty struct to verify that the fields can be correctly skipped and end up in the deserialiserInfo
+        Empty empty;
+        auto result = opencmw::deserialise<CmwLight, ProtocolCheck::LENIENT>(buffer, empty);
+        REQUIRE(result.additionalFields.size() == 13); // [root::control, root::detailedStatus, root::detailedStatus_labels, root::detailedStatus_severity, root::error_codes, root::error_cycle_names, root::error_messages, root::error_timestamps, root::interlock, root::modulesReady, root::opReady, root::powerState, root::status] [3, 9, 16, 12, 12, 16, 16, 13, 0, 0, 0, 3, 3]
+        REQUIRE(result.exceptions.size() == 13); // each missing field also produces an excception
+        REQUIRE(result.setFields["root"].empty());
+        // deserialise into the correct domain object
+        buffer.reset();
+        StatusProperty status;
+        auto result2 = opencmw::deserialise<CmwLight, ProtocolCheck::LENIENT>(buffer, status);
+        REQUIRE(result2.additionalFields.empty());
+        REQUIRE(result2.exceptions.empty());
+        REQUIRE(result2.setFields["root"sv].size() == 13);
+        REQUIRE(status.control == 0);
+        REQUIRE(status.detailedStatus == std::vector{true, true});
+        REQUIRE(status.detailedStatus_labels == std::vector{"myStatusLabel1"s, "myStatusLabel2"s});
+        REQUIRE(status.detailedStatus_severity == std::vector{0, 0});
+        REQUIRE(status.error_codes.size() == 16);
+        REQUIRE(status.error_cycle_names.size() == 16);
+        REQUIRE(status.error_messages.size() == 16);
+        REQUIRE(status.error_timestamps.size() == 16);
+        REQUIRE_FALSE(status.interlock);
+        REQUIRE(status.modulesReady);
+        REQUIRE(status.opReady);
+        REQUIRE(status.powerState == 1);
+        REQUIRE(status.status == 1);
     }
     REQUIRE(opencmw::debug::dealloc == opencmw::debug::alloc); // a memory leak occurred
     debug::resetStats();
