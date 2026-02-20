@@ -103,11 +103,13 @@ public:
         return opencmw::URI<STRICT>::factory().path(_service).setQuery({ _params.begin(), _params.end() }).build();
     }
 
-    std::string toZmqTopic() const {
+    std::string toZmqTopic(const bool delimitWithPound = true) const {
         using namespace std::string_literals;
         std::string zmqTopic = _service;
         if (_params.empty()) {
-            zmqTopic += "#"s;
+            if (delimitWithPound) {
+                zmqTopic += "#"s;
+            }
             return zmqTopic;
         }
         zmqTopic += "?"s;
@@ -123,7 +125,9 @@ public:
             }
             isFirst = false;
         }
-        zmqTopic += "#"s;
+        if (delimitWithPound) {
+            zmqTopic += "#"s;
+        }
         return zmqTopic;
     }
 

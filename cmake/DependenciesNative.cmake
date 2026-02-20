@@ -106,13 +106,15 @@ FetchContent_Declare(
 )
 set(HTTPLIB_USE_ZSTD_IF_AVAILABLE OFF CACHE BOOL "Disable zstd for httplib")
 
-# zlib: optional httplib dependency
+set(CPR_USE_SYSTEM_CURL ON CACHE BOOL "Use system libcurl in CPR" FORCE)
+set(cpr_patch_command )
 FetchContent_Declare(
-        zlib
-        GIT_REPOSITORY https://github.com/madler/zlib.git
-        GIT_TAG v1.3.12
+        cpr
+        GIT_REPOSITORY https://github.com/libcpr/cpr.git
+        GIT_TAG 1.14.1
+        PATCH_COMMAND git apply --ignore-space-change --ignore-whitespace "${CMAKE_CURRENT_LIST_DIR}/patches/cpr-disable-std-fs-test.diff" || true
 )
 
-FetchContent_MakeAvailable(cpp-httplib zeromq)
+FetchContent_MakeAvailable(cpp-httplib zeromq cpr)
 
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/contrib) # replace contrib by extras for catch2 v3.x.x

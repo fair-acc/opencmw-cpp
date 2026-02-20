@@ -1,6 +1,7 @@
 #ifndef SPIN_WAIT_HPP
 #define SPIN_WAIT_HPP
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <thread>
@@ -67,12 +68,12 @@ public:
     void reset() noexcept { _count = 0; }
 
     template<typename T>
-    requires std::is_nothrow_invocable_r_v<bool, T>
+        requires std::is_nothrow_invocable_r_v<bool, T>
     bool
     spinUntil(const T &condition) const { return spinUntil(condition, -1); }
 
     template<typename T>
-    requires std::is_nothrow_invocable_r_v<bool, T>
+        requires std::is_nothrow_invocable_r_v<bool, T>
     bool
     spinUntil(const T &condition, std::int64_t millisecondsTimeout) const {
         if (millisecondsTimeout < -1) {
@@ -111,8 +112,8 @@ class AtomicMutex {
     SPIN_WAIT        _spin_wait;
 
 public:
-    AtomicMutex()                    = default;
-    AtomicMutex(const AtomicMutex &) = delete;
+    AtomicMutex()                               = default;
+    AtomicMutex(const AtomicMutex &)            = delete;
     AtomicMutex &operator=(const AtomicMutex &) = delete;
 
     //
