@@ -231,6 +231,16 @@ public:
                 copy);
     }
 
+    explicit MessageFrame(char c) {
+        const auto copy = new char[1] {c};
+        zmq_msg_init_data(
+                &_message, copy, 1,
+                [](void * /*unused*/, void *bufOwned) {
+                    delete static_cast<char *>(bufOwned);
+                },
+                copy);
+    }
+
     static MessageFrame fromStaticData(std::string_view buf) {
         MessageFrame mf;
         zmq_msg_init_data(
