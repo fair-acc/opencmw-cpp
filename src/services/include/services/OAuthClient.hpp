@@ -99,18 +99,24 @@ public:
     explicit OAuthClient(StrictUri redirectUri, StrictUri endpoint, StrictUri tokenEndpoint)
         : _redirectUri(redirectUri), _endpoint(endpoint), _tokenEndpoint(tokenEndpoint) {
         _srv.Get("/", [&](const httplib::Request req, httplib::Response &res) {
-            std::string code, state;
+            std::string code, state, error;
             // response as per https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.2
             for (const auto &[k, v] : req.params) {
                 if (k == "code") {
                     code = v;
                 } else if (k == "state") {
                     state = v;
+                } else if (k == "error_description") {
+                    error = v;
                 }
             }
             if (code.empty()) {
-                res.set_content("Did not receive an RFC 6749-compliant response.", "text/plain");
                 res.status = 401; // Unauthorized
+                if (error.empty()) {
+                    res.set_content("Did not receive an RFC 6749-compliant response.", "text/plain");
+                } else {
+                    res.set_content("Error: " + error, "text/plain");
+                }
             } else {
                 res.set_content("Authorization complete. You can close this browser window now.\n", "text/plain");
                 if (_endpointCallback) {
@@ -119,7 +125,9 @@ public:
             }
         });
         _thread = std::make_unique<std::thread>([this]() {
-            _srv.listen(*_redirectUri.hostName(), *_redirectUri.port());
+            if (!_srv.listen(*_redirectUri.hostName(), *_redirectUri.port())) {
+                std::println("Failed to listen on port {}", *_redirectUri.port());
+            };
         });
     }
 
