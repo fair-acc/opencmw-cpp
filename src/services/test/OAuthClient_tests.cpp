@@ -106,7 +106,8 @@ TEST_CASE("Worker test", "[OAuth]") {
         opencmw::URI(redirectBase),
         opencmw::URI(kcBase + "/realms/testrealm/protocol/openid-connect/auth"),
         opencmw::URI(kcBase + "/realms/testrealm/protocol/openid-connect/token"),
-     broker
+        opencmw::URI(kcBase + "/realms/testrealm/protocol/openid-connect/userinfo"),
+        broker
     };
 
     REQUIRE(broker.bind(opencmw::URI<>("mds://127.0.0.1:12345")));
