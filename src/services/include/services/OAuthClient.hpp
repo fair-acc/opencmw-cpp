@@ -27,12 +27,13 @@ struct OAuthOutput {
     std::string secret;
     std::string accessToken;
     std::string refreshToken;
+    std::string roles;
 };
 } // namespace opencmw
 
 ENABLE_REFLECTION_FOR(opencmw::OAuthContext, secretToken)
 ENABLE_REFLECTION_FOR(opencmw::OAuthInput, scope, clientId, clientSecret, secret, publicKey)
-ENABLE_REFLECTION_FOR(opencmw::OAuthOutput, authorizationUri, secret, accessToken, refreshToken)
+ENABLE_REFLECTION_FOR(opencmw::OAuthOutput, authorizationUri, secret, accessToken, refreshToken, roles)
 
 namespace opencmw {
 
@@ -91,13 +92,14 @@ private:
     StrictUri                              _redirectUri;
     StrictUri                              _endpoint;
     StrictUri                                                              _tokenEndpoint;
+    StrictUri                                                              _userinfoEndpoint;
     httplib::Server                        _srv;
     std::unique_ptr<std::thread>                                           _thread;
     std::function<void(const std::string &code, const std::string &state)> _endpointCallback;
 
 public:
-    explicit OAuthClient(StrictUri redirectUri, StrictUri endpoint, StrictUri tokenEndpoint)
-        : _redirectUri(redirectUri), _endpoint(endpoint), _tokenEndpoint(tokenEndpoint) {
+    explicit OAuthClient(StrictUri redirectUri, StrictUri endpoint, StrictUri tokenEndpoint, StrictUri userinfoEndpoint = StrictUri(""))
+        : _redirectUri(redirectUri), _endpoint(endpoint), _tokenEndpoint(tokenEndpoint), _userinfoEndpoint(userinfoEndpoint) {
         _srv.Get("/", [&](const httplib::Request req, httplib::Response &res) {
             std::string code, state, error;
             // response as per https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.2
@@ -213,6 +215,33 @@ public:
         return getAccessToken({ { "grant_type", "refresh_token" }, { "refresh_token", refreshToken }, { "client_id", clientId } });
     }
 
+    std::string getAssignedRoles(const std::string &accessToken) {
+        auto client = getClient(_userinfoEndpoint);
+        if (!client) {
+            return {};
+        }
+
+        httplib::Headers headers{ { { "Authorization", "Bearer " + accessToken } } };
+        auto             res = client->Get(*_userinfoEndpoint.path(), headers);
+        if (!res || res->status != 200) {
+            return {};
+        }
+        std::string       s{ res->body.c_str() };
+        const std::string marker{ "\"account\":{\"roles\":[" };
+        auto              start = s.find(marker);
+        if (start == std::string::npos) {
+            return {};
+        }
+        start += marker.size();
+        const auto end = s.find("]", start);
+        if (end == std::string::npos) {
+            return {};
+        }
+        std::string roles = s.substr(start, end - start);
+        std::erase(roles, '\"');
+        return roles;
+    }
+
     void stop() {
         _srv.stop();
         _thread->join();
@@ -246,11 +275,11 @@ using OAuthWorkerType = majordomo::Worker<"/oauth", OAuthContext, OAuthInput, OA
 
 class OAuthWorker : public OAuthWorkerType {
 public:
-    explicit OAuthWorker(StrictUri redirectUri, StrictUri endpoint, StrictUri tokenEndpoint, StrictUri brokerAddress, const zmq::Context &context, majordomo::Settings settings = {})
-        : OAuthWorkerType(brokerAddress, {}, context, settings), _client(redirectUri, endpoint, tokenEndpoint), _keystore(brokerAddress, context, settings) { init(); };
+    explicit OAuthWorker(StrictUri redirectUri, StrictUri endpoint, StrictUri tokenEndpoint, StrictUri userinfoEndpoint, StrictUri brokerAddress, const zmq::Context &context, majordomo::Settings settings = {})
+        : OAuthWorkerType(brokerAddress, {}, context, settings), _client(redirectUri, endpoint, tokenEndpoint, userinfoEndpoint), _keystore(brokerAddress, context, settings) { init(); };
     template<typename BrokerType>
-    explicit OAuthWorker(StrictUri redirecturi, StrictUri endpoint, StrictUri tokenEndpoint, const BrokerType &broker)
-        : OAuthWorkerType(broker, {}), _client(redirecturi, endpoint, tokenEndpoint), _keystore(broker) { init(); };
+    explicit OAuthWorker(StrictUri redirecturi, StrictUri endpoint, StrictUri tokenEndpoint, StrictUri userinfoEndpoint, const BrokerType &broker)
+        : OAuthWorkerType(broker, {}), _client(redirecturi, endpoint, tokenEndpoint, userinfoEndpoint), _keystore(broker) { init(); };
     ~OAuthWorker() {
         _keystore.shutdown();
         _keystoreThread.join();
@@ -292,6 +321,9 @@ private:
                 const auto access = _client.requestToken(code, in.clientId);
                 out.accessToken   = access.accessToken._token;
                 out.refreshToken  = access.refreshToken._token;
+
+                // get RBAC roles
+                out.roles = _client.getAssignedRoles(out.accessToken);
             }
         });
         _keystoreThread = std::thread([this] { _keystore.run(); });
