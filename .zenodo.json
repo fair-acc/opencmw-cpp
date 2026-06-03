@@ -1,9 +1,7 @@
 {
   "title": "OpenCMW C++",
   "description": "OpenCMW C++ — an open common middle-ware library for equipment access and data serialisation.",
-  "license": {
-    "id": "LGPL-3.0-only"
-  },
+  "license": "lgpl-3.0-only",
   "upload_type": "software",
   "creators": [
     {
