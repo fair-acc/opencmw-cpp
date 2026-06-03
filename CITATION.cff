@@ -4,6 +4,10 @@ message: "If you use this software, please cite it using the metadata from this 
 type: software
 license: LGPL-3.0-only
 repository-code: "https://github.com/fair-acc/opencmw-cpp"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.19007383"
+    description: "Concept DOI resolving to the latest published version on Zenodo."
 keywords:
   - middle-ware
   - equipment access
