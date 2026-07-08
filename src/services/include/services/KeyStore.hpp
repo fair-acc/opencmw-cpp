@@ -56,6 +56,14 @@ public:
         _keys[keyHash(roleKey.key)] = roleKey;
     }
 
+    void addRoles(const std::string &publicKey, const std::string &roles) {
+        const auto hash = keyHash(publicKey);
+        if (_keys.contains(hash)) {
+            auto &key = _keys.at(hash);
+            key.role  = roles;
+        }
+    }
+
 private:
     void init() {
         KeystoreWorkerType::setCallback([this](const majordomo::RequestContext &rawCtx, const KeystoreContext &context, const KeystoreInput &in, KeystoreContext &replyContext, KeystoreOutput &out) {

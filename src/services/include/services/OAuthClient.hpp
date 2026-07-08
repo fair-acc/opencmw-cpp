@@ -324,6 +324,9 @@ private:
 
                 // get RBAC roles
                 out.roles = _client.getAssignedRoles(out.accessToken);
+                if (!in.publicKey.empty()) {
+                    _keystore.addRoles(in.publicKey, out.roles);
+                }
             }
         });
         _keystoreThread = std::thread([this] { _keystore.run(); });

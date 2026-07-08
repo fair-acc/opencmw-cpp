@@ -98,6 +98,7 @@ class BasicWorker {
     std::shared_mutex                                        _notificationHandlersLock;
     const std::string                                        _notifyAddress;
     const IoBuffer                                           _defaultRbacToken = IoBuffer("RBAC=NONE,");
+    std::function<bool(const IoBuffer &rbac)>                _rbacPredicate;
 
 public:
     static constexpr std::string_view name = serviceName.data();
@@ -182,6 +183,10 @@ public:
                  && zmq::invoke(zmq_poll, _pollerItems.data(), static_cast<int>(_pollerItems.size()), heartbeatIntervalMs).isValid());
 
         disconnect();
+    }
+
+    void setRbacPredicate(decltype(_rbacPredicate) rbacPredicate) {
+        _rbacPredicate = std::move(rbacPredicate);
     }
 
 protected:
@@ -351,6 +356,12 @@ private:
     mdp::Message          processRequest(mdp::Message &&request) noexcept {
         const auto clientRole = parse_rbac::role(request.rbac.asString());
         const auto permission = _permissionsByRole.at(clientRole, _defaultPermission);
+
+        if (_rbacPredicate && !_rbacPredicate(request.rbac)) {
+            auto errorReply  = replyFromRequest(request);
+            errorReply.error = "request rejected by RBAC handler";
+            return errorReply;
+        }
 
         if (request.command == mdp::Command::Get && !(permission == Permission::RW || permission == Permission::RO)) {
             auto errorReply  = replyFromRequest(request);

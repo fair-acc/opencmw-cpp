@@ -6,6 +6,7 @@
 
 #include <Client.hpp>
 #include <concepts/majordomo/helpers.hpp>
+#include <Debug.hpp>
 #include <majordomo/Rbac.hpp>
 #include <services/OAuthClient.hpp>
 
@@ -128,6 +129,7 @@ TEST_CASE("Worker test", "[OAuth]") {
     client.set(opencmw::URI("mdp://127.0.0.1:12346/oauth"), [&](const mdp::Message &reply) {
         opencmw::OAuthOutput out;
         auto outBuf = reply.data;
+        REQUIRE_MESSAGE(reply.error.empty(), reply.error);
         opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::IGNORE>(outBuf, out);
 
         REQUIRE(out.authorizationUri.size());
@@ -140,6 +142,7 @@ TEST_CASE("Worker test", "[OAuth]") {
         client.set(opencmw::URI("mdp://127.0.0.1:12346/oauth"), [&](const mdp::Message& rep) {
                 opencmw::OAuthOutput tokenOut;
                 auto tokenOutBuf = rep.data;
+                REQUIRE_MESSAGE(rep.error.empty(), rep.error);
                 opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::IGNORE>(tokenOutBuf, tokenOut);
 
                 // we must have got an access token now
@@ -154,6 +157,7 @@ TEST_CASE("Worker test", "[OAuth]") {
                 client.set(opencmw::URI("mdp://127.0.0.1:12346/keystore"), [&](const mdp::Message &keyResp) {
                         opencmw::KeystoreOutput keyOut;
                         auto keyOutBuf = keyResp.data;
+                        REQUIRE_MESSAGE(keyResp.error.empty(), keyResp.error);
                         opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::IGNORE>(keyOutBuf, keyOut);
 
                         // the hashes should be the same

@@ -280,6 +280,7 @@ private:
     bool                                                    _connectedToDns    = false;
 
     const IoBuffer                                          _rbac              = IoBuffer("RBAC=ADMIN,abcdef12345");
+    std::function<void(BrokerMessage &)>                    _rbacHandler;
 
     std::atomic<bool>                                       _shutdownRequested = false;
 
@@ -420,6 +421,10 @@ public:
     template<typename Filter>
     void addFilter(const std::string &key) {
         _subscriptionMatcher.addFilter<Filter>(key);
+    }
+
+    void setRbacHandler(decltype(_rbacHandler) handler) {
+        _rbacHandler = std::move(handler);
     }
 
     /**
@@ -854,6 +859,10 @@ private:
 
             auto clientMessage = std::move(client.requests.front());
             client.requests.pop_front();
+
+            if (_rbacHandler) {
+                _rbacHandler(clientMessage);
+            }
 
             if (auto service = bestMatchingService(clientMessage.serviceName)) {
                 if (service->internalHandler) {

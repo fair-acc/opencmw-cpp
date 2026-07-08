@@ -244,7 +244,7 @@ public:
     }
 
     void set(const URI<STRICT> & /*uri*/, std::string_view, const std::span<const std::byte> & /*request*/) override {
-        throw std::logic_error("get not implemented");
+        throw std::logic_error("set not implemented");
     }
 
     void subscribe(const URI<STRICT> &uri, std::string_view /*reqId*/) override {
@@ -399,11 +399,11 @@ public:
                 _requests.erase(0); // todo: lookup correct subscription
             }
         }
-        sendCmd(cmd.topic, cmd.command, req_id, cmd.data);
+        sendCmd(cmd.topic, cmd.command, req_id, cmd.data, cmd.rbac);
     }
 
 private:
-    void sendCmd(const URI<STRICT> &uri, mdp::Command commandType, std::size_t req_id, IoBuffer data = {}) const {
+    void sendCmd(const URI<STRICT> &uri, mdp::Command commandType, std::size_t req_id, IoBuffer data = {}, IoBuffer rbac = {}) const {
         const bool        isSet = commandType == mdp::Command::Set;
         zmq::MessageFrame cmdType{ std::string{ static_cast<char>(commandType) } };
         cmdType.send(_control_socket_send, ZMQ_SNDMORE).assertSuccess();
@@ -411,6 +411,8 @@ private:
         reqId.send(_control_socket_send, ZMQ_SNDMORE).assertSuccess();
         zmq::MessageFrame endpoint{ std::string(uri.str()) };
         endpoint.send(_control_socket_send, isSet ? ZMQ_SNDMORE : 0).assertSuccess();
+        zmq::MessageFrame rbacframe{ std::move(rbac) };
+        rbacframe.send(_control_socket_send, 0).assertSuccess();
         if (isSet) {
             zmq::MessageFrame dataframe{ std::move(data) };
             dataframe.send(_control_socket_send, 0).assertSuccess();
@@ -421,6 +423,7 @@ private:
         zmq::MessageFrame cmd;
         zmq::MessageFrame reqId;
         zmq::MessageFrame endpoint;
+        zmq::MessageFrame rbac;
         while (cmd.receive(_control_socket_recv, ZMQ_DONTWAIT).isValid()) {
             if (!reqId.receive(_control_socket_recv, ZMQ_DONTWAIT).isValid()) {
                 throw std::logic_error("invalid request received: failure receiving message");
@@ -428,6 +431,11 @@ private:
             if (!endpoint.receive(_control_socket_recv, ZMQ_DONTWAIT).isValid()) {
                 throw std::logic_error("invalid request received: invalid message contents");
             }
+            if (!rbac.receive(_control_socket_recv, ZMQ_DONTWAIT).isValid()) {
+                throw std::logic_error("invalid request received: invalid rbac data");
+            }
+            auto        rbacdata = as_bytes(std::span(rbac.data().data(), rbac.data().size()));
+            IoBuffer    rbacData{ reinterpret_cast<const char *>(rbacdata.data()), rbacdata.size() };
             URI<STRICT> uri{ std::string(endpoint.data()) };
             auto       &client = getClient(uri);
             if (cmd.data().size() != 1) {
