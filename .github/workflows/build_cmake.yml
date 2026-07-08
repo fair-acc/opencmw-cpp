@@ -96,7 +96,7 @@ jobs:
         shell: bash
         env:
           KEYCLOAK_URL: http://keycloak:8080
-          KEYCLOAK_REDIRECT_URI: http://localhost:8091
+          KEYCLOAK_REDIRECT_URI: http://localhost:8091/
           KEYCLOAK_ADMIN_PASSWORD: admin
         run: |
           if ! command -v jq >/dev/null 2>&1; then
@@ -111,7 +111,7 @@ jobs:
         shell: bash
         env:
           KEYCLOAK_URL: http://keycloak:8080
-          KEYCLOAK_REDIRECT_URI: http://localhost:8091
+          KEYCLOAK_REDIRECT_URI: http://localhost:8091/
         # Execute tests defined by the CMake configuration. The coverage target runs the autodiscovered catch2 tests using
         # ctest and records the coverage using gcov
         # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
@@ -123,7 +123,7 @@ jobs:
         shell: bash
         env:
           KEYCLOAK_URL: http://keycloak:8080
-          KEYCLOAK_REDIRECT_URI: http://localhost:8091
+          KEYCLOAK_REDIRECT_URI: http://localhost:8091/
         # Execute tests defined by the CMake configuration. The coverage target runs the autodiscovered catch2 tests using
         # ctest and records the coverage using gcov
         # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail

@@ -72,17 +72,8 @@ bool loginAtUri(const opencmw::URI<opencmw::STRICT> &uri) {
     auto               redirectClient = opencmw::OAuthClient::getClient(redirecUri);
     relativeRef                       = redirecUri.relativeRef();
     REQUIRE(relativeRef);
-#if 0
-    // TODO: Why does this crash?
-    // In theory we should be able to use httplib to call the redirect URI
     res = redirectClient->Get(*relativeRef);
     REQUIRE(res);
-#else
-    // call the final redirect URI with curl as a workaround
-    const std::string curl = "curl '" + it->second + "'";
-    // flawfinder: ignore
-    res->status            = std::system(curl.c_str()) + 200;
-#endif
     REQUIRE(res->status == 200);
 
     return true;
@@ -100,7 +91,7 @@ TEST_CASE("Worker test", "[OAuth]") {
     };
 
     const std::string kcBase = envOr("KEYCLOAK_URL", "http://localhost:8090");
-    const std::string redirectBase = envOr("KEYCLOAK_REDIRECT_URI", "http://localhost:8091");
+    const std::string    redirectBase = envOr("KEYCLOAK_REDIRECT_URI", "http://localhost:8091/");
 
     opencmw::OAuthWorker oauthWorker{
         opencmw::URI(redirectBase),

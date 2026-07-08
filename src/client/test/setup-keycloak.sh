@@ -7,7 +7,7 @@
 # For more information see: https://www.keycloak.org/getting-started/getting-started-docker
 
 URL="${KEYCLOAK_URL:-http://localhost:8090}"
-REDIRECT_URI="${KEYCLOAK_REDIRECT_URI:-http://localhost:8091}"
+REDIRECT_URI="${KEYCLOAK_REDIRECT_URI:-http://localhost:8091/}"
 ADMIN_PASSWORD="${KEYCLOAK_ADMIN_PASSWORD:-admin}"
 
 while ! curl -s "$URL" >/dev/null; do
