@@ -88,15 +88,7 @@ private:
                     return false;
                 }
                 auto &c = getClientCtx(cmd.topic);
-#ifdef EMSCRIPTEN
-                // this is necessary for fetches to actually be called, as the new thread will start/init/end and then go into js runtime to fetch
-                std::thread ql{ [&c, cmd]() {
-#endif
-                    c.request(cmd);
-#ifdef EMSCRIPTEN
-                } };
-                ql.join();
-#endif
+                c.request(std::move(cmd));
                 return false;
             });
         }
@@ -112,6 +104,7 @@ private:
 
     void queueCommand(mdp::Command cmd, const URI<STRICT> &endpoint, std::function<void(const mdp::Message &)> &&callback = {}, IoBuffer &&data = IoBuffer{}) {
         bool published = _commandRingBuffer->tryPublishEvent([&endpoint, &cmd, cb = std::move(callback), d = std::move(data)](Command &&ev, long /*seq*/) mutable {
+            ev          = Command{};
             ev.command  = cmd;
             ev.callback = std::move(cb);
             ev.topic    = FWD(endpoint);

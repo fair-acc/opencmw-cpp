@@ -2,11 +2,35 @@
 #define OPENCMW_CPP_RESTCLIENT_EMSCRIPTEN_HPP
 
 #include <emscripten.h>
+#include <emscripten/eventloop.h>
 #include <emscripten/fetch.h>
+#include <emscripten/proxying.h>
 
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <charconv>
+#include <chrono>
+#include <concepts>
+#include <cstdint>
+#include <cstdio>
+#include <format>
+#include <functional>
+#include <iostream>
+#include <limits>
 #include <memory>
+#include <mutex>
+#include <optional>
+#include <print>
+#include <pthread.h>
+#include <stdexcept>
 #include <string>
-#include <unordered_set>
+#include <string_view>
+#include <thread>
+#include <type_traits>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include <ClientCommon.hpp>
 #include <ClientContext.hpp>
@@ -19,241 +43,483 @@ namespace opencmw::client {
 
 namespace detail {
 
-/***
- * Get the final URL of a possibly redirected HTTP fetch call.
- * Uses Javascript to return the the url as a string.
- */
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdollar-in-identifier-extension"
-static std::string getFinalURL(std::uint32_t id) {
-    auto finalURLChar = static_cast<char *>(EM_ASM_PTR({
-                                                                   var fetch = Fetch.xhrs.get($0);
-                                                                   if (fetch) {
-                                                                       var finalURL = fetch.responseURL;
-                                                                       var lengthBytes = lengthBytesUTF8(finalURL) + 1;
-                                                                       var stringOnWasmHeap = _malloc(lengthBytes);
-                                                                       stringToUTF8(finalURL, stringOnWasmHeap, lengthBytes);
-                                                                       return stringOnWasmHeap;
-                                                                   }
-                                                                   return 0; }, id));
-    if (finalURLChar == nullptr) {
+struct RestWorkerState;
+
+inline std::string_view responseBody(const emscripten_fetch_t *fetch) noexcept {
+    if (fetch->data == nullptr || fetch->numBytes == 0) {
         return {};
     }
-    std::string finalURL{ finalURLChar, strlen(finalURLChar) };
-    EM_ASM({ _free($0) }, finalURLChar);
-    return finalURL;
-}
-#pragma GCC diagnostic pop
-
-struct pointer_equals {
-    using is_transparent = void;
-
-    template<typename Left, typename Right>
-    bool operator()(const Left &left, const Right &right) const {
-        return std::to_address(left) == std::to_address(right);
-    }
-};
-
-struct pointer_hash {
-    using is_transparent = void;
-
-    template<typename Pointer>
-    std::size_t operator()(const Pointer &ptr) const {
-        const auto *raw = std::to_address(ptr);
-        return std::hash<decltype(raw)>{}(raw);
-    }
-};
-
-auto checkedStringViewSize = [](auto numBytes) {
-    if (numBytes > std::numeric_limits<std::string_view::size_type>::max()) {
-        throw std::out_of_range(std::format("We received more data than we can handle {}", numBytes));
-    }
-    return static_cast<std::string_view::size_type>(numBytes);
-};
-
-std::array<std::string, 4> getPreferredContentTypeHeader(const URI<STRICT> &uri, auto _mimeType) {
-    auto mimeType = std::string(_mimeType.typeName());
-    if (const auto acceptHeader = uri.queryParamMap().find("contentType"); acceptHeader != uri.queryParamMap().end() && acceptHeader->second) {
-        mimeType = acceptHeader->second->c_str();
-    }
-    return { "accept", mimeType, "content-type", mimeType };
+    const auto maximum = static_cast<std::uint64_t>(std::numeric_limits<std::string_view::size_type>::max());
+    return { fetch->data, static_cast<std::string_view::size_type>(std::min(fetch->numBytes, maximum)) };
 }
 
-struct FetchPayload {
-    Command command;
+inline std::optional<std::uint64_t> parseLongPollingIndex(std::string_view responseUrl) noexcept {
+    if (responseUrl.empty()) {
+        return std::nullopt;
+    }
+    try {
+        const auto params = URI<>(std::string{ responseUrl }).queryParamMap();
+        const auto entry  = params.find("LongPollingIdx");
+        if (entry == params.end() || !entry->second || entry->second->empty()) {
+            return std::nullopt;
+        }
+        const std::string &value = *entry->second;
+        std::uint64_t      index{};
+        const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), index);
+        return error == std::errc{} && end == value.data() + value.size() ? std::optional{ index } : std::nullopt;
+    } catch (...) {
+        return std::nullopt;
+    }
+}
 
-    explicit FetchPayload(Command &&_command)
-        : command(std::move(_command)) {}
+struct SubscriptionState {
+    Command                      command{};
+    std::optional<std::uint64_t> lastDeliveredIndex{};
+    std::optional<std::uint64_t> activeFetchId{};
+};
 
-    FetchPayload(const FetchPayload &other)                = delete;
+struct ActiveFetch {
+    RestWorkerState             *owner{ nullptr };
+    std::uint64_t                id{};
+    std::optional<std::uint64_t> subscriptionId{}; // absent for GET/SET
+    std::optional<Command>       command{};        // present for GET/SET
+    std::string                  body{};           // must outlive the fetch
+    emscripten_fetch_t          *fetch{ nullptr };
+    bool                         closing{ false };
+};
 
-    FetchPayload(FetchPayload &&other) noexcept            = default;
+struct RestWorkerState {
+    std::atomic<bool>                                               _acceptWork{ true };
+    std::shared_ptr<RestWorkerState>                                _selfKeepAlive{};
 
-    FetchPayload &operator=(const FetchPayload &other)     = delete;
+    MIME::MimeType                                                  _mimeType;
 
-    FetchPayload &operator=(FetchPayload &&other) noexcept = default;
+    std::unordered_map<std::uint64_t, SubscriptionState>            _subscriptions{};
+    std::unordered_map<std::uint64_t, std::unique_ptr<ActiveFetch>> _activeFetches{};
+    std::uint64_t                                                   _nextSubscriptionId{ 1 };
+    std::uint64_t                                                   _nextFetchId{ 1 };
 
-    void          returnMdpMessage(unsigned short status, std::string_view body, std::string_view errorMsgExt = "") noexcept {
-        if (!command.callback) {
+    explicit RestWorkerState(MIME::MimeType mimeType)
+        : _mimeType(mimeType) {}
+
+    void dispatchCommand(Command &&cmd) noexcept {
+        if (!_acceptWork.load(std::memory_order_acquire)) {
             return;
         }
-        const bool msgOK = status >= 200 && status < 400;
+        Command failure;
         try {
-            command.callback(mdp::Message{
-                             .id              = 0,
-                             .arrivalTime     = std::chrono::system_clock::now(),
-                             .protocolName    = command.topic.scheme().value(),
-                             .command         = mdp::Command::Final,
-                             .clientRequestID = command.clientRequestID,
-                             .topic           = command.topic,
-                             .data            = msgOK ? IoBuffer(body.data(), body.size()) : IoBuffer(),
-                             .error           = msgOK ? std::string(errorMsgExt) : std::format("{} - {}{}{}", status, errorMsgExt, body.empty() ? "" : ":", body),
-                             .rbac            = IoBuffer() });
+            failure.topic           = cmd.topic;
+            failure.clientRequestID = cmd.clientRequestID;
+            failure.callback        = cmd.callback;
+
+            switch (cmd.command) {
+            case mdp::Command::Get:
+            case mdp::Command::Set: startGetOrSet(std::move(cmd)); return;
+            case mdp::Command::Subscribe: startSubscription(std::move(cmd)); return;
+            case mdp::Command::Unsubscribe: stopSubscription(cmd); return;
+            default:
+                reportFailure(failure, "command type is undefined");
+                return;
+            }
         } catch (const std::exception &e) {
-            std::cerr
-                    << std::format("caught exception '{}' in FetchPayload::returnMdpMessage(cmd={}, {}: {})", e.what(), command.topic, status,
-                                        body)
-                    << std::endl;
+            reportFailure(failure, e.what());
         } catch (...) {
-            std::cerr
-                    << std::format("caught unknown exception in FetchPayload::returnMdpMessage(cmd={}, {}: {})", command.topic, status, body)
-                    << std::endl;
+            reportFailure(failure, "failed to start command");
         }
     }
 
-    void onsuccess(unsigned short status, std::string_view data) {
-        returnMdpMessage(status, data);
+    void startSubscription(Command &&cmd) {
+        const std::uint64_t id = _nextSubscriptionId++;
+        _subscriptions.emplace(id, SubscriptionState{ .command = std::move(cmd) });
+        startNextLongPoll(id, std::nullopt);
     }
 
-    void onerror(unsigned short status, std::string_view error, std::string_view data) {
-        returnMdpMessage(status, data, error);
+    void stopSubscription(const Command &cmd) {
+        const auto entry = std::ranges::find_if(_subscriptions,
+                [&](const auto &pair) { return pair.second.command.topic == cmd.topic; });
+        if (entry == _subscriptions.end()) {
+            return;
+        }
+        const std::optional<std::uint64_t> outstandingFetchId = entry->second.activeFetchId;
+        _subscriptions.erase(entry);
+        if (outstandingFetchId.has_value()) {
+            closeFetch(*outstandingFetchId);
+        }
+    }
+
+    void startNextLongPoll(std::uint64_t subscriptionId, std::optional<std::uint64_t> index) noexcept {
+        try {
+            if (!_acceptWork.load(std::memory_order_acquire)) {
+                return;
+            }
+            const auto entry = _subscriptions.find(subscriptionId);
+            if (entry == _subscriptions.end()) {
+                return;
+            }
+            const std::string longPollingIndex = index.has_value() ? std::to_string(*index) : "Next";
+
+            auto              activeFetch      = std::make_unique<ActiveFetch>();
+            activeFetch->owner                 = this;
+            activeFetch->id                    = _nextFetchId++;
+            activeFetch->subscriptionId        = subscriptionId;
+            entry->second.activeFetchId        = activeFetch->id;
+            startFetch(std::move(activeFetch), URI<STRICT>::UriFactory(entry->second.command.topic).addQueryParameter("LongPollingIdx", longPollingIndex).build());
+        } catch (const std::exception &e) {
+            endSubscription(subscriptionId, nullptr, 500, {}, e.what());
+        } catch (...) {
+            endSubscription(subscriptionId, nullptr, 500, {}, "failed to start long-poll request");
+        }
+    }
+
+    void startGetOrSet(Command &&cmd) {
+        const URI<STRICT> uri         = cmd.topic;
+
+        auto              activeFetch = std::make_unique<ActiveFetch>();
+        activeFetch->owner            = this;
+        activeFetch->id               = _nextFetchId++;
+        if (cmd.command == mdp::Command::Set) {
+            activeFetch->body = cmd.data.asString();
+        }
+        activeFetch->command = std::move(cmd);
+
+        startFetch(std::move(activeFetch), uri);
+    }
+
+    void startFetch(std::unique_ptr<ActiveFetch> activeFetch, const URI<STRICT> &uri) {
+        std::string contentType{ _mimeType.typeName() };
+        const auto &query = uri.queryParamMap();
+        if (const auto entry = query.find("contentType"); entry != query.end() && entry->second) {
+            contentType = *entry->second;
+        }
+        const std::array<const char *, 5> headers{ "accept", contentType.c_str(), "content-type", contentType.c_str(), nullptr };
+
+        const std::string_view            method = activeFetch->command.has_value() && activeFetch->command->command == mdp::Command::Set ? "POST" : "GET";
+
+        emscripten_fetch_attr_t           attr;
+        emscripten_fetch_attr_init(&attr);
+        method.copy(attr.requestMethod, method.size());
+        attr.requestMethod[method.size()] = '\0';
+        attr.attributes     = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
+        attr.requestHeaders = headers.data();
+        attr.onsuccess      = &RestWorkerState::onFetchSuccess;
+        attr.onerror        = &RestWorkerState::onFetchError;
+        attr.userData       = activeFetch.get();
+        if (!activeFetch->body.empty()) {
+            attr.requestData     = activeFetch->body.data();
+            attr.requestDataSize = activeFetch->body.size();
+        }
+
+        const std::uint64_t fetchId = activeFetch->id;
+        _activeFetches.emplace(fetchId, std::move(activeFetch));
+
+        emscripten_fetch_t *fetch = emscripten_fetch(&attr, uri.str().c_str());
+
+        if (fetch == nullptr) {
+            const auto entry = _activeFetches.find(fetchId);
+            if (entry == _activeFetches.end()) {
+                return;
+            }
+            const std::optional<std::uint64_t> subscriptionId = entry->second->subscriptionId;
+            const std::optional<Command>       command        = std::move(entry->second->command);
+            _activeFetches.erase(entry);
+
+            if (subscriptionId.has_value()) {
+                endSubscription(*subscriptionId, nullptr, 500, {}, "emscripten_fetch() returned null");
+            } else if (command.has_value()) {
+                reportFailure(*command, "emscripten_fetch() returned null");
+            }
+            return;
+        }
+
+        if (const auto entry = _activeFetches.find(fetchId); entry != _activeFetches.end() && !entry->second->closing) {
+            entry->second->fetch = fetch;
+        }
+    }
+
+    static void onFetchSuccess(emscripten_fetch_t *fetch) noexcept { completeFetch(fetch, true); }
+    static void onFetchError(emscripten_fetch_t *fetch) noexcept { completeFetch(fetch, false); }
+
+    static void completeFetch(emscripten_fetch_t *fetch, bool succeeded) noexcept {
+        auto *activeFetch = static_cast<ActiveFetch *>(fetch->userData);
+        if (activeFetch == nullptr || activeFetch->owner == nullptr || activeFetch->closing) {
+            return;
+        }
+        RestWorkerState    *owner          = activeFetch->owner;
+        const std::uint64_t fetchId        = activeFetch->id;
+        const auto          subscriptionId = activeFetch->subscriptionId;
+        try {
+            // This view must be consumed before the handler closes the fetch.
+            std::optional<std::string_view> fetchError;
+            if (!succeeded) {
+                fetchError = fetch->statusText[0] != '\0' ? std::string_view{ fetch->statusText } : std::string_view{ "fetch failed" };
+            }
+            if (subscriptionId.has_value()) {
+                owner->handleSubscriptionCompletion(fetchId, *subscriptionId, fetch, std::move(fetchError));
+            } else {
+                owner->handleGetOrSetCompletion(fetchId, fetch, std::move(fetchError));
+            }
+        } catch (const std::exception &e) {
+            owner->discardFetch(fetchId, subscriptionId, fetch, e.what());
+            std::println(std::cerr, "RestClientEmscripten: fetch callback failed: {}", e.what());
+        } catch (...) {
+            owner->discardFetch(fetchId, subscriptionId, fetch, "fetch callback failed");
+            std::println(std::cerr, "RestClientEmscripten: fetch callback failed");
+        }
+    }
+
+    void handleSubscriptionCompletion(std::uint64_t fetchId, std::uint64_t subscriptionId, emscripten_fetch_t *fetch, std::optional<std::string_view> fetchError) {
+        if (!_acceptWork.load(std::memory_order_acquire)) {
+            closeFetch(fetchId, fetch);
+            return;
+        }
+        const auto entry = _subscriptions.find(subscriptionId);
+        if (entry == _subscriptions.end()) {
+            closeFetch(fetchId, fetch);
+            return;
+        }
+        SubscriptionState     &state  = entry->second;
+
+        const unsigned short   status = fetch->status;
+        const std::string_view body   = responseBody(fetch);
+        const auto             index  = parseLongPollingIndex(fetch->responseUrl != nullptr ? std::string_view{ fetch->responseUrl } : std::string_view{});
+
+        // Server timeout on long-poll, resend the same request.
+        if (status == 504) {
+            if (!index.has_value()) {
+                endSubscription(subscriptionId, fetch, status, body, "missing or unparsable LongPollingIdx in the response URL");
+                return;
+            }
+            closeFetch(fetchId, fetch);
+            startNextLongPoll(subscriptionId, *index);
+            return;
+        }
+
+        if (fetchError.has_value()) {
+            endSubscription(subscriptionId, fetch, status, body, *fetchError);
+            return;
+        }
+
+        if (!index.has_value()) {
+            endSubscription(subscriptionId, fetch, status, body, "missing or unparsable LongPollingIdx in the response URL");
+            return;
+        }
+
+        if (state.lastDeliveredIndex.has_value() && *index <= *state.lastDeliveredIndex) {
+            const std::uint64_t expected = *state.lastDeliveredIndex + 1;
+            closeFetch(fetchId, fetch);
+            startNextLongPoll(subscriptionId, expected);
+            return;
+        }
+
+        std::string skippedWarning;
+        if (state.lastDeliveredIndex.has_value() && *index - *state.lastDeliveredIndex > 1) {
+            skippedWarning = std::format("Warning: skipped {} samples", *index - *state.lastDeliveredIndex - 1);
+        }
+
+        const mdp::Message message = buildMessage(state.command, status, body, skippedWarning);
+        state.lastDeliveredIndex   = *index;
+
+        closeFetch(fetchId, fetch);
+        invokeGuarded(state.command.callback, message);
+        startNextLongPoll(subscriptionId, *index + 1);
+    }
+
+    void handleGetOrSetCompletion(std::uint64_t fetchId, emscripten_fetch_t *fetch, std::optional<std::string_view> fetchError) {
+        if (!_acceptWork.load(std::memory_order_acquire)) {
+            closeFetch(fetchId, fetch);
+            return;
+        }
+        const auto entry = _activeFetches.find(fetchId);
+        if (entry == _activeFetches.end() || !entry->second->command.has_value()) {
+            closeFetch(fetchId, fetch);
+            return;
+        }
+        const unsigned short        status  = fetch->status;
+        const Command               command = std::move(*entry->second->command);
+
+        std::optional<mdp::Message> message;
+        try {
+            message = buildMessage(command, status, responseBody(fetch), fetchError.has_value() ? std::string_view{ *fetchError } : std::string_view{});
+        } catch (const std::exception &e) {
+            std::println(std::cerr, "RestClientEmscripten: could not build the GET/SET response: {}", e.what());
+        }
+
+        closeFetch(fetchId, fetch);
+        if (message.has_value()) {
+            invokeGuarded(command.callback, *message);
+        }
+    }
+
+    void discardFetch(std::uint64_t fetchId, std::optional<std::uint64_t> subscriptionId, emscripten_fetch_t *callbackFetch, std::string_view error) noexcept {
+        if (subscriptionId.has_value() && _subscriptions.contains(*subscriptionId)) {
+            endSubscription(*subscriptionId, callbackFetch, 500, {}, error);
+        } else {
+            closeFetch(fetchId, callbackFetch);
+        }
+    }
+
+    void endSubscription(std::uint64_t subscriptionId, emscripten_fetch_t *callbackFetch, unsigned short status, std::string_view body, std::string_view error) noexcept {
+        const auto entry = _subscriptions.find(subscriptionId);
+        if (entry == _subscriptions.end()) {
+            return;
+        }
+        const Command                      command            = std::move(entry->second.command);
+        const std::optional<std::uint64_t> outstandingFetchId = entry->second.activeFetchId;
+        _subscriptions.erase(entry);
+
+        std::optional<mdp::Message> message;
+        try {
+            message = buildMessage(command, status, body, error);
+        } catch (const std::exception &e) {
+            std::println(std::cerr, "RestClientEmscripten: could not report '{}': {}", error, e.what());
+        } catch (...) {
+            std::println(std::cerr, "RestClientEmscripten: could not report '{}'", error);
+        }
+
+        if (outstandingFetchId.has_value()) {
+            closeFetch(*outstandingFetchId, callbackFetch);
+        }
+        if (message.has_value()) {
+            invokeGuarded(command.callback, *message);
+        }
+    }
+
+    void closeFetch(std::uint64_t fetchId, emscripten_fetch_t *callbackFetch = nullptr) noexcept {
+        const auto entry = _activeFetches.find(fetchId);
+        if (entry == _activeFetches.end() || entry->second->closing) {
+            return;
+        }
+        entry->second->closing = true;
+        if (emscripten_fetch_t *fetch = callbackFetch != nullptr ? callbackFetch : entry->second->fetch; fetch != nullptr) {
+            (void) emscripten_fetch_close(fetch);
+        }
+        _activeFetches.erase(fetchId);
+    }
+
+    void cleanup() noexcept {
+        while (!_activeFetches.empty()) {
+            closeFetch(_activeFetches.begin()->first);
+        }
+        _subscriptions.clear();
+        _selfKeepAlive.reset();
+        emscripten_runtime_keepalive_pop();
+    }
+
+    void        reportFailure(const Command &command, std::string_view error) noexcept {
+        if (!command.callback) {
+            std::println(std::cerr, "RestClientEmscripten: {}", error);
+            return;
+        }
+        try {
+            invokeGuarded(command.callback, buildMessage(command, 500, {}, error));
+        } catch (const std::exception &e) {
+            std::println(std::cerr, "RestClientEmscripten: could not report '{}': {}", error, e.what());
+        } catch (...) {
+            std::println(std::cerr, "RestClientEmscripten: could not report '{}'", error);
+        }
+    }
+
+    void invokeGuarded(const std::function<void(const mdp::Message &)> &callback, const mdp::Message &message) noexcept {
+        if (!callback || !_acceptWork.load(std::memory_order_acquire)) {
+            return;
+        }
+        try {
+            callback(message);
+        } catch (const std::exception &e) {
+            std::println(std::cerr, "RestClientEmscripten: callback threw '{}'", e.what());
+        } catch (...) {
+            std::println(std::cerr, "RestClientEmscripten: callback threw");
+        }
+    }
+
+    static mdp::Message buildMessage(const Command &command, unsigned short status, std::string_view body, std::string_view error) {
+        const bool ok = status >= 200 && status < 400;
+        return mdp::Message{
+            .id              = 0,
+            .arrivalTime     = std::chrono::system_clock::now(),
+            .protocolName    = command.topic.scheme().value_or(""),
+            .command         = mdp::Command::Final,
+            .clientRequestID = command.clientRequestID,
+            .topic           = command.topic,
+            .data            = ok ? IoBuffer(body.data(), body.size()) : IoBuffer(),
+            .error           = ok ? std::string(error) : std::format("{} - {}{}{}", status, error, body.empty() ? "" : ":", body),
+            .rbac            = IoBuffer()
+        };
     }
 };
 
-static std::unordered_set<std::unique_ptr<detail::FetchPayload>, detail::pointer_hash, detail::pointer_equals> fetchPayloads;
+class FetchWorker {
+    std::shared_ptr<emscripten::ProxyingQueue> _queue{ std::make_shared<emscripten::ProxyingQueue>() };
+    std::shared_ptr<RestWorkerState>           _state;
+    std::mutex                                 _enqueueMutex{}; // keeps cleanup behind accepted commands
+    pthread_t                                  _worker{};
 
-struct SubscriptionPayload;
-static std::unordered_set<std::unique_ptr<detail::SubscriptionPayload>, detail::pointer_hash, detail::pointer_equals> subscriptionPayloads;
-
-struct SubscriptionPayload : FetchPayload {
-    bool                         _live = true;
-    MIME::MimeType               _mimeType;
-    std::size_t                  _update                      = 0;
-
-    static constexpr std::size_t kParallelLongPollingRequests = 1; // increasing this value could reduce latency but needs some more robust error handling for unexpected updates
-    std::vector<std::uint64_t>   _requestedIndexes;
-
-    SubscriptionPayload(Command &&_command, MIME::MimeType mimeType)
-        : FetchPayload(std::move(_command)), _mimeType(std::move(mimeType)) {}
-
-    SubscriptionPayload(const SubscriptionPayload &other)                = delete;
-
-    SubscriptionPayload(SubscriptionPayload &&other) noexcept            = default;
-
-    SubscriptionPayload &operator=(const SubscriptionPayload &other)     = delete;
-
-    SubscriptionPayload &operator=(SubscriptionPayload &&other) noexcept = default;
-
-    void                 sendFollowUpRequestsFor(std::uint64_t longPollingIdx) {
-        auto it = std::ranges::find(_requestedIndexes, longPollingIdx);
-        if (it != _requestedIndexes.end()) {
-            _requestedIndexes.erase(it);
+public:
+    explicit FetchWorker(MIME::MimeType mimeType)
+        : _state(std::make_shared<RestWorkerState>(mimeType)) {
+        if (_queue->queue == nullptr) {
+            throw std::runtime_error("RestClient: proxying queue allocation failed");
         }
-        for (std::uint64_t i = longPollingIdx + 1; i <= longPollingIdx + kParallelLongPollingRequests; ++i) {
-            if (std::ranges::find(_requestedIndexes, i) == _requestedIndexes.end()) {
-                _requestedIndexes.push_back(i);
-                request(std::to_string(i));
-            }
-        }
+
+        // Keep the detached pthread runtime alive to process proxied work.
+        std::thread worker{ [] { emscripten_runtime_keepalive_push(); } };
+        _worker = worker.native_handle();
+        worker.detach();
+        _state->_selfKeepAlive = _state;
     }
-    void request(std::string longPollingIndex) {
-        auto                                                 uri             = opencmw::URI<opencmw::STRICT>::UriFactory(command.topic).addQueryParameter("LongPollingIdx", longPollingIndex).build();
-        auto                                                 preferredHeader = detail::getPreferredContentTypeHeader(command.topic, _mimeType);
 
-        std::array<const char *, preferredHeader.size() + 1> preferredHeaderEmscripten;
-        std::transform(preferredHeader.cbegin(), preferredHeader.cend(), preferredHeaderEmscripten.begin(),
-                [](const auto &str) { return str.c_str(); });
-        preferredHeaderEmscripten[preferredHeaderEmscripten.size() - 1] = nullptr;
+    ~FetchWorker() { stop(); }
 
-        emscripten_fetch_attr_t attr{};
+    FetchWorker(const FetchWorker &)            = delete;
+    FetchWorker &operator=(const FetchWorker &) = delete;
+    FetchWorker(FetchWorker &&)                 = delete;
+    FetchWorker &operator=(FetchWorker &&)      = delete;
 
-        emscripten_fetch_attr_init(&attr);
-
-        strcpy(attr.requestMethod, "GET");
-
-        attr.userData            = this;
-        static auto getPayloadIt = [](emscripten_fetch_t *fetch) {
-            auto *rawPayload = fetch->userData;
-            auto  it         = detail::subscriptionPayloads.find(rawPayload);
-            if (it == detail::subscriptionPayloads.end()) {
-                std::print("RestClientEmscripten::payloadError: url: {}, bytes: {}\n", fetch->url, fetch->numBytes);
-                throw std::format("Unknown payload for a resulting subscription");
-            }
-            return it;
-        };
-
-        attr.attributes     = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
-        attr.requestHeaders = preferredHeaderEmscripten.data();
-        attr.onsuccess      = [](emscripten_fetch_t *fetch) {
-            auto          payloadIt      = getPayloadIt(fetch);
-            auto         &payload        = *payloadIt;
-            std::uint64_t longPollingIdx = 0;
-            if (payload->_live) {
-                std::string finalURL             = getFinalURL(fetch->id);
-                std::string longPollingIdxString = opencmw::URI<>(finalURL).queryParamMap().at("LongPollingIdx").value_or("0");
-
-                char       *end                  = nullptr;
-                longPollingIdx                   = strtoull(longPollingIdxString.data(), &end, 10);
-                if (end != longPollingIdxString.data() + longPollingIdxString.size()) {
-                    std::println(std::cerr, "RestClientEmscripten::payloadError: url: {}, bytes: {}\n", fetch->url, fetch->numBytes);
+    void         submit(Command &&cmd) {
+        std::shared_ptr<Command> pendingCommand;
+        try {
+            {
+                std::lock_guard lock(_enqueueMutex);
+                if (!_state->_acceptWork.load(std::memory_order_acquire)) {
                     return;
                 }
 
-                const long indexDiff = static_cast<long>(longPollingIdx) - static_cast<long>(payload->_update + 1);
-                if (payload->_update != 0 && indexDiff != 0) {
-                    std::print("received unexpected update: {}, expected {}\n", longPollingIdx, payload->_update + 1);
+                pendingCommand = std::make_shared<Command>(std::move(cmd));
+                if (_queue->proxyAsync(_worker, [state = _state, command = pendingCommand]() mutable { state->dispatchCommand(std::move(*command)); })) {
+                    return;
                 }
-                payload->onsuccess(fetch->status, std::string_view(fetch->data, detail::checkedStringViewSize(fetch->numBytes)), indexDiff);
-                emscripten_fetch_close(fetch);
-
-                payload->_update = longPollingIdx;
-                payload->sendFollowUpRequestsFor(longPollingIdx);
-            } else {
-                detail::subscriptionPayloads.erase(payloadIt);
             }
-        };
-        attr.onerror = [](emscripten_fetch_t *fetch) {
-            auto  payloadIt = getPayloadIt(fetch);
-            auto &payload   = *payloadIt;
-            payload->onerror(fetch->status, std::string_view(fetch->data, detail::checkedStringViewSize(fetch->numBytes)), fetch->statusText);
-            emscripten_fetch_close(fetch);
-        };
-        emscripten_fetch(&attr, uri.str().data());
-    }
-
-    void onsuccess(unsigned short status, std::string_view data, long idxDifference = 0) {
-        std::string skippedWarning;
-        if (idxDifference != 0) {
-            skippedWarning = std::format("Warning: skipped {} samples", idxDifference);
+            _state->reportFailure(*pendingCommand, "request was not queued on the REST worker");
+        } catch (const std::exception &e) {
+            _state->reportFailure(pendingCommand ? *pendingCommand : cmd, e.what());
+        } catch (...) {
+            _state->reportFailure(pendingCommand ? *pendingCommand : cmd, "could not queue request on the REST worker");
         }
-        returnMdpMessage(status, data, skippedWarning);
     }
 
-    void onerror(unsigned short status, std::string_view error, std::string_view data) {
-        returnMdpMessage(status, data, error);
+    void stop() noexcept {
+        if (!_state->_acceptWork.exchange(false, std::memory_order_acq_rel)) {
+            return;
+        }
+        try {
+            std::lock_guard lock(_enqueueMutex);
+            if (_queue->proxyAsync(_worker, [state = _state, queue = _queue] { state->cleanup(); })) {
+                return;
+            }
+        } catch (...) { // locking failed, or proxyAsync could not allocate the task
+        }
+        std::fputs("RestClientEmscripten: could not queue REST worker cleanup; leaving the worker alive\n", stderr);
     }
 };
 } // namespace detail
 
 class RestClient : public ClientBase {
-    std::string       _name;
-    MIME::MimeType    _mimeType = MIME::BINARY;
-    std::atomic<bool> _run      = true;
-    std::string       _caCertificate;
+    std::string         _name;
+    MIME::MimeType      _mimeType;
+    std::string         _caCertificate;
+    detail::FetchWorker _worker;
 
 public:
-    static bool CHECK_CERTIFICATES;
-
     /**
      * Initialises a basic RestClient
      *
@@ -264,128 +530,28 @@ public:
      * @param initArgs
      */
     template<typename... Args>
+        requires(!(std::same_as<std::remove_cvref_t<Args>, RestClient> || ...))
     explicit(false) RestClient(Args... initArgs)
         : _name(detail::find_argument_value<false, std::string>([] { return "RestClient"; }, initArgs...))
-        , _mimeType(detail::find_argument_value<true, DefaultContentTypeHeader>([] { return MIME::BINARY; }, initArgs...)) {
-    }
-    ~RestClient() { RestClient::stop(); }
+        , _mimeType(detail::find_argument_value<true, DefaultContentTypeHeader>([] { return MIME::BINARY; }, initArgs...))
+        , _worker(_mimeType) {}
 
-    void                      stop() override {}
+    ~RestClient() override                                = default;
 
-    std::vector<std::string>  protocols() noexcept override { return { "http", "https" }; }
+    RestClient(const RestClient &)                        = delete;
+    RestClient &operator=(const RestClient &)             = delete;
+    RestClient(RestClient &&)                             = delete;
+    RestClient                  &operator=(RestClient &&) = delete;
 
-    [[nodiscard]] std::string name() const noexcept { return _name; }
-    // [[nodiscard]] ThreadPoolType threadPool() const noexcept { return _thread_pool; }
+    void                         stop() override { _worker.stop(); }
+
+    std::vector<std::string>     protocols() noexcept override { return { "http", "https" }; }
+
+    [[nodiscard]] std::string    name() const noexcept { return _name; }
     [[nodiscard]] MIME::MimeType defaultMimeType() const noexcept { return _mimeType; }
     [[nodiscard]] std::string    clientCertificate() const noexcept { return _caCertificate; }
 
-    void                         request(Command cmd) override {
-        switch (cmd.command) {
-        case mdp::Command::Get:
-        case mdp::Command::Set:
-            executeCommand(std::move(cmd));
-            return;
-        case mdp::Command::Subscribe:
-            startSubscription(std::move(cmd));
-            return;
-        case mdp::Command::Unsubscribe: // deregister existing subscription URI is key
-            stopSubscription(std::move(cmd));
-            return;
-        default:
-            throw std::invalid_argument("command type is undefined");
-        }
-    }
-
-private:
-    void executeCommand(Command &&cmd) const {
-        auto                                                 preferredHeader = detail::getPreferredContentTypeHeader(cmd.topic, _mimeType);
-        std::array<const char *, preferredHeader.size() + 1> preferredHeaderEmscripten;
-        std::transform(preferredHeader.cbegin(), preferredHeader.cend(), preferredHeaderEmscripten.begin(),
-                [](const auto &str) { return str.c_str(); });
-        preferredHeaderEmscripten[preferredHeaderEmscripten.size() - 1] = nullptr;
-
-        emscripten_fetch_attr_t attr;
-        emscripten_fetch_attr_init(&attr);
-
-        auto payload  = std::make_unique<detail::FetchPayload>(std::move(cmd));
-        attr.userData = payload.get();
-
-        if (payload->command.command == opencmw::mdp::Command::Set) {
-            strcpy(attr.requestMethod, "POST");
-            auto body            = payload->command.data.asString();
-            attr.requestData     = body.data();
-            attr.requestDataSize = body.size();
-        } else {
-            strcpy(attr.requestMethod, "GET");
-        }
-
-        static auto getPayload = [](emscripten_fetch_t *fetch) {
-            auto *rawPayload = fetch->userData;
-            auto  it         = detail::fetchPayloads.find(rawPayload);
-            if (it == detail::fetchPayloads.end()) {
-                throw std::format("Unknown payload for a resulting fetch call");
-            }
-            auto extracted_node = detail::fetchPayloads.extract(it);
-            return std::move(extracted_node.value());
-        };
-
-        attr.attributes     = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
-        attr.requestHeaders = preferredHeaderEmscripten.data();
-        attr.onsuccess      = [](emscripten_fetch_t *fetch) {
-            getPayload(fetch)->onsuccess(fetch->status, std::string_view(fetch->data, detail::checkedStringViewSize(fetch->numBytes)));
-            emscripten_fetch_close(fetch);
-        };
-        attr.onerror = [](emscripten_fetch_t *fetch) {
-            getPayload(fetch)->onerror(fetch->status, std::string_view(fetch->data, detail::checkedStringViewSize(fetch->numBytes)), fetch->statusText);
-            emscripten_fetch_close(fetch);
-        };
-
-        // TODO: Pass the payload as POST body: emscripten_fetch(&attr, uri.relativeRef()->data());
-
-        emscripten_fetch(&attr, payload->command.topic.str().data());
-        detail::fetchPayloads.insert(std::move(payload));
-    }
-
-    void startSubscription(Command &&cmd) {
-        auto payload    = std::make_unique<detail::SubscriptionPayload>(std::move(cmd), _mimeType);
-        auto rawPayload = payload.get();
-        detail::subscriptionPayloads.insert(std::move(payload));
-        std::print("starting subscription: {}, existing subscriptions: {}, from main thread: \n", cmd.topic.str(), detail::subscriptionPayloads.size(), emscripten_is_main_runtime_thread());
-        if (emscripten_is_main_runtime_thread()) {
-            try {
-                rawPayload->request("Next");
-            } catch (std::runtime_error &e) {
-                rawPayload->onerror(500, e.what(), "");
-            } catch (...) {
-                rawPayload->onerror(500, "failed to set up subscription", "");
-            }
-        } else {
-            emscripten_async_run_in_main_runtime_thread(EM_FUNC_SIG_IP, +[](void *data) {
-                auto subPayload = reinterpret_cast<opencmw::client::detail::SubscriptionPayload *>(data);
-                try {
-                    subPayload->request("Next");
-                } catch (std::runtime_error &e) {
-                    subPayload->onerror(500, e.what(), "");
-                } catch (...) {
-                    subPayload->onerror(500, "failed to set up subscription", "");
-                }
-                return 0; }, rawPayload);
-        }
-    }
-
-    void stopSubscription(Command &&cmd) {
-        auto payloadIt = std::ranges::find_if(detail::subscriptionPayloads,
-                [&](const auto &ptr) {
-                    return ptr->command.topic == cmd.topic;
-                });
-        if (payloadIt == detail::subscriptionPayloads.end()) {
-            return;
-        }
-        std::print("stopping subscription: {}, existing subscriptions: {}\n", cmd.topic.str(), detail::subscriptionPayloads.size());
-
-        auto &payload  = *payloadIt;
-        payload->_live = false;
-    }
+    void                         request(Command cmd) override { _worker.submit(std::move(cmd)); }
 };
 
 } // namespace opencmw::client
