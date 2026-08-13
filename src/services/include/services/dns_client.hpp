@@ -7,6 +7,7 @@
 #include <atomic>
 #include <chrono>
 #include <IoSerialiserYaS.hpp>
+#include <iostream>
 #include <RestClient.hpp>
 #include <URI.hpp>
 #include <utility>
@@ -33,7 +34,9 @@ public:
         uri      = std::move(uri).setQuery(query::serialise(filter));
 
         _clientContext.get(uri.build(), [callback = std::move(callback)](const mdp::Message &msg) {
-            std::cout << msg.error << std::endl;
+            if (!msg.error.empty()) {
+                std::cerr << "DNS signal query failed for '" << msg.topic.str() << "': " << msg.error << '\n';
+            }
             IoBuffer      buf{ msg.data };
 
             FlatEntryList resp;
@@ -54,6 +57,9 @@ public:
 
         _clientContext.set(
                 _endpoint, [callback = std::move(callback)](auto &msg) {
+                    if (!msg.error.empty()) {
+                        std::cerr << "DNS signal registration failed for '" << msg.topic.str() << "': " << msg.error << '\n';
+                    }
                     FlatEntryList resp;
                     IoBuffer      buf{ msg.data };
                     if (!buf.empty()) {
@@ -76,6 +82,9 @@ public:
 
         _clientContext.set(
                 uri.build(), [callback = std::move(callback)](auto &msg) {
+                    if (!msg.error.empty()) {
+                        std::cerr << "DNS signal unregistration failed for '" << msg.topic.str() << "': " << msg.error << '\n';
+                    }
                     FlatEntryList resp;
                     IoBuffer      buf{ msg.data };
                     if (!buf.empty()) {

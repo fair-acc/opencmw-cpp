@@ -333,7 +333,7 @@ struct TcpSocket {
         struct addrinfo *res;
         int              status = getaddrinfo(host.data(), nullptr, &hints, &res);
         if (status != 0) {
-            return std::unexpected(std::format("Could not resolve address: {}", strerror(status)));
+            return std::unexpected(std::format("Could not resolve address '{}': {}", host, gai_strerror(status)));
         }
         address                                                            = AddrinfoPtr(res, freeaddrinfo);
         reinterpret_cast<struct sockaddr_in *>(address->ai_addr)->sin_port = htons(port);
