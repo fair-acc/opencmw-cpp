@@ -659,7 +659,11 @@ public:
                     switch (cmd.command) {
                     case mdp::Command::Get:
                     case mdp::Command::Set: {
-                        auto session   = ensureSession(ssl_ctx, sessions, sslSettings, cmd.topic);
+                        auto session = ensureSession(ssl_ctx, sessions, sslSettings, cmd.topic);
+                        if (!session) {
+                            reportError(cmd, std::format("Could not create REST session for endpoint '{}': {}", cmd.topic.str(), session.error()));
+                            continue;
+                        }
                         auto preferred = preferredMimeType(cmd.topic);
                         session.value()->submitRequest(std::move(cmd), mode, std::move(preferred), {});
                     } break;

@@ -129,7 +129,7 @@ TEST_CASE("Basic Client Constructor and API Tests", "[http2]") {
 TEST_CASE("GET HTTP", "[http2]") {
     using namespace opencmw::client;
 
-    auto serverThread = std::jthread([](std::stop_token stopToken) {
+    auto    serverThread = std::jthread([](std::stop_token stopToken) {
         RestServer server;
         majordomo::rest::Settings settings{ .port = kServerPort, .protocols = majordomo::rest::Http2 };
         REQUIRE(server.bind(settings));
@@ -406,6 +406,73 @@ TEST_CASE("GET/SET", "[http2]") {
     client.request(std::move(req2));
 
     waitFor(responseCount, 3);
+}
+
+TEST_CASE("REST client survives hostname resolution failure", "[http2]") {
+    std::atomic<int>   responseCount = 0;
+    mdp::Message       failedResponse;
+    mdp::Message       successfulResponse;
+    client::RestClient client;
+
+    client::Command    invalidRequest;
+    invalidRequest.command         = mdp::Command::Set;
+    invalidRequest.clientRequestID = opencmw::IoBuffer("unresolvable");
+    invalidRequest.topic           = URI<>("http://opencmw-rest-client-test.invalid:12345/dns");
+    invalidRequest.callback        = [&failedResponse, &responseCount](const mdp::Message &msg) {
+        failedResponse = msg;
+        responseCount++;
+    };
+    client.request(std::move(invalidRequest));
+
+    REQUIRE(waitFor(responseCount, 1, std::chrono::seconds(30)));
+    REQUIRE(failedResponse.command == mdp::Command::Final);
+    REQUIRE(failedResponse.topic.str().contains("opencmw-rest-client-test.invalid"));
+    REQUIRE(failedResponse.error.contains("opencmw-rest-client-test.invalid"));
+    REQUIRE(failedResponse.error.contains("Could not resolve address"));
+
+    auto    serverThread = std::jthread([](std::stop_token stopToken) {
+        RestServer                server;
+        majordomo::rest::Settings settings{ .port = kServerPort, .protocols = majordomo::rest::Http2 };
+        REQUIRE(server.bind(settings));
+
+        std::deque<Message> messages;
+        ensureMessageReceived(server, stopToken, messages);
+        REQUIRE(messages.size() >= 1);
+        const auto request = std::move(messages.front());
+        messages.pop_front();
+        REQUIRE(request.command == mdp::Command::Get);
+        REQUIRE(request.topic.path() == "/sayhello");
+
+        Message reply;
+        reply.command         = mdp::Command::Final;
+        reply.clientRequestID = request.clientRequestID;
+        reply.topic           = URI<>("/sayhello");
+        reply.data            = opencmw::IoBuffer("worker survived");
+        server.handleResponse(std::move(reply));
+
+        ensureMessageReceived(server, stopToken, messages); // makes sure the response is sent
+    });
+
+    Stopper stopper(serverThread.get_stop_source());
+    std::this_thread::sleep_for(std::chrono::milliseconds(300)); // give the server some time to start listening
+
+    client::Command validRequest;
+    validRequest.command         = mdp::Command::Get;
+    validRequest.clientRequestID = opencmw::IoBuffer("valid");
+    validRequest.topic           = URI<>(std::format("http://localhost:{}/sayhello", kServerPort));
+    validRequest.callback        = [&successfulResponse, &responseCount](const mdp::Message &msg) {
+        successfulResponse = msg;
+        responseCount++;
+    };
+    client.request(std::move(validRequest));
+
+    REQUIRE(waitFor(responseCount, 2));
+    INFO(successfulResponse.error);
+    REQUIRE(successfulResponse.command == mdp::Command::Final);
+    REQUIRE(successfulResponse.error.empty());
+    REQUIRE(successfulResponse.data.asString() == "worker survived");
+    REQUIRE(successfulResponse.clientRequestID.asString() == "valid");
+    REQUIRE(successfulResponse.topic.path() == "/sayhello");
 }
 
 TEST_CASE("Long polling example", "[http2]") {
