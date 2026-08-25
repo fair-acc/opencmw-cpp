@@ -11,7 +11,9 @@ file(GLOB_RECURSE SODIUM_C "${libsodium_SOURCE_DIR}/src/*.c")
 file(GLOB_RECURSE SODIUM_H "${libsodium_SOURCE_DIR}/src/*.h")
 
 add_library(sodium STATIC ${SODIUM_C} ${SODIUM_H})
-
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(sodium PRIVATE -w)
+endif()
 target_include_directories(sodium PUBLIC $<BUILD_INTERFACE:${libsodium_SOURCE_DIR}/src/libsodium/include> $<INSTALL_INTERFACE:include/opencmw> PRIVATE "${libsodium_SOURCE_DIR}/src/libsodium/include/sodium")
 # silence warnings about being built by a different build system
 target_compile_definitions(sodium PRIVATE CONFIGURED)
