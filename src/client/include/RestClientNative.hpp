@@ -5,8 +5,10 @@
 #include <chrono>
 #include <cstring>
 #include <deque>
+#include <expected>
 #include <fcntl.h>
 #include <format>
+#include <limits>
 #include <mutex>
 #include <netinet/tcp.h>
 #include <poll.h>
@@ -22,6 +24,7 @@
 
 #include "ClientCommon.hpp"
 #include "ClientContext.hpp"
+#include "LongPollingBatch.hpp"
 #include "MdpMessage.hpp"
 #include "MIME.hpp"
 #include "rest/RestUtils.hpp"
@@ -39,6 +42,46 @@ enum class SubscriptionMode {
 namespace detail {
 
 using namespace opencmw::rest::detail;
+
+inline bool usesLongPollingBatch(const mdp::Message::URI &topic) {
+    return topic.queryParamMap().contains(std::string(long_polling::kBatchParameter));
+}
+
+inline std::string subscriptionKey(const mdp::Message::URI &topic) {
+    auto parameters = topic.queryParamMap();
+    parameters.erase(std::string(long_polling::kIndexParameter));
+    parameters.erase(std::string(long_polling::kBatchParameter));
+    const auto subscriptionTopic = mdp::Message::URI::UriFactory(topic).setQuery(std::move(parameters)).build();
+    return mdp::Topic::fromMdpTopic(subscriptionTopic).toZmqTopic();
+}
+
+inline std::expected<std::optional<std::uint64_t>, std::string> takeInitialLongPollingIndex(Command &command, SubscriptionMode &mode) {
+    auto       parameters = command.topic.queryParamMap();
+    const auto entry      = parameters.find(std::string(long_polling::kIndexParameter));
+    if (entry == parameters.end()) {
+        return std::optional<std::uint64_t>{};
+    }
+    if (!entry->second.has_value()) {
+        return std::unexpected("LongPollingIdx requires a value");
+    }
+
+    std::optional<std::uint64_t> index;
+    if (*entry->second == "Next") {
+        mode = SubscriptionMode::Next;
+    } else if (*entry->second == "Last") {
+        mode = SubscriptionMode::Last;
+    } else {
+        auto parsed = long_polling::parseUnsigned(*entry->second, long_polling::kIndexParameter);
+        if (!parsed.has_value()) {
+            return std::unexpected(parsed.error());
+        }
+        index = *parsed;
+    }
+
+    parameters.erase(entry);
+    command.topic = mdp::Message::URI::UriFactory(command.topic).setQuery(std::move(parameters)).build();
+    return index;
+}
 
 template<typename T>
 struct SharedQueue {
@@ -218,7 +261,9 @@ struct ClientSessionBase {
         RequestResponse rr;
         rr.request = std::move(cmd);
         try {
-            rr.normalizedTopic = mdp::Topic::fromMdpTopic(rr.request.topic).toZmqTopic();
+            rr.normalizedTopic = rr.request.command == mdp::Command::Subscribe
+                                       ? subscriptionKey(rr.request.topic)
+                                       : mdp::Topic::fromMdpTopic(rr.request.topic).toZmqTopic();
         } catch (...) {
             rr.normalizedTopic = rr.request.topic.str();
         }
@@ -279,12 +324,29 @@ struct ClientSessionBase {
                 const auto hasError = !it->second.responseStatus.starts_with("2") && !it->second.responseStatus.starts_with("3");
                 if (hasError) {
                     response.error = std::move(it->second.payload);
+                } else if (request.command == mdp::Command::Subscribe && usesLongPollingBatch(request.topic)) {
+                    const auto parts = long_polling::decodeBatch(it->second.payload);
+                    if (!parts.has_value()) {
+                        response.error = std::format("Could not decode long-polling batch: {}", parts.error());
+                        resumeSubscriptionAfterBatchError(it->second.normalizedTopic, std::move(response));
+                    } else {
+                        handleSubscriptionBatchResponse(it->second.normalizedTopic, *parts, std::move(response));
+                    }
+                    _requestsByStreamId.erase(it);
+                    return 0;
                 } else {
                     response.data = IoBuffer(it->second.payload.data(), it->second.payload.size());
                 }
-                if (it->second.longPollingIdx) {
+                if (request.command == mdp::Command::Subscribe) {
                     // Subscription
-                    handleSubscriptionResponse(it->second.normalizedTopic, it->second.longPollingIdx.value(), std::move(response));
+                    if (hasError && (usesLongPollingBatch(request.topic) || !it->second.longPollingIdx.has_value())) {
+                        reportSubscriptionError(it->second.normalizedTopic, std::move(response));
+                    } else if (!it->second.longPollingIdx.has_value()) {
+                        response.error = "Long-polling response is missing x-opencmw-long-polling-idx";
+                        reportSubscriptionError(it->second.normalizedTopic, std::move(response));
+                    } else {
+                        handleSubscriptionResponse(it->second.normalizedTopic, it->second.longPollingIdx.value(), std::move(response), hasError);
+                    }
                 } else {
                     // GET/SET
                     if (request.callback) {
@@ -306,19 +368,107 @@ struct ClientSessionBase {
         _requestsByStreamId.clear();
     }
 
-    void handleSubscriptionResponse(std::string zmqTopic, std::uint64_t longPollingIdx, mdp::Message &&response) {
+    static std::string makeSkippedWarning(std::optional<std::uint64_t> lastDelivered, std::uint64_t index) {
+        if (!lastDelivered.has_value() || index - *lastDelivered <= 1) {
+            return {};
+        }
+        return std::format("Warning: skipped {} samples", index - *lastDelivered - 1);
+    }
+
+    void handleSubscriptionResponse(std::string zmqTopic, std::uint64_t longPollingIdx, mdp::Message &&response, bool hasError) {
         auto subIt = _subscriptions.find(zmqTopic);
         if (subIt == _subscriptions.end()) {
             HTTP_DBG("Client::handleSubscriptionResponse: Could not find subscription for topic '{}'", zmqTopic);
             return;
         }
-        auto &sub                      = subIt->second;
+        auto &sub = subIt->second;
+        if (!hasError) {
+            if (sub.lastReceivedLongPollingIdx.has_value() && longPollingIdx <= *sub.lastReceivedLongPollingIdx) {
+                auto repeated = sub.request;
+                submitRequest(std::move(repeated), sub.mode, {}, *sub.lastReceivedLongPollingIdx + 1);
+                return;
+            }
+            response.error = makeSkippedWarning(sub.lastReceivedLongPollingIdx, longPollingIdx);
+        }
+
         sub.lastReceivedLongPollingIdx = longPollingIdx;
         auto request                   = sub.request;
 
         submitRequest(std::move(request), sub.mode, {}, longPollingIdx + kParallelLongPollingRequests);
 
+        invokeSubscriptionCallbacks(sub, std::move(response));
+    }
+
+    void handleSubscriptionBatchResponse(const std::string &zmqTopic, const std::vector<long_polling::BatchPart> &parts, mdp::Message &&response) {
+        auto subIt = _subscriptions.find(zmqTopic);
+        if (subIt == _subscriptions.end()) {
+            HTTP_DBG("Client::handleSubscriptionBatchResponse: Could not find subscription for topic '{}'", zmqTopic);
+            return;
+        }
+        auto                     &sub           = subIt->second;
+        auto                      lastDelivered = sub.lastReceivedLongPollingIdx;
+        std::vector<mdp::Message> messages;
+        messages.reserve(parts.size());
+        try {
+            for (const auto &part : parts) {
+                if (lastDelivered.has_value() && part.index <= *lastDelivered) {
+                    continue; // a redirect or retry re-fetched a range we already delivered
+                }
+                auto partResponse        = response;
+                partResponse.topic       = URI<>(std::string(part.topic));
+                partResponse.serviceName = std::string(part.serviceName);
+                partResponse.data        = IoBuffer(part.payload.data(), part.payload.size());
+                partResponse.error       = makeSkippedWarning(lastDelivered, part.index);
+                messages.push_back(std::move(partResponse));
+                lastDelivered = part.index;
+            }
+        } catch (const std::exception &e) {
+            response.error       = std::format("Could not parse long-polling batch metadata: {}", e.what());
+            const auto lastIndex = parts.back().index;
+            resumeSubscriptionAfterBatchError(zmqTopic, std::move(response),
+                    lastIndex < std::numeric_limits<std::uint64_t>::max() ? std::optional{ lastIndex + 1 } : std::nullopt);
+            return;
+        }
+
+        sub.lastReceivedLongPollingIdx = lastDelivered;
+        auto request                   = sub.request;
+        submitRequest(std::move(request), sub.mode, {}, *lastDelivered + 1);
+
+        for (auto &message : messages) {
+            invokeSubscriptionCallbacks(sub, std::move(message));
+        }
+    }
+
+    void resumeSubscriptionAfterBatchError(const std::string &zmqTopic, mdp::Message &&response, std::optional<std::uint64_t> nextIndex = std::nullopt) {
+        const auto subIt = _subscriptions.find(zmqTopic);
+        if (subIt == _subscriptions.end()) {
+            return;
+        }
+        auto &sub      = subIt->second;
+        response.topic = sub.request.topic;
+        response.data.clear();
+        HTTP_DBG("Client: {}", response.error);
+
+        auto request = sub.request;
+        submitRequest(std::move(request), SubscriptionMode::Next, {}, nextIndex);
+        invokeSubscriptionCallbacks(sub, std::move(response));
+    }
+
+    void reportSubscriptionError(const std::string &zmqTopic, mdp::Message &&response) {
+        auto subIt = _subscriptions.find(zmqTopic);
+        if (subIt == _subscriptions.end()) {
+            return;
+        }
+        auto subscription = std::move(subIt->second);
+        _subscriptions.erase(subIt);
+        invokeSubscriptionCallbacks(subscription, std::move(response));
+    }
+
+    static void invokeSubscriptionCallbacks(Subscription &sub, mdp::Message &&response) {
         for (std::size_t i = 0; i < sub.callbacks.size(); ++i) {
+            if (!sub.callbacks[i]) {
+                continue;
+            }
             if (i < sub.callbacks.size() - 1) {
                 auto copy = response;
                 sub.callbacks[i](std::move(copy));
@@ -342,18 +492,48 @@ struct ClientSessionBase {
     }
 
     void startSubscription(client::Command &&command, SubscriptionMode mode = SubscriptionMode::Next) {
-        mdp::Topic topic;
+        const auto reportError = [](client::Command &failedCommand, std::string error) {
+            if (!failedCommand.callback) {
+                return;
+            }
+            mdp::Message response{};
+            response.command = mdp::Command::Notify;
+            response.topic   = failedCommand.topic;
+            response.error   = std::move(error);
+            failedCommand.callback(response);
+        };
+
+        std::optional<std::uint64_t> initialIndex;
+        std::string                  key;
+        bool                         usesBatch = false;
         try {
-            topic = mdp::Topic::fromMdpTopic(command.topic);
+            const auto parsedIndex = takeInitialLongPollingIndex(command, mode);
+            if (!parsedIndex.has_value()) {
+                reportError(command, parsedIndex.error());
+                return;
+            }
+            initialIndex = *parsedIndex;
+            usesBatch    = usesLongPollingBatch(command.topic);
+            key          = subscriptionKey(command.topic);
         } catch (const std::exception &e) {
             HTTP_DBG("Client::startSubscription: Could not parse topic '{}': {}", command.topic.str(), e.what());
+            reportError(command, e.what());
             return;
         }
-        const auto [subIt, inserted] = _subscriptions.try_emplace(topic.toZmqTopic(), Subscription{});
-        subIt->second.request        = command;
+
+        const auto [subIt, inserted] = _subscriptions.try_emplace(key, Subscription{});
+        if (!inserted && (usesBatch || usesLongPollingBatch(subIt->second.request.topic))) {
+            reportError(command, "A subscription for this topic is already active; concurrent batch subscriptions are not supported");
+            return;
+        }
+        subIt->second.request = command;
+        subIt->second.mode    = mode;
         subIt->second.callbacks.emplace_back(command.callback);
         if (inserted) {
-            submitRequest(std::move(command), mode, {}, {});
+            if (initialIndex.has_value() && *initialIndex > 0) {
+                subIt->second.lastReceivedLongPollingIdx = *initialIndex - 1;
+            }
+            submitRequest(std::move(command), mode, {}, initialIndex);
         }
     }
 
@@ -361,24 +541,25 @@ struct ClientSessionBase {
         // TODO a single unsubscribe cancels this also in case of multiple subscriptions when the client is shared
         // inside an application. Would be great if we could selectively unsubscribe certain callbacks and finally
         // stop the subscription when all callbacks are removed.
-        mdp::Topic topic;
+        std::string key;
         try {
-            topic = mdp::Topic::fromMdpTopic(command.topic);
+            key = subscriptionKey(command.topic);
         } catch (const std::exception &e) {
             HTTP_DBG("Client::stopSubscription: Could not parse topic '{}': {}", command.topic.str(), e.what());
             return;
         };
-        if (auto subIt = _subscriptions.find(topic.toZmqTopic()); subIt != _subscriptions.end()) {
+        if (auto subIt = _subscriptions.find(key); subIt != _subscriptions.end()) {
             // Cancel all requests for this topic
             auto reqIt = _requestsByStreamId.begin();
             while (reqIt != _requestsByStreamId.end()) {
-                if (reqIt->second.request.topic == command.topic) {
+                if (reqIt->second.request.command == mdp::Command::Subscribe && reqIt->second.normalizedTopic == key) {
                     self().cancelStream(reqIt->first);
                     reqIt = _requestsByStreamId.erase(reqIt);
                 } else {
                     ++reqIt;
                 }
             }
+            _subscriptions.erase(subIt);
         }
     }
 };

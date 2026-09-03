@@ -1,5 +1,6 @@
 #include "majordomo/Rest.hpp"
 #include <majordomo/Broker.hpp>
+#include <majordomo/RestServer.hpp>
 #include <majordomo/Settings.hpp>
 #include <majordomo/Worker.hpp>
 
@@ -477,7 +478,7 @@ TEST_CASE("Subscriptions", "[majordomo][majordomoworker][subscription]") {
 
     opencmw::client::Command                allSub;
     allSub.command  = mdp::Command::Subscribe;
-    allSub.topic    = opencmw::URI<>(std::format("http://localhost:{}/colors", kServerPort));
+    allSub.topic    = opencmw::URI<>(std::format("http://localhost:{}/colors?LongPollingBatch=AllAvailable", kServerPort));
     allSub.callback = [&allReceived, &allExpected](const auto &msg) {
         REQUIRE(msg.command == mdp::Command::Notify);
         REQUIRE(msg.error == "");
@@ -776,3 +777,262 @@ TEST_CASE("Subscription latencies", "[majordomo][majordomoworker][rest]") {
     REQUIRE(nReceived > 10);
     REQUIRE(static_cast<double>(msLatency) / nReceived < 20000); // unit is µs
 }
+
+namespace batch_tests {
+
+using namespace opencmw;
+using namespace opencmw::majordomo::detail::rest;
+
+namespace {
+
+struct CapturedMessageResponse {
+    int                                              code;
+    Message                                          message;
+    std::vector<std::pair<std::string, std::string>> headers;
+};
+
+struct TestSession : SessionBase<TestSession, int> {
+    using SessionBase::SessionBase;
+
+    std::vector<majordomo::rest::Response> responses;
+    std::vector<CapturedMessageResponse>   messageResponses;
+
+    void sendResponse(int, majordomo::rest::Response response) {
+        responses.push_back(std::move(response));
+    }
+
+    void sendResponse(int, int code, Message &&message, const std::vector<nghttp2_nv> &headers = {}) {
+        std::vector<std::pair<std::string, std::string>> copiedHeaders;
+        copiedHeaders.reserve(headers.size());
+        for (const auto &header : headers) {
+            copiedHeaders.emplace_back(
+                    std::string(reinterpret_cast<const char *>(header.name), header.namelen),
+                    std::string(reinterpret_cast<const char *>(header.value), header.valuelen));
+        }
+        messageResponses.push_back({ code, std::move(message), std::move(copiedHeaders) });
+    }
+};
+
+std::string_view header(const std::vector<std::pair<std::string, std::string>> &headers, std::string_view name) {
+    const auto entry = std::ranges::find(headers, name, &std::pair<std::string, std::string>::first);
+    return entry == headers.end() ? std::string_view{} : entry->second;
+}
+
+Message notification(std::uint64_t index) {
+    Message message{};
+    message.command     = mdp::Command::Notify;
+    message.serviceName = std::format("/batch-service-{}", index);
+    message.topic       = URI<>(std::format("/batch?sample={}", index));
+    const auto payload  = std::format("message-{}", index);
+    message.data        = IoBuffer(payload.data(), payload.size());
+    return message;
+}
+
+Request request(std::string index, std::optional<std::string> batch = {}) {
+    Request result;
+    result.topic         = mdp::Topic::fromMdpTopic(URI<>("/batch"));
+    result.method        = RestMethod::LongPoll;
+    result.longPollIndex = std::move(index);
+    result.longPollBatch = std::move(batch);
+    return result;
+}
+
+} // namespace
+
+TEST_CASE("Fixed-count batch: wait for all messages", "[majordomo][rest][long-polling][batch]") {
+    const std::string binaryPayload = std::string(1, '\0') + "\r\n--" + std::string(long_polling::kBoundary);
+
+    auto        shared = std::make_shared<SharedData>();
+    TestSession session(shared);
+
+    REQUIRE(session.processLongPollRequest(1, request("0", "3")).has_value());
+    REQUIRE(session._pendingPolls.size() == 1);
+
+    auto &entry = shared->_subscriptionCache.at("/batch#");
+    for (std::uint64_t index = 0; index < 2; ++index) {
+        auto message = notification(index);
+        if (index == 1) {
+            message.data = IoBuffer(binaryPayload.data(), binaryPayload.size());
+        }
+        entry.add(std::move(message));
+        session.handleNotification("/batch#", index, entry.messages.back());
+        REQUIRE(session.responses.empty());
+    }
+
+    auto errorNotification  = notification(2);
+    errorNotification.error = "error-2";
+    entry.add(std::move(errorNotification));
+    session.handleNotification("/batch#", 2, entry.messages.back());
+
+    REQUIRE(session._pendingPolls.empty());
+    REQUIRE(session.responses.size() == 1);
+    CHECK(header(session.responses.front().headers, "x-opencmw-topic").empty());
+    CHECK(header(session.responses.front().headers, "x-opencmw-service-name").empty());
+    CHECK(header(session.responses.front().headers, "content-type") == std::format("multipart/mixed; boundary={}", long_polling::kBoundary));
+    CHECK(session.responses.front().body.asString().starts_with(std::format("--{}\r\n", long_polling::kBoundary)));
+    CHECK(session.responses.front().body.asString().ends_with(std::format("--{}--\r\n", long_polling::kBoundary)));
+    const auto parts = long_polling::decodeBatch(session.responses.front().body.asString());
+    REQUIRE(parts.has_value());
+    REQUIRE(parts->size() == 3);
+    for (std::uint64_t index = 0; index < parts->size(); ++index) {
+        CHECK((*parts)[index].index == index);
+        CHECK((*parts)[index].topic == std::format("/batch?sample={}", index));
+        CHECK((*parts)[index].serviceName == std::format("/batch-service-{}", index));
+    }
+    CHECK((*parts)[0].payload == "message-0");
+    CHECK((*parts)[1].payload == binaryPayload);
+    CHECK((*parts)[2].payload == "error-2");
+}
+
+TEST_CASE("Batch start: requested or oldest buffered index", "[majordomo][rest][long-polling][batch]") {
+    // requestedIndex 0, AllAvailable -> return 5–104
+    // requestedIndex 7, AllAvailable -> return 7–104
+    // requestedIndex 0, fixed-count 5 -> return 5–9
+    // requestedIndex 7, fixed count 5 -> return 7–11
+    const auto requestedIndex = GENERATE(0, 7);
+    const auto batch          = GENERATE(as<std::string>{}, "AllAvailable", "5");
+    auto       shared         = std::make_shared<SharedData>();
+    auto      &entry          = shared->_subscriptionCache["/batch#"];
+    for (std::uint64_t index = 0; index < SubscriptionCacheEntry::kCapacity + 5; ++index) {
+        entry.add(notification(index));
+    }
+    REQUIRE(entry.firstIndex == 5);
+
+    TestSession session(shared);
+    REQUIRE_FALSE(session.processLongPollRequest(1, request(std::to_string(requestedIndex), batch)).has_value());
+    REQUIRE(session.responses.size() == 1);
+
+    const auto parts = long_polling::decodeBatch(session.responses.front().body.asString());
+    REQUIRE(parts.has_value());
+    const auto first = requestedIndex == 0 ? 5 : 7;
+    const auto count = batch == long_polling::kAllAvailable ? SubscriptionCacheEntry::kCapacity + 5 - first : 5;
+    REQUIRE(parts->size() == count);
+    CHECK(parts->front().index == first);
+    CHECK(parts->back().index == first + count - 1);
+    CHECK(header(session.responses.front().headers, "x-opencmw-long-polling-idx") == std::to_string(first));
+    CHECK(session.messageResponses.empty());
+}
+
+TEST_CASE("Fixed-count batch while old messages are removed", "[majordomo][rest][long-polling][batch]") {
+    // Count 3, request 99-101:
+    //   Initially:           buffer 0-99  -> wait
+    //   Message 100 arrives: buffer 1-100 -> still wait
+    //   Message 101 arrives: buffer 2-101 -> return only 99-101
+    //
+    // Count 100, request 99-198:
+    //   Wait for message 198: buffer 99-198 -> return 99-198 (the entire buffer).
+    const auto count = GENERATE(std::size_t{ 3 }, SubscriptionCacheEntry::kCapacity);
+    CAPTURE(count);
+    auto  shared = std::make_shared<SharedData>();
+    auto &entry  = shared->_subscriptionCache["/batch#"];
+    for (std::uint64_t index = 0; index < SubscriptionCacheEntry::kCapacity; ++index) {
+        entry.add(notification(index));
+    }
+
+    const auto  first = entry.lastIndex();
+    const auto  last  = first + count - 1;
+    TestSession session(shared);
+    REQUIRE_FALSE(session.processLongPollRequest(1, request(std::to_string(first), std::to_string(count))).has_value());
+    REQUIRE(session._pendingPolls.size() == 1);
+    REQUIRE(session.responses.empty());
+
+    for (auto index = first + 1; index <= last; ++index) {
+        entry.add(notification(index));
+        session.handleNotification("/batch#", index, entry.messages.back());
+        if (index < last) {
+            REQUIRE(session.responses.empty());
+        }
+    }
+
+    CHECK(entry.firstIndex == count - 1);
+    CHECK(session._pendingPolls.empty());
+    CHECK(session.messageResponses.empty());
+    REQUIRE(session.responses.size() == 1);
+    const auto parts = long_polling::decodeBatch(session.responses.front().body.asString());
+    REQUIRE(parts.has_value());
+    REQUIRE(parts->size() == count);
+    CHECK(parts->front().index == first);
+    CHECK(parts->back().index == last);
+    for (const auto &part : *parts) {
+        CHECK(part.payload == std::format("message-{}", part.index));
+    }
+}
+
+TEST_CASE("AllAvailable: wait for a future index", "[majordomo][rest][long-polling][batch]") {
+    auto        shared = std::make_shared<SharedData>();
+    TestSession session(shared);
+    REQUIRE(session.processLongPollRequest(1, request("1", "AllAvailable")).has_value());
+    REQUIRE(session._pendingPolls.size() == 1);
+    CHECK(session.responses.empty());
+
+    auto &entry = shared->_subscriptionCache.at("/batch#");
+    entry.add(notification(0));
+    session.handleNotification("/batch#", 0, entry.messages.back());
+    CHECK(session.responses.empty());
+
+    entry.add(notification(1));
+    session.handleNotification("/batch#", 1, entry.messages.back());
+    CHECK(session._pendingPolls.empty());
+    REQUIRE(session.responses.size() == 1);
+    const auto parts = long_polling::decodeBatch(session.responses.front().body.asString());
+    REQUIRE(parts.has_value());
+    REQUIRE(parts->size() == 1);
+    CHECK(parts->front().index == 1);
+}
+
+TEST_CASE("Next redirect keeps LongPollingBatch", "[majordomo][rest][long-polling][batch]") {
+    auto        shared = std::make_shared<SharedData>();
+    TestSession session(shared);
+
+    REQUIRE(session.processLongPollRequest(1, request("Next", "AllAvailable")).has_value());
+    REQUIRE(session.responses.size() == 1);
+    CHECK(session.responses.front().code == 302);
+
+    const URI<> location{ std::string(header(session.responses.front().headers, "location")) };
+    const auto &parameters = location.queryParamMap();
+    CHECK(parameters.at("LongPollingIdx") == "0");
+    CHECK(parameters.at("LongPollingBatch") == "AllAvailable");
+}
+
+TEST_CASE("Invalid long-poll requests: HTTP 400", "[majordomo][rest][long-polling][batch]") {
+    const auto query = GENERATE(as<std::string>{},
+            "LongPollingIdx=invalid",
+            "LongPollingIdx=1x",
+            "LongPollingIdx",
+            "LongPollingIdx=",
+            "LongPollingBatch=5",
+            "LongPollingIdx=Next&LongPollingBatch=0",
+            "LongPollingIdx=0&LongPollingBatch=0",
+            "LongPollingIdx=0&LongPollingBatch",
+            "LongPollingIdx=0&LongPollingBatch=",
+            "LongPollingIdx=0&LongPollingBatch=2x",
+            "LongPollingIdx=0&LongPollingBatch=101",
+            "LongPollingIdx=18446744073709551615&LongPollingBatch=2");
+    CAPTURE(query);
+    auto        shared = std::make_shared<SharedData>();
+    TestSession session(shared);
+
+    const auto  process = [&](int streamId, std::string path) {
+        session.addHeader(streamId, ":method", "GET");
+        session.addHeader(streamId, ":path", path);
+        session.processCompletedRequest(streamId);
+
+        IdGenerator idGenerator;
+        return session.getMessages(idGenerator);
+    };
+
+    CHECK(process(1, std::format("/batch?{}", query)).empty());
+    REQUIRE(shared->_subscriptionCache.empty());
+    CHECK(session._pendingPolls.empty());
+    CHECK(session.responses.empty());
+    REQUIRE(session.messageResponses.size() == 1);
+    CHECK(session.messageResponses.front().code == kHttpBadRequest);
+
+    const auto messages = process(2, "/batch?LongPollingIdx=0&LongPollingBatch=1");
+    REQUIRE(messages.size() == 1);
+    CHECK(messages.front().command == mdp::Command::Subscribe);
+    CHECK(shared->_subscriptionCache.contains("/batch#"));
+    CHECK(session._pendingPolls.size() == 1);
+}
+
+} // namespace batch_tests
