@@ -191,19 +191,22 @@ struct RestWorkerState {
         if (const auto entry = query.find("contentType"); entry != query.end() && entry->second) {
             contentType = *entry->second;
         }
-        const std::array<const char *, 5> headers{ "accept", contentType.c_str(), "content-type", contentType.c_str(), nullptr };
+        const std::string_view      method = activeFetch->command.has_value() && activeFetch->command->command == mdp::Command::Set ? "POST" : "GET";
+        std::array<const char *, 5> headers{ "accept", contentType.c_str(), nullptr, nullptr, nullptr };
+        if (method == "POST") {
+            headers[2] = "content-type";
+            headers[3] = contentType.c_str();
+        }
 
-        const std::string_view            method = activeFetch->command.has_value() && activeFetch->command->command == mdp::Command::Set ? "POST" : "GET";
-
-        emscripten_fetch_attr_t           attr;
+        emscripten_fetch_attr_t attr;
         emscripten_fetch_attr_init(&attr);
         method.copy(attr.requestMethod, method.size());
         attr.requestMethod[method.size()] = '\0';
-        attr.attributes     = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
-        attr.requestHeaders = headers.data();
-        attr.onsuccess      = &RestWorkerState::onFetchSuccess;
-        attr.onerror        = &RestWorkerState::onFetchError;
-        attr.userData       = activeFetch.get();
+        attr.attributes                   = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
+        attr.requestHeaders               = headers.data();
+        attr.onsuccess                    = &RestWorkerState::onFetchSuccess;
+        attr.onerror                      = &RestWorkerState::onFetchError;
+        attr.userData                     = activeFetch.get();
         if (!activeFetch->body.empty()) {
             attr.requestData     = activeFetch->body.data();
             attr.requestDataSize = activeFetch->body.size();
