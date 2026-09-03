@@ -202,7 +202,7 @@ struct RestWorkerState {
         emscripten_fetch_attr_init(&attr);
         method.copy(attr.requestMethod, method.size());
         attr.requestMethod[method.size()] = '\0';
-        attr.attributes                   = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
+        attr.attributes                   = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY | EMSCRIPTEN_FETCH_REPLACE;
         attr.requestHeaders               = headers.data();
         attr.onsuccess                    = &RestWorkerState::onFetchSuccess;
         attr.onerror                      = &RestWorkerState::onFetchError;
