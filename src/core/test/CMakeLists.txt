@@ -7,6 +7,7 @@ set(core_test_sources
     collection_tests.cpp
     URI_tests.cpp
     MIME_tests.cpp
+    LongPollingBatch_tests.cpp
     ReaderWriterLock_tests.cpp
     SpinWait_tests.cpp
     TimingCtx_tests.cpp)

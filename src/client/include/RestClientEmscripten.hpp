@@ -14,6 +14,7 @@
 #include <concepts>
 #include <cstdint>
 #include <cstdio>
+#include <expected>
 #include <format>
 #include <functional>
 #include <iostream>
@@ -34,7 +35,9 @@
 
 #include <ClientCommon.hpp>
 #include <ClientContext.hpp>
+#include <LongPollingBatch.hpp>
 #include <MIME.hpp>
+#include <Topic.hpp>
 #include <URI.hpp>
 
 using namespace opencmw;
@@ -70,6 +73,49 @@ inline std::optional<std::uint64_t> parseLongPollingIndex(std::string_view respo
     } catch (...) {
         return std::nullopt;
     }
+}
+
+inline bool usesLongPollingBatch(const mdp::Message::URI &topic) {
+    return topic.queryParamMap().contains(std::string(long_polling::kBatchParameter));
+}
+
+inline std::expected<std::string, std::string> takeInitialLongPollingIndex(Command &command) {
+    auto       parameters = command.topic.queryParamMap();
+    const auto entry      = parameters.find(std::string(long_polling::kIndexParameter));
+    if (entry == parameters.end()) {
+        return "Next";
+    }
+    if (!entry->second.has_value()) {
+        return std::unexpected("LongPollingIdx requires a value");
+    }
+
+    std::string index = *entry->second;
+    if (index != "Next" && index != "Last") {
+        auto parsed = long_polling::parseUnsigned(*entry->second, long_polling::kIndexParameter);
+        if (!parsed.has_value()) {
+            return std::unexpected(parsed.error());
+        }
+        index = std::to_string(*parsed);
+    }
+
+    parameters.erase(entry);
+    command.topic = mdp::Message::URI::UriFactory(command.topic).setQuery(std::move(parameters)).build();
+    return index;
+}
+
+inline mdp::Topic subscriptionTopic(const mdp::Message::URI &topic) {
+    auto parameters = topic.queryParamMap();
+    parameters.erase(std::string(long_polling::kIndexParameter));
+    parameters.erase(std::string(long_polling::kBatchParameter));
+    const auto normalized = mdp::Message::URI::UriFactory(topic).setQuery(std::move(parameters)).build();
+    return mdp::Topic::fromMdpTopic(normalized);
+}
+
+inline bool sameSubscription(const mdp::Message::URI &lhs, const mdp::Message::URI &rhs) {
+    return lhs.scheme() == rhs.scheme()
+        && lhs.hostName() == rhs.hostName()
+        && lhs.port() == rhs.port()
+        && subscriptionTopic(lhs) == subscriptionTopic(rhs);
 }
 
 struct SubscriptionState {
@@ -129,14 +175,30 @@ struct RestWorkerState {
     }
 
     void startSubscription(Command &&cmd) {
-        const std::uint64_t id = _nextSubscriptionId++;
-        _subscriptions.emplace(id, SubscriptionState{ .command = std::move(cmd) });
-        startNextLongPoll(id, std::nullopt);
+        const auto initialIndex = takeInitialLongPollingIndex(cmd);
+        if (!initialIndex.has_value()) {
+            reportFailure(cmd, initialIndex.error());
+            return;
+        }
+        const bool usesBatch = usesLongPollingBatch(cmd.topic);
+        if (std::ranges::any_of(_subscriptions, [&](const auto &entry) {
+                return sameSubscription(entry.second.command.topic, cmd.topic)
+                    && (usesBatch || usesLongPollingBatch(entry.second.command.topic));
+            })) {
+            reportFailure(cmd, "A subscription for this topic is already active; concurrent batch subscriptions are not supported");
+            return;
+        }
+        const std::uint64_t id           = _nextSubscriptionId++;
+        auto              &subscription = _subscriptions.emplace(id, SubscriptionState{ .command = std::move(cmd) }).first->second;
+        if (const auto index = long_polling::parseUnsigned(*initialIndex, long_polling::kIndexParameter); index.has_value() && *index > 0) {
+            subscription.lastDeliveredIndex = *index - 1; // Detect a gap before the first returned sample.
+        }
+        startLongPoll(id, *initialIndex);
     }
 
     void stopSubscription(const Command &cmd) {
         const auto entry = std::ranges::find_if(_subscriptions,
-                [&](const auto &pair) { return pair.second.command.topic == cmd.topic; });
+                [&](const auto &pair) { return sameSubscription(pair.second.command.topic, cmd.topic); });
         if (entry == _subscriptions.end()) {
             return;
         }
@@ -147,7 +209,7 @@ struct RestWorkerState {
         }
     }
 
-    void startNextLongPoll(std::uint64_t subscriptionId, std::optional<std::uint64_t> index) noexcept {
+    void startLongPoll(std::uint64_t subscriptionId, std::string longPollingIndex) noexcept {
         try {
             if (!_acceptWork.load(std::memory_order_acquire)) {
                 return;
@@ -156,19 +218,22 @@ struct RestWorkerState {
             if (entry == _subscriptions.end()) {
                 return;
             }
-            const std::string longPollingIndex = index.has_value() ? std::to_string(*index) : "Next";
 
-            auto              activeFetch      = std::make_unique<ActiveFetch>();
-            activeFetch->owner                 = this;
-            activeFetch->id                    = _nextFetchId++;
-            activeFetch->subscriptionId        = subscriptionId;
-            entry->second.activeFetchId        = activeFetch->id;
+            auto activeFetch            = std::make_unique<ActiveFetch>();
+            activeFetch->owner          = this;
+            activeFetch->id             = _nextFetchId++;
+            activeFetch->subscriptionId = subscriptionId;
+            entry->second.activeFetchId = activeFetch->id;
             startFetch(std::move(activeFetch), URI<STRICT>::UriFactory(entry->second.command.topic).addQueryParameter("LongPollingIdx", longPollingIndex).build());
         } catch (const std::exception &e) {
             endSubscription(subscriptionId, nullptr, 500, {}, e.what());
         } catch (...) {
             endSubscription(subscriptionId, nullptr, 500, {}, "failed to start long-poll request");
         }
+    }
+
+    void startNextLongPoll(std::uint64_t subscriptionId, std::optional<std::uint64_t> index) noexcept {
+        startLongPoll(subscriptionId, index.has_value() ? std::to_string(*index) : "Next");
     }
 
     void startGetOrSet(Command &&cmd) {
@@ -302,6 +367,50 @@ struct RestWorkerState {
             return;
         }
 
+        if (usesLongPollingBatch(state.command.topic)) {
+            const auto parts = long_polling::decodeBatch(body);
+            if (!parts.has_value()) {
+                resumeSubscriptionAfterBatchError(fetchId, subscriptionId, fetch, std::format("could not decode long-polling batch: {}", parts.error()));
+                return;
+            }
+
+            auto                      lastDelivered = state.lastDeliveredIndex;
+            std::vector<mdp::Message> messages;
+            messages.reserve(parts->size());
+            try {
+                for (const auto &part : *parts) {
+                    if (lastDelivered.has_value() && part.index <= *lastDelivered) {
+                        continue;
+                    }
+                    std::string skippedWarning;
+                    if (lastDelivered.has_value() && part.index - *lastDelivered > 1) {
+                        skippedWarning = std::format("Warning: skipped {} samples", part.index - *lastDelivered - 1);
+                    }
+                    auto message        = buildMessage(state.command, status, part.payload, skippedWarning);
+                    message.topic       = mdp::Message::URI(std::string(part.topic));
+                    message.serviceName = std::string(part.serviceName);
+                    messages.push_back(std::move(message));
+                    lastDelivered = part.index;
+                }
+            } catch (const std::exception &e) {
+                const auto lastIndex = parts->back().index;
+                resumeSubscriptionAfterBatchError(fetchId, subscriptionId, fetch, std::format("could not parse long-polling batch metadata: {}", e.what()),
+                        lastIndex < std::numeric_limits<std::uint64_t>::max() ? std::optional{ lastIndex + 1 } : std::nullopt);
+                return;
+            }
+
+            state.lastDeliveredIndex = lastDelivered;
+            const auto callback      = state.command.callback;
+            closeFetch(fetchId, fetch);
+            for (const auto &message : messages) {
+                invokeGuarded(callback, message);
+            }
+            if (lastDelivered.has_value()) {
+                startNextLongPoll(subscriptionId, *lastDelivered + 1);
+            }
+            return;
+        }
+
         if (!index.has_value()) {
             endSubscription(subscriptionId, fetch, status, body, "missing or unparsable LongPollingIdx in the response URL");
             return;
@@ -325,6 +434,14 @@ struct RestWorkerState {
         closeFetch(fetchId, fetch);
         invokeGuarded(state.command.callback, message);
         startNextLongPoll(subscriptionId, *index + 1);
+    }
+
+    void resumeSubscriptionAfterBatchError(std::uint64_t fetchId, std::uint64_t subscriptionId, emscripten_fetch_t *fetch, std::string_view error, std::optional<std::uint64_t> nextIndex = std::nullopt) {
+        const auto command = _subscriptions.at(subscriptionId).command;
+        const auto status  = fetch->status;
+        closeFetch(fetchId, fetch);
+        reportFailure(command, error, status);
+        startNextLongPoll(subscriptionId, nextIndex);
     }
 
     void handleGetOrSetCompletion(std::uint64_t fetchId, emscripten_fetch_t *fetch, std::optional<std::string_view> fetchError) {
@@ -408,13 +525,13 @@ struct RestWorkerState {
         emscripten_runtime_keepalive_pop();
     }
 
-    void        reportFailure(const Command &command, std::string_view error) noexcept {
+    void reportFailure(const Command &command, std::string_view error, unsigned short status = 500) noexcept {
         if (!command.callback) {
             std::println(std::cerr, "RestClientEmscripten: {}", error);
             return;
         }
         try {
-            invokeGuarded(command.callback, buildMessage(command, 500, {}, error));
+            invokeGuarded(command.callback, buildMessage(command, status, {}, error));
         } catch (const std::exception &e) {
             std::println(std::cerr, "RestClientEmscripten: could not report '{}': {}", error, e.what());
         } catch (...) {

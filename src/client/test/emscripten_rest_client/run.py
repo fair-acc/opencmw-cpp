@@ -6,20 +6,36 @@ import subprocess
 import threading
 from urllib.parse import parse_qs, urlparse
 
-# The delayed sixth stream-A response makes a failed unsubscribe observable.
 STREAMS = {
     "/streamA": (7, 8, 9, 10, 11, 12),
-    "/streamB": (5,),
+    "/streamB": (5,),  # Leave the following poll open until client.stop().
+    "/streamC": (5, 6, 7, 8, 9, 10),
 }
-PROBE_INDEX = ("/streamA", 12)
+PROBE_INDICES = {("/streamA", 12), ("/streamC", 10)}
+STREAM_C_BATCHES = {5: (5, 6), 7: (7, 8, 9), 10: (10,)}
 
 def payload(index):
     return "{}:{}".format(index, "".join(str(i) for i in range(100))).encode()
+
+def batch_payload(path, indices, boundary):
+    body = bytearray()
+    for index in indices:
+        data = payload(index)
+        body.extend("--{}\r\n".format(boundary).encode())
+        body.extend("x-opencmw-long-polling-idx: {}\r\n".format(index).encode())
+        body.extend("x-opencmw-topic: {}?sample={}\r\n".format(path, index).encode())
+        body.extend("x-opencmw-service-name: {}-service-{}\r\n".format(path, index).encode())
+        body.extend("content-length: {}\r\n\r\n".format(len(data)).encode())
+        body.extend(data)
+        body.extend(b"\r\n")
+    body.extend("--{}--\r\n".format(boundary).encode())
+    return bytes(body)
 
 HOLD_SECONDS = 30.0
 PROBE_DELAY_SECONDS = 0.5
 
 stopping = threading.Event()
+stream_c_recovery = threading.Event()
 
 class Handler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -42,28 +58,54 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._respond(404, b"unknown stream")
             return
 
-        index = parse_qs(parsed.query).get("LongPollingIdx", [""])[0]
+        params = parse_qs(parsed.query)
+        index = params.get("LongPollingIdx", [""])[0]
+        batch = params.get("LongPollingBatch", [None])[0]
         if index == "Next":
-            self._redirect(parsed.path, min(indices))
+            if parsed.path == "/streamC":
+                # Recovery must request Next; starting with Next would miss messages 5 and 6.
+                stream_c_recovery.set()
+                self._redirect(parsed.path, 7, batch)
+            else:
+                self._redirect(parsed.path, min(indices), batch)
             return
         if not index.isdigit():
             self._respond(400, b"malformed LongPollingIdx")
             return
 
-        if int(index) not in indices:
+        numeric_index = int(index)
+        if parsed.path == "/streamC" and batch == "AllAvailable":
+            # Request 3 starts at the oldest buffered message, 5.
+            numeric_index = max(numeric_index, min(indices))
+        if numeric_index not in indices:
             stopping.wait(HOLD_SECONDS)
             self._respond(504, b"")
             return
-        if (parsed.path, int(index)) == PROBE_INDEX:
+        if (parsed.path, numeric_index) in PROBE_INDICES:
             stopping.wait(PROBE_DELAY_SECONDS)
-        self._respond(200, payload(int(index)))
+
+        if batch is not None:
+            selected = STREAM_C_BATCHES.get(numeric_index) if parsed.path == "/streamC" and batch == "AllAvailable" else None
+            if selected is None:
+                self._respond(400, b"unexpected batch request")
+                return
+            if parsed.path == "/streamC" and numeric_index == 7 and not stream_c_recovery.is_set():
+                self._respond(200, b"not a multipart response", "multipart/mixed")
+                return
+            boundary = "opencmw-long-polling-multipart-boundary-{}".format(numeric_index)
+            self._respond(200, batch_payload(parsed.path, selected, boundary), "multipart/mixed; boundary={}".format(boundary))
+            return
+
+        self._respond(200, payload(numeric_index))
 
     def _common_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
 
-    def _redirect(self, path, index):
+    def _redirect(self, path, index, batch):
         # Absolute, because xhr2 does not resolve a relative Location against the request URL.
         location = "http://{}{}?LongPollingIdx={}".format(self.headers["Host"], path, index)
+        if batch is not None:
+            location += "&LongPollingBatch={}".format(batch)
         try:
             self.send_response(302)
             self._common_headers()
@@ -73,11 +115,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass
 
-    def _respond(self, code, body):
+    def _respond(self, code, body, content_type="application/octet-stream"):
         try:
             self.send_response(code)
             self._common_headers()
-            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)

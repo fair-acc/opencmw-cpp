@@ -110,6 +110,25 @@ static std::string normalize(URI<> uri) {
     return opencmw::mdp::Topic::fromMdpTopic(uri).toZmqTopic();
 }
 
+struct TestNativeClientSession : client::detail::ClientSessionBase<TestNativeClientSession, int> {
+    int                      nextStreamId = 1;
+    std::vector<int>         cancelledStreams;
+    std::vector<std::string> requestPaths;
+
+    int                      submitRequestImpl(const std::vector<nghttp2_nv> &headers, const IoBuffer *) {
+        for (const auto &header : headers) {
+            if (std::string_view(reinterpret_cast<const char *>(header.name), header.namelen) == ":path") {
+                requestPaths.emplace_back(reinterpret_cast<const char *>(header.value), header.valuelen);
+            }
+        }
+        return nextStreamId++;
+    }
+
+    void cancelStream(int streamId) {
+        cancelledStreams.push_back(streamId);
+    }
+};
+
 TEST_CASE("Basic Client Constructor and API Tests", "[http2]") {
     using namespace opencmw::client;
 
@@ -124,6 +143,110 @@ TEST_CASE("Basic Client Constructor and API Tests", "[http2]") {
     RestClient client3(DefaultContentTypeHeader(MIME::BINARY), VerifyServerCertificates(false));
     REQUIRE(client3.defaultMimeType() == MIME::BINARY);
     REQUIRE(client3.verifySslPeers() == false);
+}
+
+TEST_CASE("Native long-poll subscriptions", "[http2][long-polling]") {
+    using namespace opencmw::client;
+
+    SECTION("Continue after an invalid batch") {
+        TestNativeClientSession   session;
+        std::vector<mdp::Message> responses;
+
+        Command                   subscription;
+        subscription.command  = mdp::Command::Subscribe;
+        subscription.topic    = URI<>("http://localhost/batch?LongPollingIdx=0&LongPollingBatch=2");
+        subscription.callback = [&](const mdp::Message &message) { responses.push_back(message); };
+        session.startSubscription(std::move(subscription));
+
+        REQUIRE(session._subscriptions.size() == 1);
+        REQUIRE(session._requestsByStreamId.size() == 1);
+        const auto streamId    = session._requestsByStreamId.begin()->first;
+        auto      &request     = session._requestsByStreamId.begin()->second;
+        request.responseStatus = "200";
+        request.longPollingIdx = 0;
+        request.payload        = "not a multipart response";
+
+        CHECK(session.processResponse(streamId) == 0);
+        REQUIRE(responses.size() == 1);
+        CHECK_FALSE(responses.front().error.empty());
+        CHECK(responses.front().data.empty());
+        REQUIRE(session._subscriptions.size() == 1);
+        REQUIRE(session._requestsByStreamId.size() == 1);
+        REQUIRE(session.requestPaths.size() == 2);
+        const URI<> retryPath(session.requestPaths.back());
+        CHECK(retryPath.queryParamMap().at("LongPollingIdx") == "Next");
+        CHECK(retryPath.queryParamMap().at("LongPollingBatch") == "2");
+    }
+
+    SECTION("Single-message polling after indexed HTTP 500") {
+        TestNativeClientSession   session;
+        std::vector<mdp::Message> responses;
+
+        Command                   subscription;
+        subscription.command  = mdp::Command::Subscribe;
+        subscription.topic    = URI<>("http://localhost/single?LongPollingIdx=0");
+        subscription.callback = [&](const mdp::Message &message) { responses.push_back(message); };
+        session.startSubscription(std::move(subscription));
+
+        REQUIRE(session._requestsByStreamId.size() == 1);
+        const auto streamId    = session._requestsByStreamId.begin()->first;
+        auto      &request     = session._requestsByStreamId.begin()->second;
+        request.responseStatus = "500";
+        request.longPollingIdx = 0;
+        request.payload        = "server error";
+
+        CHECK(session.processResponse(streamId) == 0);
+        REQUIRE(responses.size() == 1);
+        CHECK_FALSE(responses.front().error.empty());
+        CHECK(session._subscriptions.size() == 1);
+        REQUIRE(session._requestsByStreamId.size() == 1);
+        REQUIRE(session.requestPaths.size() == 2);
+        const URI<> nextPath(session.requestPaths.back());
+        CHECK(nextPath.queryParamMap().at("LongPollingIdx") == "1");
+    }
+
+    SECTION("Reject conflicting subscriptions") {
+        TestNativeClientSession   session;
+        std::vector<mdp::Message> responses;
+
+        Command                   first;
+        first.command  = mdp::Command::Subscribe;
+        first.topic    = URI<>("http://localhost/batch?LongPollingIdx=0&LongPollingBatch=2");
+        first.callback = [](const mdp::Message &) {};
+        session.startSubscription(std::move(first));
+
+        Command second;
+        second.command  = mdp::Command::Subscribe;
+        second.topic    = URI<>("http://localhost/batch?LongPollingIdx=5&LongPollingBatch=3");
+        second.callback = [&](const mdp::Message &message) { responses.push_back(message); };
+        session.startSubscription(std::move(second));
+
+        REQUIRE(session._subscriptions.size() == 1);
+        REQUIRE(session._requestsByStreamId.size() == 1);
+        const auto &parameters = session._subscriptions.begin()->second.request.topic.queryParamMap();
+        REQUIRE(parameters.at(std::string(long_polling::kBatchParameter)));
+        CHECK(*parameters.at(std::string(long_polling::kBatchParameter)) == "2");
+        REQUIRE(responses.size() == 1);
+        CHECK_FALSE(responses.front().error.empty());
+        CHECK(responses.front().id == 0);
+    }
+
+    SECTION("Reject invalid subscription queries") {
+        TestNativeClientSession   session;
+        std::vector<mdp::Message> responses;
+
+        Command                   subscription;
+        subscription.command  = mdp::Command::Subscribe;
+        subscription.topic    = URI<>("http://localhost/batch?range=1+2&LongPollingIdx=0&LongPollingBatch=2");
+        subscription.callback = [&](const mdp::Message &message) { responses.push_back(message); };
+
+        CHECK_NOTHROW(session.startSubscription(std::move(subscription)));
+        CHECK(session._subscriptions.empty());
+        CHECK(session._requestsByStreamId.empty());
+        REQUIRE(responses.size() == 1);
+        CHECK_FALSE(responses.front().error.empty());
+        CHECK(responses.front().id == 0);
+    }
 }
 
 TEST_CASE("GET HTTP", "[http2]") {
@@ -524,16 +647,18 @@ TEST_CASE("REST client survives hostname resolution failure", "[http2]") {
 }
 
 TEST_CASE("Long polling example", "[http2]") {
-    constexpr int kFooMessages = 50;
+    const bool useBatch = GENERATE(false, true);
+    CAPTURE(useBatch);
+    constexpr int kFooMessages = 6;
 
     auto          brokerThread = std::jthread([](std::stop_token stopToken) {
-        RestServer server;
+        RestServer                server;
         majordomo::rest::Settings settings{ .port = kServerPort, .protocols = majordomo::rest::Http2 };
         REQUIRE(server.bind(settings));
 
-        const auto                  topic = URI<>("/foo?param1=1&param2=foo%2Fbar");
+        const auto          topic = URI<>("/foo?param1=1&param2=foo%2Fbar");
 
-        std::deque<Message>         messages;
+        std::deque<Message> messages;
         ensureMessageReceived(server, stopToken, messages);
         REQUIRE(messages.size() >= 1);
         const auto req0 = std::move(messages[0]);
@@ -546,8 +671,8 @@ TEST_CASE("Long polling example", "[http2]") {
         for (int i = 0; i < kFooMessages; ++i) {
             Message notify;
             notify.command     = mdp::Command::Notify;
-            notify.serviceName = "/foo";
-            notify.topic       = topic;
+            notify.serviceName = std::format("/foo-service-{}", i);
+            notify.topic       = URI<>(std::format("/foo?sample={}", i));
             auto data          = std::to_string(i);
             notify.data        = opencmw::IoBuffer(data.data(), data.size());
             server.handleNotification(opencmw::mdp::Topic::fromMdpTopic(topic), std::move(notify));
@@ -589,15 +714,16 @@ TEST_CASE("Long polling example", "[http2]") {
 
         client::RestClient       client;
         opencmw::client::Command sub;
-        sub.command  = mdp::Command::Subscribe;
+        sub.command         = mdp::Command::Subscribe;
         sub.clientRequestID = opencmw::IoBuffer("0");
-        sub.topic           = URI<>(std::format("http://localhost:{}/foo?param1=1&param2=foo%2fbar", kServerPort));
-        sub.callback = [&responseCount](const mdp::Message &msg) {
+        sub.topic           = URI<>(std::format("http://localhost:{}/foo?param1=1&param2=foo%2fbar{}", kServerPort, useBatch ? "&LongPollingIdx=0&LongPollingBatch=3" : ""));
+        sub.callback        = [&responseCount](const mdp::Message &msg) {
             REQUIRE(msg.command == mdp::Command::Notify);
             REQUIRE(msg.error == "");
             REQUIRE(msg.data.asString() == std::to_string(responseCount));
             REQUIRE(msg.protocolName == "http");
-            REQUIRE(normalize(msg.topic) == normalize(URI<>("/foo?param1=1&param2=foo%2Fbar")));
+            REQUIRE(msg.topic == URI<>(std::format("/foo?sample={}", responseCount.load())));
+            REQUIRE(msg.serviceName == std::format("/foo-service-{}", responseCount.load()));
             responseCount++;
         };
         client.request(std::move(sub));

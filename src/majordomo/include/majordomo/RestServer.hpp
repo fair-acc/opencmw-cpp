@@ -3,6 +3,7 @@
 
 #include "IoBuffer.hpp"
 #include "LoadTest.hpp"
+#include "LongPollingBatch.hpp"
 #include "MdpMessage.hpp"
 #include "MIME.hpp"
 #include "NgTcp2Util.hpp"
@@ -22,6 +23,7 @@
 #include <expected>
 #include <filesystem>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -115,7 +117,7 @@ inline std::expected<int, std::string> create_sock(Address &local_addr, std::str
     hints.ai_socktype = SOCK_DGRAM;
 
     addrinfo *res, *rp;
-    int       val = 1;
+    int       val   = 1;
 
     auto      paddr = addr == "*" ? nullptr : addr.data();
 
@@ -269,17 +271,18 @@ enum class RestMethod {
 inline RestMethod parseMethod(std::string_view methodString) {
     using enum RestMethod;
     return methodString == "OPTIONS" ? Options
-         : methodString == "PUT"  ? Post
-         : methodString == "POST" ? Post
-         : methodString == "GET"  ? Get
-                                  : Invalid;
+         : methodString == "PUT"     ? Post
+         : methodString == "POST"    ? Post
+         : methodString == "GET"     ? Get
+                                     : Invalid;
 }
 
 struct Request {
     std::vector<std::pair<std::string, std::string>> rawHeaders;
     mdp::Topic                                       topic;
     RestMethod                                       method = RestMethod::Invalid;
-    std::string                                      longPollIndex;
+    std::optional<std::string>                       longPollIndex;
+    std::optional<std::string>                       longPollBatch;
     std::string                                      contentType;
     std::string                                      accept;
     std::string                                      payload;
@@ -463,14 +466,31 @@ struct ResponseData {
     IoBuffer *bodyBuffer = nullptr;
 };
 
-constexpr int kHttpOk       = 200;
-constexpr int kHttpError    = 500;
-constexpr int kFileNotFound = 404;
+constexpr int kHttpOk         = 200;
+constexpr int kHttpBadRequest = 400;
+constexpr int kHttpError      = 500;
+constexpr int kFileNotFound   = 404;
+
+struct LongPollingBatchRequest {
+    enum class Mode {
+        None,
+        AllAvailable,
+        FixedCount
+    };
+
+    Mode        mode  = Mode::None;
+    std::size_t count = 1;
+};
 
 template<typename Derived, typename TStreamId>
 struct SessionBase {
-    using PendingRequest = std::tuple<std::uint64_t, TStreamId>;              // requestId, streamId
-    using PendingPoll    = std::tuple<std::string, std::uint64_t, TStreamId>; // zmqTopic, PollingIndex, streamId
+    using PendingRequest = std::tuple<std::uint64_t, TStreamId>; // requestId, streamId
+    struct PendingPoll {
+        std::string             zmqTopic;
+        std::uint64_t           index;
+        LongPollingBatchRequest batch;
+        TStreamId               streamId;
+    };
     std::map<TStreamId, Request>      _requestsByStreamId;
     std::map<TStreamId, ResponseData> _responsesByStreamId;
     std::vector<PendingRequest>       _pendingRequests;
@@ -545,12 +565,90 @@ struct SessionBase {
         self().sendResponse(streamId, code, std::move(response), std::move(extraHeaders));
     }
 
-    void respondWithLongPollingRedirect(TStreamId streamId, const URI<> &topic, std::size_t longPollIdx) {
-        auto location = URI<>::UriFactory(topic).addQueryParameter("LongPollingIdx", std::to_string(longPollIdx)).build();
-        self().respondWithRedirect(streamId, location.str());
+    void respondWithLongPollingRedirect(TStreamId streamId, const URI<> &topic, std::uint64_t longPollIdx, const std::optional<std::string> &batch) {
+        auto factory = URI<>::UriFactory(topic).addQueryParameter("LongPollingIdx", std::to_string(longPollIdx));
+        if (batch.has_value()) {
+            std::move(factory).addQueryParameter(std::string(long_polling::kBatchParameter), *batch);
+        }
+        const auto                location = factory.build();
+
+        majordomo::rest::Response response;
+        response.code = 302;
+        response.headers.emplace_back("location", location.str());
+        response.headers.emplace_back("content-length", "0");
+        self().sendResponse(streamId, std::move(response));
+    }
+
+    void respondToLongPollBatch(TStreamId streamId, const SubscriptionCacheEntry &entry, std::uint64_t firstIndex, std::size_t count) {
+        std::vector<long_polling::BatchPart> parts;
+        parts.reserve(count);
+        const auto firstOffset = firstIndex - entry.firstIndex;
+        for (std::size_t offset = 0; offset < count; ++offset) {
+            const auto &message = entry.messages[firstOffset + offset];
+            const auto  payload = message.error.empty() ? message.data.asString() : std::string_view(message.error);
+            parts.emplace_back(firstIndex + offset, message.topic.str(), message.serviceName, payload);
+        }
+
+        const auto encoded = long_polling::encodeBatch(parts);
+        if (!encoded.has_value()) {
+            respondToLongPollWithError(streamId, encoded.error(), kHttpError, firstIndex);
+            return;
+        }
+
+        majordomo::rest::Response response;
+        response.code = kHttpOk;
+        response.headers.emplace_back("content-type", std::format("multipart/mixed; boundary={}", long_polling::kBoundary));
+        response.headers.emplace_back("content-length", std::to_string(encoded->size()));
+        response.headers.emplace_back("x-opencmw-long-polling-idx", std::to_string(firstIndex));
+        response.body = IoBuffer(encoded->data(), encoded->size());
+        self().sendResponse(streamId, std::move(response));
+    }
+
+    std::expected<LongPollingBatchRequest, std::string> parseLongPollingBatch(const Request &request) const {
+        if (!request.longPollBatch.has_value()) {
+            return LongPollingBatchRequest{};
+        }
+        if (*request.longPollBatch == long_polling::kAllAvailable) {
+            return LongPollingBatchRequest{ .mode = LongPollingBatchRequest::Mode::AllAvailable };
+        }
+
+        const auto parsed = long_polling::parseUnsigned(*request.longPollBatch, long_polling::kBatchParameter);
+        if (!parsed.has_value()) {
+            return std::unexpected(parsed.error());
+        }
+        if (*parsed == 0 || *parsed > SubscriptionCacheEntry::kCapacity) {
+            return std::unexpected(std::format("LongPollingBatch must be between 1 and {}", SubscriptionCacheEntry::kCapacity));
+        }
+        return LongPollingBatchRequest{ .mode = LongPollingBatchRequest::Mode::FixedCount, .count = static_cast<std::size_t>(*parsed) };
     }
 
     std::optional<Message> processLongPollRequest(TStreamId streamId, const Request &request) {
+        std::optional<std::uint64_t> parsedIndex;
+        if (request.longPollIndex != "Next" && request.longPollIndex != "Last") {
+            const auto result = long_polling::parseUnsigned(request.longPollIndex.value_or(""), long_polling::kIndexParameter);
+            if (!result.has_value()) {
+                respondWithError(streamId, result.error(), kHttpBadRequest);
+                return {};
+            }
+            parsedIndex = *result;
+        }
+
+        const auto parsedBatch = parseLongPollingBatch(request);
+        if (!parsedBatch.has_value()) {
+            if (parsedIndex.has_value()) {
+                respondToLongPollWithError(streamId, parsedBatch.error(), kHttpBadRequest, *parsedIndex);
+            } else {
+                respondWithError(streamId, parsedBatch.error(), kHttpBadRequest);
+            }
+            return {};
+        }
+        const auto batch = *parsedBatch;
+        if (parsedIndex.has_value() && batch.mode == LongPollingBatchRequest::Mode::FixedCount
+                && *parsedIndex > std::numeric_limits<std::uint64_t>::max() - (batch.count - 1)) {
+            respondToLongPollWithError(streamId, "LongPollingIdx + LongPollingBatch overflows", kHttpBadRequest, *parsedIndex);
+            return {};
+        }
+
         std::optional<Message> result;
         const auto             zmqTopic = request.topic.toZmqTopic();
         auto                   entryIt  = _sharedData->_subscriptionCache.find(zmqTopic);
@@ -562,19 +660,16 @@ struct SessionBase {
         }
         auto &entry = entryIt->second;
         if (request.longPollIndex == "Next") {
-            respondWithLongPollingRedirect(streamId, request.topic.toMdpTopic(), entry.nextIndex());
+            respondWithLongPollingRedirect(streamId, request.topic.toMdpTopic(), entry.nextIndex(), request.longPollBatch);
             return result;
         } else if (request.longPollIndex == "Last") {
             const std::size_t last = entry.messages.empty() ? entry.nextIndex() : entry.lastIndex();
-            respondWithLongPollingRedirect(streamId, request.topic.toMdpTopic(), last);
+            respondWithLongPollingRedirect(streamId, request.topic.toMdpTopic(), last, request.longPollBatch);
             return result;
         }
 
-        std::uint64_t index = 0;
-        if (auto [ptr, ec] = std::from_chars(request.longPollIndex.data(), request.longPollIndex.data() + request.longPollIndex.size(), index); ec != std::errc()) {
-            respondWithError(streamId, std::format("Malformed LongPollingIdx '{}'", request.longPollIndex));
-            return {};
-        }
+        assert(parsedIndex.has_value());
+        const auto index = *parsedIndex;
 
 #ifdef OPENCMW_PROFILE_HTTP
         if (index % 100 == 0) {
@@ -583,13 +678,32 @@ struct SessionBase {
         }
 #endif
 
-        if (index < entry.firstIndex) {
+        if (batch.mode == LongPollingBatchRequest::Mode::AllAvailable) {
+            if (!entry.messages.empty() && index <= entry.lastIndex()) {
+                const auto first = std::max(index, entry.firstIndex);
+                respondToLongPollBatch(streamId, entry, first, entry.nextIndex() - first);
+            } else {
+                _pendingPolls.push_back(PendingPoll{ zmqTopic, index, batch, streamId });
+            }
+        } else if (batch.mode == LongPollingBatchRequest::Mode::FixedCount) {
+            const auto first = entry.messages.empty() ? index : std::max(index, entry.firstIndex);
+            if (first > std::numeric_limits<std::uint64_t>::max() - (batch.count - 1)) {
+                respondToLongPollWithError(streamId, "LongPollingIdx + LongPollingBatch overflows", kHttpBadRequest, first);
+            } else {
+                const auto lastRequested = first + batch.count - 1;
+                if (entry.messages.empty() || lastRequested > entry.lastIndex()) {
+                    _pendingPolls.push_back(PendingPoll{ zmqTopic, first, batch, streamId });
+                } else {
+                    respondToLongPollBatch(streamId, entry, first, batch.count);
+                }
+            }
+        } else if (index < entry.firstIndex) {
             // index is too old, redirect to the next index
             HTTP_DBG("Server::LongPoll: index {} < firstIndex {}", index, entry.firstIndex);
-            respondWithLongPollingRedirect(streamId, request.topic.toMdpTopic(), entry.nextIndex());
+            respondWithLongPollingRedirect(streamId, request.topic.toMdpTopic(), entry.nextIndex(), {});
         } else if (entry.messages.empty() || index > entry.lastIndex()) {
             // future index, wait for new messages
-            _pendingPolls.emplace_back(zmqTopic, index, streamId);
+            _pendingPolls.push_back(PendingPoll{ zmqTopic, index, batch, streamId });
         } else {
             // we have a message for this index, send it
             respondToLongPoll(streamId, index, Message(entry.messages[index - entry.firstIndex]));
@@ -642,6 +756,8 @@ struct SessionBase {
             for (const auto &[qkey, qvalue] : pathUri.queryParamMap()) {
                 if (qkey == "LongPollingIdx") {
                     request.longPollIndex = qvalue.value_or("");
+                } else if (qkey == long_polling::kBatchParameter) {
+                    request.longPollBatch = qvalue.value_or("");
                 } else if (qkey == "SubscriptionContext") {
                     request.topic           = mdp::Topic::fromMdpTopic(URI<>(qvalue.value_or("")));
                     haveSubscriptionContext = true;
@@ -666,8 +782,8 @@ struct SessionBase {
         }
 
         request.method = parseMethod(method);
-        // Only GET + longPollIndex => LongPoll
-        if (request.method == RestMethod::Get && !request.longPollIndex.empty()) {
+        // LongPollingBatch is only meaningful together with LongPollingIdx.
+        if (request.method == RestMethod::Get && (request.longPollIndex.has_value() || request.longPollBatch.has_value())) {
             request.method = RestMethod::LongPoll;
         }
 
@@ -686,8 +802,8 @@ struct SessionBase {
 
             switch (request.method) {
             case RestMethod::Options:
-               respondToCorsPreflight(streamId);
-               break;
+                respondToCorsPreflight(streamId);
+                break;
             case RestMethod::Get:
             case RestMethod::Post:
                 if (auto m = processGetSetRequest(streamId, request, idGenerator); m.has_value()) {
@@ -712,9 +828,20 @@ struct SessionBase {
     void handleNotification(std::string_view zmqTopic, std::uint64_t index, const Message &msg) {
         auto pollIt = _pendingPolls.begin();
         while (pollIt != _pendingPolls.end()) {
-            const auto &[pendingZmqTopic, pollIndex, streamId] = *pollIt;
-            if (pendingZmqTopic == zmqTopic && index == pollIndex) {
-                respondToLongPoll(streamId, pollIndex, Message(msg));
+            const auto &[pendingZmqTopic, pollIndex, batch, streamId] = *pollIt;
+            const auto lastRequested                                  = batch.mode == LongPollingBatchRequest::Mode::FixedCount ? pollIndex + batch.count - 1 : pollIndex;
+            const bool ready                                          = batch.mode == LongPollingBatchRequest::Mode::None ? index == pollIndex : index >= lastRequested;
+            if (pendingZmqTopic == zmqTopic && ready) {
+                if (batch.mode == LongPollingBatchRequest::Mode::None) {
+                    respondToLongPoll(streamId, pollIndex, Message(msg));
+                } else if (const auto entry = _sharedData->_subscriptionCache.find(pendingZmqTopic); entry != _sharedData->_subscriptionCache.end()) {
+                    if (batch.mode == LongPollingBatchRequest::Mode::AllAvailable) {
+                        const auto first = std::max(pollIndex, entry->second.firstIndex);
+                        respondToLongPollBatch(streamId, entry->second, first, static_cast<std::size_t>(entry->second.nextIndex() - first));
+                    } else {
+                        respondToLongPollBatch(streamId, entry->second, pollIndex, batch.count);
+                    }
+                }
                 pollIt = _pendingPolls.erase(pollIt);
             } else {
                 ++pollIt;
@@ -905,26 +1032,6 @@ struct Http2Session : public SessionBase<Http2Session, std::int32_t> {
         }
     }
 
-    void respondWithRedirect(std::int32_t streamId, std::string_view location) {
-        HTTP_DBG("Server::respondWithRedirect: streamId={} location={}", streamId, location);
-        // :status must go first
-        constexpr auto noCopy  = NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE;
-         auto           headers = std::vector{
-             nv(u8span(":status"), u8span("302"), noCopy),
-             nv(u8span("location"), u8span(location)),
-             nv(u8span("access-control-allow-origin"), u8span("*"), noCopy)};
-
-        if (!_sharedData->_altSvcHeaderValue.empty()) {
-            headers.push_back(_sharedData->_altSvcHeader);
-        }
-        nghttp2_submit_response2(_session, streamId, headers.data(), headers.size(), nullptr);
-    }
-
-    void respondWithLongPollingRedirect(std::int32_t streamId, const URI<> &topic, std::size_t longPollIdx) {
-        auto location = URI<>::UriFactory(topic).addQueryParameter("LongPollingIdx", std::to_string(longPollIdx)).build();
-        respondWithRedirect(streamId, location.str());
-    }
-
     int frame_recv_callback(const nghttp2_frame *frame) {
         HTTP_DBG("Server::Frame: id={} {} {} {}", frame->hd.stream_id, frame->hd.type, frame->hd.flags, (frame->hd.flags & NGHTTP2_FLAG_END_STREAM) ? "END_STREAM" : "");
         switch (frame->hd.type) {
@@ -968,7 +1075,7 @@ struct Http2Session : public SessionBase<Http2Session, std::int32_t> {
         // if this was canceled by the client, remove any pending requests/polls
         if (erased > 0) {
             std::erase_if(_pendingRequests, [stream_id](const auto &request) { return std::get<1>(request) == stream_id; });
-            std::erase_if(_pendingPolls, [stream_id](const auto &poll) { return std::get<2>(poll) == stream_id; });
+            std::erase_if(_pendingPolls, [stream_id](const auto &poll) { return poll.streamId == stream_id; });
         }
         return 0;
     }
@@ -1196,18 +1303,6 @@ struct Http3Session : public SessionBase<Http3Session<TServer>, std::int64_t>, p
         }
     }
 
-    void respondWithRedirect(std::int64_t streamId, std::string_view location) {
-        HTTP_DBG("Server::H3::respondWithRedirect: streamId={} location={}", streamId, location);
-        // :status must go first
-        constexpr auto noCopy  = NGHTTP3_NV_FLAG_NO_COPY_NAME | NGHTTP3_NV_FLAG_NO_COPY_VALUE;
-        const auto     headers = std::array{
-            nv3(u8span(":status"), u8span("302"), noCopy),
-            nv3(u8span("location"), u8span(location)),
-            nv3(u8span("access-control-allow-origin"), u8span("*"), noCopy) };
-
-        nghttp3_conn_submit_response(_httpconn, streamId, headers.data(), headers.size(), nullptr);
-    }
-
     int init(const Endpoint &ep, const Address &local_addr, const sockaddr *sa, socklen_t salen, const ngtcp2_cid *dcid, const ngtcp2_cid *scid, const ngtcp2_cid *ocid, std::span<const std::uint8_t> token, ngtcp2_token_type token_type, std::uint32_t version, TLSServerContext &tls_ctx) {
         auto handshakeCompleted = [](ngtcp2_conn *, void *user_data) {
             auto session = static_cast<Http3Session *>(user_data);
@@ -1381,7 +1476,7 @@ struct Http3Session : public SessionBase<Http3Session<TServer>, std::int64_t>, p
         callbacks.version_negotiation            = ngtcp2_crypto_version_negotiation_cb;
         callbacks.recv_tx_key                    = recvTxKey;
 
-        _scid.datalen = NGTCP2_SV_SCIDLEN;
+        _scid.datalen                            = NGTCP2_SV_SCIDLEN;
         if (generate_secure_random({ _scid.data, _scid.datalen }) != 0) {
             HTTP_DBG("Could not generate connection ID");
             return -1;
@@ -2216,8 +2311,8 @@ inline std::expected<TcpSocket, std::string> createTcpServerSocket(SSL_CTX *ssl_
 struct RestServer {
     TcpSocket                                                                 _tcpServerSocket;
     Http3ServerSocket                                                         _quicServerSocket;
-    SSL_CTX_Ptr                                                               _sslCtxTcp  = SSL_CTX_Ptr(nullptr, SSL_CTX_free);
-    EVP_PKEY_Ptr                                                              _key        = EVP_PKEY_Ptr(nullptr, EVP_PKEY_free);
+    SSL_CTX_Ptr                                                               _sslCtxTcp = SSL_CTX_Ptr(nullptr, SSL_CTX_free);
+    EVP_PKEY_Ptr                                                              _key       = EVP_PKEY_Ptr(nullptr, EVP_PKEY_free);
     std::vector<X509_Ptr>                                                     _cert;
     std::shared_ptr<SharedData>                                               _sharedData = std::make_shared<SharedData>();
     std::map<int, std::unique_ptr<Http2Session>>                              _h2Sessions;
@@ -2495,8 +2590,8 @@ struct RestServer {
             _sharedData->_altSvcHeaderValue = std::format("h3=\":{}\"; ma=86400", port);
             _sharedData->_altSvcHeader      = nv(u8span("alt-svc"), u8span(_sharedData->_altSvcHeaderValue), NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE);
         }
-        _quicServerSocket               = std::move(quicSocket.value());
-        _endpoint.fd                    = _quicServerSocket.fd;
+        _quicServerSocket = std::move(quicSocket.value());
+        _endpoint.fd      = _quicServerSocket.fd;
         return {};
     }
 
@@ -2508,8 +2603,8 @@ struct RestServer {
 
         *p++                                                  = generate_reserved_version(sa, salen, version);
 
-        *p++        = NGTCP2_PROTO_VER_V1;
-        *p++        = NGTCP2_PROTO_VER_V2;
+        *p++                                                  = NGTCP2_PROTO_VER_V1;
+        *p++                                                  = NGTCP2_PROTO_VER_V2;
 
         auto nwrite                                           = ngtcp2_pkt_write_version_negotiation(buf.wpos(), buf.left(), std::uniform_int_distribution<uint8_t>()(_randgen), dcid.data(), dcid.size(), scid.data(), scid.size(), sv.data(), static_cast<std::size_t>(p - std::begin(sv)));
         if (nwrite < 0) {
