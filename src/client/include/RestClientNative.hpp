@@ -627,7 +627,8 @@ public:
         } {
         _worker = std::jthread([queue = _requestQueue, sslSettings = _sslSettings, mimeType = _mimeType](std::stop_token stopToken) {
             auto preferredMimeType = [&mimeType](const URI<> &topic) {
-                if (const auto contentTypeHeader = topic.queryParamMap().find("contentType"); contentTypeHeader != topic.queryParamMap().end() && contentTypeHeader->second) {
+                const auto &parameters = topic.queryParamMap();
+                if (const auto contentTypeHeader = parameters.find("contentType"); contentTypeHeader != parameters.end() && contentTypeHeader->second) {
                     return contentTypeHeader->second.value();
                 }
                 return std::string{ mimeType.typeName() };
@@ -641,7 +642,7 @@ public:
                 if (!cmd.callback) {
                     return;
                 }
-                mdp::Message msg;
+                mdp::Message msg{};
                 msg.protocolName    = cmd.topic.scheme().value_or("");
                 msg.arrivalTime     = std::chrono::system_clock::now();
                 msg.command         = mdp::Command::Final;
@@ -659,12 +660,18 @@ public:
                     switch (cmd.command) {
                     case mdp::Command::Get:
                     case mdp::Command::Set: {
+                        std::string preferred;
+                        try {
+                            preferred = preferredMimeType(cmd.topic);
+                        } catch (const std::exception &e) {
+                            reportError(cmd, e.what());
+                            continue;
+                        }
                         auto session = ensureSession(ssl_ctx, sessions, sslSettings, cmd.topic);
                         if (!session) {
                             reportError(cmd, std::format("Could not create REST session for endpoint '{}': {}", cmd.topic.str(), session.error()));
                             continue;
                         }
-                        auto preferred = preferredMimeType(cmd.topic);
                         session.value()->submitRequest(std::move(cmd), mode, std::move(preferred), {});
                     } break;
                     case mdp::Command::Subscribe: {
