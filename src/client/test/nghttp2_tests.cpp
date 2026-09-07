@@ -154,6 +154,9 @@ TEST_CASE("GET HTTP", "[http2]") {
         ensureMessageReceived(server, stopToken, messages);
     });
 
+    std::vector<mdp::Message> rejectedResponses;
+    std::atomic<int>         rejectedCount = 0;
+
     // Client using plain http
     RestClient  http;
     Stopper     stopper(serverThread.get_stop_source());
@@ -161,6 +164,32 @@ TEST_CASE("GET HTTP", "[http2]") {
 
     std::atomic<int> responseCount = 0;
 
+    // Rejected queries must report errors without stopping the worker or reaching the server.
+    const URI<> rejectedTopic(std::format("http://localhost:{}/sayhello?ctx=a,b", kServerPort));
+    for (const auto command : { mdp::Command::Get, mdp::Command::Set }) {
+        client::Command invalid{};
+        invalid.command         = command;
+        invalid.topic           = rejectedTopic;
+        invalid.clientRequestID = IoBuffer(command == mdp::Command::Get ? "invalid-get" : "invalid-set");
+        invalid.callback        = [&rejectedResponses, &rejectedCount](const mdp::Message &response) {
+            rejectedResponses.push_back(response);
+            ++rejectedCount;
+        };
+        http.request(std::move(invalid));
+    }
+    REQUIRE(waitFor(rejectedCount, 2));
+    REQUIRE(rejectedResponses.size() == 2);
+    for (std::size_t i = 0; i < rejectedResponses.size(); ++i) {
+        const auto &response = rejectedResponses[i];
+        CHECK(response.id == 0);
+        CHECK(response.command == mdp::Command::Final);
+        CHECK(response.topic == rejectedTopic);
+        CHECK(response.clientRequestID.asString() == (i == 0 ? "invalid-get" : "invalid-set"));
+        CHECK(response.error.contains("URI query contains illegal characters"));
+        CHECK(response.data.empty());
+    }
+
+    // A valid request on the same client verifies that its worker continues after both errors.
     client::Command  req0;
     req0.command         = mdp::Command::Get;
     req0.clientRequestID = opencmw::IoBuffer("0");
