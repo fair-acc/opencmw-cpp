@@ -224,6 +224,25 @@ TEST_CASE("GET HTTP", "[http2]") {
     REQUIRE(waitFor(responseCount, 2));
 }
 
+TEST_CASE("Invalid redirect queries are reported without throwing", "[http2]") {
+    client::detail::Http2ClientSession session{ opencmw::rest::detail::TcpSocket{} };
+    std::vector<mdp::Message>          responses;
+
+    auto &request            = session._requestsByStreamId[1];
+    request.request.command  = mdp::Command::Get;
+    request.request.topic    = URI<>("http://localhost/service");
+    request.request.callback = [&](const mdp::Message &message) { responses.push_back(message); };
+    REQUIRE(session.addHeader(1, ":status", "302"));
+    REQUIRE(session.addHeader(1, "location", "/service?LongPollingIdx=1&ctx=a,b"));
+
+    int result = 0;
+    REQUIRE_NOTHROW(result = session.processResponse(1));
+    CHECK(result == NGHTTP2_ERR_TEMPORAL_CALLBACK_FAILURE);
+    REQUIRE(responses.size() == 1);
+    CHECK_FALSE(responses.front().error.empty());
+    CHECK(session._requestsByStreamId.empty());
+}
+
 TEST_CASE("HTTPS", "[http2]") {
     using namespace opencmw::client;
 
