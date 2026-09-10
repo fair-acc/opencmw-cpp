@@ -15,6 +15,7 @@
 #include <string_view>
 #include <sys/poll.h>
 #include <thread>
+#include <tuple>
 #include <unistd.h>
 
 #include <nghttp2/nghttp2.h>
@@ -245,6 +246,7 @@ struct ClientSessionBase {
                 std::optional<URI<>> location;
                 try {
                     location = URI<>(it->second.location);
+                    std::ignore = location->queryParamMap(); // Lazy query parsing here so errors are caught.
                 } catch (const std::exception &e) {
                     HTTP_DBG("Client::Header: Could not parse URI '{}': {}", it->second.location, e.what());
                     it->second.reportError(std::format("Could not parse redirect URI '{}': {}", it->second.location, e.what()));
