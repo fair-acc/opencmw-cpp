@@ -3,6 +3,9 @@
 #include <Client.hpp>
 #include <IoBuffer.hpp>
 #include <MockServer.hpp>
+#include <ThreadAffinity.hpp>
+
+#include <algorithm>
 
 namespace opencmw_client_publisher_test {
 
@@ -63,6 +66,56 @@ TEST_CASE("Basic get/set test", "[ClientContext]") {
     });
     std::this_thread::sleep_for(10ms); // allow the reply to reach the client
     REQUIRE(received == 2);
+}
+
+struct PinThreadToSingleCpuGuard {
+    std::vector<bool> previousAffinity = opencmw::thread::getThreadAffinity();
+
+    PinThreadToSingleCpuGuard() {
+        std::vector<bool> singleCpu(previousAffinity.size(), false);
+        singleCpu[static_cast<std::size_t>(std::ranges::find(previousAffinity, true) - previousAffinity.begin())] = true;
+        opencmw::thread::setThreadAffinity(singleCpu);
+    }
+
+    ~PinThreadToSingleCpuGuard() { opencmw::thread::setThreadAffinity(previousAffinity); }
+};
+
+TEST_CASE("Regression test for messages not coming together as a single multipart message", "[MDClientCtx]") {
+    // this bug was that a message poller might see a message while it is only partially sent. With multiple cores, the issue
+    // does not reproduce reliably because the sender is able to get in the second half of the message through before the
+    // poller can read it
+    const PinThreadToSingleCpuGuard pinGuard;
+    constexpr int                   kNumRequests = 500;
+    const zmq::Context              zctx{};
+    MockServer                      server(zctx);
+    MDClientCtx                     client(zctx, 20ms, "burstClient");
+    const auto                      endpoint = URI<STRICT>::factory(URI<STRICT>(server.address())).scheme("mdp").path("/a.service").build();
+
+    for (int i = 0; i < kNumRequests; ++i) {
+        opencmw::client::Command set;
+        set.command = Command::Set;
+        set.topic   = endpoint;
+        set.data    = IoBuffer("abc");
+        client.request(std::move(set));
+    }
+
+    int setsReceived = 0;
+    int setsWithData = 0;
+    while (setsReceived < kNumRequests) {
+        server.processRequest([&](auto &&req, auto &reply) {
+            if (req.command == Command::Set) {
+                setsReceived++;
+                if (req.data.asString() == "abc") {
+                    setsWithData++;
+                }
+            }
+            reply.topic = Message::URI::factory(endpoint).build();
+        });
+    }
+
+    REQUIRE(setsReceived == kNumRequests);
+    REQUIRE(setsWithData == kNumRequests);
+    client.stop();
 }
 
 TEST_CASE("Basic subscription test", "[ClientContext]") {
