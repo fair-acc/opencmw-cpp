@@ -93,7 +93,7 @@ void checkBatchSubscriptionOverlap(TestState &state) {
 
 // PThread worker counts are Emscripten internals used only for this leak check.
 int runningWorkerCount() noexcept {
-    return EM_ASM_INT({ return PThread.runningWorkers.length; });
+    return EM_ASM_INT({ return Object.keys(PThread.pthreads).length; });
 }
 
 int unusedWorkerCount() noexcept {

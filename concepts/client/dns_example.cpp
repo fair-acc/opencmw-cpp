@@ -2,7 +2,7 @@
 #include <services/dns.hpp>
 #include <services/dns_client.hpp>
 #include <utility>
-#ifndef EMSCRIPTEN
+#ifndef __EMSCRIPTEN__
 #include <Client.hpp>
 #include <concepts/majordomo/helpers.hpp>
 #include <majordomo/base64pp.hpp>
@@ -10,7 +10,7 @@
 #include <majordomo/Worker.hpp>
 #else
 #include <emscripten/trace.h>
-#endif // EMSCRIPTEN
+#endif // __EMSCRIPTEN__
 
 #include <RestClient.hpp>
 
@@ -29,7 +29,7 @@ using namespace opencmw::service::dns;
  * The server part is not available on emscripten
  */
 
-#ifndef EMSCRIPTEN
+#ifndef __EMSCRIPTEN__
 void run_dns_server(std::string_view httpAddress, std::string_view mdpAddress) {
     majordomo::Broker<>                                         broker{ "Broker", {} };
     std::string                                                 rootPath{ "./" };
@@ -75,7 +75,7 @@ int main(int argc, char *argv[]) {
     const std::vector<std::string_view> args(argv + 1, argv + argc);
     std::string_view                    command = args[0];
     if (command == "server" && args.size() == 3) {
-#if defined(EMSCRIPTEN)
+#if defined(__EMSCRIPTEN__)
         std::print("unable to run server on emscripten\n");
 #else
         std::print("running server on addresses: {}, {}\n", args[1], args[2]);
@@ -85,7 +85,7 @@ int main(int argc, char *argv[]) {
         // get client
         std::print("getting client for server {}\n", args[1]);
         std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
-#ifndef EMSCRIPTEN
+#ifndef __EMSCRIPTEN__
         zmq::Context context;
         clients.emplace_back(std::make_unique<client::MDClientCtx>(context, 20ms, "dnsTestClient"));
 #endif

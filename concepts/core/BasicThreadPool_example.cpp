@@ -20,7 +20,7 @@ int main() {
     // poolWork.execute([](const auto &...args) { std::print(std::runtime_format("Hello World from thread '{}'!\n"), args...); }, getThreadName());
 
     // constexpr auto           func1  = []<typename... T>(T&&...args) { return std::format(std::format_string<std::string, T...>("thread '{1}' scheduled task '{0}'!\n"), getThreadName(), args...); };
-    constexpr auto           func1  = [](const auto &...args) { return std::format("thread '{1}' scheduled task '{0}'!\n", args..., getThreadName()); };
+    constexpr auto           func1  = [](const std::string &taskName) { return std::format("thread '{1}' scheduled task '{0}'!\n", taskName, getThreadName()); };
     std::future<std::string> result = poolIO.execute<"customTaskName">(func1, getThreadName());
     // do something else ... get result, wait if necessary
     std::cout << result.get() << std::endl;

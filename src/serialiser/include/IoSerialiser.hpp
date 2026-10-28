@@ -380,7 +380,7 @@ constexpr void deserialise(IoBuffer &buffer, ReflectableClass auto &value, Deser
                 }
                 IoSerialiser<protocol, MemberType>::deserialise(buffer, field, getAnnotatedMember(unwrapPointerCreateIfAbsent(member(value))));
                 if constexpr (check != ProtocolCheck::IGNORE) {
-                    info.setFields[parent.fieldName][static_cast<uint64_t>(fieldIndex)] = true;
+                    info.setFields[parent.fieldName][static_cast<std::size_t>(fieldIndex)] = true;
                 }
             }
         });
@@ -400,7 +400,7 @@ constexpr void deserialise(IoBuffer &buffer, ReflectableClass auto &value, Deser
                     field.hierarchyDepth--;
                     field.subfields = previousSubFields - 1;
                     if constexpr (check != ProtocolCheck::IGNORE) {
-                        info.setFields[parent.fieldName][static_cast<uint64_t>(fieldIndex)] = true;
+                        info.setFields[parent.fieldName][static_cast<std::size_t>(fieldIndex)] = true;
                     }
                 }
             });
