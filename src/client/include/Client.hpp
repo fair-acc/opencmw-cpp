@@ -410,9 +410,9 @@ private:
         zmq::MessageFrame reqId{ std::to_string(req_id) };
         reqId.send(_control_socket_send, ZMQ_SNDMORE).assertSuccess();
         zmq::MessageFrame endpoint{ std::string(uri.str()) };
-        endpoint.send(_control_socket_send, isSet ? ZMQ_SNDMORE : 0).assertSuccess();
+        endpoint.send(_control_socket_send, ZMQ_SNDMORE).assertSuccess();
         zmq::MessageFrame rbacframe{ std::move(rbac) };
-        rbacframe.send(_control_socket_send, 0).assertSuccess();
+        rbacframe.send(_control_socket_send, isSet ? ZMQ_SNDMORE : 0).assertSuccess();
         if (isSet) {
             zmq::MessageFrame dataframe{ std::move(data) };
             dataframe.send(_control_socket_send, 0).assertSuccess();
