@@ -1,4 +1,4 @@
-#ifdef EMSCRIPTEN
+#ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
 #include <emscripten/threading.h>
 #include <emscripten/trace.h>
@@ -438,7 +438,7 @@ void wait_for_results() {
     }
     DEBUG_LOG_EVERY_SECOND("waiting for results");
 
-    if (auto s = still_running_tests() != "") {
+    if (still_running_tests() != "") {
         DEBUG_LOG_EVERY_SECOND("waiting for " + still_running_tests())
     } else {
         DEBUG_LOG("~wait_for_results")

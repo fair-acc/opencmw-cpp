@@ -315,8 +315,8 @@ public:
     }
 
     // TODO: Do we need support for cancellation?
-    template<const basic_fixed_string taskName = "", uint32_t priority = 0, int32_t cpuID = -1, std::invocable Callable, typename... Args, typename R = std::invoke_result_t<Callable, Args...>>
-        requires(std::is_same_v<R, void>)
+    template<const basic_fixed_string taskName = "", uint32_t priority = 0, int32_t cpuID = -1, typename Callable, typename... Args, typename R = std::invoke_result_t<Callable, Args...>>
+        requires(std::invocable<Callable, Args...> && std::is_same_v<R, void>)
     void execute(Callable &&func, Args &&...args) {
         static thread_local SpinWait spinWait;
         if constexpr (cpuID >= 0) {
@@ -344,8 +344,8 @@ public:
         }
     }
 
-    template<const basic_fixed_string taskName = "", uint32_t priority = 0, int32_t cpuID = -1, std::invocable Callable, typename... Args, typename R = std::invoke_result_t<Callable, Args...>>
-        requires(!std::is_same_v<R, void>)
+    template<const basic_fixed_string taskName = "", uint32_t priority = 0, int32_t cpuID = -1, typename Callable, typename... Args, typename R = std::invoke_result_t<Callable, Args...>>
+        requires(std::invocable<Callable, Args...> && !std::is_same_v<R, void>)
     [[nodiscard]] std::future<R> execute(Callable &&func, Args &&...funcArgs) {
         if constexpr (cpuID >= 0) {
             if (cpuID >= _affinityMask.size() || !_affinityMask[cpuID]) {
@@ -420,7 +420,8 @@ private:
         updateThreadConstraints(nThreads + 1, thread);
     }
 
-    template<const basic_fixed_string taskName = "", uint32_t priority = 0, int32_t cpuID = -1, std::invocable Callable, typename... Args>
+    template<const basic_fixed_string taskName = "", uint32_t priority = 0, int32_t cpuID = -1, typename Callable, typename... Args>
+        requires std::invocable<Callable, Args...>
     auto createTask(Callable &&func, Args &&...funcArgs) {
         const auto getTask = [&recycledTasks = _recycledTasks](Callable &&f, Args &&...args) {
             auto extracted = recycledTasks.pop();

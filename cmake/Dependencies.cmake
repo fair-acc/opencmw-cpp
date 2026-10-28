@@ -8,10 +8,12 @@ FetchContent_Declare(
 )
 
 # fetch content support
+set(catch2_patch_command git apply --ignore-space-change --ignore-whitespace "${CMAKE_CURRENT_SOURCE_DIR}/patches/catch2-include-new.diff") # either patch catch2 to work with recent clang, otherwise upgrade to catch 3
 FetchContent_Declare(
         Catch2
         GIT_REPOSITORY https://github.com/catchorg/Catch2.git
         GIT_TAG v2.13.9 # latest: v2.13.9 or v3.1.0
+        PATCH_COMMAND ${catch2_patch_command} || true
 )
 
 # dependency of mp-units, building examples, tests, etc is off by default

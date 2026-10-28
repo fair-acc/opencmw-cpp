@@ -8,7 +8,7 @@ on:
     types: [ created ]
 
 env:
-  REFERENCE_CONFIG: 'gcc14' # configuration used for coverage etc
+  REFERENCE_CONFIG: 'gcc15' # configuration used for coverage etc
 
 jobs:
   buildKeycloakDockerImage:
@@ -27,14 +27,14 @@ jobs:
       fail-fast: false
       matrix:
         configurations:
-          - name: gcc14
-            compiler: gcc14
-            cc: gcc-14
-            cxx: g++-14
-          - name: clang20
-            compiler: clang20
-            cc: clang-20
-            cxx: clang++-20
+          - name: gcc15
+            compiler: gcc15
+            cc: gcc-15
+            cxx: g++-15
+          - name: clang21
+            compiler: clang21
+            cc: clang-21
+            cxx: clang++-21
           - name: emscripten
             compiler: emscripten
         cmake-build-type: [ Release, Debug ]

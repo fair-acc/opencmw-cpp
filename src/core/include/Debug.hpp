@@ -8,7 +8,7 @@
 
 #include <format>
 
-#ifdef EMSCRIPTEN
+#ifdef __EMSCRIPTEN__
 #include <emscripten/threading.h>
 #endif
 
@@ -98,14 +98,14 @@ private:
 #define _DEBUG_PREFIXES_1 ""
 #define _DEBUG_PREFIXES_2 ""
 
-#ifdef EMSCRIPTEN
+#ifdef __EMSCRIPTEN__
 #define _DEBUG_EMSCRIPTEN_THREADS_ "(emscripten mainthread/mainruntimethread) (" << emscripten_is_main_runtime_thread() << "/" << emscripten_is_main_browser_thread() << ")"
 
 #ifndef NDEBUGEMSCRIPTEN
 #undef _DEBUG_PREFIXES_1
 #define _DEBUG_PREFIXES_1 _DEBUG_EMSCRIPTEN_THREADS_
 #endif
-#endif // EMSCRIPTEN
+#endif // __EMSCRIPTEN__
 
 #define _DEBUG_PREFIXES "\t\t\t|" << __FILE__ << ":" << __LINE__ << " @ " << __PRETTY_FUNCTION__ << ": " << _DEBUG_PREFIXES_1 << _DEBUG_PREFIXES_2
 

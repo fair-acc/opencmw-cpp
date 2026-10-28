@@ -1,0 +1,13 @@
+diff --git a/single_include/catch2/catch.hpp b/single_include/catch2/catch.hpp
+index d2a1242..4d1e884 100644
+--- a/single_include/catch2/catch.hpp
++++ b/single_include/catch2/catch.hpp
+@@ -10,6 +10,8 @@
+  */
+ #ifndef TWOBLUECUBES_SINGLE_INCLUDE_CATCH_HPP_INCLUDED
+ #define TWOBLUECUBES_SINGLE_INCLUDE_CATCH_HPP_INCLUDED
++
++#include <new>
+ // start catch.hpp
+ 
+ 

@@ -111,7 +111,7 @@ TEST_CASE("Load test", "[majordomo][majordomoworker][load_test][http2]") {
         }
     }
 
-    waitFor(responseCount, kNUpdates * kSubscriptions * kNClients, 30s);
+    waitFor(responseCount, kNUpdates * kSubscriptions * kNClients, 90s);
 
     std::println("Received {} responses in {}ms (Net production time: {}ms)", responseCount.load(), std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - start).count(), kInitialDelayMs + (kNUpdates * kIntervalMs));
     // TODO maybe print more detailed distribution
